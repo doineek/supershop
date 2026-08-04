@@ -2547,8 +2547,13 @@ def api_auth_login():
 
     if is_delivery_man:
         phone = normalize_phone(phone)
-        user = conn.execute("SELECT * FROM users WHERE username = ? AND role = 'delivery'", (phone,)).fetchone()
-        if not user or not check_password_hash(user["password_hash"], password):
+        user_row = conn.execute("SELECT * FROM users WHERE username = ? AND role = 'delivery'", (phone,)).fetchone()
+        if not user_row:
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid delivery rider username or password."}), 400
+        
+        user = dict(user_row)
+        if not check_password_hash(user["password_hash"], password):
             conn.close()
             return jsonify({"success": False, "message": "Invalid delivery rider username or password."}), 400
         if user.get("is_active", 1) == 0:
@@ -2557,7 +2562,7 @@ def api_auth_login():
         conn.close()
         return jsonify({
             "success": True,
-            "user": {"name": user["full_name"] if user["full_name"] else user["username"], "phone": phone, "role": user["role"]}
+            "user": {"name": user.get("full_name") or user.get("username"), "phone": phone, "role": user.get("role", "delivery")}
         })
 
     cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
