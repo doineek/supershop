@@ -2654,10 +2654,14 @@ def api_auth_login():
 
 
 # ===========================================================================
-# Application Entry Point
+# Application Entry Point & Automatic Real-Time Firebase Listener
 # ===========================================================================
 
-if __name__ == "__main__":
+try:
     init_db()
     remote_control.start()
+except Exception as _rc_err:
+    print(f"[app.py] Automatic Firebase listener initialization: {_rc_err}")
+
+if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

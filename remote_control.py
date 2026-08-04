@@ -37,7 +37,7 @@ def _init_firebase():
         return _db
 
     if not os.path.exists(CRED_FILE):
-        print(f"[remote_control] ⚠️ Alert: {CRED_FILE} missing! Please download Service Account Key JSON from Firebase Console.")
+        print(f"[remote_control] [ALERT] {CRED_FILE} missing! Please download Service Account Key JSON from Firebase Console.")
         return None
 
     try:
@@ -47,7 +47,7 @@ def _init_firebase():
         _db = firestore.client()
         return _db
     except Exception as e:
-        print(f"[remote_control] ❌ Firebase initialization error: {e}")
+        print(f"[remote_control] [ERROR] Firebase initialization error: {e}")
         return None
 
 
@@ -86,7 +86,10 @@ def push_product_to_cloud(product_id):
         product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
         conn.close()
         if product:
-            db.collection("products").document(str(product["sku"])).set(dict(product))
+            p_dict = dict(product)
+            doc_id = str(p_dict.get("sku")) if p_dict.get("sku") else str(p_dict.get("id"))
+            db.collection("products").document(doc_id).set(p_dict)
+            print(f"[remote_control] [OK] Product #{product_id} (SKU: {doc_id}) pushed to Firebase.")
     except Exception as e:
         print(f"[remote_control] product #{product_id} push failed: {e}")
 
@@ -164,7 +167,7 @@ def push_full_backup():
         for row in unsynced:
             push_sale_to_cloud(row["id"])
 
-        print("[remote_control] ✔️ full backup cycle complete.")
+        print("[remote_control] [OK] full backup cycle complete.")
     except Exception as e:
         print(f"[remote_control] full backup failed: {e}")
 
@@ -210,7 +213,7 @@ def _on_products_change(doc_snapshots, changes, read_time):
                 conn.execute("DELETE FROM products WHERE sku=?", (sku,))
         conn.commit()
         conn.close()
-        print(f"[remote_control] 🔄 Two-Way Product Sync updated local SQLite DB from Firebase Console.")
+        print(f"[remote_control] [SYNC] Two-Way Product Sync updated local SQLite DB from Firebase Console.")
     except Exception as e:
         print(f"[remote_control] Two-way product sync failed: {e}")
 
@@ -225,7 +228,7 @@ def _on_settings_change(doc_snapshots, changes, read_time):
             )
             STATE["announcement"] = data.get("announcement", "")
             STATE["force_logout"] = bool(data.get("force_logout", False))
-        print(f"[remote_control] 🔄 remote settings updated: {STATE}")
+        print(f"[remote_control] [SYNC] remote settings updated: {STATE}")
 
 
 def _ensure_remote_doc(db):
@@ -238,7 +241,7 @@ def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
     if not db:
-        print("⚠️ Firebase not initialized. (Add firebase_credentials.json to enable live sync)")
+        print("[remote_control] [ALERT] Firebase not initialized. (Add firebase_credentials.json to enable live sync)")
         return
 
     try:
@@ -254,7 +257,7 @@ def start():
                 time.sleep(300)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
-        print("✅ Firebase real-time two-way backup & remote control started.")
+        print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.")
     except Exception as e:
         print(f"[remote_control] start error: {e}")
 
