@@ -47,14 +47,6 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     List<OnlineOrder> orders = await ApiService.fetchDeliveryOrders();
     if (!mounted) return;
 
-    for (var o in orders) {
-      if (o.orderStatus == 'new' && !_notifiedOrderIds.contains(o.id)) {
-        _notifiedOrderIds.add(o.id);
-        _showNewOrderAlertModal(o);
-        break;
-      }
-    }
-
     setState(() {
       _deliveryOrders = orders;
       _isLoading = false;
@@ -244,10 +236,19 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.pushReplacement(
+            tooltip: "Log Out",
+            onPressed: () async {
+              _refreshTimer?.cancel();
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('user_phone');
+              await prefs.remove('user_name');
+              await prefs.remove('is_delivery_man');
+              await prefs.setBool('stay_signed_in', false);
+              if (!mounted) return;
+              Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
               );
             },
           )
@@ -264,6 +265,9 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                     itemCount: _deliveryOrders.length,
                     itemBuilder: (context, index) {
                       final order = _deliveryOrders[index];
+                      String timeStr = order.createdAt.isNotEmpty
+                          ? order.createdAt.substring(0, 16).replaceFirst('T', ' ')
+                          : '—';
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -277,7 +281,14 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(order.orderNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text("📦 Order #${order.orderNumber}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      const SizedBox(height: 2),
+                                      Text("📅 সময়: $timeStr", style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(

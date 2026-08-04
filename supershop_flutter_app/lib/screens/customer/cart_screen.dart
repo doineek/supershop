@@ -184,31 +184,37 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-  Widget _buildPaymentOption({required String value, required String title, String? subtitle}) {
-    bool isSelected = _selectedPayment == value;
+  Widget _buildPaymentOption({required String value, required String title, String? subtitle, bool enabled = true}) {
+    bool isSelected = _selectedPayment == value && enabled;
     return InkWell(
-      onTap: () => setState(() => _selectedPayment = value),
+      onTap: enabled ? () => setState(() => _selectedPayment = value) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green.shade50 : Colors.white,
+          color: !enabled ? Colors.grey.shade100 : (isSelected ? Colors.green.shade50 : Colors.white),
           border: Border.all(color: isSelected ? Colors.green : Colors.grey.shade300, width: isSelected ? 2 : 1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
             Icon(
-              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: isSelected ? Colors.green : Colors.grey,
+              !enabled ? Icons.block : (isSelected ? Icons.radio_button_checked : Icons.radio_button_off),
+              color: !enabled ? Colors.grey : (isSelected ? Colors.green : Colors.grey),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? Colors.green.shade900 : Colors.black)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: !enabled ? Colors.grey : (isSelected ? Colors.green.shade900 : Colors.black),
+                    ),
+                  ),
                   if (subtitle != null)
-                    Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    Text(subtitle, style: TextStyle(fontSize: 12, color: !enabled ? Colors.grey.shade500 : Colors.grey)),
                 ],
               ),
             ),
@@ -351,19 +357,22 @@ class _CartScreenState extends State<CartScreen> {
                       _buildPaymentOption(
                         value: 'cod',
                         title: loc.translate('cod'),
-                        subtitle: "পণ্য হাতে পাওয়ার পর মূল্য পরিশোধ করুন",
+                        subtitle: "পণ্য হাতে পাওয়ার পর নগদ মূল্য পরিশোধ করুন",
+                        enabled: true,
                       ),
                       const SizedBox(height: 8),
                       _buildPaymentOption(
                         value: 'bkash',
-                        title: loc.translate('bkash'),
-                        subtitle: "মার্চেন্ট কি (API key) যোগ করা যাবে",
+                        title: "${loc.translate('bkash')} (সাময়িকভাবে বন্ধ)",
+                        subtitle: "অনলাইন পেমেন্ট গেটওয়ে সাময়িকভাবে নিষ্ক্রিয় রয়েছে",
+                        enabled: false,
                       ),
                       const SizedBox(height: 8),
                       _buildPaymentOption(
                         value: 'nagad',
-                        title: loc.translate('nagad'),
-                        subtitle: "মার্চেন্ট কি (API key) যোগ করা যাবে",
+                        title: "${loc.translate('nagad')} (সাময়িকভাবে বন্ধ)",
+                        subtitle: "অনলাইন পেমেন্ট গেটওয়ে সাময়িকভাবে নিষ্ক্রিয় রয়েছে",
+                        enabled: false,
                       ),
                     ],
                   ),

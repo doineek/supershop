@@ -409,24 +409,47 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         ),
         child: SizedBox(
           height: 48,
-          child: ElevatedButton(
-            onPressed: () {
-              cartProv.addToCart(product);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${product.name} added to the cart'),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    cartProv.addToCart(product);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${product.name} added to cart'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.shopping_cart, size: 18, color: Colors.white),
+                  label: Text(
+                    loc.translate('add_to_cart'),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
-            child: Text(
-              loc.translate('add_to_cart'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    cartProv.addToCart(product);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CartScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.flash_on, size: 18, color: Colors.white),
+                  label: const Text(
+                    "⚡ Buy Now",
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -1414,15 +1414,40 @@ def settings_page():
             "customer_support_phone": request.form.get("customer_support_phone", "").strip(),
             "vat_reg_no": request.form.get("vat_reg_no", "").strip(),
             "delivery_charge": request.form.get("delivery_charge", "60").strip(),
+            "policy_about_us": request.form.get("policy_about_us", "").strip(),
+            "policy_blog": request.form.get("policy_blog", "").strip(),
+            "policy_cookies": request.form.get("policy_cookies", "").strip(),
+            "policy_return_refund": request.form.get("policy_return_refund", "").strip(),
+            "policy_privacy": request.form.get("policy_privacy", "").strip(),
+            "policy_terms": request.form.get("policy_terms", "").strip(),
+            "policy_warranty": request.form.get("policy_warranty", "").strip(),
+            "policy_help_center": request.form.get("policy_help_center", "").strip(),
         }
         update_settings(conn, values)
         conn.commit()
         conn.close()
-        flash("Shop settings updated. Every receipt and label will now use the new details.", "success")
+        flash("Shop settings and policies updated successfully.", "success")
         return redirect(url_for("settings_page"))
     current_settings = get_all_settings(conn)
     conn.close()
     return render_template("settings.html", settings=current_settings)
+
+
+@app.route("/api/settings/policies", methods=["GET"])
+def api_policies():
+    conn = get_connection()
+    s = get_all_settings(conn)
+    conn.close()
+    return jsonify({
+        "about_us": s.get("policy_about_us") or "Welcome to DOINEEK Supershop! Your trusted daily online grocery & retail destination.",
+        "blog": s.get("policy_blog") or "Latest updates and grocery shopping tips for a healthier lifestyle.",
+        "cookies_policy": s.get("policy_cookies") or "We use essential cookies to ensure seamless shopping and cart persistence.",
+        "return_refund_policy": s.get("policy_return_refund") or "7-day easy return & replacement policy for damaged or incorrect goods.",
+        "privacy_policy": s.get("policy_privacy") or "Your personal data is encrypted and never shared with third parties.",
+        "terms_conditions": s.get("policy_terms") or "By placing an order, you agree to our standard terms of online retail delivery.",
+        "warranty_policy": s.get("policy_warranty") or "Official brand warranty applies to all electronic & appliance products.",
+        "help_center": s.get("policy_help_center") or f"For 24/7 customer support, call {s.get('customer_support_phone') or s.get('shop_phone') or 'our helpline'}.",
+    })
 
 
 # ===========================================================================

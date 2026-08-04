@@ -43,6 +43,19 @@ class ApiService {
     };
   }
 
+  static Future<Map<String, String>> fetchStorePolicies() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/settings/policies'));
+      if (response.statusCode == 200) {
+        Map<String, dynamic> data = jsonDecode(response.body);
+        return data.map((key, value) => MapEntry(key, value.toString()));
+      }
+    } catch (e) {
+      debugPrint("Error fetching store policies: $e");
+    }
+    return {};
+  }
+
   static Future<List<Product>> fetchProducts() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/products'));

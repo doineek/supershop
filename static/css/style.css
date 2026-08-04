@@ -675,22 +675,66 @@ tr.row-low td {
 
   .sidebar {
     width: 100%;
+    position: relative;
+    top: 0;
+    height: auto;
     border-right: none;
     border-bottom: 1px solid var(--line);
     flex-direction: row;
     flex-wrap: wrap;
+    padding: 8px 12px;
+    z-index: 100;
   }
 
   .sidebar-item {
     flex: 1 1 auto;
     justify-content: center;
+    padding: 8px 12px;
+    font-size: 13px;
   }
 
   .page {
-    padding: 20px 16px;
+    padding: 12px 10px;
+    overflow-x: hidden;
   }
 
   .field-row {
     grid-template-columns: 1fr;
+  }
+
+  /* Responsive Tables */
+  .table-card, table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Responsive Modals */
+  .modal-dialog, .modal-content {
+    width: 95vw !important;
+    max-width: 500px !important;
+    max-height: 90vh !important;
+    margin: 10px auto !important;
+    overflow-y: auto !important;
+    padding: 16px !important;
+    z-index: 10000 !important;
+  }
+
+  /* Stacked Header Controls */
+  .page-header, .action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .action-bar input, .action-bar select, .action-bar button {
+    width: 100%;
+  }
+
+  /* Button Wrappers */
+  .btn-group, .btn-row {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }
