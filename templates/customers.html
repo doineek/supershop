@@ -84,9 +84,11 @@
         </p>
       </div>
       <div style="display:flex; gap:8px; align-items:center;">
+        {% if session.role == 'admin' %}
         <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openDeleteCustomerModal('{{ search }}', '{{ search }}')">
           🗑️ Delete Customer Account
         </button>
+        {% endif %}
         <a href="{{ url_for('customers_page') }}" class="btn btn-outline btn-small">Clear Filter</a>
       </div>
     </div>
@@ -191,26 +193,28 @@
       </td>
       <td style="text-align:right;">
         <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
-          <button type="button" class="btn btn-outline btn-small" onclick="openEditCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}', '{{ c.email }}', '{{ c.password if c.password != '●●●●●●' and c.password != '—' else '' }}')">
-            ✏️ Edit
-          </button>
           <a class="btn btn-outline btn-small" href="{{ url_for('customers_page', q=c.customer_mobile) }}">History</a>
-          {% if c.is_blocked %}
-            <form method="POST" action="{{ url_for('block_customer') }}" style="display:inline;">
-              <input type="hidden" name="phone" value="{{ c.customer_mobile }}">
-              <input type="hidden" name="action" value="unblock">
-              <button type="submit" class="btn btn-small" style="background:#22c55e; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;">
-                ✅ Unblock
+          {% if session.role == 'admin' %}
+            <button type="button" class="btn btn-outline btn-small" onclick="openEditCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}', '{{ c.email }}', '{{ c.password if c.password != '●●●●●●' and c.password != '—' else '' }}')">
+              ✏️ Edit
+            </button>
+            {% if c.is_blocked %}
+              <form method="POST" action="{{ url_for('block_customer') }}" style="display:inline;">
+                <input type="hidden" name="phone" value="{{ c.customer_mobile }}">
+                <input type="hidden" name="action" value="unblock">
+                <button type="submit" class="btn btn-small" style="background:#22c55e; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;">
+                  ✅ Unblock
+                </button>
+              </form>
+            {% else %}
+              <button type="button" class="btn btn-small" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openBlockModal('{{ c.customer_mobile }}', '{{ c.customer_name }}')">
+                ⛔ Block
               </button>
-            </form>
-          {% else %}
-            <button type="button" class="btn btn-small" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openBlockModal('{{ c.customer_mobile }}', '{{ c.customer_name }}')">
-              ⛔ Block
+            {% endif %}
+            <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openDeleteCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}')">
+              🗑️ Delete
             </button>
           {% endif %}
-          <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openDeleteCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}')">
-            🗑️ Delete
-          </button>
         </div>
       </td>
     </tr>
