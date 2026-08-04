@@ -249,31 +249,58 @@ class _CartScreenState extends State<CartScreen> {
                     separatorBuilder: (_, __) => const Divider(),
                     itemBuilder: (context, index) {
                       final item = cartProv.items[index];
+                      String imgUrl = item.product.imageList.isNotEmpty
+                          ? item.product.imageList.first
+                          : item.product.imageUrl;
+
                       return Row(
                         children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: imgUrl.isNotEmpty
+                                ? Image.network(
+                                    imgUrl.split(',').first.trim(),
+                                    width: 44,
+                                    height: 44,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 44,
+                                      height: 44,
+                                      color: Colors.grey.shade200,
+                                      child: const Icon(Icons.shopping_bag, size: 22, color: Colors.grey),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 44,
+                                    height: 44,
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.shopping_bag, size: 22, color: Colors.grey),
+                                  ),
+                          ),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Text('৳${item.product.sellPrice.toStringAsFixed(0)} × ${item.quantity}', style: const TextStyle(color: Colors.grey)),
+                                Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text('৳${item.product.sellPrice.toStringAsFixed(0)} × ${item.quantity}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                               ],
                             ),
                           ),
                           Row(
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.remove_circle_outline),
+                                icon: const Icon(Icons.remove_circle_outline, size: 20),
                                 onPressed: () => cartProv.updateQuantity(item.product.id, item.quantity - 1),
                               ),
                               Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
                               IconButton(
-                                icon: const Icon(Icons.add_circle_outline),
+                                icon: const Icon(Icons.add_circle_outline, size: 20),
                                 onPressed: () => cartProv.updateQuantity(item.product.id, item.quantity + 1),
                               ),
                             ],
                           ),
-                          Text('৳${item.totalPrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                          Text('৳${item.totalPrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
                         ],
                       );
                     },
