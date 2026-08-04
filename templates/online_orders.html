@@ -287,12 +287,25 @@
         });
       }
     }
-  // Live Order Number Search JS Logic
+  }
+
+  // Live Order Number & Global Order Search JS Logic
   const allOrdersData = {{ orders|tojson|safe }};
 
   function onOrderNumberSearchInput() {
     let q = document.getElementById('orderNumSearchInput').value.trim().toLowerCase();
     let resDiv = document.getElementById('orderNumSearchResults');
+
+    // Filter Table Rows Live
+    document.querySelectorAll('tbody tr[id^="orderRow_"]').forEach(row => {
+      let rowText = row.innerText.toLowerCase();
+      if (!q || rowText.includes(q)) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
     if (!q) {
       resDiv.style.display = 'none';
       return;
@@ -301,11 +314,15 @@
     let matched = allOrdersData.filter(o => {
       let numStr = String(o.order_number || '').toLowerCase();
       let idStr = String(o.id || '');
-      return numStr.includes(q) || idStr.includes(q);
+      let nameStr = String(o.customer_name || '').toLowerCase();
+      let phoneStr = String(o.customer_phone || '').toLowerCase();
+      let riderStr = String(o.assigned_rider_name || '').toLowerCase();
+      let otpStr = String(o.delivery_otp || '').toLowerCase();
+      return numStr.includes(q) || idStr.includes(q) || nameStr.includes(q) || phoneStr.includes(q) || riderStr.includes(q) || otpStr.includes(q);
     });
 
     if (matched.length === 0) {
-      resDiv.innerHTML = '<div style="padding: 14px; color: #64748b; text-align: center;">কোনো ম্যাচিং অর্ডার নম্বর পাওয়া যায়নি</div>';
+      resDiv.innerHTML = '<div style="padding: 14px; color: #64748b; text-align: center;">কোনো ম্যাচিং অর্ডার পাওয়া যায়নি</div>';
     } else {
       let html = '';
       matched.forEach(o => {
@@ -331,6 +348,7 @@
     document.getElementById('orderNumSearchResults').style.display = 'none';
     let row = document.getElementById('orderRow_' + orderId);
     if (row) {
+      row.style.display = '';
       row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       row.style.transition = 'background 0.5s';
       row.style.background = '#fef08a';
