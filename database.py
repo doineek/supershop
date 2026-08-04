@@ -215,6 +215,10 @@ def init_db():
         "ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE customer_users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN assigned_rider_id INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE online_orders ADD COLUMN assigned_rider_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN assigned_rider_phone TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''",
     ]
     for statement in migrations:
         try:

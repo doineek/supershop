@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
@@ -13,11 +14,19 @@ class DeliveryHomeScreen extends StatefulWidget {
 class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   List<OnlineOrder> _deliveryOrders = [];
   bool _isLoading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDeliveryOrders();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) => _loadDeliveryOrders());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   void _loadDeliveryOrders() async {
@@ -27,6 +36,25 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
       _deliveryOrders = orders;
       _isLoading = false;
     });
+  }
+
+  void _acceptOrder(OnlineOrder order) async {
+    var res = await ApiService.acceptRiderOrder(
+      orderId: order.id,
+      riderName: 'Delivery Rider',
+      riderPhone: '01712345678',
+    );
+    if (!mounted) return;
+    if (res['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res['message'] ?? 'Delivery accepted!'), backgroundColor: Colors.green),
+      );
+      _loadDeliveryOrders();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res['message'] ?? 'Failed to accept delivery'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _showOtpDialog(OnlineOrder order) {
@@ -107,6 +135,10 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         backgroundColor: Colors.orange,
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadDeliveryOrders,
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
               Navigator.pushReplacement(
@@ -145,7 +177,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue,
+                                      color: order.orderStatus == 'new' ? Colors.purple : Colors.blue,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
@@ -164,15 +196,30 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                               Text("🏠 ঠিকানা: ${order.addressDetails}", style: const TextStyle(color: Colors.grey)),
                               const SizedBox(height: 8),
 
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              Wrap(
+                                alignment: WrapAlignment.spaceBetween,
+                                cross: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
                                   Text("ক্যাশ কালেকশন: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                                  ElevatedButton.icon(
-                                    onPressed: () => _showOtpDialog(order),
-                                    icon: const Icon(Icons.key, size: 16),
-                                    label: const Text("Enter OTP"),
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: () => _acceptOrder(order),
+                                        icon: const Icon(Icons.check_circle, size: 15),
+                                        label: const Text("Accept"),
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      ElevatedButton.icon(
+                                        onPressed: () => _showOtpDialog(order),
+                                        icon: const Icon(Icons.key, size: 15),
+                                        label: const Text("OTP"),
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

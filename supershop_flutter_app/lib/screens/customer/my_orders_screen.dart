@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../localization/app_localizations.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
@@ -242,6 +243,54 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                     ),
                                   ],
                                 ),
+
+                                // Delivery Rider Info Box
+                                if (order.assignedRiderName.isNotEmpty || order.assignedRiderPhone.isNotEmpty)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 10),
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blue.shade200),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                "🛵 ডেলিভারি রাইডার: ${order.assignedRiderName.isNotEmpty ? order.assignedRiderName : 'Assigned'}",
+                                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 13),
+                                              ),
+                                              if (order.assignedRiderPhone.isNotEmpty)
+                                                Text(
+                                                  "📞 ${order.assignedRiderPhone}",
+                                                  style: const TextStyle(color: Colors.black87, fontSize: 13),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (order.assignedRiderPhone.isNotEmpty)
+                                          ElevatedButton.icon(
+                                            onPressed: () async {
+                                              final Uri telUri = Uri.parse('tel:${order.assignedRiderPhone}');
+                                              if (await canLaunchUrl(telUri)) {
+                                                await launchUrl(telUri);
+                                              }
+                                            },
+                                            icon: const Icon(Icons.phone, size: 14),
+                                            label: const Text("Call Rider", style: TextStyle(fontSize: 12)),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.green,
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
                                 const SizedBox(height: 12),
 
                                 // 10-Minute Live Cancel Timer Box / Cancellation Closed Notice

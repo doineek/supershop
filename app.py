@@ -1144,7 +1144,8 @@ def riders_page():
 @admin_required
 def create_rider_admin():
     full_name = request.form.get("full_name", "").strip()
-    username = normalize_phone(request.form.get("username", ""))
+    raw_user = request.form.get("username", "").strip()
+    username = normalize_phone(raw_user)
     password = request.form.get("password", "").strip()
 
     if not full_name or not username or not password:
@@ -1155,8 +1156,8 @@ def create_rider_admin():
         flash("Rider mobile number must start with '01' and be exactly 11 digits.", "error")
         return redirect(url_for("riders_page"))
 
-    if len(password) < 4:
-        flash("Password must be at least 4 characters long.", "error")
+    if len(password) < 3:
+        flash("Password must be at least 3 characters long.", "error")
         return redirect(url_for("riders_page"))
 
     conn = get_connection()
@@ -1167,8 +1168,8 @@ def create_rider_admin():
         return redirect(url_for("riders_page"))
 
     conn.execute(
-        "INSERT INTO users (username, password_hash, role, full_name, is_active, created_at) VALUES (?, ?, 'delivery', ?, 1, ?)",
-        (username, generate_password_hash(password), full_name, datetime.now().isoformat())
+        "INSERT INTO users (username, password_hash, plain_password, role, full_name, is_active, created_at) VALUES (?, ?, ?, 'delivery', ?, 1, ?)",
+        (username, generate_password_hash(password), password, full_name, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
@@ -1194,8 +1195,8 @@ def edit_rider_admin():
     conn = get_connection()
     if password:
         conn.execute(
-            "UPDATE users SET full_name = ?, username = ?, password_hash = ?, is_active = ? WHERE id = ? AND role = 'delivery'",
-            (full_name, username, generate_password_hash(password), is_active, rider_id)
+            "UPDATE users SET full_name = ?, username = ?, password_hash = ?, plain_password = ?, is_active = ? WHERE id = ? AND role = 'delivery'",
+            (full_name, username, generate_password_hash(password), password, is_active, rider_id)
         )
     else:
         conn.execute(
@@ -1636,8 +1637,75 @@ def online_orders():
         o_dict["items"] = item_list
         o_dict["order_items"] = item_list
         orders_list.append(o_dict)
+    riders = conn.execute("SELECT * FROM users WHERE role = 'delivery' AND is_active = 1").fetchall()
     conn.close()
-    return render_template("online_orders.html", orders=orders_list)
+    return render_template("online_orders.html", orders=orders_list, riders=riders)
+
+
+@app.route("/online_orders/<int:order_id>/assign_rider", methods=["POST"])
+@login_required
+def assign_online_order_rider(order_id):
+    rider_id = request.form.get("rider_id", type=int)
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("online_orders"))
+
+    rider_name = ""
+    rider_phone = ""
+    if rider_id:
+        rider = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+        if rider:
+            rider_name = rider["full_name"] if rider["full_name"] else rider["username"]
+            rider_phone = rider["username"]
+
+    conn.execute(
+        "UPDATE online_orders SET order_status = 'verified', assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?, updated_at = ? WHERE id = ?",
+        (rider_id or 0, rider_name, rider_phone, datetime.now().isoformat(), order_id)
+    )
+    deduct_online_order_stock(conn, order)
+    conn.commit()
+    conn.close()
+
+    remote_control.push_online_order_to_cloud(order_id)
+    if rider_name:
+        flash(f"Order #{order['order_number']} assigned to Delivery Rider '{rider_name}' ({rider_phone}) and verified!", "success")
+    else:
+        flash(f"Order #{order['order_number']} verified successfully!", "success")
+    return redirect(url_for("online_orders"))
+
+
+@app.route("/api/rider/accept-order", methods=["POST"])
+def api_rider_accept_order():
+    data = request.json or {}
+    order_id = data.get("order_id")
+    rider_name = data.get("rider_name", "").strip()
+    rider_phone = normalize_phone(data.get("rider_phone", ""))
+
+    if not order_id or not rider_phone:
+        return jsonify({"success": False, "message": "Order ID and Rider Phone are required."}), 400
+
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "Order not found."}), 400
+
+    conn.execute(
+        "UPDATE online_orders SET order_status = 'verified', assigned_rider_name = ?, assigned_rider_phone = ?, updated_at = ? WHERE id = ?",
+        (rider_name if rider_name else rider_phone, rider_phone, datetime.now().isoformat(), order_id)
+    )
+    deduct_online_order_stock(conn, order)
+    conn.commit()
+    conn.close()
+
+    remote_control.push_online_order_to_cloud(order_id)
+    return jsonify({
+        "success": True,
+        "message": f"Order #{order['order_number']} accepted successfully! Customer has been notified."
+    })
 
 
 @app.route("/api/online_orders/unread_count", methods=["GET"])

@@ -305,4 +305,25 @@ class ApiService {
       return {'success': false, 'message': 'Network error: $e'};
     }
   }
+
+  static Future<Map<String, dynamic>> acceptRiderOrder({
+    required int orderId,
+    required String riderName,
+    required String riderPhone,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/rider/accept-order'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'order_id': orderId,
+          'rider_name': riderName,
+          'rider_phone': riderPhone,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
 }

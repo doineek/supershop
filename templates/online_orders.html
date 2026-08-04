@@ -108,6 +108,12 @@
           <div style="margin-top: 6px; font-size: 0.8rem; color: #475569;">
             🔑 Delivery OTP: <strong style="font-family: monospace; font-size: 1rem; color: #dc2626; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">{{ order.delivery_otp }}</strong>
           </div>
+          {% if order.assigned_rider_name %}
+          <div style="margin-top: 6px; font-size: 0.78rem; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; padding: 4px 8px; border-radius: 6px; font-weight: 700; text-align: left;">
+            🛵 Rider: {{ order.assigned_rider_name }}<br>
+            📞 {{ order.assigned_rider_phone }}
+          </div>
+          {% endif %}
         </td>
 
         <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
@@ -123,12 +129,9 @@
         <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
           <div style="display: flex; flex-direction: column; gap: 6px;">
             {% if order.order_status == 'new' %}
-            <form action="{{ url_for('update_online_order_status', order_id=order.id) }}" method="POST">
-              <input type="hidden" name="status" value="verified">
-              <button style="width: 100%; background: #8b5cf6; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">
-                ✓ Verify Order
-              </button>
-            </form>
+            <button type="button" onclick="openDeployRiderModal({{ order.id }}, '{{ order.order_number }}')" style="width: 100%; background: #8b5cf6; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">
+              ✓ Verify & Deploy Rider
+            </button>
             {% elif order.order_status == 'verified' %}
             <form action="{{ url_for('update_online_order_status', order_id=order.id) }}" method="POST">
               <input type="hidden" name="status" value="packed">
@@ -312,6 +315,94 @@
           resDiv.style.display = 'block';
         });
     }, 300);
+  }
+
+<!-- Deploy Rider Modal -->
+<div id="deployRiderModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center;">
+  <div style="background: white; border-radius: 16px; width: 90%; max-width: 520px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+      <h3 style="margin: 0; color: #1e40af; font-size: 1.15rem; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+        🛵 Select & Deploy Delivery Rider
+      </h3>
+      <button type="button" onclick="closeDeployRiderModal()" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ Close</button>
+    </div>
+
+    <p style="font-size: 0.88rem; color: #475569; margin-bottom: 12px;" id="deployRiderOrderLabel">
+      Order #ORD-1001
+    </p>
+
+    <div style="margin-bottom: 14px;">
+      <input type="text" id="riderSearchInput" placeholder="🔍 Search rider by Name or Mobile Number..." style="width: 100%; padding: 10px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem;" oninput="filterRiderSearchList()">
+    </div>
+
+    <div id="riderSearchList" style="max-height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px;">
+      {% if riders %}
+        {% for r in riders %}
+        <div class="rider-item-row" data-search="{{ (r.full_name or '') + ' ' + (r.username or '') }}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f1f5f9;">
+          <div>
+            <div style="font-weight: bold; color: #0f172a;">🛵 {{ r.full_name if r.full_name else r.username }}</div>
+            <div style="font-size: 0.82rem; color: #2563eb;">📞 {{ r.username }}</div>
+          </div>
+          <form method="POST" id="deployForm_{{ r.id }}" style="margin: 0;">
+            <input type="hidden" name="rider_id" value="{{ r.id }}">
+            <button type="submit" style="background: #15803d; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.82rem;">
+              🚀 Deploy
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="padding: 16px; text-align: center; color: #64748b; font-size: 0.9rem;">
+          No active delivery riders created yet.<br>
+          <a href="/riders" style="color: #2563eb; font-weight: bold;">Click here to create a Rider</a>
+        </div>
+      {% endif %}
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 14px;">
+      <form method="POST" id="deployNoRiderForm" style="margin: 0;">
+        <input type="hidden" name="rider_id" value="0">
+        <button type="submit" class="btn btn-outline" style="font-size: 0.82rem;">
+          ✓ Verify Without Specific Rider
+        </button>
+      </form>
+      <button type="button" class="btn btn-outline" onclick="closeDeployRiderModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentDeployOrderId = null;
+
+  function openDeployRiderModal(orderId, orderNum) {
+    currentDeployOrderId = orderId;
+    document.getElementById('deployRiderOrderLabel').innerText = 'Deploying Rider for Order: #' + orderNum;
+    
+    // Update form actions
+    document.querySelectorAll('#riderSearchList form').forEach(f => {
+      f.action = '/online_orders/' + orderId + '/assign_rider';
+    });
+    document.getElementById('deployNoRiderForm').action = '/online_orders/' + orderId + '/assign_rider';
+
+    document.getElementById('riderSearchInput').value = '';
+    filterRiderSearchList();
+    document.getElementById('deployRiderModal').style.display = 'flex';
+  }
+
+  function closeDeployRiderModal() {
+    document.getElementById('deployRiderModal').style.display = 'none';
+  }
+
+  function filterRiderSearchList() {
+    let q = (document.getElementById('riderSearchInput').value || '').toLowerCase().trim();
+    document.querySelectorAll('.rider-item-row').forEach(row => {
+      let text = (row.getAttribute('data-search') || '').toLowerCase();
+      if (!q || text.includes(q)) {
+        row.style.display = 'flex';
+      } else {
+        row.style.display = 'none';
+      }
+    });
   }
 
   function openCustModal(cust) {

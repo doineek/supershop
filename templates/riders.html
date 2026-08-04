@@ -18,6 +18,7 @@
       <tr>
         <th>Rider Name</th>
         <th>Mobile / Username</th>
+        <th>Password / Key</th>
         <th style="text-align:center;">Role</th>
         <th style="text-align:center;">Status</th>
         <th>Created Date</th>
@@ -31,6 +32,7 @@
           🛵 {{ r.full_name if r.full_name else r.username }}
         </td>
         <td>{{ r.username }}</td>
+        <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ r.plain_password or '123456' }}</code></td>
         <td style="text-align:center;">
           <span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">
             DELIVERY RIDER

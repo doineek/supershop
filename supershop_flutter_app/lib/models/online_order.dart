@@ -47,6 +47,8 @@ class OnlineOrder {
   final double totalAmount;
   final String orderStatus;
   final String deliveryOtp;
+  final String assignedRiderName;
+  final String assignedRiderPhone;
   final String createdAt;
   final List<OrderItem> items;
 
@@ -67,6 +69,8 @@ class OnlineOrder {
     required this.totalAmount,
     required this.orderStatus,
     required this.deliveryOtp,
+    this.assignedRiderName = '',
+    this.assignedRiderPhone = '',
     required this.createdAt,
     required this.items,
   });
@@ -92,6 +96,8 @@ class OnlineOrder {
       totalAmount: (json['total_amount'] ?? 0).toDouble(),
       orderStatus: json['order_status'] ?? 'new',
       deliveryOtp: json['delivery_otp'] ?? '',
+      assignedRiderName: json['assigned_rider_name'] ?? '',
+      assignedRiderPhone: json['assigned_rider_phone'] ?? '',
       createdAt: json['created_at'] ?? '',
       items: itemList,
     );
