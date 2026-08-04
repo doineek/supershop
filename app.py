@@ -613,9 +613,11 @@ def checkout():
     conn.commit()
     conn.close()
 
-    # Real-time backup: push this invoice to Firebase immediately, the
-    # moment it's completed, instead of waiting for a periodic sync.
+    # Real-time backup: push this invoice and updated product stocks to Firebase immediately
     remote_control.push_sale_to_cloud(sale_id)
+    for item in cart_items:
+        if item.get("product_id"):
+            remote_control.push_product_to_cloud(item["product_id"])
 
     return jsonify({
         "success": True,

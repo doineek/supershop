@@ -36,27 +36,36 @@ def _init_firebase():
     if _db is not None:
         return _db
 
-    if not os.path.exists(CRED_FILE):
-        print(f"[remote_control] [ALERT] {CRED_FILE} missing! Please download Service Account Key JSON from Firebase Console.")
-        return None
+    with _state_lock:
+        if _db is not None:
+            return _db
 
-    try:
-        if not firebase_admin._apps:
-            cred = credentials.Certificate(CRED_FILE)
-            firebase_admin.initialize_app(cred)
-        _db = firestore.client()
-        return _db
-    except Exception as e:
-        print(f"[remote_control] [ERROR] Firebase initialization error: {e}")
-        return None
+        if not os.path.exists(CRED_FILE):
+            print(f"[remote_control] [ALERT] {CRED_FILE} missing! Please download Service Account Key JSON from Firebase Console.")
+            return None
+
+        try:
+            if not firebase_admin._apps:
+                cred = credentials.Certificate(CRED_FILE)
+                firebase_admin.initialize_app(cred)
+            _db = firestore.client()
+            return _db
+        except Exception as e:
+            if firebase_admin._apps:
+                try:
+                    _db = firestore.client()
+                    return _db
+                except Exception:
+                    pass
+            print(f"[remote_control] [ERROR] Firebase initialization error: {e}")
+            return None
 
 
 # ---------------------------------------------------------------------------
 # 1) REAL-TIME BACKUP (Local Database -> Firestore)
 # ---------------------------------------------------------------------------
 
-def push_sale_to_cloud(sale_id):
-    """Upload a POS sale + items right after checkout."""
+def _worker_push_sale(sale_id):
     try:
         db = _init_firebase()
         if not db:
@@ -71,13 +80,17 @@ def push_sale_to_cloud(sale_id):
             db.collection("sales").document(str(sale_id)).set(sale_dict)
             conn.execute("UPDATE sales SET is_synced = 1 WHERE id = ?", (sale_id,))
             conn.commit()
+            print(f"[remote_control] [OK] Sale #{sale_id} pushed to Firebase.")
         conn.close()
     except Exception as e:
         print(f"[remote_control] sale #{sale_id} push failed: {e}")
 
+def push_sale_to_cloud(sale_id):
+    """Upload a POS sale + items right after checkout in background."""
+    threading.Thread(target=_worker_push_sale, args=(sale_id,), daemon=True).start()
 
-def push_product_to_cloud(product_id):
-    """Upload a product right after update or creation."""
+
+def _worker_push_product(product_id):
     try:
         db = _init_firebase()
         if not db:
@@ -93,20 +106,25 @@ def push_product_to_cloud(product_id):
     except Exception as e:
         print(f"[remote_control] product #{product_id} push failed: {e}")
 
+def push_product_to_cloud(product_id):
+    """Upload a product right after update or creation in background."""
+    threading.Thread(target=_worker_push_product, args=(product_id,), daemon=True).start()
+
 
 def delete_product_from_cloud(sku):
     """Mirror local product deletion into Firestore."""
-    try:
-        db = _init_firebase()
-        if not db:
-            return
-        db.collection("products").document(str(sku)).delete()
-    except Exception as e:
-        print(f"[remote_control] product delete failed: {e}")
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            db.collection("products").document(str(sku)).delete()
+        except Exception as e:
+            print(f"[remote_control] product delete failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
 
 
-def push_online_order_to_cloud(order_id):
-    """Upload online order + items to Firestore."""
+def _worker_push_online_order(order_id):
     try:
         db = _init_firebase()
         if not db:
@@ -119,22 +137,29 @@ def push_online_order_to_cloud(order_id):
             order_dict = dict(order)
             order_dict["items"] = [dict(i) for i in items]
             db.collection("online_orders").document(str(order["order_number"])).set(order_dict)
+            print(f"[remote_control] [OK] Online Order #{order_id} pushed to Firebase.")
     except Exception as e:
         print(f"[remote_control] online order #{order_id} push failed: {e}")
 
+def push_online_order_to_cloud(order_id):
+    """Upload online order + items to Firestore in background."""
+    threading.Thread(target=_worker_push_online_order, args=(order_id,), daemon=True).start()
+
 
 def push_delivery_areas_to_cloud():
-    """Upload active delivery areas to Firestore."""
-    try:
-        db = _init_firebase()
-        if not db:
-            return
-        conn = get_connection()
-        areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
-        conn.close()
-        db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
-    except Exception as e:
-        print(f"[remote_control] push delivery areas failed: {e}")
+    """Upload active delivery areas to Firestore in background."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            conn = get_connection()
+            areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
+            conn.close()
+            db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
+        except Exception as e:
+            print(f"[remote_control] push delivery areas failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def push_full_backup():
