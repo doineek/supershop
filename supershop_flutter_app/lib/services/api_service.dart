@@ -56,6 +56,30 @@ class ApiService {
     return {};
   }
 
+  static Future<List<dynamic>> fetchCategoriesTree() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/categories/tree'));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint("Error fetching category tree: $e");
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> fetchPromotions() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/promotions'));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint("Error fetching promotions: $e");
+    }
+    return {"interval_sec": 2, "promotions": []};
+  }
+
   static Future<List<Product>> fetchProducts() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/products'));

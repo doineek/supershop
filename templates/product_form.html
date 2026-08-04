@@ -19,14 +19,25 @@
     </div>
   </div>
 
-  <div class="field">
-    <label>Category</label>
-    <select name="category_id">
-      <option value="">— none —</option>
-      {% for c in categories %}
-      <option value="{{ c.id }}" {{ 'selected' if product and product.category_id == c.id }}>{{ c.name }}</option>
-      {% endfor %}
-    </select>
+  <div class="field-row">
+    <div class="field">
+      <label>Category</label>
+      <select name="category_id" id="categorySelect">
+        <option value="">— none —</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}" {{ 'selected' if product and product.category_id == c.id }}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Sub-Category (সাব-ক্যাটাগরি)</label>
+      <select name="sub_category_id" id="subCategorySelect">
+        <option value="">— none —</option>
+        {% for s in sub_categories %}
+        <option value="{{ s.id }}" {{ 'selected' if product and product.sub_category_id == s.id }}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
 
   <div class="field-row">
@@ -132,6 +143,11 @@
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" name="is_offer" {{ 'checked' if product and product.is_offer == 1 }}>
         🎁 Current Offer (বিশেষ অফার)
+      </label>
+
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#e65100; font-weight:bold;">
+        <input type="checkbox" name="is_promotion" {{ 'checked' if product and product.is_promotion == 1 }}>
+        🚀 Show in Front Page Promotion Banner (অ্যাপের ১/৪ অফার ব্যানার স্লাইডারে দেখাবে)
       </label>
     </div>
 

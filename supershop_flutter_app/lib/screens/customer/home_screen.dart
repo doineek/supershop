@@ -33,6 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _bannerController = PageController();
   Timer? _bannerTimer;
   int _bannerIndex = 0;
+  int _promoIntervalSec = 2;
+  List<dynamic> _promoList = [];
 
   final List<Map<String, String>> _promotions = [
     {"title": "🔥 20% OFF Flash Sale!", "subtitle": "দৈনন্দিন মুদি বাজার সেরা মূল্যে!", "color": "0xFFE65100"},
@@ -46,13 +48,27 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadShopName();
     _loadUserProfile();
+    _loadPromotions();
+  }
+
+  void _loadPromotions() async {
+    var data = await ApiService.fetchPromotions();
+    if (!mounted) return;
+    int interval = data['interval_sec'] ?? 2;
+    List list = data['promotions'] ?? [];
+    setState(() {
+      _promoIntervalSec = interval > 0 ? interval : 2;
+      _promoList = list;
+    });
     _startBannerTimer();
   }
 
   void _startBannerTimer() {
-    _bannerTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (_bannerController.hasClients) {
-        _bannerIndex = (_bannerIndex + 1) % _promotions.length;
+    _bannerTimer?.cancel();
+    int count = _promoList.isNotEmpty ? _promoList.length : _promotions.length;
+    _bannerTimer = Timer.periodic(Duration(seconds: _promoIntervalSec), (timer) {
+      if (_bannerController.hasClients && count > 0) {
+        _bannerIndex = (_bannerIndex + 1) % count;
         _bannerController.animateToPage(
           _bannerIndex,
           duration: const Duration(milliseconds: 500),
@@ -172,128 +188,113 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        actions: [
-          // Language Switch Button
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                localeProv.locale.languageCode == 'bn' ? 'EN' : 'বাংলা',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-            onPressed: () {
-              localeProv.toggleLanguage();
-            },
-          ),
-
-          // Cart Icon Button (Right beside My Orders)
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_cart, color: Colors.white),
-                tooltip: 'Cart',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CartScreen()),
-                  );
-                },
-              ),
-              if (cartProv.totalItemCount > 0)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                    child: Text(
-                      '${cartProv.totalItemCount}',
-                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-
-          // My Orders Button (Right beside Cart Icon)
-          IconButton(
-            icon: const Icon(Icons.receipt_long, color: Colors.white),
-            tooltip: loc.translate('my_orders'),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const MyOrdersScreen()),
-              );
-            },
-          ),
-
-          // Top Right Profile Avatar (Real-time Synced with Profile Updates)
-          GestureDetector(
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
-              _loadUserProfile();
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(right: 10.0, left: 2.0),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.white24,
-                backgroundImage: _getTopBarImageProvider(),
-                child: _getTopBarImageProvider() == null
-                    ? Text(_userAvatar, style: const TextStyle(fontSize: 15))
-                    : null,
-              ),
-            ),
-          ),
-        ],
+        actions: const [],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // Persistent Top Search Bar
-          Container(
-            color: Colors.green,
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Container(
-              height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-              ),
-              child: TextField(
-                onChanged: (val) => setState(() => _searchQuery = val),
-                decoration: const InputDecoration(
-                  hintText: "পণ্য বা ক্যাটাগরির নাম দিয়ে খুঁজুন...",
-                  hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
-                  prefixIcon: Icon(Icons.search, color: Colors.green),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ),
+          _bottomNavIndex == 1
+              ? _buildCategoryDirectoryView()
+              : Column(
+                  children: [
+                    // Persistent Top Search Bar
+                    Container(
+                      color: Colors.green,
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      child: Container(
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                        ),
+                        child: TextField(
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                          decoration: InputDecoration(
+                            hintText: localeProv.locale.languageCode == 'bn'
+                                ? "পণ্য বা ক্যাটাগরির নাম দিয়ে খুঁজুন..."
+                                : "Search products or categories...",
+                            hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                            prefixIcon: const Icon(Icons.search, color: Colors.green),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () => setState(() => _searchQuery = ""),
+                                  )
+                                : null,
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                    ),
 
-          // Top 1/4 Screen Promotion Banner Carousel (Auto-slide every 2 seconds)
+          // Top 1/4 Screen Promotion Banner Carousel (Auto-slide N seconds set by Admin)
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.22,
             child: PageView.builder(
               controller: _bannerController,
-              itemCount: _promotions.length,
+              itemCount: _promoList.isNotEmpty ? _promoList.length : _promotions.length,
               itemBuilder: (context, index) {
+                if (_promoList.isNotEmpty) {
+                  final item = _promoList[index];
+                  String title = item["name"] ?? "Special Promotion";
+                  String subtitle = item["offer_title"] != null && item["offer_title"].toString().isNotEmpty
+                      ? item["offer_title"]
+                      : "৳${item['sell_price']} (Doineek Special)";
+                  String imgUrl = item["image_url"] != null ? item["image_url"].toString().split(',').first.trim() : "";
+
+                  return Container(
+                    margin: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.green.shade800, Colors.teal.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(4)),
+                                child: const Text("PROMOTION", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                subtitle,
+                                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (imgUrl.isNotEmpty)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(imgUrl, width: 64, height: 64, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_basket, size: 50, color: Colors.white38)),
+                          )
+                        else
+                          const Icon(Icons.shopping_basket, size: 56, color: Colors.white38),
+                      ],
+                    ),
+                  );
+                }
+
                 final promo = _promotions[index];
                 final colorVal = int.parse(promo["color"]!);
                 return Container(
@@ -591,6 +592,13 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
+          if (_searchQuery.trim().isNotEmpty && _bottomNavIndex == 0)
+            Positioned(
+              top: 52,
+              left: 12,
+              right: 12,
+              child: _buildSearchDropdownOverlay(allProducts),
+            ),
         ],
       ),
 
@@ -605,15 +613,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _bottomNavIndex = index;
           });
           if (index == 1) {
-            // Category tab
             setState(() {
               _selectedTab = 'all';
             });
           } else if (index == 2) {
-            // Cart tab
             Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen()));
           } else if (index == 3) {
-            // Profile tab
             Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
           }
         },
@@ -631,6 +636,122 @@ class _HomeScreenState extends State<HomeScreen> {
           const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
+    );
+  }
+
+  Widget _buildSearchDropdownOverlay(List<Product> allProducts) {
+    final matches = _filterProducts(allProducts);
+    if (matches.isEmpty) return const SizedBox.shrink();
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        maxHeight: 250,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          shrinkWrap: true,
+          itemCount: matches.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final prod = matches[index];
+            return ListTile(
+              dense: true,
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: prod.imageUrl.isNotEmpty
+                    ? Image.network(
+                        prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 24, color: Colors.grey),
+                      )
+                    : const Icon(Icons.shopping_bag, size: 24, color: Colors.grey),
+              ),
+              title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              subtitle: Text("${prod.categoryName} • ৳${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.green),
+              onTap: () {
+                setState(() => _searchQuery = "");
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => ProductDetailScreen(product: prod)),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryDirectoryView() {
+    return FutureBuilder<List<dynamic>>(
+      future: ApiService.fetchCategoriesTree(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final categoriesTree = snapshot.data ?? [];
+        if (categoriesTree.isEmpty) {
+          return const Center(child: Text("No categories available"));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: categoriesTree.length,
+          itemBuilder: (context, index) {
+            final cat = categoriesTree[index];
+            final List subs = cat["sub_categories"] ?? [];
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              child: ExpansionTile(
+                leading: const Icon(Icons.category, color: Colors.green),
+                title: Text(
+                  cat["name"] ?? "",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                subtitle: Text(
+                  subs.isNotEmpty ? "${subs.length} sub-categories" : "Tap to view products",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                onExpansionChanged: (expanded) {
+                  if (subs.isEmpty) {
+                    setState(() {
+                      _selectedTab = 'all';
+                      _searchQuery = cat["name"] ?? "";
+                      _bottomNavIndex = 0;
+                    });
+                  }
+                },
+                children: subs.map<Widget>((sub) {
+                  return ListTile(
+                    contentPadding: const EdgeInsets.only(left: 44, right: 16),
+                    leading: const Icon(Icons.subdirectory_arrow_right, size: 18, color: Colors.green),
+                    title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13)),
+                    onTap: () {
+                      setState(() {
+                        _selectedTab = 'all';
+                        _searchQuery = sub["name"] ?? "";
+                        _bottomNavIndex = 0;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

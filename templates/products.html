@@ -7,10 +7,20 @@
     <p class="subtitle">Every product your shop sells, and how much is left on the shelf.</p>
   </div>
   {% if session.role == 'admin' %}
-  <div style="display:flex; gap:8px;">
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
     <form method="POST" action="{{ url_for('new_category') }}">
-      <input type="text" name="name" placeholder="New category name" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
-      <button class="btn btn-outline" type="submit">Add category</button>
+      <input type="text" name="name" placeholder="New category name" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;" required>
+      <button class="btn btn-outline" type="submit">+ Category</button>
+    </form>
+    <form method="POST" action="{{ url_for('new_subcategory') }}" style="display:flex; gap:4px;">
+      <select name="category_id" required style="padding:9px; border:1px solid var(--line); border-radius:8px;">
+        <option value="">Select Main Category</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="name" placeholder="New sub-category" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;" required>
+      <button class="btn btn-outline" type="submit">+ Sub-Category</button>
     </form>
     <a href="{{ url_for('new_product') }}" class="btn btn-primary">+ Add product</a>
   </div>

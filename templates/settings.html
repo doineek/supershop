@@ -31,6 +31,10 @@
       <label>Default Cash on Delivery Charge (৳)</label>
       <input type="number" step="1" name="delivery_charge" value="{{ settings.delivery_charge or 60 }}" required>
     </div>
+    <div class="field">
+      <label>Promotion Banner Auto-Slide Interval (seconds - প্রতি কত সেকেন্ড পরপর ১/৪ ব্যানার স্লাইড হবে)</label>
+      <input type="number" step="1" min="1" max="60" name="promo_interval_sec" value="{{ settings.promo_interval_sec or 2 }}" required>
+    </div>
 
     <h2 style="margin-top:24px; margin-bottom:12px; color:#15803d; border-top:1px solid #e2e8f0; padding-top:16px;">📜 CartUp Store Policies & Info (অ্যাপ ও ওয়েবসাইট কাস্টমার পেজ সেটিংস)</h2>
     <div class="field">
