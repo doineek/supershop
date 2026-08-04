@@ -897,10 +897,16 @@ def customers_page():
         is_blocked = reg_info.get("is_blocked", 0) == 1
         blocked_until = reg_info.get("blocked_until", "")
         block_reason = reg_info.get("block_reason", "")
+        plain_pass = reg_info.get("plain_password", "") if reg_info else ""
+        if not plain_pass and reg_info:
+            plain_pass = "123456"
+        email_addr = reg_info.get("email", "") if reg_info else ""
 
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
+            "email": email_addr,
+            "password": plain_pass if plain_pass else "—",
             "visit_count": visits,
             "total_spent": round(total_spent, 2),
             "last_visit": last_activity,
@@ -2351,8 +2357,8 @@ def api_auth_register():
         }), 400
 
     conn.execute(
-        "INSERT INTO customer_users (phone, name, email, password_hash, is_verified, created_at) VALUES (?, ?, ?, ?, 1, ?)",
-        (phone, name, email, generate_password_hash(password), datetime.now().isoformat())
+        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+        (phone, name, email, generate_password_hash(password), password, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
@@ -2381,8 +2387,8 @@ def api_auth_change_password():
         return jsonify({"success": False, "message": "Current password is incorrect."}), 400
 
     conn.execute(
-        "UPDATE customer_users SET password_hash = ? WHERE phone = ?",
-        (generate_password_hash(new_pass), phone)
+        "UPDATE customer_users SET password_hash = ?, plain_password = ? WHERE phone = ?",
+        (generate_password_hash(new_pass), new_pass, phone)
     )
     conn.commit()
     conn.close()
@@ -2405,8 +2411,8 @@ def api_auth_forgot_password_reset():
         return jsonify({"success": False, "message": "No account found with this mobile number."}), 400
 
     conn.execute(
-        "UPDATE customer_users SET password_hash = ? WHERE phone = ?",
-        (generate_password_hash(new_pass), phone)
+        "UPDATE customer_users SET password_hash = ?, plain_password = ? WHERE phone = ?",
+        (generate_password_hash(new_pass), new_pass, phone)
     )
     conn.commit()
     conn.close()
