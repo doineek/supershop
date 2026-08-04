@@ -14,9 +14,8 @@ class ApiService {
   }
 
   /// Dynamic Base URL:
-  /// - Global Online Server: https://your-cloud-domain.com
+  /// - Global 24/7 Online Production Server: https://supershop-mj0g.onrender.com
   /// - Web / Chrome: http://127.0.0.1:5000
-  /// - Local Wi-Fi: http://192.168.0.102:5000
   static String get baseUrl {
     if (_customUrl.isNotEmpty) {
       return _customUrl;
@@ -25,7 +24,7 @@ class ApiService {
       String host = Uri.base.host.isNotEmpty ? Uri.base.host : "127.0.0.1";
       return "http://$host:5000";
     }
-    return "http://192.168.0.102:5000";
+    return "https://supershop-mj0g.onrender.com";
   }
 
   static Future<Map<String, dynamic>> fetchShopSettings() async {
