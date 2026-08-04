@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div>
+    <h1>Customers</h1>
+    <p class="subtitle">Search by name or mobile number to pull up a customer's full purchase history and manage account block status.</p>
+  </div>
+</div>
+
+<div style="position:relative; max-width:520px; margin-bottom:24px;">
+  <input type="text" id="customerSearchBox" value="{{ search }}" autocomplete="off"
+         placeholder="Start typing a name or mobile number..."
+         style="width:100%; padding:12px 16px; font-size:15px; border:2px solid var(--line); border-radius:10px;">
+  <div id="customerSearchResults" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50;
+       background:#fff; border:1px solid var(--line); border-radius:10px; margin-top:6px; box-shadow:0 8px 24px rgba(109,40,217,0.15); overflow:hidden;"></div>
+</div>
+
+<script>
+(function () {
+  const box = document.getElementById("customerSearchBox");
+  const results = document.getElementById("customerSearchResults");
+  let debounceTimer = null;
+
+  function hideResults() { results.style.display = "none"; results.innerHTML = ""; }
+
+  function renderResults(list) {
+    if (!list.length) {
+      results.innerHTML = '<div style="padding:14px; color:var(--ink-soft); font-size:13.5px;">No matching customer found.</div>';
+      results.style.display = "block";
+      return;
+    }
+    results.innerHTML = list.map(c => `
+      <div class="customer-suggestion" data-mobile="${c.mobile}"
+           style="padding:12px 16px; cursor:pointer; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:600;">${c.name || "Unnamed customer"}</div>
+          <div style="font-size:12.5px; color:var(--ink-soft);">${c.mobile}</div>
+        </div>
+        <div style="text-align:right; font-size:12.5px; color:var(--ink-soft);">
+          ${c.visits} visit${c.visits != 1 ? "s" : ""}<br>৳${c.total_spent.toFixed(2)}
+        </div>
+      </div>
+    `).join("");
+    results.querySelectorAll(".customer-suggestion").forEach(el => {
+      el.addEventListener("mouseenter", () => el.style.background = "var(--green-soft)");
+      el.addEventListener("mouseleave", () => el.style.background = "#fff");
+      el.addEventListener("click", () => {
+        window.location.href = "{{ url_for('customers_page') }}?q=" + encodeURIComponent(el.dataset.mobile);
+      });
+    });
+    results.style.display = "block";
+  }
+
+  box.addEventListener("input", () => {
+    const q = box.value.trim();
+    clearTimeout(debounceTimer);
+    if (q.length < 2) { hideResults(); return; }
+    debounceTimer = setTimeout(async () => {
+      try {
+        const res = await fetch("/customers/api/search?q=" + encodeURIComponent(q));
+        const data = await res.json();
+        renderResults(data);
+      } catch (e) { hideResults(); }
+    }, 250);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#customerSearchBox") && !e.target.closest("#customerSearchResults")) hideResults();
+  });
+})();
+</script>
+
+{% if search %}
+  <div class="card" style="padding:20px; margin-bottom:28px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <h2 style="font-size:18px; margin-bottom:4px; font-weight:700;">📦 All Order History for "{{ search }}"</h2>
+        <p class="subtitle" style="margin-bottom:0;">
+          Total {{ matched_orders|length }} order(s) found · Total spend ৳{{ "%.2f"|format(matched_total_spent) }}
+        </p>
+      </div>
+      <a href="{{ url_for('customers_page') }}" class="btn btn-outline btn-small">Clear Filter</a>
+    </div>
+
+    {% if matched_orders %}
+    <table style="margin-top:16px;">
+      <thead>
+        <tr>
+          <th>Order / Invoice #</th>
+          <th>Date</th>
+          <th>Customer Name</th>
+          <th>Mobile</th>
+          <th style="text-align:center;">Channel</th>
+          <th style="text-align:center;">Status</th>
+          <th class="num">Total Paid</th>
+          <th style="text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in matched_orders %}
+        <tr>
+          <td style="font-weight:600; color:#1e293b;">{{ o.ref_number }}</td>
+          <td>{{ o.created_at[:16].replace('T', ' ') if o.created_at else '—' }}</td>
+          <td>{{ o.customer_name or '—' }}</td>
+          <td>{{ o.customer_mobile or '—' }}</td>
+          <td style="text-align:center;">
+            {% if 'Online' in o.channel %}
+              <span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:600;">📱 Online App</span>
+            {% else %}
+              <span style="background:#f8fafc; color:#475569; border:1px solid #e2e8f0; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:600;">🛒 POS Offline</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center;">
+            <span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase;">
+              {{ o.status }}
+            </span>
+          </td>
+          <td class="num" style="font-weight:700; color:#15803d;">৳{{ "%.2f"|format(o.total_amount) }}</td>
+          <td style="text-align:right;">
+            <a class="btn btn-outline btn-small" href="{{ o.receipt_url }}" target="_blank">📄 View Receipt</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--ink-soft); font-size:14px; margin-top:16px;">No orders found matching that name or mobile number.</p>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="card" style="padding:20px;">
+  <h2 style="font-size:16px; margin-bottom:2px;">🧑‍🤝‍🧑 Customer Directory & Account Security</h2>
+  <p class="subtitle" style="margin-bottom:14px;">Manage registered customers, view activity logs, and temporarily or permanently block accounts.</p>
+
+  {% if customer_directory %}
+  <table>
+    <tr>
+      <th>Name</th>
+      <th>Mobile</th>
+      <th class="num">Visits / Orders</th>
+      <th class="num">Total Spent</th>
+      <th>Last Activity</th>
+      <th style="text-align: center;">Channel</th>
+      <th style="text-align: center;">Account Status</th>
+      <th style="text-align: right;">Actions</th>
+    </tr>
+    {% for c in customer_directory %}
+    <tr>
+      <td style="font-weight: 600;">{{ c.customer_name or '—' }}</td>
+      <td>{{ c.customer_mobile }}</td>
+      <td class="num">{{ c.visit_count }}</td>
+      <td class="num">৳{{ "%.2f"|format(c.total_spent) }}</td>
+      <td>{{ c.last_visit[:16].replace('T', ' ') if c.last_visit else '—' }}</td>
+      <td style="text-align: center;">
+        {% if c.channel_tag == 'Online & Offline' %}
+          <span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 11px;">
+            📱 Online & 🛒 Offline
+          </span>
+        {% elif c.channel_tag == 'Online' %}
+          <span style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 11px;">
+            📱 Online
+          </span>
+        {% else %}
+          <span style="background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 11px;">
+            🛒 Offline
+          </span>
+        {% endif %}
+      </td>
+      <td style="text-align: center;">
+        {% if c.is_blocked %}
+          <span style="background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px;" title="{{ c.block_reason }}">
+            ⛔ BLOCKED {{ '(' + c.blocked_until[:10] + ')' if c.blocked_until and c.blocked_until != 'PERMANENT' else '(Permanent)' }}
+          </span>
+        {% else %}
+          <span style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px;">
+            ✅ ACTIVE
+          </span>
+        {% endif %}
+      </td>
+      <td style="text-align:right;">
+        <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+          <a class="btn btn-outline btn-small" href="{{ url_for('customers_page', q=c.customer_mobile) }}">History</a>
+          {% if c.is_blocked %}
+            <form method="POST" action="{{ url_for('block_customer') }}" style="display:inline;">
+              <input type="hidden" name="phone" value="{{ c.customer_mobile }}">
+              <input type="hidden" name="action" value="unblock">
+              <button type="submit" class="btn btn-small" style="background:#22c55e; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;">
+                ✅ Unblock
+              </button>
+            </form>
+          {% else %}
+            <button type="button" class="btn btn-small" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openBlockModal('{{ c.customer_mobile }}', '{{ c.customer_name }}')">
+              ⛔ Block
+            </button>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:var(--ink-soft); font-size:14px;">No customer mobile numbers captured yet — ask for one at Checkout to start building customer history.</p>
+  {% endif %}
+</div>
+
+<!-- Block Customer Modal -->
+<div id="blockModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:440px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
+    <h3 style="margin-top:0; color:#991b1b; font-size:1.15rem; font-weight:bold;">⛔ Block Customer Account</h3>
+    <p style="font-size:0.85rem; color:#475569; margin-bottom:14px;" id="blockCustomerNameLabel"></p>
+    
+    <form method="POST" action="{{ url_for('block_customer') }}">
+      <input type="hidden" name="phone" id="blockPhoneInput">
+      <input type="hidden" name="action" value="block">
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Block Time Period (ব্লক করার মেয়াদ):</label>
+        <select name="duration" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+          <option value="1h">১ ঘন্টা (1 Hour)</option>
+          <option value="24h" selected>১ দিন / ২৪ ঘন্টা (24 Hours)</option>
+          <option value="7d">৭ দিন (7 Days)</option>
+          <option value="30d">৩০ দিন / ১ মাস (30 Days)</option>
+          <option value="permanent">স্থায়ী ব্লক (Permanent Block)</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Block Reason (ব্লক করার কারণ):</label>
+        <input type="text" name="reason" placeholder="e.g. Fake Orders / Spamming" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeBlockModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#b91c1c; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:bold; cursor:pointer;">Confirm Block</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openBlockModal(phone, name) {
+  document.getElementById('blockPhoneInput').value = phone;
+  document.getElementById('blockCustomerNameLabel').innerText = 'Phone: ' + phone + ' (' + (name || 'Customer') + ')';
+  document.getElementById('blockModal').style.display = 'flex';
+}
+function closeBlockModal() {
+  document.getElementById('blockModal').style.display = 'none';
+}
+</script>
+{% endblock %}

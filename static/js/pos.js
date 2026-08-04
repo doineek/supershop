@@ -1,0 +1,351 @@
+// pos.js
+// Browser-side POS logic with localStorage persistence and Table Layout
+
+const CART_STORAGE_KEY = "supershop_cart";
+const CUSTOMER_ID_KEY = "supershop_customer_id";
+const CUSTOMER_MOBILE_KEY = "supershop_customer_mobile";
+
+let cart = {};
+const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+if (savedCart) {
+  try { cart = JSON.parse(savedCart); } catch (e) { cart = {}; }
+}
+// Backward-compat: older carts saved before serial-tracking existed won't
+// have a `serials` array - fill it in with unassigned (null) slots so
+// nothing crashes.
+Object.keys(cart).forEach(id => {
+  const item = cart[id];
+  if (!Array.isArray(item.serials)) {
+    item.serials = new Array(item.quantity || 0).fill(null);
+  }
+  if (typeof item.sku !== "string") item.sku = "";
+});
+
+const productList = document.getElementById("productList");
+const searchBox = document.getElementById("searchBox");
+const subTotalTextEl = document.getElementById("subTotalText");
+const vatRowEl = document.getElementById("vatRow");
+const vatAmountEl = document.getElementById("vatAmount");
+const savedRowEl = document.getElementById("savedRow");
+const savedAmountEl = document.getElementById("savedAmount");
+const cartTotalEl = document.getElementById("cartTotal");
+const cashInput = document.getElementById("cashInput");
+const cardInput = document.getElementById("cardInput");
+const changeDueEl = document.getElementById("changeDue");
+const checkoutBtn = document.getElementById("checkoutBtn");
+const customerIdInput = document.getElementById("customerIdInput");
+const customerMobileInput = document.getElementById("customerMobileInput");
+
+const allTiles = Array.from(productList.querySelectorAll(".pos-product"));
+
+const savedCustId = localStorage.getItem(CUSTOMER_ID_KEY);
+if (savedCustId) customerIdInput.value = savedCustId;
+const savedCustMobile = localStorage.getItem(CUSTOMER_MOBILE_KEY);
+if (savedCustMobile) customerMobileInput.value = savedCustMobile;
+
+function saveCart() {
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  localStorage.setItem(CUSTOMER_ID_KEY, customerIdInput.value || "");
+  localStorage.setItem(CUSTOMER_MOBILE_KEY, customerMobileInput.value || "");
+}
+
+function currentCartSerials() {
+  let all = [];
+  Object.values(cart).forEach(item => { all = all.concat(item.serials.filter(Boolean)); });
+  return all;
+}
+
+function roundToWhole(amount) {
+  const fraction = amount - Math.floor(amount);
+  return fraction >= 0.5 ? Math.ceil(amount) : Math.floor(amount);
+}
+
+searchBox.addEventListener("input", () => {
+  const term = searchBox.value.toLowerCase();
+  allTiles.forEach(btn => {
+    btn.style.display = btn.dataset.search.includes(term) ? "" : "none";
+  });
+});
+
+searchBox.addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const typed = searchBox.value.trim();
+  if (!typed) return;
+  try {
+    const exclude = currentCartSerials().join(",");
+    const res = await fetch("/pos/lookup?code=" + encodeURIComponent(typed) + "&exclude=" + encodeURIComponent(exclude));
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || "Code not recognized."); return; }
+    addToCart({
+      id: data.id, name: data.name, sku: data.sku, price: data.price,
+      mrp: data.mrp, vat_pct: data.vat_pct || 0, stock: data.stock_qty,
+      serial: data.unit_serial || null,
+    });
+    searchBox.value = "";
+    allTiles.forEach(btn => { btn.style.display = ""; });
+  } catch (err) {
+    alert("Could not reach the server to look up that code.");
+  }
+});
+
+const cameraBtn = document.getElementById("cameraBtn");
+let cameraStream = null;
+let cameraActive = false;
+
+cameraBtn.addEventListener("click", async () => {
+  if (cameraActive) {
+    stopCamera();
+    return;
+  }
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
+    const videoEl = document.createElement("video");
+    videoEl.id = "cameraVideo";
+    videoEl.style = "position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:cover; z-index:9999;";
+    videoEl.autoplay = true;
+    videoEl.playsInline = true;
+    videoEl.srcObject = cameraStream;
+    document.body.appendChild(videoEl);
+    cameraActive = true;
+    cameraBtn.textContent = "❌";
+
+    if ("BarcodeDetector" in window) {
+      const detector = new BarcodeDetector({ formats: ["code_128", "ean_13", "upc_a"] });
+      const detectFrame = async () => {
+        if (!cameraActive) return;
+        try {
+          const codes = await detector.detect(videoEl);
+          if (codes.length > 0) {
+            const code = codes[0].rawValue;
+            stopCamera();
+            searchBox.value = code;
+            searchBox.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+            return;
+          }
+        } catch (e) {}
+        requestAnimationFrame(detectFrame);
+      };
+      detectFrame();
+    } else {
+      alert("Browser does not support auto barcode detection. Point camera and type code manually.");
+    }
+  } catch (err) {
+    alert("Could not access camera.");
+  }
+});
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  const videoEl = document.getElementById("cameraVideo");
+  if (videoEl) videoEl.remove();
+  cameraActive = false;
+  cameraBtn.textContent = "📷";
+}
+
+allTiles.forEach(btn => {
+  btn.addEventListener("click", () => addToCart({
+    id: btn.dataset.id, name: btn.dataset.name, sku: btn.dataset.sku,
+    price: parseFloat(btn.dataset.price),
+    mrp: parseFloat(btn.dataset.mrp) || 0,
+    vat_pct: parseFloat(btn.dataset.vat) || 0,
+    stock: parseInt(btn.dataset.stock, 10),
+    serial: null,
+  }));
+});
+
+function addToCart(data) {
+  const id = String(data.id);
+  if (!cart[id]) {
+    cart[id] = {
+      name: data.name, sku: data.sku || "", price: data.price, mrp: data.mrp || 0,
+      vat_pct: data.vat_pct || 0, stock: data.stock, quantity: 0, serials: []
+    };
+  }
+  if (cart[id].quantity >= cart[id].stock) {
+    alert("No more stock available for " + cart[id].name);
+    return;
+  }
+  if (data.serial && cart[id].serials.includes(data.serial)) {
+    alert("This exact tag (" + data.serial + ") has already been scanned into the cart.");
+    return;
+  }
+  cart[id].serials.push(data.serial || null);
+  cart[id].quantity += 1;
+  saveCart();
+  renderCart();
+}
+
+function renderCart() {
+  const ids = Object.keys(cart).filter(id => cart[id].quantity > 0);
+  const cartBody = document.getElementById("cartItemsBody");
+  cartBody.innerHTML = "";
+
+  if (ids.length === 0) {
+    cartBody.innerHTML = `<tr id="emptyCartRow"><td colspan="7" style="text-align:center; padding:20px; color:var(--ink-soft);">Cart is empty — scan or click an item below.</td></tr>`;
+  }
+
+  let subTotal = 0, mrpTotal = 0, totalVat = 0;
+
+  ids.forEach((id, idx) => {
+    const item = cart[id];
+    const lineSub = item.price * item.quantity;
+    const lineVat = lineSub * (item.vat_pct / 100);
+    const lineTotalWithVat = lineSub + lineVat;
+    subTotal += lineSub;
+    totalVat += lineVat;
+    mrpTotal += (item.mrp > 0 ? item.mrp : item.price) * item.quantity;
+
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px dotted var(--line)";
+    const scannedCount = item.serials.filter(Boolean).length;
+    const serialNote = scannedCount > 0
+      ? `<br><small style="color:var(--green)">Scanned: ${scannedCount}/${item.quantity} (${item.serials.filter(Boolean).join(", ")})</small>`
+      : `<br><small style="color:var(--ink-soft)">No tag scanned yet</small>`;
+    tr.innerHTML = `
+      <td style="padding:8px 4px;">${idx + 1}</td>
+      <td style="padding:8px 4px;">
+        <strong>${item.sku ? item.sku + " - " : ""}${item.name}</strong>${serialNote}
+      </td>
+      <td style="padding:8px 4px; text-align:center;">
+        <input class="qty-input" type="number" min="1" max="${item.stock}" value="${item.quantity}" 
+               data-id="${id}" style="width:55px; padding:4px; text-align:center; border:1px solid var(--line); border-radius:4px; font-weight:600;">
+      </td>
+      <td class="num" style="padding:8px 4px;">৳${item.price.toFixed(2)}</td>
+      <td class="num" style="padding:8px 4px;">৳${lineVat.toFixed(2)}</td>
+      <td class="num" style="padding:8px 4px; font-weight:700;">৳${lineTotalWithVat.toFixed(2)}</td>
+      <td style="text-align:right; padding:8px 4px;">
+        <button class="btn btn-danger btn-small" data-action="remove" data-id="${id}" style="padding:2px 6px;">×</button>
+      </td>
+    `;
+    cartBody.appendChild(tr);
+  });
+
+  const rounded = roundToWhole(subTotal + totalVat);
+  const saved = mrpTotal - (subTotal + totalVat);
+
+  cartTotalEl.textContent = "৳" + rounded.toFixed(2);
+  subTotalTextEl.textContent = "Subtotal: ৳" + subTotal.toFixed(2);
+  vatAmountEl.textContent = "৳" + totalVat.toFixed(2);
+  savedAmountEl.textContent = "৳" + saved.toFixed(2);
+
+  updateChange();
+}
+
+document.getElementById("cartItemsBody").addEventListener("change", (e) => {
+  const input = e.target.closest("input.qty-input");
+  if (!input) return;
+  const id = input.dataset.id;
+  const item = cart[id];
+  let val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 1) val = 1;
+  if (val > item.stock) { val = item.stock; alert("Max stock is " + item.stock); }
+
+  if (val > item.quantity) {
+    // Growing quantity manually (no scan) - add unassigned slots.
+    for (let i = item.quantity; i < val; i++) item.serials.push(null);
+  } else if (val < item.quantity) {
+    const scannedCount = item.serials.filter(Boolean).length;
+    if (val < scannedCount) {
+      alert(`You've scanned ${scannedCount} physical tag(s) for this product. Remove a scanned item with the × button instead of typing a lower quantity.`);
+      renderCart();
+      return;
+    }
+    // Shrinking quantity manually - drop unassigned (null) slots first.
+    let toRemove = item.quantity - val;
+    for (let i = item.serials.length - 1; i >= 0 && toRemove > 0; i--) {
+      if (item.serials[i] === null) { item.serials.splice(i, 1); toRemove--; }
+    }
+  }
+
+  item.quantity = val;
+  saveCart();
+  renderCart();
+});
+
+document.getElementById("cartItemsBody").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-action='remove']");
+  if (!btn) return;
+  delete cart[btn.dataset.id];
+  saveCart();
+  renderCart();
+});
+
+function updateChange() {
+  const rounded = parseFloat(cartTotalEl.textContent.replace("৳", "")) || 0;
+  const cash = parseFloat(cashInput.value) || 0;
+  const card = parseFloat(cardInput.value) || 0;
+  const change = cash + card - rounded;
+  changeDueEl.textContent = "৳" + change.toFixed(2);
+  changeDueEl.style.color = change < 0 ? "var(--danger)" : "var(--green)";
+}
+cashInput.addEventListener("input", updateChange);
+cardInput.addEventListener("input", updateChange);
+
+checkoutBtn.addEventListener("click", async () => {
+  const items = Object.keys(cart)
+    .filter(id => cart[id].quantity > 0)
+    .map(id => ({
+      product_id: parseInt(id, 10),
+      quantity: cart[id].quantity,
+      serials: cart[id].serials.filter(Boolean),
+    }));
+
+  if (items.length === 0) {
+    alert("Add at least one product before charging the customer.");
+    return;
+  }
+
+  const cash_amount = parseFloat(cashInput.value) || 0;
+  const card_amount = parseFloat(cardInput.value) || 0;
+  const customer_name = customerIdInput.value.trim();
+  const customer_mobile = customerMobileInput.value.trim();
+
+  checkoutBtn.disabled = true;
+  checkoutBtn.textContent = "Processing...";
+
+  try {
+    const res = await fetch("/pos/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, cash_amount, card_amount, customer_name, customer_mobile }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Something went wrong.");
+      checkoutBtn.disabled = false;
+      checkoutBtn.textContent = "CHARGE CUSTOMER";
+      return;
+    }
+
+    localStorage.removeItem(CART_STORAGE_KEY);
+    localStorage.removeItem(CUSTOMER_ID_KEY);
+    localStorage.removeItem(CUSTOMER_MOBILE_KEY);
+    cart = {};
+
+    window.location.href = "/sales/" + data.sale_id;
+  } catch (err) {
+    alert("Could not reach the server.");
+    checkoutBtn.disabled = false;
+    checkoutBtn.textContent = "CHARGE CUSTOMER";
+  }
+});
+
+customerIdInput.addEventListener("input", () => {
+  localStorage.setItem(CUSTOMER_ID_KEY, customerIdInput.value || "");
+});
+customerMobileInput.addEventListener("input", () => {
+  // Mobile number must be digits only - strip anything else immediately
+  // (covers typing, paste, and autofill, not just keypresses).
+  const digitsOnly = customerMobileInput.value.replace(/\D/g, "");
+  if (digitsOnly !== customerMobileInput.value) customerMobileInput.value = digitsOnly;
+  localStorage.setItem(CUSTOMER_MOBILE_KEY, customerMobileInput.value || "");
+});
+
+renderCart();

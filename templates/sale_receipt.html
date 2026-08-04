@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Receipt #{{ sale.invoice_number or sale.id }}{% endblock %}
+{% block content %}
+<div style="text-align:center; margin-bottom:16px;">
+  <button class="btn btn-outline" onclick="printReceipt()">🖨 Print receipt</button>
+  <a class="btn btn-primary" href="{{ url_for('pos') }}">New sale</a>
+</div>
+
+<div class="receipt" id="receiptContent">
+  <div style="text-align:center; margin-bottom:10px;">
+    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="{{ shop.shop_name }}" style="width:100px; display:block; margin:0 auto 6px;">
+    <h1 style="font-family:'Segoe UI',Arial,sans-serif; letter-spacing:.06em;">{{ shop.shop_name }}</h1>
+    <div style="font-size:11px; color:#555;">{{ shop.shop_address }}</div>
+    <div style="font-size:11px; color:#555;">Phone: {{ shop.shop_phone }}</div>
+  </div>
+
+  <div class="meta">
+    <div>Invoice #: {{ sale.invoice_number or 'INV-' + sale.id|string }}</div>
+    <div>Inv Date: {{ sale.invoice_date or sale.created_at[:16].replace("T", " ") }}</div>
+    <div>Print Date: {{ sale.created_at[:16].replace("T", " ") }}</div>
+    {% if sale.customer_name %}<div>Customer: {{ sale.customer_name }}</div>{% endif %}
+    {% if sale.customer_mobile %}<div>Mobile: {{ sale.customer_mobile }}</div>{% endif %}
+    <div>Cashier: {{ sale.cashier_name }}</div>
+  </div>
+
+  <div class="receipt-table-wrap">
+  <table class="receipt-items-table">
+    <colgroup>
+      <col style="width:40%;">
+      <col style="width:12%;">
+      <col style="width:19%;">
+      {% if sale.vat_amount and sale.vat_amount > 0 %}<col style="width:12%;">{% endif %}
+      <col style="width:{{ '17%' if sale.vat_amount and sale.vat_amount > 0 else '29%' }};">
+    </colgroup>
+    <tr>
+      <th>Item</th>
+      <th style="text-align:right">Qty</th>
+      <th style="text-align:right">Price</th>
+      {% if sale.vat_amount and sale.vat_amount > 0 %}<th style="text-align:right">VAT</th>{% endif %}
+      <th style="text-align:right">Total</th>
+    </tr>
+    {% for item in items %}
+    <tr>
+      <td>
+        <strong>{{ item.sku }}</strong> - {{ item.product_name }}
+        {% if item.unit_serials %}<br><small style="color:#888">SL: {{ item.unit_serials }}</small>{% endif %}
+      </td>
+      <td style="text-align:right">{{ item.quantity }}</td>
+      <td style="text-align:right">৳{{ "%.2f"|format(item.unit_price) }}</td>
+      {% if sale.vat_amount and sale.vat_amount > 0 %}<td style="text-align:right">{{ "%.1f"|format(item.vat_pct) }}%</td>{% endif %}
+      <td style="text-align:right">৳{{ "%.2f"|format(item.unit_price * item.quantity + item.vat_amount) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+
+  <div class="receipt-line" style="border-bottom:none; padding-top:6px;">
+    <span>Sub-total</span>
+    <span>৳{{ "%.2f"|format(sale.total_amount) }}</span>
+  </div>
+  {% if sale.vat_amount and sale.vat_amount > 0 %}
+  <div class="receipt-line" style="border-bottom:none;">
+    <span>VAT</span>
+    <span>৳{{ "%.2f"|format(sale.vat_amount) }}</span>
+  </div>
+  {% endif %}
+  {% if sale.saved_amount > 0.004 %}
+  <div class="receipt-line" style="border-bottom:none;">
+    <span>You saved</span>
+    <span>৳{{ "%.2f"|format(sale.saved_amount) }}</span>
+  </div>
+  {% endif %}
+
+  <div class="receipt-total">
+    <span>NET PAYABLE</span>
+    <span>৳{{ "%.2f"|format(sale.rounded_total) }}</span>
+  </div>
+  <div style="font-size:11px; text-align:center; margin-top:4px; color:#555;">
+    ({{ total_words }})
+  </div>
+
+  <div class="receipt-line" style="border-bottom:none; padding-top:10px;">
+    <span>Cash</span>
+    <span>৳{{ "%.2f"|format(sale.cash_amount) }}</span>
+  </div>
+  <div class="receipt-line" style="border-bottom:none;">
+    <span>Card / mobile</span>
+    <span>৳{{ "%.2f"|format(sale.card_amount) }}</span>
+  </div>
+  <div class="receipt-line" style="border-bottom:none; font-weight:600;">
+    <span>Total paid</span>
+    <span>৳{{ "%.2f"|format(sale.cash_amount + sale.card_amount) }}</span>
+  </div>
+  <div class="receipt-line" style="border-bottom:none;">
+    <span>Change</span>
+    <span>৳{{ "%.2f"|format(sale.change_amount) }}</span>
+  </div>
+
+  <p style="font-size:11px; color:#555; text-align:center; margin-top:14px; border-top:1px dashed #ccc; padding-top:10px;">
+    All sales are final. We do not accept returns or issue refunds.
+  </p>
+</div>
+
+<script>
+function printReceipt() {
+  // Open the print-only version in a new window and trigger print there
+  const printUrl = "{{ url_for('sale_receipt_print', sale_id=sale.id) }}";
+  const w = window.open(printUrl, '_blank', 'width=300,height=600');
+  if (w) {
+    w.onload = function() { w.print(); };
+  }
+}
+</script>
+{% endblock %}

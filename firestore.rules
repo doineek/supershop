@@ -1,0 +1,24 @@
+// firestore.rules
+// -----------------------------------------------------------------------
+// Paste this into: Firebase Console -> Firestore Database -> Rules -> Publish
+//
+// Your Flask app talks to Firestore using the Admin SDK (firebase_credentials.json),
+// which ALWAYS bypasses these rules - so the shop's app keeps working no
+// matter what you set here. These rules only control what happens if
+// someone tries to read/write your Firestore data directly from a browser,
+// a mobile app, or the public internet (NOT the Firebase Console - console
+// access is controlled separately, by who you invite to the Firebase
+// project under Project Settings -> Users and Permissions).
+//
+// Default below: block ALL public client access. Only your server
+// (Admin SDK) and people you've added to the Firebase project can touch
+// this data. This is the safest starting point for a single-shop POS.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

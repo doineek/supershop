@@ -1,0 +1,7 @@
+firebase_credentials.json
+__pycache__/
+*.pyc
+*.db
+.env
+.idea/
+.vscode/

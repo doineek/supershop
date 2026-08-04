@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Checkout{% endblock %}
+{% block content %}
+<h1>Checkout · {{ shop.shop_name }}</h1>
+<p class="subtitle">Left: Interactive Cart & Catalog · Right: Payment & Total</p>
+
+<div class="pos-layout" style="display:grid; grid-template-columns: 1.4fr 0.9fr; gap:24px; align-items:start;">
+  
+  <div class="left-panel">
+    <div class="pos-search" style="display:flex; gap:8px; margin-bottom:14px;">
+      <input type="text" id="searchBox" placeholder="Scan Barcode (Enter) or Search SKU/Name..." style="flex:1; padding:12px; font-size:15px;">
+      <button class="btn btn-gold" id="cameraBtn" title="Scan with camera">📷</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px; padding:16px;">
+      <h2 style="margin-bottom:10px; font-size:16px;">Cart Items</h2>
+      <table id="cartTable" style="width:100%; font-size:13.5px; border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--line); text-align:left;">
+            <th>SL</th>
+            <th>Product</th>
+            <th style="width:80px; text-align:center;">Qty</th>
+            <th class="num">Price</th>
+            <th class="num">VAT</th>
+            <th class="num">Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cartItemsBody">
+          <tr id="emptyCartRow">
+            <td colspan="7" style="text-align:center; padding:20px; color:var(--ink-soft);">Cart is empty — scan or click an item below.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:14px; color:var(--ink-soft); margin-bottom:8px;">Quick Select Products</h3>
+    <div class="pos-product-list" id="productList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; max-height:340px; overflow-y:auto;">
+      {% for p in products %}
+      <button class="pos-product"
+              data-id="{{ p.id }}" data-name="{{ p.name }}" data-sku="{{ p.sku }}"
+              data-price="{{ p.sell_price }}" data-mrp="{{ p.mrp }}" data-vat="{{ p.vat_pct }}"
+              data-stock="{{ p.stock_qty }}" data-search="{{ (p.name ~ ' ' ~ p.sku)|lower }}">
+        <div class="pname" style="font-weight:600; font-size:13px;">{{ p.name }}</div>
+        <div class="pprice" style="color:var(--green); font-weight:700;">৳{{ "%.2f"|format(p.sell_price) }}</div>
+        <div class="pstock" style="font-size:11px; color:#666;">Stock: {{ p.stock_qty }}</div>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="cart-panel card" style="position:sticky; top:20px; padding:24px; background:#fff; border:2px solid var(--green);">
+    <h2 style="font-size:18px; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:10px;">Payment Summary</h2>
+    
+    <div style="background:var(--green-soft); padding:16px; border-radius:10px; text-align:center; margin-bottom:18px;">
+      <div style="font-size:13px; text-transform:uppercase; font-weight:700; color:var(--green);">NET PAYABLE</div>
+      <div id="cartTotal" style="font-family:var(--font-mono); font-size:42px; font-weight:700; color:var(--green); line-height:1.1;">৳0.00</div>
+      <div id="subTotalText" style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Subtotal: ৳0.00</div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;" id="vatRow">
+      <span>VAT Amount:</span><strong id="vatAmount">৳0.00</strong>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:13px; color:var(--green); margin-bottom:14px;" id="savedRow">
+      <span>Customer Savings:</span><strong id="savedAmount">৳0.00</strong>
+    </div>
+
+    <div class="field" style="margin-bottom:12px;">
+      <label style="font-size:12px;">Customer Name (optional)</label>
+      <input type="text" id="customerIdInput" placeholder="e.g. Rahim Uddin">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label style="font-size:12px;">Customer Mobile Number (optional)</label>
+      <input type="tel" id="customerMobileInput" inputmode="numeric" pattern="[0-9]*" maxlength="15" placeholder="e.g. 01700000000">
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+      <div class="field">
+        <label style="font-size:12px;">Cash Received</label>
+        <input type="number" step="0.01" id="cashInput" placeholder="0.00" style="font-weight:600; font-size:16px;">
+      </div>
+      <div class="field">
+        <label style="font-size:12px;">Card / Mobile</label>
+        <input type="number" step="0.01" id="cardInput" placeholder="0.00" style="font-weight:600; font-size:16px;">
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px dashed var(--line); padding-top:12px; margin-bottom:20px;">
+      <span style="font-weight:600; font-size:15px;">Change Due:</span>
+      <span id="changeDue" style="font-family:var(--font-mono); font-size:22px; font-weight:700; color:var(--green);">৳0.00</span>
+    </div>
+
+    <button class="btn btn-gold" style="width:100%; justify-content:center; padding:14px; font-size:17px; font-weight:700;" id="checkoutBtn">
+      CHARGE CUSTOMER
+    </button>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/pos.js') }}"></script>
+{% endblock %}

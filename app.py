@@ -1,0 +1,2242 @@
+"""
+app.py
+------
+Entry point of the DOINEEK (দৈনিক) Supershop POS application.
+Run it with:  python app.py
+Then open a browser at: http://127.0.0.1:5000
+"""
+
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from datetime import datetime, date, timedelta
+from functools import wraps
+import os
+import re
+
+from database import (
+    get_connection, init_db, round_to_whole, create_product_units,
+    generate_invoice_number, get_all_settings, update_settings
+)
+from barcode_utils import generate_barcode_svg
+import remote_control
+
+app = Flask(__name__)
+app.secret_key = "doineek-supershop-secret-key"
+
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads', 'products')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+
+@app.before_request
+def handle_cors_options():
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        return response
+
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    return response
+
+
+@app.before_request
+def check_remote_control():
+    """Runs before every page in the app. If the owner has switched on
+    maintenance mode from the Firebase Console, every page (except the
+    login screen and static files) is replaced with a short notice, and
+    the page auto-refreshes so it comes back the instant the owner turns
+    the switch back off - all without redeploying anything."""
+    if request.path.startswith("/api/") or request.endpoint in (None, "static", "login"):
+        return None
+
+    if remote_control.should_force_logout():
+        session.clear()
+        return redirect(url_for("login"))
+
+    maintenance_on, message = remote_control.is_maintenance_mode()
+    if maintenance_on:
+        return f"""
+        <html><head><meta http-equiv="refresh" content="15">
+        <title>Temporarily Closed</title></head>
+        <body style="font-family:sans-serif;text-align:center;margin-top:15%;">
+        <h2>{message}</h2>
+        <p style="color:#888;">This page will refresh automatically.</p>
+        </body></html>
+        """, 503
+
+
+@app.after_request
+def add_cors_headers(response):
+    """Add CORS headers to allow Web/Chrome/Flutter requests."""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    return response
+
+
+@app.context_processor
+def inject_shop_settings():
+    """Makes `shop.shop_name`, `shop.shop_address`, `shop.shop_phone`,
+    `shop.vat_reg_no` available in every template automatically, so the
+    Settings page updates receipts, labels, and the header everywhere at
+    once without touching each template's route."""
+    return {"shop": get_all_settings()}
+
+
+# ===========================================================================
+# Helpers & Decorators
+# ===========================================================================
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("role") != "admin":
+            flash("Only an admin can perform this action.", "error")
+            return redirect(url_for("dashboard"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+# ===========================================================================
+# Authentication
+# ===========================================================================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"]
+        conn = get_connection()
+        user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        conn.close()
+        if user and check_password_hash(user["password_hash"], password):
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            return redirect(url_for("dashboard"))
+        flash("Wrong username or password.", "error")
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ===========================================================================
+# Dashboard
+# ===========================================================================
+
+@app.route("/")
+@login_required
+def dashboard():
+    conn = get_connection()
+    today = date.today().isoformat()
+    today_sales = conn.execute(
+        "SELECT COALESCE(SUM(rounded_total), 0) AS total, COUNT(*) AS count "
+        "FROM sales WHERE date(created_at) = ?", (today,)
+    ).fetchone()
+    total_products = conn.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"]
+    low_stock = conn.execute(
+        "SELECT * FROM products WHERE stock_qty <= low_stock_threshold ORDER BY stock_qty ASC"
+    ).fetchall()
+    conn.close()
+    return render_template(
+        "dashboard.html",
+        today_total=today_sales["total"],
+        today_count=today_sales["count"],
+        total_products=total_products,
+        low_stock=low_stock,
+    )
+
+
+# ===========================================================================
+# Products & Inventory
+# ===========================================================================
+
+@app.route("/products")
+@login_required
+def products():
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT p.*, c.name AS category_name,
+               (SELECT COUNT(*) FROM product_units u WHERE u.product_id = p.id AND u.status = 'in_stock') AS tag_count
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        ORDER BY p.name
+    """).fetchall()
+    conn.close()
+    return render_template("products.html", products=rows)
+
+
+@app.route("/products/new", methods=["GET", "POST"])
+@login_required
+@admin_required
+def new_product():
+    conn = get_connection()
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    if request.method == "POST":
+        sku = request.form["sku"].strip()
+        name = request.form["name"].strip()
+        category_id = request.form.get("category_id") or None
+        cost_price = float(request.form["cost_price"] or 0)
+        mrp = float(request.form["mrp"] or 0)
+        sell_price = float(request.form["sell_price"] or 0)
+        vat_pct = float(request.form["vat_pct"] or 0)
+        stock_qty = int(request.form["stock_qty"] or 0)
+        low_stock_threshold = int(request.form["low_stock_threshold"] or 5)
+        sl_number = int(request.form.get("sl_number") or 1)
+        description = request.form.get("description", "").strip()
+        image_url = request.form.get("image_url", "").strip()
+        
+        # Multi-file upload handling
+        files = request.files.getlist("product_image_files") or request.files.getlist("product_image_file")
+        uploaded_urls = []
+        import random
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(f"{sku}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
+                uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
+
+        if uploaded_urls:
+            if image_url:
+                image_url = ", ".join(uploaded_urls) + ", " + image_url
+            else:
+                image_url = ", ".join(uploaded_urls)
+
+        is_trending = 1 if request.form.get("is_trending") == "on" else 0
+        is_flash_sale = 1 if request.form.get("is_flash_sale") == "on" else 0
+        is_offer = 1 if request.form.get("is_offer") == "on" else 0
+        offer_title = request.form.get("offer_title", "").strip()
+        offer_type = request.form.get("offer_type", "").strip()
+        offer_value = request.form.get("offer_value", "").strip()
+        offer_base = request.form.get("offer_base", "mrp").strip()
+
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO products (sku, name, category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, offer_title, offer_type, offer_value, offer_base) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sku, name, category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, offer_title, offer_type, offer_value, offer_base)
+            )
+            new_product_id = cur.lastrowid
+            create_product_units(conn, new_product_id, stock_qty)
+            conn.commit()
+            conn.close()
+            remote_control.push_product_to_cloud(new_product_id)
+            flash(f'Product "{name}" added with {stock_qty} printable tag(s).', "success")
+            return redirect(url_for("products"))
+        except Exception as e:
+            flash(f"Could not save product: {e}", "error")
+    conn.close()
+    return render_template("product_form.html", categories=categories, product=None)
+
+
+@app.route("/products/<int:product_id>/edit", methods=["GET", "POST"])
+@login_required
+@admin_required
+def edit_product(product_id):
+    conn = get_connection()
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if request.method == "POST":
+        new_stock_qty = int(request.form["stock_qty"] or 0)
+        old_stock_qty = product["stock_qty"]
+        description = request.form.get("description", "").strip()
+        image_url = request.form.get("image_url", "").strip()
+        
+        # Multi-file upload handling
+        sku_clean = request.form["sku"].strip()
+        files = request.files.getlist("product_image_files") or request.files.getlist("product_image_file")
+        uploaded_urls = []
+        import random
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(f"{sku_clean}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
+                uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
+
+        if uploaded_urls:
+            if image_url:
+                image_url = ", ".join(uploaded_urls) + ", " + image_url
+            else:
+                image_url = ", ".join(uploaded_urls)
+        elif not image_url:
+            image_url = product["image_url"]
+
+        is_trending = 1 if request.form.get("is_trending") == "on" else 0
+        is_flash_sale = 1 if request.form.get("is_flash_sale") == "on" else 0
+        is_offer = 1 if request.form.get("is_offer") == "on" else 0
+        offer_title = request.form.get("offer_title", "").strip()
+        offer_type = request.form.get("offer_type", "").strip()
+        offer_value = request.form.get("offer_value", "").strip()
+        offer_base = request.form.get("offer_base", "mrp").strip()
+
+        conn.execute("""
+            UPDATE products SET sku=?, name=?, category_id=?, cost_price=?, mrp=?, sell_price=?,
+                                 vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
+                                 description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?,
+                                 offer_title=?, offer_type=?, offer_value=?, offer_base=?
+            WHERE id=?
+        """, (
+            request.form["sku"].strip(),
+            request.form["name"].strip(),
+            request.form.get("category_id") or None,
+            float(request.form["cost_price"] or 0),
+            float(request.form["mrp"] or 0),
+            float(request.form["sell_price"] or 0),
+            float(request.form["vat_pct"] or 0),
+            new_stock_qty,
+            int(request.form["low_stock_threshold"] or 5),
+            int(request.form.get("sl_number") or 1),
+            description,
+            image_url,
+            is_trending,
+            is_flash_sale,
+            is_offer,
+            offer_title,
+            offer_type,
+            offer_value,
+            offer_base,
+            product_id
+        ))
+        if new_stock_qty > old_stock_qty:
+            added = new_stock_qty - old_stock_qty
+            create_product_units(conn, product_id, added)
+            flash(f"Product updated. {added} new printable tag(s) created for the restock.", "success")
+        else:
+            flash("Product updated.", "success")
+        conn.commit()
+        conn.close()
+        remote_control.push_product_to_cloud(product_id)
+        return redirect(url_for("products"))
+    conn.close()
+    return render_template("product_form.html", categories=categories, product=product)
+
+
+@app.route("/products/<int:product_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_product(product_id):
+    conn = get_connection()
+    product = conn.execute("SELECT sku FROM products WHERE id = ?", (product_id,)).fetchone()
+    conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
+    conn.commit()
+    conn.close()
+    if product:
+        remote_control.delete_product_from_cloud(product["sku"])
+    flash("Product deleted.", "success")
+    return redirect(url_for("products"))
+
+
+@app.route("/products/<int:product_id>/labels")
+@login_required
+def product_labels(product_id):
+    conn = get_connection()
+    product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if not product:
+        conn.close()
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
+    unit_id = request.args.get("unit_id", type=int)
+    if unit_id:
+        units = conn.execute(
+            "SELECT * FROM product_units WHERE product_id = ? AND id = ? AND status = 'in_stock'",
+            (product_id, unit_id)
+        ).fetchall()
+    else:
+        units = conn.execute(
+            "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' ORDER BY sl_number",
+            (product_id,)
+        ).fetchall()
+
+    if units:
+        # Each visit to this page is a print run - track how many times
+        # this product's tags have been sent to the printer (shown on the
+        # Inventory page as "Printed N time(s)").
+        conn.execute(
+            "UPDATE products SET label_print_count = label_print_count + 1 WHERE id = ?",
+            (product_id,)
+        )
+        conn.commit()
+        product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    conn.close()
+
+    # IMPORTANT: the barcode encodes the product's own SKU - the SAME value
+    # for every physical unit - exactly like the working invoice barcode on
+    # the print receipt. A per-unit barcode caused two problems: browsers/
+    # scanners sometimes failed to resolve it back to a product at all, and
+    # it made the barcode value collide visually with a "serial number".
+    # Scanning any tag of this product now reliably adds that SKU to the
+    # cart; which physical unit gets sold is tracked separately (see
+    # /pos/lookup) using the SN-xxxxxx serial printed as plain text below
+    # the barcode.
+    shared_barcode_svg = generate_barcode_svg(product["sku"])
+    tags = [(unit, shared_barcode_svg) for unit in units]
+
+    # Default to auto-printing immediately on load - exactly like the sale
+    # receipt print page - so opening this page from Inventory is truly a
+    # single click that sends every tag to the printer without an extra
+    # button press. Pass ?autoprint=0 to suppress it (e.g. just viewing).
+    autoprint = request.args.get("autoprint", "1") == "1"
+    return render_template("product_labels.html", product=product, tags=tags, autoprint=autoprint)
+
+
+@app.route("/categories/new", methods=["POST"])
+@login_required
+@admin_required
+def new_category():
+    name = request.form["name"].strip()
+    if name:
+        conn = get_connection()
+        conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
+        conn.commit()
+        conn.close()
+        flash(f'Category "{name}" added.', "success")
+    return redirect(url_for("products"))
+
+
+# ===========================================================================
+# POS & Checkout
+# ===========================================================================
+
+@app.route("/pos/lookup")
+@login_required
+def pos_lookup():
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "No code given."}), 400
+
+    # Serials already sitting in the cashier's cart (from any product line) -
+    # never propose one of these again for this scan.
+    exclude = [s for s in request.args.get("exclude", "").split(",") if s]
+
+    conn = get_connection()
+    # Every physical tag's barcode encodes the product's SKU (shared across
+    # all units of that product), matching how the invoice barcode is coded
+    # on the print receipt - so a scan always resolves to a real product.
+    product = conn.execute("SELECT * FROM products WHERE sku = ?", (code,)).fetchone()
+    if not product:
+        conn.close()
+        return jsonify({"error": f'No product found for code "{code}".'}), 404
+
+    # Auto-suggest the next available in-stock unit's own serial (SN-xxxxxx)
+    # for this line, so the cashier can see - and the sale can record -
+    # exactly which physical unit is being sold, even though every tag of
+    # this product carries an identical barcode.
+    if exclude:
+        placeholders = ",".join("?" for _ in exclude)
+        unit = conn.execute(f"""
+            SELECT a_code FROM product_units
+            WHERE product_id = ? AND status = 'in_stock' AND a_code NOT IN ({placeholders})
+            ORDER BY sl_number LIMIT 1
+        """, (product["id"], *exclude)).fetchone()
+    else:
+        unit = conn.execute("""
+            SELECT a_code FROM product_units
+            WHERE product_id = ? AND status = 'in_stock'
+            ORDER BY sl_number LIMIT 1
+        """, (product["id"],)).fetchone()
+    conn.close()
+
+    return jsonify({
+        "id": product["id"],
+        "name": product["name"],
+        "sku": product["sku"],
+        "price": product["sell_price"],
+        "mrp": product["mrp"],
+        "vat_pct": product["vat_pct"],
+        "stock_qty": product["stock_qty"],
+        "unit_serial": unit["a_code"] if unit else None,
+    })
+
+
+@app.route("/pos")
+@login_required
+def pos():
+    conn = get_connection()
+    all_products = conn.execute(
+        "SELECT * FROM products WHERE stock_qty > 0 ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return render_template("pos.html", products=all_products)
+
+
+@app.route("/pos/checkout", methods=["POST"])
+@login_required
+def checkout():
+    data = request.get_json()
+    items = data.get("items", [])
+    cash_amount = float(data.get("cash_amount") or 0)
+    card_amount = float(data.get("card_amount") or 0)
+    customer_name = data.get("customer_name", "").strip()
+    customer_mobile = re.sub(r"\D", "", data.get("customer_mobile", "") or "")
+
+    if not items:
+        return jsonify({"error": "Cart is empty."}), 400
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    sub_total = 0
+    mrp_total = 0
+    total_vat = 0
+    line_details = []
+
+    for item in items:
+        product = cur.execute("SELECT * FROM products WHERE id = ?", (item["product_id"],)).fetchone()
+        if not product:
+            conn.close()
+            return jsonify({"error": "A product in the cart no longer exists."}), 400
+        quantity = int(item["quantity"])
+        if product["stock_qty"] < quantity:
+            conn.close()
+            return jsonify({"error": f'Not enough stock for "{product["name"]}".'}), 400
+
+        # Serials the cashier actually scanned off a physical tag for this
+        # line (may be fewer than quantity if some units were added by
+        # clicking the product tile instead of scanning).
+        scanned_serials = [s for s in (item.get("serials") or []) if s]
+        valid_serials = []
+        for serial in scanned_serials:
+            unit_row = cur.execute(
+                "SELECT id FROM product_units WHERE a_code = ? AND product_id = ? AND status = 'in_stock'",
+                (serial, product["id"])
+            ).fetchone()
+            if not unit_row:
+                conn.close()
+                return jsonify({
+                    "error": f'Scanned serial "{serial}" for "{product["name"]}" is no longer available. Please rescan or remove it from the cart.'
+                }), 400
+            valid_serials.append((serial, unit_row["id"]))
+
+        line_subtotal = product["sell_price"] * quantity
+        vat_rate = product["vat_pct"] / 100.0 if product["vat_pct"] else 0
+        line_vat = line_subtotal * vat_rate
+
+        sub_total += line_subtotal
+        total_vat += line_vat
+        mrp_for_line = product["mrp"] if product["mrp"] > 0 else product["sell_price"]
+        mrp_total += mrp_for_line * quantity
+        line_details.append((
+            product["id"],
+            quantity,
+            product["sell_price"],
+            mrp_for_line,
+            product["vat_pct"],
+            line_vat,
+            product["cost_price"],
+            valid_serials
+        ))
+
+    # IMPORTANT: rounded_total must include VAT, otherwise the customer is
+    # charged/shown a "Net Payable" that is missing the VAT amount even
+    # though VAT is computed and displayed on the receipt.
+    grand_total = sub_total + total_vat
+    rounded_total = round_to_whole(grand_total)
+    saved_amount = round(mrp_total - grand_total, 2)
+    change_amount = round((cash_amount + card_amount) - rounded_total, 2)
+
+    if change_amount < 0:
+        conn.close()
+        return jsonify({"error": f"Amount tendered is short by {abs(change_amount):.2f}."}), 400
+
+    invoice_number = generate_invoice_number()
+    invoice_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cur.execute("""
+        INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile,
+                            total_amount, rounded_total, vat_amount, saved_amount,
+                            cash_amount, card_amount, change_amount, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        invoice_number, invoice_date, session["user_id"], customer_name, customer_name, customer_mobile,
+        sub_total, rounded_total, total_vat, saved_amount,
+        cash_amount, card_amount, change_amount, datetime.now().isoformat()
+    ))
+    sale_id = cur.lastrowid
+
+    for product_id, quantity, unit_price, mrp_price, vat_pct, line_vat, cost_price, valid_serials in line_details:
+        sold_serials = []
+
+        # 1) Mark the units the cashier actually scanned as sold.
+        for serial, unit_id in valid_serials:
+            cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (unit_id,))
+            sold_serials.append(serial)
+
+        # 2) Auto-fill any remaining quantity (added without scanning a tag)
+        #    from whatever units are still in stock.
+        remaining = quantity - len(valid_serials)
+        if remaining > 0:
+            auto_units = cur.execute("""
+                SELECT id, a_code FROM product_units
+                WHERE product_id = ? AND status = 'in_stock'
+                LIMIT ?
+            """, (product_id, remaining)).fetchall()
+            for u in auto_units:
+                cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (u["id"],))
+                sold_serials.append(u["a_code"])
+
+        unit_serials_str = ", ".join(sold_serials)
+
+        cur.execute(
+            "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, line_vat, cost_price, unit_serials_str)
+        )
+        cur.execute(
+            "UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?",
+            (quantity, product_id)
+        )
+
+    conn.commit()
+    conn.close()
+
+    # Real-time backup: push this invoice to Firebase immediately, the
+    # moment it's completed, instead of waiting for a periodic sync.
+    remote_control.push_sale_to_cloud(sale_id)
+
+    return jsonify({
+        "success": True,
+        "sale_id": sale_id,
+        "invoice_number": invoice_number,
+        "sub_total": sub_total,
+        "rounded_total": rounded_total,
+        "vat_amount": total_vat,
+        "change_amount": change_amount,
+    })
+
+
+# ===========================================================================
+# Sales History & Receipts
+# ===========================================================================
+
+@app.route("/sales")
+@login_required
+def sales_history():
+    conn = get_connection()
+    # Both Admin and Cashier can view all sales and online customer transactions
+    rows = conn.execute("""
+        SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
+        FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
+        ORDER BY s.created_at DESC
+    """).fetchall()
+    conn.close()
+    return render_template("sales_history.html", sales=rows)
+
+
+@app.route("/sales/<int:sale_id>")
+@login_required
+def sale_receipt(sale_id):
+    conn = get_connection()
+    sale = conn.execute("""
+        SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
+        FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
+        WHERE s.id = ?
+    """, (sale_id,)).fetchone()
+    items = conn.execute("""
+        SELECT si.*, p.name AS product_name, p.sku
+        FROM sale_items si JOIN products p ON si.product_id = p.id
+        WHERE si.sale_id = ?
+    """, (sale_id,)).fetchall()
+    settings = get_all_settings(conn)
+    conn.close()
+
+    total_words = number_to_words(int(round_to_whole(sale["rounded_total"] or sale["total_amount"])))
+    return render_template("sale_receipt.html", sale=sale, items=items, total_words=total_words, shop=settings)
+
+
+# ===========================================================================
+# Customers
+# ===========================================================================
+
+@app.route("/customers/api/search")
+@login_required
+def customers_api_search():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f"%{q}%"
+    conn = get_connection()
+    
+    # Registered App Customers
+    reg_users = conn.execute("SELECT * FROM customer_users WHERE phone LIKE ? OR name LIKE ?", (like, like)).fetchall()
+    
+    # Online Order Customers
+    online_cust = conn.execute("""
+        SELECT customer_phone AS mobile, MAX(customer_name) AS name, COUNT(*) AS visits, SUM(total_amount) AS total_spent
+        FROM online_orders
+        WHERE customer_phone != '' AND (customer_name LIKE ? OR customer_phone LIKE ?)
+        GROUP BY customer_phone
+    """, (like, like)).fetchall()
+
+    # Offline POS Customers
+    pos_cust = conn.execute("""
+        SELECT customer_mobile AS mobile, MAX(customer_name) AS name, COUNT(*) AS visits, SUM(rounded_total) AS total_spent
+        FROM sales
+        WHERE customer_mobile != '' AND (customer_name LIKE ? OR customer_mobile LIKE ?)
+        GROUP BY customer_mobile
+    """, (like, like)).fetchall()
+
+    all_mobiles = set([u["phone"] for u in reg_users]) | set([o["mobile"] for o in online_cust]) | set([p["mobile"] for p in pos_cust])
+    
+    results = []
+    for m in list(all_mobiles)[:10]:
+        name = ""
+        visits = 0
+        total_spent = 0.0
+
+        u_match = [u for u in reg_users if u["phone"] == m]
+        if u_match:
+            name = u_match[0]["name"]
+        
+        o_match = [o for o in online_cust if o["mobile"] == m]
+        if o_match:
+            if not name: name = o_match[0]["name"]
+            visits += o_match[0]["visits"]
+            total_spent += o_match[0]["total_spent"] or 0.0
+
+        p_match = [p for p in pos_cust if p["mobile"] == m]
+        if p_match:
+            if not name: name = p_match[0]["name"]
+            visits += p_match[0]["visits"]
+            total_spent += p_match[0]["total_spent"] or 0.0
+
+        results.append({
+            "name": name or ("Customer " + m),
+            "mobile": m,
+            "visits": visits,
+            "total_spent": round(total_spent, 2)
+        })
+
+    conn.close()
+    return jsonify(results)
+
+
+@app.route("/customers")
+@login_required
+def customers_page():
+    search = request.args.get("q", "").strip()
+    conn = get_connection()
+
+    matched_orders = []
+    if search:
+        like = f"%{search}%"
+        # 1. Collect all associated phone numbers for search query (matches name or phone across all tables)
+        matched_phones = set()
+        cu_rows = conn.execute("SELECT phone FROM customer_users WHERE phone LIKE ? OR name LIKE ?", (like, like)).fetchall()
+        for r in cu_rows:
+            if r["phone"]: matched_phones.add(r["phone"])
+
+        oo_rows = conn.execute("SELECT customer_phone FROM online_orders WHERE customer_phone LIKE ? OR customer_name LIKE ?", (like, like)).fetchall()
+        for r in oo_rows:
+            if r["customer_phone"]: matched_phones.add(r["customer_phone"])
+
+        s_rows = conn.execute("SELECT customer_mobile FROM sales WHERE customer_mobile LIKE ? OR customer_name LIKE ?", (like, like)).fetchall()
+        for r in s_rows:
+            if r["customer_mobile"]: matched_phones.add(r["customer_mobile"])
+
+        phone_list = list(matched_phones)
+
+        # 2. Fetch sales log entries
+        if phone_list:
+            placeholders = ",".join(["?"] * len(phone_list))
+            sales_rows = conn.execute(f"""
+                SELECT s.id AS id,
+                       s.invoice_number AS ref_number,
+                       s.created_at,
+                       s.customer_name,
+                       s.customer_mobile,
+                       s.rounded_total AS total_amount,
+                       COALESCE(s.channel, 'Offline') AS channel,
+                       'Completed' AS status,
+                       '/sales/' || s.id || '/print' AS receipt_url
+                FROM sales s
+                WHERE s.customer_name LIKE ? OR s.customer_mobile LIKE ? OR s.customer_mobile IN ({placeholders})
+            """, [like, like] + phone_list).fetchall()
+
+            online_rows = conn.execute(f"""
+                SELECT o.id AS id,
+                       o.order_number AS ref_number,
+                       o.created_at,
+                       o.customer_name,
+                       o.customer_phone AS customer_mobile,
+                       o.total_amount,
+                       'Online App' AS channel,
+                       o.order_status AS status,
+                       '/online_orders/' || o.id || '/invoice' AS receipt_url
+                FROM online_orders o
+                WHERE o.customer_name LIKE ? OR o.customer_phone LIKE ? OR o.customer_phone IN ({placeholders})
+            """, [like, like] + phone_list).fetchall()
+        else:
+            sales_rows = conn.execute("""
+                SELECT s.id AS id,
+                       s.invoice_number AS ref_number,
+                       s.created_at,
+                       s.customer_name,
+                       s.customer_mobile,
+                       s.rounded_total AS total_amount,
+                       COALESCE(s.channel, 'Offline') AS channel,
+                       'Completed' AS status,
+                       '/sales/' || s.id || '/print' AS receipt_url
+                FROM sales s
+                WHERE s.customer_name LIKE ? OR s.customer_mobile LIKE ?
+            """, (like, like)).fetchall()
+
+            online_rows = conn.execute("""
+                SELECT o.id AS id,
+                       o.order_number AS ref_number,
+                       o.created_at,
+                       o.customer_name,
+                       o.customer_phone AS customer_mobile,
+                       o.total_amount,
+                       'Online App' AS channel,
+                       o.order_status AS status,
+                       '/online_orders/' || o.id || '/invoice' AS receipt_url
+                FROM online_orders o
+                WHERE o.customer_name LIKE ? OR o.customer_phone LIKE ?
+            """, (like, like)).fetchall()
+
+        seen_inv_numbers = set()
+        for o in online_rows:
+            o_dict = dict(o)
+            seen_inv_numbers.add(f"INV-ONLINE-{o['ref_number']}")
+            matched_orders.append(o_dict)
+
+        for s in sales_rows:
+            s_dict = dict(s)
+            if s_dict["ref_number"] not in seen_inv_numbers:
+                matched_orders.append(s_dict)
+
+        matched_orders.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    # Unified customer directory combining:
+    # 1. Registered App Users (customer_users)
+    # 2. Online Orders (online_orders)
+    # 3. Offline Sales Log (sales)
+    reg_users = conn.execute("SELECT * FROM customer_users").fetchall()
+    reg_user_dict = {u["phone"]: dict(u) for u in reg_users}
+    reg_phones = {u["phone"]: u["name"] for u in reg_users}
+
+    online_stats = conn.execute("""
+        SELECT customer_phone, MAX(customer_name) AS customer_name, COUNT(*) AS order_count,
+               COALESCE(SUM(total_amount), 0) AS online_spent, MAX(created_at) AS last_activity
+        FROM online_orders
+        WHERE customer_phone != ''
+        GROUP BY customer_phone
+    """).fetchall()
+    online_dict = {o["customer_phone"]: dict(o) for o in online_stats}
+
+    pos_stats = conn.execute("""
+        SELECT customer_mobile, MAX(customer_name) AS customer_name, COUNT(*) AS visit_count,
+               COALESCE(SUM(rounded_total), 0) AS pos_spent, MAX(created_at) AS last_visit,
+               SUM(CASE WHEN channel = 'Online' THEN 1 ELSE 0 END) AS online_sales_cnt,
+               SUM(CASE WHEN channel IS NULL OR channel != 'Online' THEN 1 ELSE 0 END) AS offline_sales_cnt
+        FROM sales
+        WHERE customer_mobile != ''
+        GROUP BY customer_mobile
+    """).fetchall()
+    pos_dict = {p["customer_mobile"]: dict(p) for p in pos_stats}
+
+    all_phones = set(reg_phones.keys()) | set(online_dict.keys()) | set(pos_dict.keys())
+
+    customer_directory = []
+    for phone in all_phones:
+        name = reg_phones.get(phone)
+        if not name and phone in online_dict:
+            name = online_dict[phone]["customer_name"]
+        if not name and phone in pos_dict:
+            name = pos_dict[phone]["customer_name"]
+        if not name:
+            name = "Customer " + phone
+
+        has_registered = phone in reg_phones
+        has_online_orders = phone in online_dict
+        pos_info = pos_dict.get(phone, {})
+        has_offline_sales = pos_info.get("offline_sales_cnt", 0) > 0
+
+        is_online = has_registered or has_online_orders
+        is_offline = has_offline_sales
+
+        if is_online and is_offline:
+            channel_tag = "Online & Offline"
+        elif is_online:
+            channel_tag = "Online"
+        else:
+            channel_tag = "Offline"
+
+        visits = online_dict.get(phone, {}).get("order_count", 0) + pos_info.get("visit_count", 0)
+        total_spent = online_dict.get(phone, {}).get("online_spent", 0.0) + pos_info.get("pos_spent", 0.0)
+
+        d1 = online_dict.get(phone, {}).get("last_activity", "")
+        d2 = pos_info.get("last_visit", "")
+        last_activity = max(d1, d2) if (d1 and d2) else (d1 or d2 or "2026-01-01")
+
+        reg_info = reg_user_dict.get(phone, {})
+        is_blocked = reg_info.get("is_blocked", 0) == 1
+        blocked_until = reg_info.get("blocked_until", "")
+        block_reason = reg_info.get("block_reason", "")
+
+        customer_directory.append({
+            "customer_name": name,
+            "customer_mobile": phone,
+            "visit_count": visits,
+            "total_spent": round(total_spent, 2),
+            "last_visit": last_activity,
+            "channel_tag": channel_tag,
+            "is_blocked": is_blocked,
+            "blocked_until": blocked_until,
+            "block_reason": block_reason,
+        })
+
+    customer_directory.sort(key=lambda x: x["last_visit"], reverse=True)
+    conn.close()
+
+    matched_total_spent = sum(o["total_amount"] for o in matched_orders)
+    return render_template(
+        "customers.html",
+        search=search,
+        matched_orders=matched_orders,
+        matched_total_spent=matched_total_spent,
+        customer_directory=customer_directory
+    )
+
+
+@app.route("/customers/block", methods=["POST"])
+@login_required
+@admin_required
+def block_customer():
+    phone = re.sub(r"\D", "", request.form.get("phone", "") or "")
+    action = request.form.get("action", "block")  # 'block' or 'unblock'
+    duration = request.form.get("duration", "24h")  # '1h', '24h', '7d', '30d', 'permanent'
+    reason = request.form.get("reason", "").strip()
+
+    if not phone:
+        flash("Customer phone number is required.", "error")
+        return redirect(url_for("customers_page"))
+
+    conn = get_connection()
+    user = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    if not user:
+        conn.execute(
+            "INSERT INTO customer_users (phone, name, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (phone, f"Customer {phone}", generate_password_hash("blocked_user"), datetime.now().isoformat())
+        )
+
+    if action == "unblock":
+        conn.execute(
+            "UPDATE customer_users SET is_blocked = 0, blocked_until = '', block_reason = '' WHERE phone = ?",
+            (phone,)
+        )
+        conn.commit()
+        conn.close()
+        flash(f"গ্রাহক {phone} কে সফলভাবে আনব্লক (Unblock) করা হয়েছে।", "success")
+        return redirect(url_for("customers_page"))
+
+    now = datetime.now()
+    if duration == "1h":
+        until = (now + timedelta(hours=1)).isoformat()
+        dur_label = "১ ঘন্টা (1 Hour)"
+    elif duration == "24h":
+        until = (now + timedelta(days=1)).isoformat()
+        dur_label = "১ দিন (24 Hours)"
+    elif duration == "7d":
+        until = (now + timedelta(days=7)).isoformat()
+        dur_label = "৭ দিন (7 Days)"
+    elif duration == "30d":
+        until = (now + timedelta(days=30)).isoformat()
+        dur_label = "৩০ দিন (1 Month)"
+    else:
+        until = "PERMANENT"
+        dur_label = "স্থায়ীভাবে (Permanent)"
+
+    conn.execute(
+        "UPDATE customer_users SET is_blocked = 1, blocked_until = ?, block_reason = ? WHERE phone = ?",
+        (until, reason, phone)
+    )
+    conn.commit()
+    conn.close()
+    flash(f"গ্রাহক {phone} কে {dur_label} এর জন্য ব্লক (Blocked) করা হয়েছে।", "warning")
+    return redirect(url_for("customers_page"))
+
+
+def check_customer_block(conn, phone):
+    if not phone:
+        return False, ""
+    phone_clean = re.sub(r"\D", "", phone)
+    user = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone_clean,)).fetchone()
+    if not user or user["is_blocked"] != 1:
+        return False, ""
+    
+    until = user["blocked_until"]
+    reason = user.get("block_reason", "")
+    reason_str = f" (কারণ: {reason})" if reason else ""
+    
+    if until == "PERMANENT":
+        return True, f"আপনার অ্যাকাউন্টটি স্থায়ীভাবে স্থগিত (Blocked) করা হয়েছে{reason_str}। প্রয়োজনে শপ কর্তৃপক্ষের সাথে যোগাযোগ করুন।"
+    
+    try:
+        until_dt = datetime.fromisoformat(until)
+        if datetime.now() < until_dt:
+            time_left_str = until_dt.strftime("%d-%m-%Y %I:%M %p")
+            return True, f"আপনার অ্যাকাউন্টটি {time_left_str} পর্যন্ত সাময়িকভাবে স্থগিত করা হয়েছে{reason_str}।"
+        else:
+            # Auto unblock
+            conn.execute("UPDATE customer_users SET is_blocked = 0, blocked_until = '', block_reason = '' WHERE phone = ?", (phone_clean,))
+            conn.commit()
+            return False, ""
+    except Exception:
+        return True, f"আপনার অ্যাকাউন্টটি স্থগিত করা হয়েছে{reason_str}।"
+
+
+@app.route("/sales/<int:sale_id>/print")
+@login_required
+def sale_receipt_print(sale_id):
+    conn = get_connection()
+    sale = conn.execute("""
+        SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
+        FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
+        WHERE s.id = ?
+    """, (sale_id,)).fetchone()
+    if sale:
+        conn.execute("UPDATE sales SET print_count = print_count + 1 WHERE id = ?", (sale_id,))
+        conn.commit()
+        sale = conn.execute("""
+            SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
+            FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
+            WHERE s.id = ?
+        """, (sale_id,)).fetchone()
+    items = conn.execute("""
+        SELECT si.*, p.name AS product_name, p.sku
+        FROM sale_items si JOIN products p ON si.product_id = p.id
+        WHERE si.sale_id = ?
+    """, (sale_id,)).fetchall()
+    settings = get_all_settings(conn)
+    conn.close()
+    
+    if not sale:
+        flash("Sale not found.", "error")
+        return redirect(url_for("sales_history"))
+
+    total_words = number_to_words(int(round_to_whole(sale["rounded_total"] or sale["total_amount"])))
+    invoice_code = str(sale["invoice_number"] or sale["id"])
+    invoice_barcode_svg = generate_barcode_svg(invoice_code)
+    return render_template(
+        "sale_receipt_print.html", sale=sale, items=items, total_words=total_words,
+        invoice_barcode_svg=invoice_barcode_svg, shop=settings
+    )
+
+
+def number_to_words(n):
+    if n == 0:
+        return "Zero Taka Only"
+    ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+            "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+    def two_digits(x):
+        if x < 20:
+            return ones[x]
+        return tens[x // 10] + (" " + ones[x % 10] if x % 10 else "")
+
+    def three_digits(x):
+        hundreds = x // 100
+        rest = x % 100
+        result = ""
+        if hundreds:
+            result += ones[hundreds] + " Hundred"
+            if rest:
+                result += " and " + two_digits(rest)
+        elif rest:
+            result += two_digits(rest)
+        return result
+
+    parts = []
+    if n >= 10000000:
+        parts.append(three_digits(n // 10000000) + " Crore")
+        n %= 10000000
+    if n >= 100000:
+        parts.append(two_digits(n // 100000) + " Lakh")
+        n %= 100000
+    if n >= 1000:
+        parts.append(two_digits(n // 1000) + " Thousand")
+        n %= 1000
+    if n > 0:
+        parts.append(three_digits(n))
+
+    return " ".join(parts) + " Taka Only"
+
+
+# ===========================================================================
+# Shop Settings (Admin Only)
+# ===========================================================================
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+@admin_required
+def settings_page():
+    conn = get_connection()
+    if request.method == "POST":
+        values = {
+            "shop_name": request.form.get("shop_name", "").strip(),
+            "shop_address": request.form.get("shop_address", "").strip(),
+            "shop_phone": request.form.get("shop_phone", "").strip(),
+            "customer_support_phone": request.form.get("customer_support_phone", "").strip(),
+            "vat_reg_no": request.form.get("vat_reg_no", "").strip(),
+            "delivery_charge": request.form.get("delivery_charge", "60").strip(),
+        }
+        update_settings(conn, values)
+        conn.commit()
+        conn.close()
+        flash("Shop settings updated. Every receipt and label will now use the new details.", "success")
+        return redirect(url_for("settings_page"))
+    current_settings = get_all_settings(conn)
+    conn.close()
+    return render_template("settings.html", settings=current_settings)
+
+
+# ===========================================================================
+# User & Staff Management (Admin Only)
+# ===========================================================================
+
+@app.route("/users", methods=["GET", "POST"])
+@login_required
+@admin_required
+def users():
+    conn = get_connection()
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"]
+        role = request.form["role"]
+        try:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+                (username, generate_password_hash(password), role, datetime.now().isoformat())
+            )
+            conn.commit()
+            flash(f'User "{username}" created.', "success")
+        except Exception as e:
+            flash(f"Could not create user: {e}", "error")
+    rows = conn.execute("SELECT id, username, role, created_at FROM users ORDER BY username").fetchall()
+    conn.close()
+    return render_template("users.html", users=rows)
+
+
+@app.route("/users/<int:user_id>/password", methods=["POST"])
+@login_required
+@admin_required
+def change_user_password(user_id):
+    new_password = request.form["new_password"].strip()
+    if not new_password or len(new_password) < 4:
+        flash("Password must be at least 4 characters long.", "error")
+        return redirect(url_for("users"))
+    
+    conn = get_connection()
+    conn.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        (generate_password_hash(new_password), user_id)
+    )
+    conn.commit()
+    conn.close()
+    flash("Password updated successfully.", "success")
+    return redirect(url_for("users"))
+
+
+# ===========================================================================
+# Advanced Financial Reports & Custom Ledger (Admin Only)
+# ===========================================================================
+
+@app.route("/reports", methods=["GET"])
+@login_required
+@admin_required
+def reports():
+    conn = get_connection()
+    period = request.args.get("period", "monthly")
+    today = date.today()
+    today_str = today.isoformat()
+
+    if period == "daily":
+        date_filter = f"date(created_at) = '{today_str}'"
+        ledger_filter = f"date(entry_date) = '{today_str}'"
+    elif period == "weekly":
+        start = (today - timedelta(days=6)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "3_monthly":
+        start = (today - timedelta(days=89)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "6_monthly":
+        start = (today - timedelta(days=179)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "quarterly":
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        start = date(today.year, quarter_start_month, 1).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "yearly":
+        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
+        ledger_filter = f"strftime('%Y', entry_date) = '{today_str[:4]}'"
+    elif period == "all":
+        date_filter = "1=1"
+        ledger_filter = "1=1"
+    else:  # default monthly
+        period = "monthly"
+        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
+        ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
+
+    sales_summary = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(rounded_total), 0) AS revenue,
+            COALESCE(SUM(vat_amount), 0) AS vat,
+            COALESCE(SUM(saved_amount), 0) AS discounts,
+            COUNT(id) AS tx_count
+        FROM sales WHERE {date_filter}
+    """).fetchone()
+
+    cogs_row = conn.execute(f"""
+        SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE {date_filter.replace('created_at', 's.created_at')}
+    """).fetchone()
+
+    revenue = float(sales_summary["revenue"])
+    cogs = float(cogs_row["total_cogs"])
+    gross_profit = revenue - cogs
+
+    income_row = conn.execute(f"""
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM ledger_entries WHERE entry_type='income' AND {ledger_filter}
+    """).fetchone()
+    other_income = float(income_row["total"])
+
+    expense_row = conn.execute(f"""
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM ledger_entries WHERE entry_type='expense' AND {ledger_filter}
+    """).fetchone()
+    other_expenses = float(expense_row["total"])
+
+    # Net profit calculation formula
+    net_profit = (gross_profit + other_income) - other_expenses
+
+    ledger_entries = conn.execute(f"""
+        SELECT * FROM ledger_entries
+        WHERE {ledger_filter}
+        ORDER BY entry_date DESC, id DESC
+    """).fetchall()
+
+    # ------------------------------------------------------------------
+    # Advanced Product Analysis: which products are selling well vs
+    # poorly *within the selected period*. Built from a single per-product
+    # performance subquery so top-sellers, slow-movers, and "not sold at
+    # all" dead stock are all consistent with the Daily/Monthly/Yearly/
+    # All-Time filter above (the previous version of this query ignored
+    # the period entirely for slow movers).
+    # ------------------------------------------------------------------
+    sold_subquery = f"""
+        SELECT si.product_id AS product_id,
+               SUM(si.quantity) AS qty_sold,
+               SUM(si.quantity * si.unit_price) AS revenue,
+               SUM(si.quantity * si.cost_price) AS cogs_amt
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE {date_filter.replace('created_at', 's.created_at')}
+        GROUP BY si.product_id
+    """
+    product_performance = conn.execute(f"""
+        SELECT p.id, p.name, p.sku, p.stock_qty,
+               COALESCE(sold.qty_sold, 0) AS qty_sold,
+               COALESCE(sold.revenue, 0) AS revenue,
+               COALESCE(sold.cogs_amt, 0) AS cogs_amt,
+               (COALESCE(sold.revenue, 0) - COALESCE(sold.cogs_amt, 0)) AS profit
+        FROM products p
+        LEFT JOIN ({sold_subquery}) sold ON sold.product_id = p.id
+        ORDER BY qty_sold DESC, revenue DESC
+    """).fetchall()
+
+    total_units_sold = sum(row["qty_sold"] for row in product_performance) or 1
+    top_products = [row for row in product_performance if row["qty_sold"] > 0][:8]
+    dead_stock = [row for row in product_performance if row["qty_sold"] == 0 and row["stock_qty"] > 0][:8]
+    slow_movers = [
+        row for row in product_performance
+        if row["qty_sold"] > 0 and row["stock_qty"] > 0
+    ]
+    slow_movers = sorted(slow_movers, key=lambda r: r["qty_sold"])[:8]
+    max_qty_sold = max((row["qty_sold"] for row in product_performance), default=0) or 1
+
+    # Online vs Offline Orders Breakdown
+    online_row = conn.execute(f"""
+        SELECT COUNT(*) AS tx_count, COALESCE(SUM(total_amount), 0) AS revenue
+        FROM sales WHERE channel = 'Online' AND {date_filter}
+    """).fetchone()
+
+    offline_row = conn.execute(f"""
+        SELECT COUNT(*) AS tx_count, COALESCE(SUM(total_amount), 0) AS revenue
+        FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}
+    """).fetchone()
+
+    conn.close()
+    return render_template(
+        "reports.html",
+        period=period,
+        revenue=revenue,
+        cogs=cogs,
+        gross_profit=gross_profit,
+        other_income=other_income,
+        other_expenses=other_expenses,
+        net_profit=net_profit,
+        ledger_entries=ledger_entries,
+        top_products=top_products,
+        slow_movers=slow_movers,
+        dead_stock=dead_stock,
+        total_units_sold=total_units_sold,
+        max_qty_sold=max_qty_sold,
+        tx_count=sales_summary["tx_count"],
+        online_summary=dict(online_row),
+        offline_summary=dict(offline_row)
+    )
+
+
+@app.route("/reports/entry/new", methods=["POST"])
+@login_required
+@admin_required
+def add_ledger_entry():
+    title = request.form["title"].strip()
+    entry_type = request.form["entry_type"]
+    amount = float(request.form.get("amount") or 0)
+    entry_date = request.form["entry_date"] or date.today().isoformat()
+
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at) VALUES (?, ?, ?, ?, ?)",
+        (entry_type, title, amount, entry_date, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    flash(f"Added {entry_type.upper()}: {title} (৳{amount:,.2f})", "success")
+    return redirect(url_for("reports"))
+
+
+@app.route("/reports/entry/<int:entry_id>/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_ledger_entry(entry_id):
+    title = request.form["title"].strip()
+    entry_type = request.form["entry_type"]
+    amount = float(request.form.get("amount") or 0)
+    entry_date = request.form["entry_date"]
+
+    conn = get_connection()
+    conn.execute(
+        "UPDATE ledger_entries SET title=?, entry_type=?, amount=?, entry_date=? WHERE id=?",
+        (title, entry_type, amount, entry_date, entry_id)
+    )
+    conn.commit()
+    conn.close()
+    flash("Entry updated successfully.", "success")
+    return redirect(url_for("reports"))
+
+
+@app.route("/reports/entry/<int:entry_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_ledger_entry(entry_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM ledger_entries WHERE id=?", (entry_id,))
+    conn.commit()
+    conn.close()
+    flash("Entry deleted successfully.", "success")
+    return redirect(url_for("reports"))
+
+
+# ===========================================================================
+# Online Orders & Delivery Areas (Web Admin)
+# ===========================================================================
+
+@app.route("/online_orders")
+@login_required
+def online_orders():
+    conn = get_connection()
+    orders = conn.execute("SELECT * FROM online_orders ORDER BY id DESC").fetchall()
+    orders_list = []
+    for ord_row in orders:
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+        o_dict = dict(ord_row)
+        item_list = [dict(i) for i in items]
+        o_dict["items"] = item_list
+        o_dict["order_items"] = item_list
+        orders_list.append(o_dict)
+    conn.close()
+    return render_template("online_orders.html", orders=orders_list)
+
+
+@app.route("/api/online_orders/unread_count", methods=["GET"])
+def api_online_orders_count():
+    conn = get_connection()
+    new_count = conn.execute("SELECT COUNT(*) AS c FROM online_orders WHERE order_status = 'new'").fetchone()["c"]
+    total_count = conn.execute("SELECT COUNT(*) AS c FROM online_orders").fetchone()["c"]
+    conn.close()
+    return jsonify({"new_count": new_count, "total_count": total_count})
+
+
+def deduct_online_order_stock(conn, order):
+    """Deducts stock for online order if not deducted yet."""
+    order_id = order["id"]
+    current = conn.execute("SELECT is_stock_deducted FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if current and current["is_stock_deducted"] == 1:
+        return
+
+    items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+    for item in items:
+        conn.execute(
+            "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+            (item["quantity"], item["product_id"])
+        )
+        remote_control.push_product_to_cloud(item["product_id"])
+
+    conn.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
+
+    # Check if sale record already exists for this online order
+    inv_num = f"INV-ONLINE-{order['order_number']}"
+    existing_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
+    
+    if not existing_sale:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_name, customer_mobile,
+                                total_amount, rounded_total, vat_amount, saved_amount, cash_amount,
+                                card_amount, change_amount, created_at, channel)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Online')
+        """, (
+            inv_num,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            session.get("user_id", 1) if has_request_context() else 1,
+            order["customer_name"],
+            order["customer_phone"],
+            order["subtotal"],
+            order["total_amount"],
+            0,
+            0,
+            order["total_amount"],
+            0,
+            0,
+            datetime.now().isoformat()
+        ))
+        sale_id = cur.lastrowid
+        
+        for item in items:
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            """, (
+                sale_id,
+                item["product_id"],
+                item["quantity"],
+                item["unit_price"],
+                item["mrp_price"]
+            ))
+        remote_control.push_sale_to_cloud(sale_id)
+
+
+def restore_online_order_stock(conn, order):
+    """Restores stock for online order if stock was deducted."""
+    order_id = order["id"]
+    current = conn.execute("SELECT is_stock_deducted FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    
+    # Restore stock if is_stock_deducted == 1 OR if order status was verified/packed/on_the_way/delivered
+    is_deducted = (current and current["is_stock_deducted"] == 1) or (order["order_status"] in ("verified", "packed", "on_the_way", "delivered"))
+
+    if is_deducted:
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+        for item in items:
+            conn.execute(
+                "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
+                (item["quantity"], item["product_id"])
+            )
+            remote_control.push_product_to_cloud(item["product_id"])
+
+        conn.execute("UPDATE online_orders SET is_stock_deducted = 0 WHERE id = ?", (order_id,))
+
+        inv_num = f"INV-ONLINE-{order['order_number']}"
+        sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
+        if sale:
+            conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (sale["id"],))
+            conn.execute("DELETE FROM sales WHERE id = ?", (sale["id"],))
+
+
+@app.route("/online_orders/<int:order_id>/update_status", methods=["POST"])
+@login_required
+def update_online_order_status(order_id):
+    new_status = request.form.get("status")
+    conn = get_connection()
+    
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("online_orders"))
+
+    if new_status == "delivered":
+        conn.execute(
+            "UPDATE online_orders SET order_status = ?, payment_status = 'paid', updated_at = ? WHERE id = ?",
+            (new_status, datetime.now().isoformat(), order_id)
+        )
+    else:
+        conn.execute(
+            "UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?",
+            (new_status, datetime.now().isoformat(), order_id)
+        )
+
+    if new_status in ("verified", "packed", "on_the_way", "delivered"):
+        deduct_online_order_stock(conn, order)
+    elif new_status == "cancelled":
+        restore_online_order_stock(conn, order)
+
+    conn.commit()
+    conn.close()
+    remote_control.push_online_order_to_cloud(order_id)
+    flash(f"Order #{order_id} status updated to {new_status}.", "success")
+    return redirect(url_for("online_orders"))
+
+
+@app.route("/online_orders/<int:order_id>/invoice")
+@login_required
+def online_order_invoice(order_id):
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("online_orders"))
+
+    inv_num = f"INV-ONLINE-{order['order_number']}"
+    sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
+    
+    if not sale:
+        # Create sale record if not created yet
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_name, customer_mobile,
+                                total_amount, rounded_total, vat_amount, saved_amount, cash_amount,
+                                card_amount, change_amount, created_at, channel)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Online')
+        """, (
+            inv_num,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            session.get("user_id", 1),
+            order["customer_name"],
+            order["customer_phone"],
+            order["subtotal"],
+            order["total_amount"],
+            0,
+            0,
+            order["total_amount"],
+            0,
+            0,
+            datetime.now().isoformat()
+        ))
+        sale_id = cur.lastrowid
+        
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+        for item in items:
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            """, (
+                sale_id,
+                item["product_id"],
+                item["quantity"],
+                item["unit_price"],
+                item["mrp_price"]
+            ))
+        conn.commit()
+    else:
+        sale_id = sale["id"]
+
+    conn.close()
+    return redirect(url_for("sale_receipt_print", sale_id=sale_id))
+
+
+@app.route("/api/online_orders/customer_search")
+@login_required
+def api_online_customer_search():
+    q = request.args.get("q", "").strip()
+    if not q or len(q) < 2:
+        return jsonify([])
+
+    conn = get_connection()
+    like_q = f"%{q}%"
+    rows = conn.execute("""
+        SELECT DISTINCT customer_name, customer_phone, customer_email, area, district, address_details
+        FROM online_orders
+        WHERE customer_phone LIKE ? OR customer_name LIKE ? OR area LIKE ? OR district LIKE ?
+        ORDER BY id DESC
+        LIMIT 10
+    """, (like_q, like_q, like_q, like_q)).fetchall()
+
+    results = []
+    for r in rows:
+        orders = conn.execute(
+            "SELECT * FROM online_orders WHERE customer_phone = ? ORDER BY id DESC",
+            (r["customer_phone"],)
+        ).fetchall()
+        cust_dict = dict(r)
+        cust_dict["order_count"] = len(orders)
+        cust_dict["orders"] = [dict(o) for o in orders]
+        results.append(cust_dict)
+
+    conn.close()
+    return jsonify(results)
+
+
+@app.route("/online_orders/<int:order_id>/verify_otp", methods=["POST"])
+@login_required
+def verify_online_order_otp(order_id):
+    input_otp = request.form.get("otp", "").strip()
+    conn = get_connection()
+    order = conn.execute("SELECT delivery_otp FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if order and order["delivery_otp"] == input_otp:
+        conn.execute(
+            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', updated_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), order_id)
+        )
+        conn.commit()
+        conn.close()
+        remote_control.push_online_order_to_cloud(order_id)
+        flash(f"OTP Verified! Order #{order_id} marked as DELIVERED.", "success")
+    else:
+        conn.close()
+        flash("Invalid OTP entered. Please check customer's app OTP.", "error")
+    return redirect(url_for("online_orders"))
+
+
+@app.route("/delivery_areas", methods=["GET", "POST"])
+@login_required
+@admin_required
+def delivery_areas():
+    conn = get_connection()
+    if request.method == "POST":
+        country = request.form.get("country", "Bangladesh").strip()
+        district = request.form.get("district", "").strip()
+        area = request.form.get("area", "").strip()
+        if district and area:
+            conn.execute(
+                "INSERT INTO delivery_areas (country, district, area, is_active, created_at) VALUES (?, ?, ?, 1, ?)",
+                (country, district, area, datetime.now().isoformat())
+            )
+            conn.commit()
+            remote_control.push_delivery_areas_to_cloud()
+            flash(f"Delivery area '{area}, {district}' added successfully.", "success")
+    
+    areas = conn.execute("SELECT * FROM delivery_areas ORDER BY district, area").fetchall()
+    conn.close()
+    return render_template("delivery_areas.html", areas=areas)
+
+
+@app.route("/delivery_areas/<int:area_id>/toggle", methods=["POST"])
+@login_required
+@admin_required
+def toggle_delivery_area(area_id):
+    conn = get_connection()
+    area = conn.execute("SELECT is_active FROM delivery_areas WHERE id = ?", (area_id,)).fetchone()
+    if area:
+        new_status = 0 if area["is_active"] == 1 else 1
+        conn.execute("UPDATE delivery_areas SET is_active = ? WHERE id = ?", (new_status, area_id))
+        conn.commit()
+        remote_control.push_delivery_areas_to_cloud()
+        flash("Delivery area status toggled.", "success")
+    conn.close()
+    return redirect(url_for("delivery_areas"))
+
+
+@app.route("/delivery_areas/<int:area_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_delivery_area(area_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM delivery_areas WHERE id = ?", (area_id,))
+    conn.commit()
+    conn.close()
+    remote_control.push_delivery_areas_to_cloud()
+    flash("Delivery area removed.", "success")
+    return redirect(url_for("delivery_areas"))
+
+
+# ===========================================================================
+# REST API for Flutter Mobile Application
+# ===========================================================================
+
+@app.route("/api/settings", methods=["GET"])
+def api_settings():
+    settings = get_all_settings()
+    settings["logo_url"] = url_for("static", filename="images/logo.png", _external=True)
+    if not settings.get("customer_support_phone"):
+        settings["customer_support_phone"] = settings.get("shop_phone", "")
+    return jsonify(settings)
+
+
+@app.route("/api/products", methods=["GET"])
+def api_products():
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT p.*, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        ORDER BY p.name
+    """).fetchall()
+    conn.close()
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        img = (d.get("image_url") or "").strip()
+        if img:
+            parts = [p.strip() for p in img.split(",") if p.strip()]
+            norm_parts = []
+            for p in parts:
+                if p.startswith("/static/"):
+                    norm_parts.append(request.host_url.rstrip("/") + p)
+                else:
+                    norm_parts.append(p)
+            d["image_url"] = ", ".join(norm_parts)
+        result.append(d)
+    return jsonify(result)
+
+
+@app.route("/api/categories", methods=["GET"])
+def api_categories():
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/delivery-areas", methods=["GET"])
+def api_delivery_areas():
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/orders/place", methods=["POST"])
+def api_place_order():
+    data = request.json or {}
+    country = data.get("country", "Bangladesh")
+    district = data.get("district", "").strip()
+    area = data.get("area", "").strip()
+    customer_name = data.get("customer_name", "").strip()
+    customer_phone = data.get("customer_phone", "").strip()
+    customer_email = data.get("customer_email", "").strip()
+    address_details = data.get("address_details", "").strip()
+    payment_method = data.get("payment_method", "cod").lower()
+    cart_items = data.get("cart_items", [])
+
+    if not customer_name or not customer_phone or not address_details:
+        return jsonify({"success": False, "message": "নাম, মোবাইল নম্বর এবং ঠিকানা পূরণ করুন"}), 400
+
+    if not cart_items:
+        return jsonify({"success": False, "message": "কার্ট খালি"}), 400
+
+    conn = get_connection()
+    # Check Customer Block Status
+    is_blocked, block_msg = check_customer_block(conn, customer_phone)
+    if is_blocked:
+        conn.close()
+        return jsonify({"success": False, "message": block_msg}), 403
+    # Location Area Verification
+    allowed = conn.execute(
+        "SELECT id FROM delivery_areas WHERE LOWER(country) = LOWER(?) AND LOWER(district) = LOWER(?) AND LOWER(area) = LOWER(?) AND is_active = 1",
+        (country, district, area)
+    ).fetchone()
+
+    if not allowed:
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": f"ক্ষমা করবেন! {area}, {district} এলাকায় আমাদের শপের ডেলিভারি সার্ভিস বর্তমানে বন্ধ আছে। অনুগ্রহ করে ঠিকানা পরিবর্তন করুন।"
+        }), 400
+
+    import random
+    otp = f"{random.randint(1000, 9999)}"
+    now_str = datetime.now().strftime("%Y%m%d%H%M%S")
+    rand_suffix = random.randint(100, 999)
+    order_number = f"ORD-{now_str}-{rand_suffix}"
+
+    subtotal = 0.0
+    processed_items = []
+
+    for item in cart_items:
+        prod_id = item.get("product_id")
+        qty = int(item.get("quantity", 1))
+        prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+        if prod:
+            unit_price = float(prod["sell_price"])
+            mrp_price = float(prod["mrp"])
+            line_total = unit_price * qty
+            subtotal += line_total
+            processed_items.append({
+                "product_id": prod_id,
+                "product_name": prod["name"],
+                "unit_price": unit_price,
+                "mrp_price": mrp_price,
+                "quantity": qty,
+                "total_price": line_total
+            })
+
+    shop_settings = get_all_settings(conn)
+    delivery_charge = float(data.get("delivery_charge") or shop_settings.get("delivery_charge") or 60.0)
+    total_amount = subtotal + delivery_charge
+    created_at = datetime.now().isoformat()
+
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO online_orders (
+            order_number, customer_name, customer_phone, customer_email,
+            country, district, area, address_details, payment_method,
+            payment_status, subtotal, delivery_charge, total_amount,
+            order_status, delivery_otp, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
+    """, (
+        order_number, customer_name, customer_phone, customer_email,
+        country, district, area, address_details, payment_method,
+        "pending" if payment_method == "cod" else "paid",
+        subtotal, delivery_charge, total_amount, otp, created_at, created_at
+    ))
+
+    order_id = cur.lastrowid
+
+    for item in processed_items:
+        cur.execute("""
+            INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (order_id, item["product_id"], item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
+
+        cur.execute(
+            "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+            (item["quantity"], item["product_id"])
+        )
+        remote_control.push_product_to_cloud(item["product_id"])
+
+    cur.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+
+    remote_control.push_online_order_to_cloud(order_id)
+
+    return jsonify({
+        "success": True,
+        "message": "অর্ডার সফলভাবে জমা দেওয়া হয়েছে!",
+        "order_number": order_number,
+        "delivery_otp": otp,
+        "total_amount": total_amount
+    })
+
+
+@app.route("/api/orders/pending-count", methods=["GET"])
+def api_pending_orders_count():
+    conn = get_connection()
+    count_row = conn.execute("SELECT COUNT(*) FROM online_orders WHERE order_status = 'pending'").fetchone()
+    count = count_row[0] if count_row else 0
+    latest = conn.execute("SELECT id, order_number, total_amount, customer_name FROM online_orders ORDER BY id DESC LIMIT 1").fetchone()
+    conn.close()
+    latest_id = latest["id"] if latest else 0
+    latest_num = latest["order_number"] if latest else ""
+    latest_name = latest["customer_name"] if latest else ""
+    latest_amount = latest["total_amount"] if latest else 0
+    return jsonify({
+        "pending_count": count,
+        "latest_id": latest_id,
+        "latest_num": latest_num,
+        "latest_name": latest_name,
+        "latest_amount": latest_amount
+    })
+
+
+@app.route("/api/orders/my-orders", methods=["GET"])
+def api_my_orders():
+    phone = request.args.get("phone", "").strip()
+    if not phone:
+        return jsonify([])
+
+    conn = get_connection()
+    orders = conn.execute(
+        "SELECT * FROM online_orders WHERE customer_phone = ? ORDER BY id DESC",
+        (phone,)
+    ).fetchall()
+
+    result = []
+    for ord_row in orders:
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+        o_dict = dict(ord_row)
+        o_dict["items"] = [dict(i) for i in items]
+        result.append(o_dict)
+
+    conn.close()
+    return jsonify(result)
+
+
+@app.route("/api/orders/cancel", methods=["POST"])
+def api_cancel_order():
+    data = request.json or {}
+    order_number = data.get("order_number", "").strip()
+    phone = data.get("customer_phone", "").strip()
+
+    if not order_number or not phone:
+        return jsonify({"success": False, "message": "অর্ডার নম্বর ও মোবাইল নম্বর দিন"}), 400
+
+    conn = get_connection()
+    order = conn.execute(
+        "SELECT * FROM online_orders WHERE order_number = ? AND customer_phone = ?",
+        (order_number, phone)
+    ).fetchone()
+
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "অর্ডারটি পাওয়া যায়নি!"}), 404
+
+    if order["order_status"] in ("delivered", "cancelled"):
+        conn.close()
+        return jsonify({"success": False, "message": "এই অর্ডারটি ইতোমধ্যে সম্পন্ন বা বাতিল করা হয়েছে।"}), 400
+
+    # 10 minutes limit check (600 seconds)
+    try:
+        created_dt = datetime.fromisoformat(order["created_at"])
+        seconds_passed = (datetime.now() - created_dt).total_seconds()
+        if seconds_passed > 600:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": "ক্ষমা করবেন! অর্ডার দেওয়ার ১০ মিনিট পার হয়ে গেছে, এখন আর বাতিল করা সম্ভব নয়।"
+            }), 400
+    except Exception as e:
+        pass
+
+    # Restore stock if stock was deducted for this order
+    restore_online_order_stock(conn, order)
+
+    conn.execute(
+        "UPDATE online_orders SET order_status = 'cancelled', updated_at = ? WHERE id = ?",
+        (datetime.now().isoformat(), order["id"])
+    )
+    conn.commit()
+    conn.close()
+    remote_control.push_online_order_to_cloud(order["id"])
+
+    return jsonify({"success": True, "message": "অর্ডারটি সফলভাবে বাতিল করা হয়েছে।"})
+
+
+@app.route("/api/orders/delivery-orders", methods=["GET"])
+def api_delivery_orders():
+    conn = get_connection()
+    orders = conn.execute(
+        "SELECT * FROM online_orders WHERE order_status IN ('verified', 'packed', 'on_the_way') ORDER BY id DESC"
+    ).fetchall()
+
+    result = []
+    for ord_row in orders:
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+        o_dict = dict(ord_row)
+        o_dict["items"] = [dict(i) for i in items]
+        result.append(o_dict)
+
+    conn.close()
+    return jsonify(result)
+
+
+# In-memory OTP storage for verification (Phone -> OTP Code + Expiry)
+OTP_STORE = {}
+
+def send_sms_otp(phone, otp_code):
+    """
+    Sends cellular SMS / WhatsApp OTP directly to the customer's mobile number.
+    Integrates with Bangladesh SMS API (e.g., BulkSMSBD, Greenweb, Gp/Robi) or WhatsApp.
+    """
+    sms_api_key = os.environ.get("SMS_API_KEY", "")
+    if sms_api_key:
+        try:
+            import requests
+            url = f"https://api.bulksmsbd.net/smsapi?api_key={sms_api_key}&type=text&number={phone}&senderid=8809612000000&message=Your+DOINEEK+Supershop+OTP+code+is+{otp_code}"
+            requests.get(url, timeout=5)
+        except Exception as e:
+            print(f"SMS API Send Error: {e}")
+
+
+@app.route("/api/customer/send-otp", methods=["POST"])
+def api_customer_send_otp():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    purpose = data.get("purpose", "registration").strip()
+
+    if not phone or len(phone) != 11 or not phone.startswith("01") or not phone.isdigit():
+        return jsonify({
+            "success": False,
+            "message": "Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"
+        }), 400
+
+    conn = get_connection()
+    # Check block status
+    is_blocked, block_msg = check_customer_block(conn, phone)
+    if is_blocked:
+        conn.close()
+        return jsonify({"success": False, "message": block_msg}), 403
+
+    if purpose == "forgot_password":
+        cust = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+        if not cust:
+            conn.close()
+            return jsonify({"success": False, "message": "No account found with this mobile number. Please register first."}), 400
+    elif purpose == "registration":
+        existing = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "already_registered": True,
+                "message": "Already registered with this mobile number or email."
+            }), 400
+
+    conn.close()
+
+    import random
+    otp_code = f"{random.randint(1000, 9999)}"
+    OTP_STORE[phone] = {
+        "otp": otp_code,
+        "created_at": datetime.now()
+    }
+
+    # Dispatch cellular SMS / WhatsApp OTP
+    send_sms_otp(phone, otp_code)
+
+    return jsonify({
+        "success": True,
+        "message": f"OTP verification code sent to {phone}. Please check your SMS inbox.",
+        "whatsapp_url": f"https://wa.me/88{phone}?text=Your%20DOINEEK%20Supershop%20OTP%20Code%20is%20{otp_code}"
+    })
+
+
+@app.route("/api/customer/verify-otp", methods=["POST"])
+def api_customer_verify_otp():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    otp_input = data.get("otp", "").strip()
+
+    record = OTP_STORE.get(phone)
+    if not record:
+        return jsonify({"success": False, "message": "OTP expired or not found. Please request a new OTP."}), 400
+
+    if record["otp"] == otp_input:
+        return jsonify({"success": True, "message": "OTP verified successfully!"})
+    else:
+        return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct code from your SMS inbox."}), 400
+
+
+@app.route("/api/delivery/verify-otp", methods=["POST"])
+def api_verify_otp():
+    data = request.json or {}
+    order_number = data.get("order_number", "").strip()
+    otp = data.get("otp", "").strip()
+
+    conn = get_connection()
+    order = conn.execute("SELECT id, delivery_otp FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+    if order and order["delivery_otp"] == otp:
+        conn.execute(
+            "UPDATE online_orders SET order_status = 'delivered', updated_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), order["id"])
+        )
+        conn.commit()
+        conn.close()
+        remote_control.push_online_order_to_cloud(order["id"])
+        return jsonify({"success": True, "message": "OTP verified! Order updated to Delivered."})
+
+    conn.close()
+    return jsonify({"success": False, "message": "Invalid OTP code. Please check customer app delivery OTP."}), 400
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_auth_register():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+
+    if not phone or not name or not password:
+        return jsonify({"success": False, "message": "Please enter name, mobile number, and password."}), 400
+
+    if not (len(phone) == 11 and phone.startswith("01") and phone.isdigit()):
+        return jsonify({
+            "success": False,
+            "message": "Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"
+        }), 400
+
+    conn = get_connection()
+    # Check Customer Block Status
+    is_blocked, block_msg = check_customer_block(conn, phone)
+    if is_blocked:
+        conn.close()
+        return jsonify({"success": False, "message": block_msg}), 403
+
+    existing = conn.execute("SELECT id FROM customer_users WHERE phone = ? OR (email != '' AND email = ?)", (phone, email)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({
+            "success": False,
+            "already_registered": True,
+            "message": "Already registered with this mobile number or email."
+        }), 400
+
+    conn.execute(
+        "INSERT INTO customer_users (phone, name, email, password_hash, is_verified, created_at) VALUES (?, ?, ?, ?, 1, ?)",
+        (phone, name, email, generate_password_hash(password), datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Registration successful! You can now log in."})
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+def api_auth_change_password():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    old_pass = data.get("old_password", "").strip()
+    new_pass = data.get("new_password", "").strip()
+
+    if not phone or not old_pass or not new_pass:
+        return jsonify({"success": False, "message": "Please fill in all password fields."}), 400
+
+    conn = get_connection()
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    if not cust:
+        conn.close()
+        return jsonify({"success": False, "message": "Customer record not found."}), 400
+
+    if not check_password_hash(cust["password_hash"], old_pass):
+        conn.close()
+        return jsonify({"success": False, "message": "Current password is incorrect."}), 400
+
+    conn.execute(
+        "UPDATE customer_users SET password_hash = ? WHERE phone = ?",
+        (generate_password_hash(new_pass), phone)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Password updated successfully!"})
+
+
+@app.route("/api/auth/forgot-password/reset", methods=["POST"])
+def api_auth_forgot_password_reset():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    new_pass = data.get("new_password", "").strip()
+
+    if not phone or not new_pass:
+        return jsonify({"success": False, "message": "Please provide mobile number and new password."}), 400
+
+    conn = get_connection()
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    if not cust:
+        conn.close()
+        return jsonify({"success": False, "message": "No account found with this mobile number."}), 400
+
+    conn.execute(
+        "UPDATE customer_users SET password_hash = ? WHERE phone = ?",
+        (generate_password_hash(new_pass), phone)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Password reset successfully! You can now log in with your new password."})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    password = data.get("password", "").strip()
+    is_delivery_man = data.get("is_delivery_man", False)
+
+    if not phone or not password:
+        return jsonify({"success": False, "message": "Please enter your mobile number and password."}), 400
+
+    if not is_delivery_man:
+        if not (len(phone) == 11 and phone.startswith("01") and phone.isdigit()):
+            return jsonify({
+                "success": False,
+                "message": "Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"
+            }), 400
+
+    conn = get_connection()
+    if not is_delivery_man:
+        is_blocked, block_msg = check_customer_block(conn, phone)
+        if is_blocked:
+            conn.close()
+            return jsonify({"success": False, "message": block_msg}), 403
+
+    if is_delivery_man:
+        user = conn.execute("SELECT * FROM users WHERE username = ?", (phone,)).fetchone()
+        conn.close()
+        if not user or not check_password_hash(user["password_hash"], password):
+            return jsonify({"success": False, "message": "Invalid delivery rider username or password."}), 400
+        return jsonify({
+            "success": True,
+            "user": {"name": user["username"], "phone": phone, "role": user["role"]}
+        })
+
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    conn.close()
+
+    if not cust:
+        return jsonify({
+            "success": False,
+            "message": "This mobile number is not registered. Please register an account first."
+        }), 400
+
+    if not check_password_hash(cust["password_hash"], password):
+        return jsonify({"success": False, "message": "Incorrect password. Please try again."}), 400
+
+    if cust["is_verified"] != 1:
+        return jsonify({"success": False, "message": "Account is not verified. Please verify via OTP."}), 400
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "name": cust["name"],
+            "phone": cust["phone"],
+            "email": cust["email"]
+        }
+    })
+
+
+# ===========================================================================
+# Application Entry Point
+# ===========================================================================
+
+if __name__ == "__main__":
+    init_db()
+    remote_control.start()
+    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

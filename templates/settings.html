@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Shop settings</h1>
+<p class="subtitle">These details automatically appear on every receipt, printed bill, and product label - update once here and it updates everywhere.</p>
+
+<div style="max-width:520px;">
+  <form method="POST" class="form-card">
+    <h2>Shop details</h2>
+    <div class="field">
+      <label>Shop name</label>
+      <input type="text" name="shop_name" value="{{ settings.shop_name }}" required>
+    </div>
+    <div class="field">
+      <label>Address</label>
+      <input type="text" name="shop_address" value="{{ settings.shop_address }}" required>
+    </div>
+    <div class="field">
+      <label>Mobile / phone number (Shop Phone)</label>
+      <input type="text" name="shop_phone" value="{{ settings.shop_phone }}" required>
+    </div>
+    <div class="field">
+      <label>Customer Support Helpline Number (কাস্টমার সাপোর্ট হেল্পলাইন নম্বর)</label>
+      <input type="text" name="customer_support_phone" value="{{ settings.customer_support_phone or settings.shop_phone }}" placeholder="e.g. +8801700000000">
+    </div>
+    <div class="field">
+      <label>VAT registration no. (BIN)</label>
+      <input type="text" name="vat_reg_no" value="{{ settings.vat_reg_no }}">
+    </div>
+    <div class="field">
+      <label>Default Cash on Delivery Charge (৳)</label>
+      <input type="number" step="1" name="delivery_charge" value="{{ settings.delivery_charge or 60 }}" required>
+    </div>
+    <button class="btn btn-primary" type="submit">Save settings</button>
+  </form>
+</div>
+{% endblock %}

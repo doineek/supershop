@@ -1,0 +1,692 @@
+/* ==========================================================================
+   DOINEEK দৈনিক · POS & Inventory Software Stylesheet
+   ========================================================================== */
+
+/* ---- 1. Design Tokens & Root Variables ---------------------------------- */
+:root {
+  --paper:       #FAF8FD;
+  --paper-dim:   #F2ECFB;
+  --ink:         #241B33;
+  --ink-soft:    #6B6178;
+  --green:       #6D28D9;   /* primary brand accent - deep purple */
+  --green-dark:  #4C1D95;   /* hover / pressed shade */
+  --green-soft:  #EEE4FC;   /* light purple tint for highlight blocks */
+  --gold:        #F5B300;   /* secondary accent - vivid amber/yellow */
+  --gold-dark:   #C98A00;
+  --danger:      #C0392B;
+  --danger-soft: #FBE7E4;
+  --line:        #E2D8F2;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body:    'Inter', sans-serif;
+  --font-mono:    'IBM Plex Mono', monospace;
+
+  --sidebar-w:    230px;
+  --topbar-h:     58px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---- 2. Top Navigation Bar ---------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--topbar-h);
+  padding: 0 28px;
+  background: linear-gradient(100deg, #4C1D95 0%, #6D28D9 55%, #7C3AED 100%);
+  color: #fff;
+  border-bottom: 3px solid var(--gold);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(76, 29, 149, 0.25);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.brand-name em {
+  font-style: normal;
+  color: var(--gold);
+  margin-left: 4px;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.logout {
+  color: #FFE7A8;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 0.2s ease;
+}
+
+.logout:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ---- 3. Main App Layout (Sidebar + Content Page) ------------------------ */
+.app-shell {
+  display: flex;
+  min-height: calc(100vh - var(--topbar-h));
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--paper-dim);
+  border-right: 1px solid var(--line);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink-soft);
+  border-left: 3px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.sidebar-item:hover {
+  background: rgba(109, 40, 217, 0.08);
+  color: var(--green);
+}
+
+.sidebar-item.active {
+  background: linear-gradient(100deg, var(--green-dark), var(--green));
+  color: #fff;
+  border-left: 3px solid var(--gold);
+  box-shadow: 0 3px 10px rgba(109, 40, 217, 0.25);
+}
+
+.sidebar-icon {
+  font-size: 17px;
+}
+
+.page {
+  flex: 1;
+  padding: 30px 36px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---- 4. Headings & Toolbar ---------------------------------------------- */
+h1 {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--ink);
+}
+
+.subtitle {
+  color: var(--ink-soft);
+  font-size: 14px;
+  margin-bottom: 22px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ---- 5. Buttons --------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: linear-gradient(100deg, var(--green-dark), var(--green));
+  color: #fff;
+  border-color: var(--green);
+  box-shadow: 0 2px 8px rgba(109, 40, 217, 0.22);
+}
+
+.btn-primary:hover {
+  background: var(--green-dark);
+  box-shadow: 0 4px 14px rgba(109, 40, 217, 0.32);
+  transform: translateY(-1px);
+}
+
+.btn-outline {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.btn-outline:hover {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.btn-gold {
+  background: linear-gradient(100deg, var(--gold-dark), var(--gold));
+  color: #241B33;
+  border-color: var(--gold);
+  box-shadow: 0 2px 8px rgba(245, 179, 0, 0.3);
+}
+
+.btn-gold:hover {
+  background: var(--gold-dark);
+  box-shadow: 0 4px 14px rgba(245, 179, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: #9B2A1F;
+}
+
+.btn-small {
+  padding: 5px 10px;
+  font-size: 12.5px;
+  border-radius: 6px;
+}
+
+/* ---- 6. Cards & Dashboard Grid ------------------------------------------ */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(109, 40, 217, 0.05);
+  transition: box-shadow 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 16px rgba(109, 40, 217, 0.09);
+}
+
+.card .label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.card .value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.card.warn {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.card.warn .value {
+  color: var(--danger);
+}
+
+/* ---- 7. POS & Checkout Section (2-Column Layout) ------------------------ */
+.pos-layout {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.left-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-search {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pos-search input {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 15px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  outline: none;
+  font-family: var(--font-body);
+}
+
+.pos-search input:focus {
+  border-color: var(--green);
+}
+
+.camera-scan-btn {
+  background: var(--gold);
+  color: #241B33;
+  border: none;
+  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.camera-scan-btn:hover {
+  background: var(--gold-dark);
+}
+
+.pos-product-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.pos-product {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 85px;
+}
+
+.pos-product:hover {
+  border-color: var(--green);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.pos-product .pname {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+
+.pos-product .pprice {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--green);
+}
+
+.pos-product .pstock {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+/* Right Checkout Console */
+.cart-panel {
+  position: sticky;
+  top: 80px;
+  background: #fff;
+  border: 2px solid var(--green);
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+/* ---- 8. Tables (Cart, Inventory, Reports, Staff) ------------------------ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+th {
+  background: var(--paper-dim);
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--line);
+}
+
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #EAE8DF;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr:hover td {
+  background: #FAF9F5;
+}
+
+.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+tr.row-low td {
+  background: #FFF5F2;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ---- 9. Forms & Input Fields -------------------------------------------- */
+.form-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 650px;
+}
+
+.field {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  outline: none;
+  transition: border 0.15s ease;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--green);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* ---- 10. Login Page ----------------------------------------------------- */
+.login-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 100px);
+  padding: 20px;
+}
+
+.login-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 36px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+.login-card h1 {
+  font-size: 24px;
+  margin-bottom: 6px;
+  color: var(--green);
+}
+
+.login-hint {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  line-height: 1.4;
+}
+
+/* ---- 11. Screen-view Receipt Preview ------------------------------------ */
+.receipt {
+  max-width: 360px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  font-family: var(--font-mono);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.receipt h1 {
+  font-size: 18px;
+  text-align: center;
+}
+
+.receipt .meta {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+}
+
+/* The items table used to break out of the .receipt card once the VAT
+   column was added (fixed pixel-ish widths + no wrapping = overflow).
+   table-layout: fixed + colgroup percentages + word-wrap keeps every
+   column, including VAT, inside the card no matter how many columns
+   are shown. The wrapper adds a scrollbar as a last-resort safety net
+   on very narrow screens instead of letting content spill out. */
+.receipt-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.receipt-items-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 8px 0;
+}
+
+.receipt-items-table th,
+.receipt-items-table td {
+  padding: 4px 3px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.receipt-items-table th {
+  border-bottom: 1px solid var(--line);
+  font-size: 10.5px;
+}
+
+.receipt-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 4px 0;
+  border-bottom: 1px dotted var(--line);
+}
+
+.receipt-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 700;
+  padding-top: 10px;
+  margin-top: 8px;
+  border-top: 2px dashed var(--line);
+}
+
+/* ---- 12. Flash Notifications Stack -------------------------------------- */
+.flash-stack {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.flash {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.flash-success {
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid #C4D8CF;
+}
+
+.flash-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid #E8C8BE;
+}
+
+/* ---- 13. Responsive Breakpoints ----------------------------------------- */
+@media (max-width: 1024px) {
+  .pos-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .cart-panel {
+    position: relative;
+    top: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .sidebar-item {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .page {
+    padding: 20px 16px;
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}{{ shop.shop_name or 'DOINEEK (দৈনিক) Supershop' }}{% endblock %}</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}?v=2">
+<link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}?v=2">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.png') }}?v=2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+{% if session.user_id %}
+<header class="topbar">
+  <div class="brand">
+    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="{{ shop.shop_name }}" class="brand-logo">
+    <span class="brand-name">{{ shop.shop_name }}</span>
+  </div>
+  <div class="who">
+    <span>{{ session.username }} · {{ session.role }}</span>
+    <a href="{{ url_for('logout') }}" class="logout">Log out</a>
+  </div>
+</header>
+{% endif %}
+
+<div class="{% if session.user_id %}app-shell{% else %}unauth-shell{% endif %}">
+  {% if session.user_id %}
+  <nav class="sidebar">
+    <a href="{{ url_for('dashboard') }}" class="sidebar-item {{ 'active' if request.path == '/' }}">
+      <span class="sidebar-icon">📊</span><span>Dashboard</span>
+    </a>
+    <a href="{{ url_for('pos') }}" class="sidebar-item {{ 'active' if request.path == '/pos' }}">
+      <span class="sidebar-icon">🛒</span><span>Checkout</span>
+    </a>
+    <a href="{{ url_for('products') }}" class="sidebar-item {{ 'active' if request.path == '/products' }}">
+      <span class="sidebar-icon">📦</span><span>Inventory</span>
+    </a>
+    <a href="{{ url_for('sales_history') }}" class="sidebar-item {{ 'active' if request.path == '/sales' }}">
+      <span class="sidebar-icon">📋</span><span>Sales log</span>
+    </a>
+    <a href="{{ url_for('customers_page') }}" class="sidebar-item {{ 'active' if request.path == '/customers' }}">
+      <span class="sidebar-icon">🧑‍🤝‍🧑</span><span>Customers</span>
+    </a>
+    <a href="{{ url_for('online_orders') }}" class="sidebar-item {{ 'active' if request.path == '/online_orders' }}">
+      <span class="sidebar-icon">📱</span><span>Online Orders</span>
+    </a>
+    {% if session.role == 'admin' %}
+    <a href="{{ url_for('delivery_areas') }}" class="sidebar-item {{ 'active' if request.path == '/delivery_areas' }}">
+      <span class="sidebar-icon">📍</span><span>Delivery Areas</span>
+    </a>
+    <a href="{{ url_for('reports') }}" class="sidebar-item {{ 'active' if request.path == '/reports' }}">
+      <span class="sidebar-icon">📈</span><span>Reports</span>
+    </a>
+    <a href="{{ url_for('users') }}" class="sidebar-item {{ 'active' if request.path == '/users' }}">
+      <span class="sidebar-icon">👥</span><span>Staff</span>
+    </a>
+    <a href="{{ url_for('settings_page') }}" class="sidebar-item {{ 'active' if request.path == '/settings' }}">
+      <span class="sidebar-icon">⚙️</span><span>Settings</span>
+    </a>
+    {% endif %}
+  </nav>
+  {% endif %}
+
+  <main class="page" {% if not session.user_id %}style="padding: 20px; margin: 0 auto; min-height: 90vh; display: flex; align-items: center; justify-content: center;"{% endif %}>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack" {% if not session.user_id %}style="position: absolute; top: 20px;"{% endif %}>
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{% if session.user_id %}
+<audio id="globalOrderNotificationSound" preload="auto">
+  <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+</audio>
+
+<div id="globalOrderToastBanner" style="display:none; position:fixed; top:20px; right:20px; z-index:999999; background:#15803d; color:#fff; padding:16px 20px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.3); font-family:sans-serif; cursor:pointer; transition:all 0.3s ease;" onclick="window.location.href='/online-orders'">
+  <div style="font-weight:bold; font-size:15px;">🔔 NEW ONLINE ORDER RECEIVED!</div>
+  <div id="globalOrderToastText" style="font-size:13px; margin-top:4px; opacity:0.95;">Order details...</div>
+  <div style="font-size:11px; margin-top:6px; text-decoration:underline; font-weight:bold;">Click here to open Online Orders Page</div>
+</div>
+
+<script>
+  (function() {
+    let globalAudioCtx = null;
+    let lastSeenOrderId = null;
+
+    function initGlobalAudio() {
+      if (!globalAudioCtx) {
+        try {
+          globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch(e) {}
+      }
+      if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+        globalAudioCtx.resume();
+      }
+    }
+
+    function playGlobalChime() {
+      initGlobalAudio();
+      try {
+        let sound = document.getElementById('globalOrderNotificationSound');
+        if (sound) {
+          sound.currentTime = 0;
+          sound.play().catch(e => {});
+        }
+      } catch(e) {}
+
+      try {
+        if (globalAudioCtx) {
+          let osc = globalAudioCtx.createOscillator();
+          let gain = globalAudioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, globalAudioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1320, globalAudioCtx.currentTime + 0.4);
+          gain.gain.setValueAtTime(0.6, globalAudioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, globalAudioCtx.currentTime + 0.6);
+          osc.connect(gain);
+          gain.connect(globalAudioCtx.destination);
+          osc.start();
+          osc.stop(globalAudioCtx.currentTime + 0.6);
+        }
+      } catch(e) {}
+    }
+
+    function triggerGlobalAlert(ordNum, ordName, ordAmount) {
+      playGlobalChime();
+
+      // Desktop Notification
+      if ("Notification" in window) {
+        if (Notification.permission === "granted") {
+          new Notification("🔔 নতুন অনলাইন অর্ডার পাওয়া গেছে!", {
+            body: `অর্ডার নম্বর: ${ordNum} (${ordName} - ৳${ordAmount})`,
+            icon: "/static/images/logo.png"
+          });
+        } else if (Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+      }
+
+      // Floating Toast Banner
+      let banner = document.getElementById('globalOrderToastBanner');
+      let textDiv = document.getElementById('globalOrderToastText');
+      if (banner && textDiv) {
+        textDiv.innerHTML = `Order #${ordNum} (${ordName} - ৳${ordAmount})`;
+        banner.style.display = 'block';
+        setTimeout(function() {
+          banner.style.display = 'none';
+        }, 8000);
+      }
+
+      // If currently on online_orders page, reload table
+      if (window.location.pathname.includes('/online-orders')) {
+        setTimeout(function() {
+          window.location.reload();
+        }, 1500);
+      }
+    }
+
+    function checkGlobalPendingOrders() {
+      fetch('/api/orders/pending-count')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.latest_id) {
+            if (lastSeenOrderId === null) {
+              lastSeenOrderId = data.latest_id;
+            } else if (data.latest_id > lastSeenOrderId) {
+              lastSeenOrderId = data.latest_id;
+              triggerGlobalAlert(data.latest_num, data.latest_name, data.latest_amount);
+            }
+          }
+        })
+        .catch(err => {});
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+
+      const unlockAudio = function() {
+        initGlobalAudio();
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      };
+
+      document.addEventListener('click', unlockAudio);
+      document.addEventListener('keydown', unlockAudio);
+      document.addEventListener('touchstart', unlockAudio);
+
+      // Check immediately on load, then poll every 5 seconds
+      checkGlobalPendingOrders();
+      setInterval(checkGlobalPendingOrders, 5000);
+    });
+  })();
+</script>
+{% endif %}
+
+</body>
+</html>

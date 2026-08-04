@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Receipt #{{ sale.invoice_number or sale.id }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    color: #000;
+    background: #fff;
+    width: 80mm;
+    max-width: 80mm;
+    padding: 3mm;
+  }
+  @page { size: 80mm auto; margin: 0; }
+  .header { text-align: center; margin-bottom: 6px; }
+  .header img.receipt-logo { width: 34mm; max-width: 90%; height: auto; display: block; margin: 0 auto 2mm; }
+  .header h1 { font-size: 15px; font-weight: bold; letter-spacing: 1px; }
+  .header p { font-size: 10px; line-height: 1.3; }
+  .line-divider { border-bottom: 1px dashed #000; margin: 5px 0; }
+  .meta { font-size: 10px; margin-bottom: 5px; }
+  .meta table { width: 100%; }
+  .meta td { vertical-align: top; }
+  
+  .items-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 10px; }
+  .items-table th { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 3px 0; text-align: left; }
+  .items-table td { padding: 4px 0; vertical-align: top; }
+  .num { text-align: right; }
+  
+  .totals-block { margin-top: 4px; font-size: 11px; }
+  .total-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .total-paid { border-top: 1px dashed #000; border-bottom: 1px dashed #000; font-weight: bold; padding: 4px 0; margin: 4px 0; }
+  
+  .saved-box {
+    border: 1px solid #000;
+    padding: 4px;
+    text-align: center;
+    font-weight: bold;
+    margin: 8px 0 4px;
+    font-size: 11px;
+  }
+  .words-text { text-align: center; font-size: 10px; margin: 6px 0; font-style: italic; }
+  .policy-note { text-align: center; font-size: 9px; line-height: 1.3; margin-top: 8px; }
+  .footer-barcode { text-align: center; margin-top: 10px; }
+  .invoice-barcode-block { width: 90%; height: 32px; margin: 0 auto; }
+  .invoice-barcode-block svg { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <img class="receipt-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="{{ shop.shop_name }}">
+  <h1>{{ shop.shop_name }}</h1>
+  <p>{{ shop.shop_address }}<br>Phone: {{ shop.shop_phone }}<br>VAT No: {{ shop.vat_reg_no }}</p>
+</div>
+
+<div class="line-divider"></div>
+
+<div class="meta">
+  <table>
+    <tr><td><strong>Invoice No :</strong></td><td>{{ sale.invoice_number or sale.id }}</td></tr>
+    <tr><td><strong>Inv. Date :</strong></td><td>{{ sale.invoice_date or sale.created_at[:16].replace('T', ' ') }}</td></tr>
+    <tr><td><strong>Print Date :</strong></td><td>{{ sale.created_at[:16].replace('T', ' ') }}</td></tr>
+    <tr><td><strong>Customer :</strong></td><td>{{ sale.customer_name or 'General' }}</td></tr>
+    {% if sale.customer_mobile %}<tr><td><strong>Mobile :</strong></td><td>{{ sale.customer_mobile }}</td></tr>{% endif %}
+  </table>
+</div>
+
+<table class="items-table">
+  <thead>
+    <tr>
+      <th style="width:18px;">SL</th>
+      <th>Item</th>
+      <th class="num" style="width:25px;">Qty</th>
+      <th class="num" style="width:45px;">Rate</th>
+      <th class="num" style="width:50px;">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>
+        {{ item.sku }} - {{ item.product_name }}
+        {% if item.unit_serials %}<br><small>SL: {{ item.unit_serials }}</small>{% endif %}
+      </td>
+      <td class="num">{{ item.quantity }}</td>
+      <td class="num">{{ "%.2f"|format(item.unit_price) }}</td>
+      <td class="num">{{ "%.2f"|format(item.unit_price * item.quantity) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="line-divider"></div>
+
+<div class="totals-block">
+  <div class="total-row"><span>Sub-Total:</span><span>{{ "%.2f"|format(sale.total_amount) }}</span></div>
+  <div class="total-row"><span>+ VAT:</span><span>{{ "%.2f"|format(sale.vat_amount) }}</span></div>
+  <div class="total-row" style="font-weight:bold; font-size:12px; margin-top:3px;">
+    <span>Net Payable:</span><span>{{ "%.2f"|format(sale.rounded_total) }}</span>
+  </div>
+  
+  <div class="total-row" style="margin-top:4px;"><span>In Cash:</span><span>{{ "%.2f"|format(sale.cash_amount) }}</span></div>
+  <div class="total-row"><span>In Card:</span><span>{{ "%.2f"|format(sale.card_amount) }}</span></div>
+  
+  <div class="total-row total-paid">
+    <span>Total Paid :</span><span>{{ "%.2f"|format(sale.cash_amount + sale.card_amount) }}</span>
+  </div>
+  <div class="total-row"><span>Change :</span><span>{{ "%.2f"|format(sale.change_amount) }}</span></div>
+</div>
+
+{% if sale.saved_amount > 0 %}
+<div class="saved-box">
+  You Have Saved @tk. {{ "%.2f"|format(sale.saved_amount) }}
+</div>
+{% endif %}
+
+<div class="words-text">
+  Tk. {{ total_words }}
+</div>
+
+<div class="policy-note">
+  Please note that all sales are final. We do not accept returns or issue refunds.
+</div>
+
+<div class="footer-barcode">
+  <div class="invoice-barcode-block">{{ invoice_barcode_svg|safe }}</div>
+  <div style="font-size:8px; margin-top:2px;">{{ sale.invoice_number or sale.id }} · Software by Doineek · Print Copy: 1</div>
+</div>
+
+<script>
+  // Make sure the logo has actually finished loading before we open the
+  // print dialog - printing too early can leave the logo blank/missing.
+  (function () {
+    var logo = document.querySelector('.receipt-logo');
+    var printed = false;
+    function doPrint() {
+      if (printed) return;
+      printed = true;
+      window.print();
+    }
+    if (!logo || logo.complete) {
+      doPrint();
+    } else {
+      logo.addEventListener('load', doPrint);
+      logo.addEventListener('error', doPrint);
+      setTimeout(doPrint, 1200); // safety net if the image never fires an event
+    }
+  })();
+</script>
+
+</body>
+</html>

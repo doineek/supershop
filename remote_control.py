@@ -1,0 +1,274 @@
+"""
+remote_control.py
+------------------
+Real-time Firebase bridge for DOINEEK Supershop POS & E-Commerce Web App.
+
+Features:
+  1. Real-time Backup & Cloud Push (Website -> Cloud Firestore)
+  2. Two-Way Product & Setting Sync (Firebase Console -> Local SQLite DB)
+  3. Live Remote Control (Maintenance Mode, Announcements, Force Logout)
+"""
+
+import os
+import threading
+import time
+
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+from database import get_connection
+
+CRED_FILE = "firebase_credentials.json"
+
+STATE = {
+    "maintenance_mode": False,
+    "maintenance_message": "দোকান সাময়িকভাবে বন্ধ আছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
+    "announcement": "",
+    "force_logout": False,
+}
+
+_db = None
+_state_lock = threading.Lock()
+
+
+def _init_firebase():
+    global _db
+    if _db is not None:
+        return _db
+
+    if not os.path.exists(CRED_FILE):
+        print(f"[remote_control] ⚠️ Alert: {CRED_FILE} missing! Please download Service Account Key JSON from Firebase Console.")
+        return None
+
+    try:
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(CRED_FILE)
+            firebase_admin.initialize_app(cred)
+        _db = firestore.client()
+        return _db
+    except Exception as e:
+        print(f"[remote_control] ❌ Firebase initialization error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# 1) REAL-TIME BACKUP (Local Database -> Firestore)
+# ---------------------------------------------------------------------------
+
+def push_sale_to_cloud(sale_id):
+    """Upload a POS sale + items right after checkout."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        sale = conn.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
+        items = conn.execute("SELECT * FROM sale_items WHERE sale_id = ?", (sale_id,)).fetchall()
+        if sale:
+            sale_dict = dict(sale)
+            sale_dict.pop("is_synced", None)
+            sale_dict["items"] = [dict(i) for i in items]
+            db.collection("sales").document(str(sale_id)).set(sale_dict)
+            conn.execute("UPDATE sales SET is_synced = 1 WHERE id = ?", (sale_id,))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[remote_control] sale #{sale_id} push failed: {e}")
+
+
+def push_product_to_cloud(product_id):
+    """Upload a product right after update or creation."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+        conn.close()
+        if product:
+            db.collection("products").document(str(product["sku"])).set(dict(product))
+    except Exception as e:
+        print(f"[remote_control] product #{product_id} push failed: {e}")
+
+
+def delete_product_from_cloud(sku):
+    """Mirror local product deletion into Firestore."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        db.collection("products").document(str(sku)).delete()
+    except Exception as e:
+        print(f"[remote_control] product delete failed: {e}")
+
+
+def push_online_order_to_cloud(order_id):
+    """Upload online order + items to Firestore."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+        conn.close()
+        if order:
+            order_dict = dict(order)
+            order_dict["items"] = [dict(i) for i in items]
+            db.collection("online_orders").document(str(order["order_number"])).set(order_dict)
+    except Exception as e:
+        print(f"[remote_control] online order #{order_id} push failed: {e}")
+
+
+def push_delivery_areas_to_cloud():
+    """Upload active delivery areas to Firestore."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
+        conn.close()
+        db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
+    except Exception as e:
+        print(f"[remote_control] push delivery areas failed: {e}")
+
+
+def push_full_backup():
+    """Full periodic sync safety net."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+
+        for row in conn.execute("SELECT * FROM products").fetchall():
+            db.collection("products").document(str(row["sku"])).set(dict(row))
+
+        for row in conn.execute("SELECT * FROM settings").fetchall():
+            db.collection("settings").document(row["key"]).set({"value": row["value"]})
+
+        areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
+        db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
+
+        orders = conn.execute("SELECT * FROM online_orders").fetchall()
+        for ord_row in orders:
+            items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+            o_dict = dict(ord_row)
+            o_dict["items"] = [dict(i) for i in items]
+            db.collection("online_orders").document(str(ord_row["order_number"])).set(o_dict)
+
+        unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0").fetchall()
+        conn.close()
+
+        for row in unsynced:
+            push_sale_to_cloud(row["id"])
+
+        print("[remote_control] ✔️ full backup cycle complete.")
+    except Exception as e:
+        print(f"[remote_control] full backup failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 2) TWO-WAY SYNC (Firebase Console -> Local SQLite Database)
+# ---------------------------------------------------------------------------
+
+def _on_products_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `products` collection in Firestore.
+    If the shop owner modifies product price, stock, or name in Firebase Console,
+    it updates the local SQLite database automatically in real time!
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            sku = doc.id
+            if change.type.name in ("ADDED", "MODIFIED"):
+                name = data.get("name")
+                sell_price = data.get("sell_price")
+                mrp = data.get("mrp")
+                stock_qty = data.get("stock_qty")
+                description = data.get("description", "")
+                image_url = data.get("image_url", "")
+                is_trending = data.get("is_trending", 0)
+                is_flash_sale = data.get("is_flash_sale", 0)
+                is_offer = data.get("is_offer", 0)
+                offer_title = data.get("offer_title", "")
+
+                if name and sell_price is not None:
+                    conn.execute("""
+                        UPDATE products SET name=?, sell_price=?, mrp=?, stock_qty=?,
+                                             description=?, image_url=?, is_trending=?,
+                                             is_flash_sale=?, is_offer=?, offer_title=?
+                        WHERE sku=?
+                    """, (name, float(sell_price), float(mrp or 0), int(stock_qty or 0),
+                          description, image_url, int(is_trending or 0),
+                          int(is_flash_sale or 0), int(is_offer or 0), offer_title, sku))
+            elif change.type.name == "REMOVED":
+                conn.execute("DELETE FROM products WHERE sku=?", (sku,))
+        conn.commit()
+        conn.close()
+        print(f"[remote_control] 🔄 Two-Way Product Sync updated local SQLite DB from Firebase Console.")
+    except Exception as e:
+        print(f"[remote_control] Two-way product sync failed: {e}")
+
+
+def _on_settings_change(doc_snapshots, changes, read_time):
+    for doc in doc_snapshots:
+        data = doc.to_dict() or {}
+        with _state_lock:
+            STATE["maintenance_mode"] = bool(data.get("maintenance_mode", False))
+            STATE["maintenance_message"] = data.get(
+                "maintenance_message", STATE["maintenance_message"]
+            )
+            STATE["announcement"] = data.get("announcement", "")
+            STATE["force_logout"] = bool(data.get("force_logout", False))
+        print(f"[remote_control] 🔄 remote settings updated: {STATE}")
+
+
+def _ensure_remote_doc(db):
+    ref = db.collection("remote_control").document("settings")
+    if not ref.get().exists:
+        ref.set(STATE)
+
+
+def start():
+    """Starts Firebase listeners and periodic backup thread."""
+    db = _init_firebase()
+    if not db:
+        print("⚠️ Firebase not initialized. (Add firebase_credentials.json to enable live sync)")
+        return
+
+    try:
+        _ensure_remote_doc(db)
+
+        # Live listeners (Firebase Console -> Local App)
+        db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
+        db.collection("products").on_snapshot(_on_products_change)
+
+        def _safety_net_loop():
+            while True:
+                push_full_backup()
+                time.sleep(300)
+
+        threading.Thread(target=_safety_net_loop, daemon=True).start()
+        print("✅ Firebase real-time two-way backup & remote control started.")
+    except Exception as e:
+        print(f"[remote_control] start error: {e}")
+
+
+def is_maintenance_mode():
+    with _state_lock:
+        return STATE["maintenance_mode"], STATE["maintenance_message"]
+
+
+def get_announcement():
+    with _state_lock:
+        return STATE["announcement"]
+
+
+def should_force_logout():
+    with _state_lock:
+        return STATE["force_logout"]

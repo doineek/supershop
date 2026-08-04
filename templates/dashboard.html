@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Good day, {{ session.username }}</h1>
+<p class="subtitle">Here's what's happening in the shop right now.</p>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">Sales today</div>
+    <div class="value">৳{{ "%.2f"|format(today_total) }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Transactions today</div>
+    <div class="value">{{ today_count }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Products in catalog</div>
+    <div class="value">{{ total_products }}</div>
+  </div>
+  <div class="card {{ 'warn' if low_stock|length > 0 }}">
+    <div class="label">Low stock alerts</div>
+    <div class="value">{{ low_stock|length }}</div>
+  </div>
+</div>
+
+<h2>Low stock items</h2>
+{% if low_stock %}
+<table>
+  <tr><th>Product</th><th>SKU</th><th class="num">In stock</th><th class="num">Reorder at</th></tr>
+  {% for p in low_stock %}
+  <tr class="row-low">
+    <td>{{ p.name }}</td>
+    <td>{{ p.sku }}</td>
+    <td class="num">{{ p.stock_qty }}</td>
+    <td class="num">{{ p.low_stock_threshold }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="subtitle">Nothing is running low. Good shape!</p>
+{% endif %}
+{% endblock %}

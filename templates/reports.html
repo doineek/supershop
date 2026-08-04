@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Financial Reports & Ledger{% endblock %}
+{% block content %}
+<div class="toolbar" style="margin-bottom:20px;">
+  <div>
+    <h1>Financial Overview & Ledger Reports</h1>
+    <p class="subtitle">Total Orders, Online Orders vs Offline POS Reports & Net Profit Tracking.</p>
+  </div>
+  <div>
+    <select id="periodSelect" onchange="window.location.href='{{ url_for('reports') }}?period=' + this.value"
+            style="padding:10px 16px; font-size:14px; font-weight:600; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer;">
+      <option value="daily" {{ 'selected' if period=='daily' }}>Daily</option>
+      <option value="weekly" {{ 'selected' if period=='weekly' }}>Weekly</option>
+      <option value="monthly" {{ 'selected' if period=='monthly' }}>Monthly</option>
+      <option value="3_monthly" {{ 'selected' if period=='3_monthly' }}>3 Monthly</option>
+      <option value="6_monthly" {{ 'selected' if period=='6_monthly' }}>6 Monthly</option>
+      <option value="quarterly" {{ 'selected' if period=='quarterly' }}>Quarterly</option>
+      <option value="yearly" {{ 'selected' if period=='yearly' }}>Yearly</option>
+      <option value="all" {{ 'selected' if period=='all' }}>All-Time</option>
+    </select>
+  </div>
+</div>
+
+<!-- 1. TOTAL ORDERS SUMMARY SECTION -->
+<h2 style="font-size: 1.2rem; color: #1e293b; margin-bottom: 12px;">📊 1. Total Orders & Overall Sales Report</h2>
+<div class="grid" style="grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+  <div class="card">
+    <div class="label">Total Sales Revenue</div>
+    <div class="value" style="color:var(--green);">৳{{ "%.2f"|format(revenue) }}</div>
+    <small style="color:var(--ink-soft);">{{ tx_count }} Total invoices</small>
+  </div>
+  <div class="card">
+    <div class="label">Cost of Goods Sold (COGS)</div>
+    <div class="value">৳{{ "%.2f"|format(cogs) }}</div>
+    <small style="color:var(--ink-soft);">Product purchase costs</small>
+  </div>
+  <div class="card" style="border:2px solid {{ 'var(--green)' if net_profit >= 0 else 'var(--danger)' }}; background: {{ 'var(--green-soft)' if net_profit >= 0 else 'var(--danger-soft)' }};">
+    <div class="label" style="font-weight:700; color:{{ 'var(--green)' if net_profit >= 0 else 'var(--danger)' }};">
+      NET {{ 'PROFIT' if net_profit >= 0 else 'LOSS' }}
+    </div>
+    <div class="value" style="color:{{ 'var(--green)' if net_profit >= 0 else 'var(--danger)' }}; font-size:26px;">
+      {{ "+" if net_profit >= 0 else "-" }}৳{{ "%.2f"|format(net_profit|abs) }}
+    </div>
+    <small style="color:var(--ink-soft); font-weight:600;">Gross Profit + Income − Expenses</small>
+  </div>
+</div>
+
+<!-- 2. ONLINE VS OFFLINE ORDERS REPORT SECTION -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px;">
+  <!-- Online Orders Card -->
+  <div class="card" style="background: #f0f9ff; border: 2px solid #0284c7;">
+    <h3 style="margin-top:0; color: #0369a1; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center;">
+      <span>📱 2. Online Orders Report</span>
+      <span style="background: #0284c7; color: white; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem;">Mobile App & Web</span>
+    </h3>
+    <div style="font-size: 1.8rem; font-weight: bold; color: #0284c7; margin: 8px 0;">
+      ৳{{ "%.2f"|format(online_summary.revenue or 0) }}
+    </div>
+    <div style="font-size: 0.9rem; color: #334155; font-weight: 600;">
+      📦 Total Online Orders: <strong>{{ online_summary.tx_count or 0 }}</strong>
+    </div>
+  </div>
+
+  <!-- Offline (POS) Orders Card -->
+  <div class="card" style="background: #f8fafc; border: 2px solid #64748b;">
+    <h3 style="margin-top:0; color: #334155; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center;">
+      <span>🛒 3. Offline Orders (POS) Report</span>
+      <span style="background: #64748b; color: white; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem;">In-Store Counter</span>
+    </h3>
+    <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b; margin: 8px 0;">
+      ৳{{ "%.2f"|format(offline_summary.revenue or 0) }}
+    </div>
+    <div style="font-size: 0.9rem; color: #334155; font-weight: 600;">
+      🏬 Total POS Counter Orders: <strong>{{ offline_summary.tx_count or 0 }}</strong>
+    </div>
+  </div>
+</div>
+
+<!-- 3. ADVANCED PRODUCT ANALYSIS -->
+<div class="card" style="padding:20px; margin-bottom:32px;">
+  <h2 style="font-size:18px; margin-bottom:4px;">📊 Advanced Product Analysis</h2>
+  <p class="subtitle" style="margin-bottom:16px;">Best & worst selling products for the {{ period }} period, so you know what to restock and what to discount or stop ordering.</p>
+
+  <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:18px; align-items:start;">
+
+    <!-- Best sellers -->
+    <div>
+      <h3 style="font-size:14px; color:var(--green); margin-bottom:10px;">🏆 Best Sellers</h3>
+      {% if top_products %}
+        {% for p in top_products %}
+        <div style="margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px;">
+            <span><strong>{{ p.name }}</strong> <span style="color:var(--ink-soft);">({{ p.sku }})</span></span>
+            <span style="font-weight:700;">{{ p.qty_sold }} sold</span>
+          </div>
+          <div style="background:var(--paper-dim); border-radius:4px; height:8px; overflow:hidden;">
+            <div style="background:var(--green); height:100%; width:{{ (p.qty_sold / max_qty_sold * 100)|round(1) }}%;"></div>
+          </div>
+          <small style="color:var(--ink-soft);">Revenue ৳{{ "%.2f"|format(p.revenue) }} · Profit ৳{{ "%.2f"|format(p.profit) }}</small>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size:13px; color:var(--ink-soft);">No sales recorded in this period yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Slow movers -->
+    <div>
+      <h3 style="font-size:14px; color:#B8860B; margin-bottom:10px;">🐢 Slow Movers (in stock, barely selling)</h3>
+      {% if slow_movers %}
+        {% for p in slow_movers %}
+        <div style="margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px;">
+            <span><strong>{{ p.name }}</strong> <span style="color:var(--ink-soft);">({{ p.sku }})</span></span>
+            <span style="font-weight:700;">{{ p.qty_sold }} sold</span>
+          </div>
+          <div style="background:var(--paper-dim); border-radius:4px; height:8px; overflow:hidden;">
+            <div style="background:#D4A017; height:100%; width:{{ (p.qty_sold / max_qty_sold * 100)|round(1) }}%;"></div>
+          </div>
+          <small style="color:var(--ink-soft);">Stock left: {{ p.stock_qty }} · Revenue ৳{{ "%.2f"|format(p.revenue) }}</small>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size:13px; color:var(--ink-soft);">Not enough sold-but-slow products to show yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Dead stock: zero sales in this period -->
+    <div>
+      <h3 style="font-size:14px; color:var(--danger); margin-bottom:10px;">⚠️ Not Sold At All ({{ period.title() }})</h3>
+      {% if dead_stock %}
+        {% for p in dead_stock %}
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:8px; border-bottom:1px dotted var(--line); padding-bottom:6px;">
+          <span><strong>{{ p.name }}</strong> <span style="color:var(--ink-soft);">({{ p.sku }})</span></span>
+          <span style="color:var(--danger); font-weight:700;">{{ p.stock_qty }} in stock</span>
+        </div>
+        {% endfor %}
+        <small style="color:var(--ink-soft);">These have stock on hand but didn't sell a single unit in this period — consider a discount, better shelf placement, or pausing reorders.</small>
+      {% else %}
+        <p style="font-size:13px; color:var(--ink-soft);">Every in-stock product sold at least one unit this period. 🎉</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<!-- 4. INCOME & EXPENSE LEDGER -->
+<div style="display:grid; grid-template-columns: 340px 1fr; gap:24px; margin-bottom:32px; align-items:start;">
+  
+  <form method="POST" action="{{ url_for('add_ledger_entry') }}" class="form-card">
+    <h2>+ Add Income / Expense</h2>
+    <div class="field">
+      <label>Entry Title / Name</label>
+      <input type="text" name="title" placeholder="e.g. Staff Salary (Rahim) or Shop Rent" required>
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <select name="entry_type" required>
+        <option value="expense">Expense (− Deduct from Profit)</option>
+        <option value="income">Income (+ Add to Profit)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Amount (৳)</label>
+      <input type="number" step="0.01" name="amount" placeholder="0.00" required>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" name="entry_date" required>
+    </div>
+    <button class="btn btn-primary" style="width:100%; justify-content:center;" type="submit">Add to Ledger</button>
+  </form>
+
+  <div class="card" style="padding:20px;">
+    <h2 style="font-size:16px; margin-bottom:12px;">Income & Expense Ledger ({{ period.title() }})</h2>
+    <table>
+      <tr>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Title</th>
+        <th class="num">Amount</th>
+        <th>Actions</th>
+      </tr>
+      {% for item in ledger_entries %}
+      <tr>
+        <td>{{ item.entry_date }}</td>
+        <td>
+          <span style="font-weight:700; color: {{ 'var(--green)' if item.entry_type == 'income' else 'var(--danger)' }};">
+            {{ 'INCOME (+)' if item.entry_type == 'income' else 'EXPENSE (-)' }}
+          </span>
+        </td>
+        <td><strong>{{ item.title }}</strong></td>
+        <td class="num" style="font-weight:700;">৳{{ "%.2f"|format(item.amount) }}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-outline btn-small" onclick="toggleEdit('edit-row-{{ item.id }}')">Edit</button>
+          <form method="POST" action="{{ url_for('delete_ledger_entry', entry_id=item.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+            <button class="btn btn-danger btn-small" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      
+      <tr id="edit-row-{{ item.id }}" style="display:none; background:var(--paper-dim);">
+        <td colspan="5">
+          <form method="POST" action="{{ url_for('edit_ledger_entry', entry_id=item.id) }}" style="display:flex; gap:8px; align-items:center;">
+            <input type="date" name="entry_date" value="{{ item.entry_date }}" required style="width:130px; padding:6px;">
+            <select name="entry_type" style="width:130px; padding:6px;">
+              <option value="expense" {{ 'selected' if item.entry_type == 'expense' }}>Expense (-)</option>
+              <option value="income" {{ 'selected' if item.entry_type == 'income' }}>Income (+)</option>
+            </select>
+            <input type="text" name="title" value="{{ item.title }}" required style="flex:1; padding:6px;">
+            <input type="number" step="0.01" name="amount" value="{{ item.amount }}" required style="width:100px; padding:6px;">
+            <button class="btn btn-primary btn-small" type="submit">Save</button>
+            <button class="btn btn-outline btn-small" type="button" onclick="toggleEdit('edit-row-{{ item.id }}')">Cancel</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">No custom income or expenses logged for this period.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<script>
+function toggleEdit(rowId) {
+  const row = document.getElementById(rowId);
+  if (row) {
+    row.style.display = row.style.display === "none" ? "table-row" : "none";
+  }
+}
+</script>
+{% endblock %}

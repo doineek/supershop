@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Sales log{% endblock %}
+{% block content %}
+<h1>Sales log</h1>
+<p class="subtitle">
+  {% if session.role == 'admin' %}Every transaction across the shop (Online &amp; POS).{% else %}Transactions you've rung up.{% endif %}
+</p>
+
+<table>
+  <tr>
+    <th>Invoice #</th>
+    <th>Date &amp; time</th>
+    <th>Cashier / Customer</th>
+    <th>Channel / Source</th>
+    <th class="num">Total</th>
+    <th colspan="2"></th>
+  </tr>
+  {% for s in sales %}
+  <tr>
+    <td><strong>{{ s.invoice_number or ('#' ~ s.id) }}</strong></td>
+    <td>{{ s.created_at[:16].replace("T", " ") }}</td>
+    <td>{{ s.customer_name or s.cashier_name }}</td>
+    <td>
+      {% if s.channel == 'Online' %}
+      <span style="background: #3b82f6; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: bold;">📱 Online</span>
+      {% else %}
+      <span style="background: #e2e8f0; color: #334155; padding: 3px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: bold;">🛒 Offline POS</span>
+      {% endif %}
+    </td>
+    <td class="num">৳{{ "%.2f"|format(s.rounded_total or s.total_amount) }}</td>
+    <td>
+      <a class="btn btn-outline btn-small" href="{{ url_for('sale_receipt', sale_id=s.id) }}">View receipt</a>
+      <a class="btn btn-primary btn-small" href="{{ url_for('sale_receipt_print', sale_id=s.id) }}" target="_blank">Print</a>
+    </td>
+    <td style="font-size:11.5px; color:var(--ink-soft); white-space:nowrap;">
+      {% if s.print_count > 0 %}Printed {{ s.print_count }} time{{ 's' if s.print_count != 1 }}{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" style="text-align:center; color:var(--ink-soft)">No sales yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

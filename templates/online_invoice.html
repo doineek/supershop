@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<title>Invoice #{{ order.order_number }} - {{ shop.shop_name }}</title>
+<style>
+  body {
+    font-family: 'Space Grotesk', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #f8fafc;
+    color: #1e293b;
+  }
+  .invoice-card {
+    max-width: 700px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+  .logo-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-title img {
+    height: 48px;
+  }
+  .shop-name {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #16a34a;
+    margin: 0;
+  }
+  .invoice-badge {
+    background: #dbeafe;
+    color: #1e40af;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+    font-size: 0.92rem;
+  }
+  .info-box {
+    background: #f1f5f9;
+    padding: 12px 16px;
+    border-radius: 8px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  th {
+    background: #f8fafc;
+    color: #475569;
+  }
+  .total-table {
+    width: 260px;
+    margin-left: auto;
+  }
+  .total-table td {
+    border: none;
+    padding: 6px 0;
+  }
+  .print-btn {
+    background: #16a34a;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-bottom: 20px;
+  }
+  @media print {
+    .no-print { display: none; }
+    body { background: white; padding: 0; }
+    .invoice-card { border: none; box-shadow: none; max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div style="text-align: center;" class="no-print">
+  <button class="print-btn" onclick="window.print()">🖨️ Print Invoice (ইনভয়েস প্রিন্ট করুন)</button>
+</div>
+
+<div class="invoice-card">
+  <div class="header">
+    <div class="logo-title">
+      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo">
+      <div>
+        <h1 class="shop-name">{{ shop.shop_name }}</h1>
+        <div style="font-size: 0.85rem; color: #64748b;">{{ shop.shop_address }} | 📞 {{ shop.shop_phone }}</div>
+      </div>
+    </div>
+    <div class="invoice-badge">ONLINE INVOICE</div>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-box">
+      <strong>Customer Details (গ্রাহকের বিবরণী):</strong><br>
+      👤 {{ order.customer_name }}<br>
+      📞 {{ order.customer_phone }}<br>
+      📍 {{ order.area }}, {{ order.district }}<br>
+      🏠 {{ order.address_details }}
+    </div>
+    <div class="info-box">
+      <strong>Invoice Details (ইনভয়েস ডিটেইলস):</strong><br>
+      📄 Invoice No: <strong>INV-ONLINE-{{ order.order_number }}</strong><br>
+      📅 Order Date: {{ order.created_at[:16].replace('T', ' ') }}<br>
+      💳 Payment: <span style="text-transform: uppercase; font-weight: bold;">{{ order.payment_method }}</span><br>
+      🔑 Delivery OTP: <strong style="color: #dc2626;">{{ order.delivery_otp }}</strong>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>SL</th>
+        <th>Product Name (পণ্যের নাম)</th>
+        <th style="text-align: center;">Qty</th>
+        <th style="text-align: right;">Unit Price</th>
+        <th style="text-align: right;">Total Price</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ item.product_name }}</strong></td>
+        <td style="text-align: center;">{{ item.quantity }}</td>
+        <td style="text-align: right;">৳{{ "%.2f"|format(item.unit_price) }}</td>
+        <td style="text-align: right;">৳{{ "%.2f"|format(item.total_price) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="total-table">
+    <tr>
+      <td>Subtotal (সাবটোটাল):</td>
+      <td style="text-align: right;"><strong>৳{{ "%.2f"|format(order.subtotal) }}</strong></td>
+    </tr>
+    <tr>
+      <td>Delivery Charge (ডেলিভারি চার্জ):</td>
+      <td style="text-align: right;"><strong>৳{{ "%.2f"|format(order.delivery_charge) }}</strong></td>
+    </tr>
+    <tr style="font-size: 1.1rem; border-top: 2px solid #0f172a;">
+      <td><strong>Net Payable (মোট দেয়):</strong></td>
+      <td style="text-align: right; color: #16a34a;"><strong>৳{{ "%.2f"|format(order.total_amount) }}</strong></td>
+    </tr>
+  </table>
+
+  <div style="margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 12px; text-align: center; font-size: 0.85rem; color: #64748b;">
+    আমাদের দোকান থেকে কেনাকাটা করার জন্য ধন্যবাদ! | Thank you for shopping with {{ shop.shop_name }}
+  </div>
+</div>
+
+</body>
+</html>

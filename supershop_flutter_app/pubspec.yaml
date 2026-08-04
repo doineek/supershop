@@ -1,0 +1,31 @@
+name: supershop_app
+description: "Supershop Real-time E-Commerce & Delivery Flutter App (Dual Language English & Bangla)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  provider: ^6.0.5
+  http: ^1.1.0
+  shared_preferences: ^2.2.0
+  google_fonts: ^5.1.0
+  cupertino_icons: ^1.0.6
+  image_picker: ^1.0.4
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.png

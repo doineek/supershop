@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "451108665660",
+    "project_id": "doineek-pos-e4023",
+    "storage_bucket": "doineek-pos-e4023.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:451108665660:android:e80f378da54033bc6cc639",
+        "android_client_info": {
+          "package_name": "DOINEEK.SHOP"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5iuUrehGYmANkdMv_L1Wc9iuw4P41mrw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

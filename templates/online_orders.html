@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}Online Orders - App & Web{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+  <div>
+    <h1 style="margin: 0; font-size: 1.8rem; font-family: 'Space Grotesk', sans-serif;">📱 Online Orders (অনলাইন অর্ডারসমূহ)</h1>
+    <p style="margin: 5px 0 0 0; color: #666;">Customer Mobile App ও Web থেকে আসা সকল লাইভ অর্ডারের বিবরণী ও ডিটেইলস</p>
+  </div>
+  <div style="display: flex; gap: 10px; align-items: center;">
+    <button id="enableSoundBtn" onclick="toggleNotifications()" style="background: #15803d; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+      🔔 Notifications: ON (ক্লিক করে বন্ধ করুন)
+    </button>
+    <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+      🔄 Refresh Orders
+    </button>
+  </div>
+</div>
+
+<!-- Custom Live Customer Search Section -->
+<div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); position: relative;">
+  <label style="font-weight: 700; color: #1e293b; display: block; margin-bottom: 6px;">🔍 Custom Customer Search (মোবাইল নম্বর, নাম বা এলাকা দিয়ে সার্চ করুন):</label>
+  <input type="text" id="custSearchInput" placeholder="Type mobile (e.g. 01712...), name or area..." style="width: 100%; padding: 10px 14px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 1rem;" oninput="onCustomerSearchInput()">
+  
+  <div id="custSearchResults" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 100; max-height: 300px; overflow-y: auto; margin-top: 4px;"></div>
+</div>
+
+<!-- Customer History Modal -->
+<div id="custModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center;">
+  <div style="background: white; border-radius: 16px; width: 90%; max-width: 650px; max-height: 85vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+      <h3 id="modalCustName" style="margin: 0; color: #0f172a;">Customer Details</h3>
+      <button onclick="closeCustModal()" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ Close</button>
+    </div>
+    <div id="modalCustBody"></div>
+  </div>
+</div>
+
+<div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+  <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+    <thead>
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569;">
+        <th style="padding: 14px 16px;">Order No</th>
+        <th style="padding: 14px 16px;">Customer & Address</th>
+        <th style="padding: 14px 16px;">Items Purchased</th>
+        <th style="padding: 14px 16px;">Payment</th>
+        <th style="padding: 14px 16px;">Status</th>
+        <th style="padding: 14px 16px; text-align: center;">Print Invoice</th>
+        <th style="padding: 14px 16px; text-align: center;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr style="border-bottom: 1px solid #f1f5f9; background: {% if order.order_status == 'new' %}#f0f9ff{% else %}white{% endif %};">
+        <td style="padding: 14px 16px; vertical-align: top;">
+          <strong style="font-family: 'IBM Plex Mono', monospace; color: #1e293b;">{{ order.order_number }}</strong>
+          <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">{{ order.created_at[:16].replace('T', ' ') }}</div>
+        </td>
+        
+        <td style="padding: 14px 16px; vertical-align: top;">
+          <div style="font-weight: 600; color: #0f172a;">{{ order.customer_name }}</div>
+          <div style="font-size: 0.85rem; color: #2563eb;">📞 {{ order.customer_phone }}</div>
+          <div style="font-size: 0.82rem; color: #475569; margin-top: 4px;">
+            📍 {{ order.area }}, {{ order.district }}<br>
+            <span style="color: #64748b;">{{ order.address_details }}</span>
+          </div>
+        </td>
+
+        <td style="padding: 14px 16px; vertical-align: top;">
+          <ul style="margin: 0; padding-left: 16px; font-size: 0.88rem; color: #334155;">
+            {% for item in order.order_items %}
+            <li><strong>{{ item.product_name }}</strong> × {{ item.quantity }} (৳{{ "%.2f"|format(item.total_price) }})</li>
+            {% endfor %}
+          </ul>
+          <div style="margin-top: 6px; font-weight: 700; color: #0f172a;">
+            Total: ৳{{ "%.2f"|format(order.total_amount) }} <span style="font-size: 0.75rem; color: #64748b;">(Delivery ৳{{ "%.2f"|format(order.delivery_charge) }})</span>
+          </div>
+        </td>
+
+        <td style="padding: 14px 16px; vertical-align: top;">
+          <span style="background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">
+            {{ order.payment_method }}
+          </span>
+          <div style="margin-top: 4px; font-size: 0.8rem;">
+            {% if order.payment_status == 'paid' %}
+            <span style="color: #16a34a; font-weight: 600;">✓ Paid</span>
+            {% else %}
+            <span style="color: #d97706; font-weight: 600;">⌛ Pending</span>
+            {% endif %}
+          </div>
+        </td>
+
+        <td style="padding: 14px 16px; vertical-align: top;">
+          {% if order.order_status == 'new' %}
+          <span style="background: #3b82f6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">NEW (নতুন)</span>
+          {% elif order.order_status == 'verified' %}
+          <span style="background: #8b5cf6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">VERIFIED (যাচাইকৃত)</span>
+          {% elif order.order_status == 'packed' %}
+          <span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">PACKED (প্যাকড)</span>
+          {% elif order.order_status == 'on_the_way' %}
+          <span style="background: #06b6d4; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">ON THE WAY (রাস্তায়)</span>
+          {% elif order.order_status == 'delivered' %}
+          <span style="background: #10b981; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">DELIVERED (সম্পন্ন)</span>
+          {% else %}
+          <span style="background: #ef4444; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">CANCELLED</span>
+          {% endif %}
+
+          <div style="margin-top: 6px; font-size: 0.8rem; color: #475569;">
+            🔑 Delivery OTP: <strong style="font-family: monospace; font-size: 1rem; color: #dc2626; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">{{ order.delivery_otp }}</strong>
+          </div>
+        </td>
+
+        <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
+          {% if order.order_status in ['verified', 'packed', 'on_the_way', 'delivered'] %}
+          <a href="/online_orders/{{ order.id }}/invoice" target="_blank" style="display: inline-block; background: #16a34a; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; text-decoration: none; font-size: 0.82rem;">
+            🖨️ Print Invoice
+          </a>
+          {% else %}
+          <span style="color: #94a3b8; font-size: 0.8rem;">(Requires Verify)</span>
+          {% endif %}
+        </td>
+
+        <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            {% if order.order_status == 'new' %}
+            <form action="{{ url_for('update_online_order_status', order_id=order.id) }}" method="POST">
+              <input type="hidden" name="status" value="verified">
+              <button style="width: 100%; background: #8b5cf6; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">
+                ✓ Verify Order
+              </button>
+            </form>
+            {% elif order.order_status == 'verified' %}
+            <form action="{{ url_for('update_online_order_status', order_id=order.id) }}" method="POST">
+              <input type="hidden" name="status" value="packed">
+              <button style="width: 100%; background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">
+                📦 Mark Packed
+              </button>
+            </form>
+            {% elif order.order_status == 'packed' %}
+            <form action="{{ url_for('update_online_order_status', order_id=order.id) }}" method="POST">
+              <input type="hidden" name="status" value="on_the_way">
+              <button style="width: 100%; background: #06b6d4; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">
+                🚴 Send On The Way
+              </button>
+            </form>
+            {% elif order.order_status == 'on_the_way' %}
+            <form action="{{ url_for('verify_online_order_otp', order_id=order.id) }}" method="POST" style="display: flex; gap: 4px;">
+              <input type="text" name="otp" placeholder="OTP" required style="width: 60px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.85rem; text-align: center;">
+              <button style="background: #10b981; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">
+                Verify OTP
+              </button>
+            </form>
+            {% endif %}
+
+            {% if order.order_status != 'delivered' and order.order_status != 'cancelled' %}
+            <form action="{{ url_for('update_online_order_status', order_id=order.id) }}" method="POST" onsubmit="return confirm('Cancel this order?');">
+              <input type="hidden" name="status" value="cancelled">
+              <button style="width: 100%; background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
+                Cancel Order
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" style="padding: 30px; text-align: center; color: #94a3b8;">
+          কোনো অনলাইন অর্ডার পাওয়া যায়নি।
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<audio id="orderNotificationSound" preload="auto">
+  <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+  let initialTotalCount = null;
+  let audioContext = null;
+  let soundEnabled = true; // Enabled by default!
+
+  function initAudioContext() {
+    if (!audioContext) {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e) {}
+    }
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+  }
+
+  function toggleNotifications() {
+    soundEnabled = !soundEnabled;
+    let btn = document.getElementById('enableSoundBtn');
+    if (soundEnabled) {
+      initAudioContext();
+      if ("Notification" in window && Notification.permission !== "granted") {
+        Notification.requestPermission();
+      }
+      playChimeBeep();
+      if (btn) {
+        btn.style.background = "#15803d";
+        btn.innerHTML = "🔔 Notifications: ON (অ্যালার্ট চালু)";
+      }
+    } else {
+      if (btn) {
+        btn.style.background = "#dc2626";
+        btn.innerHTML = "🔕 Notifications: OFF (অ্যালার্ট বন্ধ)";
+      }
+    }
+  }
+
+  // Auto-enable notifications and initialize audio context on page load & first interaction
+  document.addEventListener('DOMContentLoaded', function() {
+    if ("Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+    
+    // Auto-unlock Web Audio API on first user interaction anywhere on page
+    const unlockAudio = function() {
+      if (soundEnabled) {
+        initAudioContext();
+      }
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+  });
+
+  function playChimeBeep() {
+    initAudioContext();
+    try {
+      let sound = document.getElementById('orderNotificationSound');
+      if (sound) {
+        sound.currentTime = 0;
+        sound.play().catch(e => {});
+      }
+    } catch(e) {}
+
+    try {
+      if (audioContext) {
+        let osc = audioContext.createOscillator();
+        let gain = audioContext.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioContext.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1320, audioContext.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.5);
+      }
+    } catch(e) {}
+  }
+
+  function triggerOrderAlert() {
+    if (soundEnabled) {
+      playChimeBeep();
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("🔔 নতুন অনলাইন অর্ডার!", {
+          body: "কাস্টমার অ্যাপ থেকে একটি নতুন অনলাইন অর্ডার জমা হয়েছে।",
+          icon: "/static/images/logo.png"
+        });
+      }
+    }
+    setTimeout(function() {
+      window.location.reload();
+    }, 1200);
+  }
+
+  // Live Customer Search JS Logic
+  let searchTimeout = null;
+  function onCustomerSearchInput() {
+    let q = document.getElementById('custSearchInput').value.trim();
+    let resDiv = document.getElementById('custSearchResults');
+    if (q.length < 2) {
+      resDiv.style.display = 'none';
+      return;
+    }
+
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(function() {
+      fetch('/api/online_orders/customer_search?q=' + encodeURIComponent(q))
+        .then(res => res.json())
+        .then(data => {
+          if (data.length === 0) {
+            resDiv.innerHTML = '<div style="padding: 12px; color: #94a3b8; text-align: center;">কোনো ম্যাচ পাওয়া যায়নি</div>';
+          } else {
+            let html = '';
+            data.forEach(cust => {
+              html += `
+                <div onclick='openCustModal(${JSON.stringify(cust).replace(/'/g, "&apos;")})' style="padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; hover: background: #f8fafc;">
+                  <div style="font-weight: bold; color: #0f172a;">👤 ${cust.customer_name} <span style="color: #2563eb; font-size: 0.85rem;">(📞 ${cust.customer_phone})</span></div>
+                  <div style="font-size: 0.8rem; color: #475569;">📍 ${cust.area}, ${cust.district} | 📦 Total Orders: <strong>${cust.order_count}</strong></div>
+                </div>
+              `;
+            });
+            resDiv.innerHTML = html;
+          }
+          resDiv.style.display = 'block';
+        });
+    }, 300);
+  }
+
+  function openCustModal(cust) {
+    document.getElementById('custSearchResults').style.display = 'none';
+    document.getElementById('modalCustName').innerText = '👤 Customer: ' + cust.customer_name + ' (' + cust.customer_phone + ')';
+    
+    let html = `
+      <div style="background: #f8fafc; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+        <div>📍 <strong>Address:</strong> ${cust.address_details}, ${cust.area}, ${cust.district}</div>
+        <div>📧 <strong>Email:</strong> ${cust.customer_email || 'N/A'}</div>
+        <div>📦 <strong>Total Orders Placed:</strong> ${cust.order_count}</div>
+      </div>
+      <h4 style="margin: 12px 0 8px 0; color: #1e293b;">📋 Order History (পূর্ববর্তী অর্ডারসমূহ):</h4>
+    `;
+
+    cust.orders.forEach(o => {
+      html += `
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: white;">
+          <div style="display: flex; justify-content: space-between; font-weight: bold;">
+            <span>Order #${o.order_number}</span>
+            <span style="color: #16a34a;">৳${o.total_amount.toFixed(2)}</span>
+          </div>
+          <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">Status: <strong>${o.order_status.toUpperCase()}</strong> | Date: ${o.created_at.substring(0, 16)}</div>
+          <div style="font-size: 0.8rem; color: #dc2626; margin-top: 2px;">🔑 Delivery OTP: <strong>${o.delivery_otp}</strong></div>
+        </div>
+      `;
+    });
+
+    document.getElementById('modalCustBody').innerHTML = html;
+    document.getElementById('custModal').style.display = 'flex';
+  }
+
+  function closeCustModal() {
+    document.getElementById('custModal').style.display = 'none';
+  }
+
+  setInterval(function() {
+    fetch('/api/online_orders/unread_count')
+      .then(res => res.json())
+      .then(data => {
+        if (initialTotalCount === null) {
+          initialTotalCount = data.total_count;
+        } else if (data.total_count > initialTotalCount) {
+          initialTotalCount = data.total_count;
+          triggerOrderAlert();
+        }
+      })
+      .catch(err => {});
+  }, 4000);
+</script>
+{% endblock %}

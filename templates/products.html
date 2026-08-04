@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div>
+    <h1>Inventory</h1>
+    <p class="subtitle">Every product your shop sells, and how much is left on the shelf.</p>
+  </div>
+  {% if session.role == 'admin' %}
+  <div style="display:flex; gap:8px;">
+    <form method="POST" action="{{ url_for('new_category') }}">
+      <input type="text" name="name" placeholder="New category name" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+      <button class="btn btn-outline" type="submit">Add category</button>
+    </form>
+    <a href="{{ url_for('new_product') }}" class="btn btn-primary">+ Add product</a>
+  </div>
+  {% endif %}
+</div>
+
+<table>
+  <tr>
+    <th>SKU</th><th>Name</th><th>Category</th>
+    <th class="num">Cost</th><th class="num">MRP</th><th class="num">Sell price</th>
+    <th class="num">VAT %</th><th class="num">Stock</th><th></th>
+    {% if session.role == 'admin' %}<th></th>{% endif %}
+  </tr>
+  {% for p in products %}
+  <tr class="{{ 'row-low' if p.stock_qty <= p.low_stock_threshold }}">
+    <td>{{ p.sku }}</td>
+    <td>{{ p.name }}</td>
+    <td>{{ p.category_name or '—' }}</td>
+    <td class="num">৳{{ "%.2f"|format(p.cost_price) }}</td>
+    <td class="num">{{ "৳%.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
+    <td class="num">৳{{ "%.2f"|format(p.sell_price) }}</td>
+    <td class="num">{{ "%.1f"|format(p.vat_pct) if p.vat_pct > 0 else '—' }}</td>
+    <td class="num">{{ p.stock_qty }}</td>
+    <td>
+      <a class="btn btn-outline btn-small" href="{{ url_for('product_labels', product_id=p.id) }}" target="_blank">Print tags ({{ p.tag_count }})</a>
+      {% if p.label_print_count > 0 %}
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:4px;">Printed {{ p.label_print_count }} time{{ 's' if p.label_print_count != 1 }}</div>
+      {% endif %}
+    </td>
+    {% if session.role == 'admin' %}
+    <td style="white-space:nowrap">
+      <a class="btn btn-outline btn-small" href="{{ url_for('edit_product', product_id=p.id) }}">Edit</a>
+      <form method="POST" action="{{ url_for('delete_product', product_id=p.id) }}" style="display:inline"
+            onsubmit="return confirm('Delete {{ p.name }}?');">
+        <button class="btn btn-danger btn-small" type="submit">Delete</button>
+      </form>
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
