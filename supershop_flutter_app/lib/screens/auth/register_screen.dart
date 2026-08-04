@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
 import '../../services/api_service.dart';
@@ -359,6 +360,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               controller: _phoneController,
               enabled: !_isPhoneVerified && !_isSendingOtp,
               keyboardType: TextInputType.phone,
+              maxLength: 11,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(11),
+              ],
               decoration: InputDecoration(
                 labelText: loc.translate('phone_number'),
                 prefixIcon: const Icon(Icons.phone),
@@ -366,6 +372,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ? const Icon(Icons.check_circle, color: Colors.green)
                     : null,
                 border: const OutlineInputBorder(),
+                counterText: "",
               ),
             ),
             const SizedBox(height: 16),

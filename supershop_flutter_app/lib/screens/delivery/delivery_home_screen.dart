@@ -213,6 +213,24 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     );
   }
 
+  void _updateRiderStatus(OnlineOrder order, String nextStatus) async {
+    var res = await ApiService.updateRiderOrderStatus(
+      orderId: order.id,
+      status: nextStatus,
+    );
+    if (!mounted) return;
+    if (res['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res['message'] ?? 'Order status updated'), backgroundColor: Colors.green),
+      );
+      _loadDeliveryOrders();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res['message'] ?? 'Failed to update status'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -263,7 +281,11 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: order.orderStatus == 'new' ? Colors.purple : Colors.blue,
+                                      color: order.orderStatus == 'new'
+                                          ? Colors.purple
+                                          : (order.orderStatus == 'verified'
+                                              ? Colors.blue
+                                              : (order.orderStatus == 'packed' ? Colors.orange : Colors.teal)),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
@@ -292,19 +314,34 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      ElevatedButton.icon(
-                                        onPressed: () => _acceptOrder(order),
-                                        icon: const Icon(Icons.check_circle, size: 15),
-                                        label: const Text("Accept"),
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      ElevatedButton.icon(
-                                        onPressed: () => _showOtpDialog(order),
-                                        icon: const Icon(Icons.key, size: 15),
-                                        label: const Text("OTP"),
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
-                                      ),
+                                      if (order.orderStatus == 'new')
+                                        ElevatedButton.icon(
+                                          onPressed: () => _acceptOrder(order),
+                                          icon: const Icon(Icons.check_circle, size: 15),
+                                          label: const Text("Accept Delivery"),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                                        )
+                                      else if (order.orderStatus == 'verified')
+                                        ElevatedButton.icon(
+                                          onPressed: () => _updateRiderStatus(order, 'packed'),
+                                          icon: const Icon(Icons.inventory_2, size: 15),
+                                          label: const Text("Mark Packed"),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                                        )
+                                      else if (order.orderStatus == 'packed')
+                                        ElevatedButton.icon(
+                                          onPressed: () => _updateRiderStatus(order, 'on_the_way'),
+                                          icon: const Icon(Icons.directions_bike, size: 15),
+                                          label: const Text("Send On The Way"),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.cyan.shade700, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                                        )
+                                      else if (order.orderStatus == 'on_the_way')
+                                        ElevatedButton.icon(
+                                          onPressed: () => _showOtpDialog(order),
+                                          icon: const Icon(Icons.key, size: 15),
+                                          label: const Text("Verify OTP & Deliver"),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                                        ),
                                     ],
                                   ),
                                 ],

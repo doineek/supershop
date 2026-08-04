@@ -1741,6 +1741,44 @@ def api_rider_accept_order():
     })
 
 
+@app.route("/api/rider/update-order-status", methods=["POST"])
+def api_rider_update_order_status():
+    data = request.json or {}
+    order_id = data.get("order_id")
+    status = data.get("status", "").strip()
+    otp = data.get("otp", "").strip()
+
+    if not order_id or not status:
+        return jsonify({"success": False, "message": "Order ID and status are required."}), 400
+
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "Order not found."}), 400
+
+    if status == "delivered":
+        if not otp or order["delivery_otp"] != otp:
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit OTP from customer app."}), 400
+
+    if status in ["verified", "packed", "on_the_way", "delivered", "cancelled"]:
+        conn.execute(
+            "UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?",
+            (status, datetime.now().isoformat(), order_id)
+        )
+        if status == "verified" and order["is_stock_deducted"] == 0:
+            deduct_online_order_stock(conn, order)
+        conn.commit()
+
+    conn.close()
+    remote_control.push_online_order_to_cloud(order_id)
+    return jsonify({
+        "success": True,
+        "message": f"Order #{order['order_number']} status updated to '{status.upper()}' successfully!"
+    })
+
+
 @app.route("/api/online_orders/unread_count", methods=["GET"])
 def api_online_orders_count():
     conn = get_connection()

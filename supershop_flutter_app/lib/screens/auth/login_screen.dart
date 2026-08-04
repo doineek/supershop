@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
 import '../../services/api_service.dart';
@@ -21,12 +22,37 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isDeliveryMan = false;
   String _shopName = "DOINEEK";
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _staySignedIn = true;
 
   @override
   void initState() {
     super.initState();
     _phoneController = TextEditingController(text: widget.initialPhone ?? '');
     _loadShopName();
+    _checkAutoLogin();
+  }
+
+  void _checkAutoLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool staySignedIn = prefs.getBool('stay_signed_in') ?? true;
+    String userPhone = prefs.getString('user_phone') ?? '';
+    bool isDelivery = prefs.getBool('is_delivery_man') ?? false;
+
+    if (staySignedIn && userPhone.isNotEmpty) {
+      if (!mounted) return;
+      if (isDelivery) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DeliveryHomeScreen()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
+    }
   }
 
   void _loadShopName() async {
@@ -351,6 +377,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('user_name', user['name'] ?? (_isDeliveryMan ? 'Delivery Rider' : 'Customer User'));
       await prefs.setString('user_email', user['email'] ?? '');
       await prefs.setBool('is_delivery_man', _isDeliveryMan);
+      await prefs.setBool('stay_signed_in', _staySignedIn);
 
       if (!mounted) return;
 
@@ -511,39 +538,70 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 20),
 
-                            TextField(
+                             TextField(
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
+                              maxLength: 11,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(11),
+                              ],
                               decoration: InputDecoration(
-                                labelText: _isDeliveryMan ? "Rider Username / Phone" : loc.translate('phone_number'),
+                                labelText: _isDeliveryMan ? "Rider Mobile Number" : loc.translate('phone_number'),
                                 prefixIcon: Icon(_isDeliveryMan ? Icons.badge : Icons.phone),
                                 border: const OutlineInputBorder(),
+                                counterText: "",
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 14),
 
                             TextField(
                               controller: _passwordController,
-                              obscureText: true,
+                              obscureText: _obscurePassword,
                               decoration: InputDecoration(
                                 labelText: loc.translate('password'),
                                 prefixIcon: const Icon(Icons.lock),
+                                suffixIcon: IconButton(
+                                  icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
                                 border: const OutlineInputBorder(),
                               ),
                             ),
 
-                            // Forgot Password Link (Shown for Customer mode)
-                            if (!_isDeliveryMan)
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: _openForgotPasswordDialog,
-                                  child: const Text(
-                                    "Forgot Password?",
-                                    style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold),
-                                  ),
+                            const SizedBox(height: 6),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Checkbox(
+                                      value: _staySignedIn,
+                                      activeColor: Colors.green,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          _staySignedIn = val ?? true;
+                                        });
+                                      },
+                                    ),
+                                    const Text("Stay Signed In", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                  ],
                                 ),
-                              ),
+                                if (!_isDeliveryMan)
+                                  TextButton(
+                                    onPressed: _openForgotPasswordDialog,
+                                    child: const Text(
+                                      "Forgot Password?",
+                                      style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
 
                             const SizedBox(height: 16),
 

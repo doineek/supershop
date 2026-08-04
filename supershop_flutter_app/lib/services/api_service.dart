@@ -321,7 +321,36 @@ class ApiService {
           'rider_phone': riderPhone,
         }),
       );
-      return jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      var decoded = jsonDecode(response.body);
+      return {'success': false, 'message': decoded['message'] ?? 'Failed to accept order'};
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateRiderOrderStatus({
+    required int orderId,
+    required String status,
+    String otp = '',
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/rider/update-order-status'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'order_id': orderId,
+          'status': status,
+          'otp': otp,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      var decoded = jsonDecode(response.body);
+      return {'success': false, 'message': decoded['message'] ?? 'Failed to update order status'};
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
