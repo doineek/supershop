@@ -21,6 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _otpController = TextEditingController();
 
   bool _isPhoneVerified = false;
+  bool _isSendingOtp = false;
 
   void _sendFreeOtpAndVerify() async {
     String phone = _phoneController.text.trim();
@@ -35,6 +36,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    setState(() {
+      _isSendingOtp = true;
+    });
+
     _otpController.clear();
 
     await FirebaseAuthService.sendFirebasePhoneOtp(
@@ -42,6 +47,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       purpose: 'registration',
       onCodeSent: (verificationId, isFirebaseNative) {
         if (!mounted) return;
+        setState(() {
+          _isSendingOtp = false;
+        });
+
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -82,7 +91,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       SizedBox(height: 6),
                       Text(
-                        "An OTP verification code was sent to your phone via Firebase Phone Auth. Check your SMS inbox and enter the code below.",
+                        "An OTP verification code was sent to your phone. Check your SMS inbox and enter the code below.",
                         style: TextStyle(fontSize: 12, color: Colors.black87),
                       ),
                     ],
@@ -155,6 +164,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       },
       onError: (err) {
         if (!mounted) return;
+        setState(() {
+          _isSendingOtp = false;
+        });
+
         if (err.startsWith("ALREADY_REGISTERED:")) {
           String cleanMsg = err.replaceFirst("ALREADY_REGISTERED:", "");
           _showAlreadyRegisteredDialog(phone, cleanMsg);
@@ -344,7 +357,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             // Step 1: Mobile Phone Verification Section
             TextField(
               controller: _phoneController,
-              enabled: !_isPhoneVerified,
+              enabled: !_isPhoneVerified && !_isSendingOtp,
               keyboardType: TextInputType.phone,
               decoration: InputDecoration(
                 labelText: loc.translate('phone_number'),
@@ -362,11 +375,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: _sendFreeOtpAndVerify,
-                  icon: const Icon(Icons.security_sharp, color: Colors.white),
-                  label: const Text(
-                    "Send Firebase Free OTP & Verify",
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                  onPressed: _isSendingOtp ? null : _sendFreeOtpAndVerify,
+                  icon: _isSendingOtp
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Icon(Icons.security_sharp, color: Colors.white),
+                  label: Text(
+                    _isSendingOtp ? "Sending OTP..." : "Send Firebase Free OTP & Verify",
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,

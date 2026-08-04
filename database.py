@@ -212,6 +212,8 @@ def init_db():
         "ALTER TABLE customer_users ADD COLUMN is_blocked INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE customer_users ADD COLUMN blocked_until TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE customer_users ADD COLUMN block_reason TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
     ]
     for statement in migrations:
         try:

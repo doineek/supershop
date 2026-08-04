@@ -313,6 +313,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (!_isDeliveryMan) {
+      phone = phone.replaceAll(RegExp(r'\D'), '');
+      if (phone.startsWith('8801')) {
+        phone = phone.substring(2);
+      }
       if (phone.length != 11 || !phone.startsWith('01') || int.tryParse(phone) == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

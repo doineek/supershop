@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Customers{% endblock %}
 {% block content %}
-<div class="toolbar">
+<div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
   <div>
     <h1>Customers</h1>
     <p class="subtitle">Search by name or mobile number to pull up a customer's full purchase history and manage account block status.</p>
   </div>
+  <button type="button" class="btn btn-primary" onclick="openCreateCustomerModal()" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:10px 18px; border-radius:8px; background:#15803d; color:#fff; border:none; cursor:pointer;">
+    ➕ Create New Customer / User
+  </button>
 </div>
 
 <div style="position:relative; max-width:520px; margin-bottom:24px;">
@@ -80,7 +83,12 @@
           Total {{ matched_orders|length }} order(s) found · Total spend ৳{{ "%.2f"|format(matched_total_spent) }}
         </p>
       </div>
-      <a href="{{ url_for('customers_page') }}" class="btn btn-outline btn-small">Clear Filter</a>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openDeleteCustomerModal('{{ search }}', '{{ search }}')">
+          🗑️ Delete Customer Account
+        </button>
+        <a href="{{ url_for('customers_page') }}" class="btn btn-outline btn-small">Clear Filter</a>
+      </div>
     </div>
 
     {% if matched_orders %}
@@ -195,6 +203,9 @@
               ⛔ Block
             </button>
           {% endif %}
+          <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openDeleteCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}')">
+            🗑️ Delete
+          </button>
         </div>
       </td>
     </tr>
@@ -239,6 +250,73 @@
   </div>
 </div>
 
+<!-- Create Customer Modal -->
+<div id="createCustomerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:480px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
+    <h3 style="margin-top:0; color:#15803d; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      👤 Create New Customer Account
+    </h3>
+    <p style="font-size:0.85rem; color:#475569; margin-bottom:16px;">
+      Admin created accounts are automatically verified (no OTP required). The customer can log in to the App immediately using this phone and password.
+    </p>
+
+    <form method="POST" action="{{ url_for('create_customer_admin') }}">
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name (কাস্টমারের নাম) *</label>
+        <input type="text" name="name" required placeholder="e.g. Abul Kalam" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number (১১ ডিজিটের মোবাইল নম্বর) *</label>
+        <input type="text" name="phone" required maxlength="11" placeholder="e.g. 01712345678" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Email Address (ইমেইল - Optional)</label>
+        <input type="email" name="email" placeholder="e.g. customer@example.com" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password (পাসওয়ার্ড) *</label>
+        <input type="password" name="password" required placeholder="Minimum 4 characters" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeCreateCustomerModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#15803d; color:#fff; border:none; padding:10px 18px; border-radius:6px; font-weight:bold; cursor:pointer;">
+          Save & Create Customer
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Customer Confirmation Modal -->
+<div id="deleteCustomerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:440px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
+    <h3 style="margin-top:0; color:#dc2626; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      🗑️ Confirm Delete Customer
+    </h3>
+    <p style="font-size:0.9rem; color:#334155; margin-bottom:12px;" id="deleteCustomerTextLabel">
+      Are you sure you want to permanently delete this customer account?
+    </p>
+    <p style="font-size:0.8rem; color:#64748b; background:#fef2f2; border:1px solid #fecaca; padding:10px; border-radius:6px; margin-bottom:20px;">
+      ⚠️ Note: This action will permanently remove the customer's user account and login access. Their past order transaction history will remain safely recorded in sales logs.
+    </p>
+
+    <form method="POST" action="{{ url_for('delete_customer_admin') }}">
+      <input type="hidden" name="phone" id="deleteCustomerPhoneInput">
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeDeleteCustomerModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#dc2626; color:#fff; border:none; padding:10px 18px; border-radius:6px; font-weight:bold; cursor:pointer;">
+          Yes, Delete Account
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 function openBlockModal(phone, name) {
   document.getElementById('blockPhoneInput').value = phone;
@@ -247,6 +325,20 @@ function openBlockModal(phone, name) {
 }
 function closeBlockModal() {
   document.getElementById('blockModal').style.display = 'none';
+}
+function openCreateCustomerModal() {
+  document.getElementById('createCustomerModal').style.display = 'flex';
+}
+function closeCreateCustomerModal() {
+  document.getElementById('createCustomerModal').style.display = 'none';
+}
+function openDeleteCustomerModal(phone, name) {
+  document.getElementById('deleteCustomerPhoneInput').value = phone;
+  document.getElementById('deleteCustomerTextLabel').innerHTML = 'Are you sure you want to delete customer <strong>' + (name || phone) + '</strong> (' + phone + ')?';
+  document.getElementById('deleteCustomerModal').style.display = 'flex';
+}
+function closeDeleteCustomerModal() {
+  document.getElementById('deleteCustomerModal').style.display = 'none';
 }
 </script>
 {% endblock %}

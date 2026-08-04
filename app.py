@@ -981,6 +981,182 @@ def block_customer():
     return redirect(url_for("customers_page"))
 
 
+def normalize_phone(phone_str):
+    if not phone_str:
+        return ""
+    cleaned = re.sub(r"\D", "", str(phone_str))
+    if cleaned.startswith("8801"):
+        cleaned = cleaned[2:]
+    return cleaned
+
+
+@app.route("/customers/create", methods=["POST"])
+@login_required
+@admin_required
+def create_customer_admin():
+    name = request.form.get("name", "").strip()
+    phone = normalize_phone(request.form.get("phone", ""))
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "").strip()
+
+    if not name or not phone or not password:
+        flash("Name, Mobile Number, and Password are required.", "error")
+        return redirect(url_for("customers_page"))
+
+    if not (len(phone) == 11 and phone.startswith("01")):
+        flash("Mobile number must start with '01' and be exactly 11 digits.", "error")
+        return redirect(url_for("customers_page"))
+
+    if len(password) < 4:
+        flash("Password must be at least 4 characters long.", "error")
+        return redirect(url_for("customers_page"))
+
+    conn = get_connection()
+    existing = conn.execute(
+        "SELECT id FROM customer_users WHERE phone = ? OR (email != '' AND email = ?)",
+        (phone, email)
+    ).fetchone()
+
+    if existing:
+        conn.close()
+        flash("Already registered with this mobile number or email.", "error")
+        return redirect(url_for("customers_page"))
+
+    conn.execute(
+        "INSERT INTO customer_users (phone, name, email, password_hash, is_verified, created_at) VALUES (?, ?, ?, ?, 1, ?)",
+        (phone, name, email, generate_password_hash(password), datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Customer '{name}' ({phone}) created successfully! They can now log in to the Mobile App using this Mobile Number and Password.", "success")
+    return redirect(url_for("customers_page"))
+
+
+@app.route("/customers/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_customer_admin():
+    phone = normalize_phone(request.form.get("phone", ""))
+    if not phone:
+        flash("Customer phone number is required for deletion.", "error")
+        return redirect(url_for("customers_page"))
+
+    conn = get_connection()
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    name = cust["name"] if cust else phone
+
+    # Delete from registered users, and clear customer_mobile in sales and online_orders
+    conn.execute("DELETE FROM customer_users WHERE phone = ?", (phone,))
+    conn.execute("UPDATE sales SET customer_mobile = '' WHERE customer_mobile = ?", (phone,))
+    conn.execute("UPDATE online_orders SET customer_phone = '' WHERE customer_phone = ?", (phone,))
+    conn.commit()
+    conn.close()
+
+    flash(f"Customer '{name}' ({phone}) has been permanently deleted.", "success")
+    return redirect(url_for("customers_page"))
+
+
+@app.route("/riders")
+@login_required
+@admin_required
+def riders_page():
+    conn = get_connection()
+    riders = conn.execute(
+        "SELECT * FROM users WHERE role = 'delivery' ORDER BY id DESC"
+    ).fetchall()
+    conn.close()
+    return render_template("riders.html", riders=riders)
+
+
+@app.route("/riders/create", methods=["POST"])
+@login_required
+@admin_required
+def create_rider_admin():
+    full_name = request.form.get("full_name", "").strip()
+    username = normalize_phone(request.form.get("username", ""))
+    password = request.form.get("password", "").strip()
+
+    if not full_name or not username or not password:
+        flash("Rider Full Name, Mobile Number, and Password are required.", "error")
+        return redirect(url_for("riders_page"))
+
+    if not (len(username) == 11 and username.startswith("01")):
+        flash("Rider mobile number must start with '01' and be exactly 11 digits.", "error")
+        return redirect(url_for("riders_page"))
+
+    if len(password) < 4:
+        flash("Password must be at least 4 characters long.", "error")
+        return redirect(url_for("riders_page"))
+
+    conn = get_connection()
+    existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    if existing:
+        conn.close()
+        flash("A rider or staff user with this mobile number already exists.", "error")
+        return redirect(url_for("riders_page"))
+
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role, full_name, is_active, created_at) VALUES (?, ?, 'delivery', ?, 1, ?)",
+        (username, generate_password_hash(password), full_name, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Delivery Rider '{full_name}' ({username}) created successfully!", "success")
+    return redirect(url_for("riders_page"))
+
+
+@app.route("/riders/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_rider_admin():
+    rider_id = request.form.get("rider_id", type=int)
+    full_name = request.form.get("full_name", "").strip()
+    username = normalize_phone(request.form.get("username", ""))
+    password = request.form.get("password", "").strip()
+    is_active = request.form.get("is_active", type=int, default=1)
+
+    if not rider_id or not full_name or not username:
+        flash("Rider ID, Name, and Mobile Number are required.", "error")
+        return redirect(url_for("riders_page"))
+
+    conn = get_connection()
+    if password:
+        conn.execute(
+            "UPDATE users SET full_name = ?, username = ?, password_hash = ?, is_active = ? WHERE id = ? AND role = 'delivery'",
+            (full_name, username, generate_password_hash(password), is_active, rider_id)
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET full_name = ?, username = ?, is_active = ? WHERE id = ? AND role = 'delivery'",
+            (full_name, username, is_active, rider_id)
+        )
+    conn.commit()
+    conn.close()
+
+    flash(f"Delivery Rider '{full_name}' updated successfully!", "success")
+    return redirect(url_for("riders_page"))
+
+
+@app.route("/riders/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_rider_admin():
+    rider_id = request.form.get("rider_id", type=int)
+    if not rider_id:
+        flash("Rider ID is required.", "error")
+        return redirect(url_for("riders_page"))
+
+    conn = get_connection()
+    conn.execute("DELETE FROM users WHERE id = ? AND role = 'delivery'", (rider_id,))
+    conn.commit()
+    conn.close()
+
+    flash("Delivery rider account deleted successfully.", "success")
+    return redirect(url_for("riders_page"))
+
+
 def check_customer_block(conn, phone):
     if not phone:
         return False, ""
@@ -2184,6 +2360,7 @@ def api_auth_login():
         return jsonify({"success": False, "message": "Please enter your mobile number and password."}), 400
 
     if not is_delivery_man:
+        phone = normalize_phone(phone)
         if not (len(phone) == 11 and phone.startswith("01") and phone.isdigit()):
             return jsonify({
                 "success": False,
@@ -2198,13 +2375,18 @@ def api_auth_login():
             return jsonify({"success": False, "message": block_msg}), 403
 
     if is_delivery_man:
-        user = conn.execute("SELECT * FROM users WHERE username = ?", (phone,)).fetchone()
-        conn.close()
+        phone = normalize_phone(phone)
+        user = conn.execute("SELECT * FROM users WHERE username = ? AND role = 'delivery'", (phone,)).fetchone()
         if not user or not check_password_hash(user["password_hash"], password):
+            conn.close()
             return jsonify({"success": False, "message": "Invalid delivery rider username or password."}), 400
+        if user.get("is_active", 1) == 0:
+            conn.close()
+            return jsonify({"success": False, "message": "This rider account is suspended/inactive. Please contact Admin."}), 403
+        conn.close()
         return jsonify({
             "success": True,
-            "user": {"name": user["username"], "phone": phone, "role": user["role"]}
+            "user": {"name": user["full_name"] if user["full_name"] else user["username"], "phone": phone, "role": user["role"]}
         })
 
     cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()

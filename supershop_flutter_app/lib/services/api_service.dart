@@ -7,18 +7,25 @@ import '../models/delivery_area.dart';
 import '../models/online_order.dart';
 
 class ApiService {
+  static String _customUrl = "";
+
+  static void setServerUrl(String url) {
+    _customUrl = url.trim();
+  }
+
   /// Dynamic Base URL:
+  /// - Global Online Server: https://your-cloud-domain.com
   /// - Web / Chrome: http://127.0.0.1:5000
-  /// - Android Emulator: http://10.0.2.2:5000
-  /// - Live Domain: Replace with https://your-domain.com
+  /// - Local Wi-Fi: http://192.168.0.102:5000
   static String get baseUrl {
+    if (_customUrl.isNotEmpty) {
+      return _customUrl;
+    }
     if (kIsWeb) {
       String host = Uri.base.host.isNotEmpty ? Uri.base.host : "127.0.0.1";
       return "http://$host:5000";
-    } else if (defaultTargetPlatform == TargetPlatform.android) {
-      return "http://10.0.2.2:5000";
     }
-    return "http://127.0.0.1:5000";
+    return "http://192.168.0.102:5000";
   }
 
   static Future<Map<String, dynamic>> fetchShopSettings() async {

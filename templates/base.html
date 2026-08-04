@@ -52,6 +52,9 @@
     <a href="{{ url_for('delivery_areas') }}" class="sidebar-item {{ 'active' if request.path == '/delivery_areas' }}">
       <span class="sidebar-icon">📍</span><span>Delivery Areas</span>
     </a>
+    <a href="{{ url_for('riders_page') }}" class="sidebar-item {{ 'active' if request.path == '/riders' }}">
+      <span class="sidebar-icon">🛵</span><span>Riders</span>
+    </a>
     <a href="{{ url_for('reports') }}" class="sidebar-item {{ 'active' if request.path == '/reports' }}">
       <span class="sidebar-icon">📈</span><span>Reports</span>
     </a>
