@@ -96,19 +96,44 @@ def _worker_push_product(product_id):
         if not db:
             return
         conn = get_connection()
-        product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+        product = conn.execute("""
+            SELECT p.*, c.name AS category_name
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE p.id = ?
+        """, (product_id,)).fetchone()
         conn.close()
         if product:
             p_dict = dict(product)
             doc_id = str(p_dict.get("sku")) if p_dict.get("sku") else str(p_dict.get("id"))
             db.collection("products").document(doc_id).set(p_dict)
-            print(f"[remote_control] [OK] Product #{product_id} (SKU: {doc_id}) pushed to Firebase.")
+            print(f"[remote_control] [OK] Product #{product_id} ({p_dict.get('category_name')}) pushed to Firebase.")
     except Exception as e:
         print(f"[remote_control] product #{product_id} push failed: {e}")
 
 def push_product_to_cloud(product_id):
     """Upload a product right after update or creation in background."""
     threading.Thread(target=_worker_push_product, args=(product_id,), daemon=True).start()
+
+
+def _worker_push_categories():
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        cats = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+        conn.close()
+        for c in cats:
+            c_dict = dict(c)
+            db.collection("categories").document(str(c_dict["id"])).set(c_dict)
+        print(f"[remote_control] [OK] {len(cats)} Categories pushed to Firebase.")
+    except Exception as e:
+        print(f"[remote_control] push categories failed: {e}")
+
+def push_categories_to_cloud():
+    """Upload categories to Firestore in background."""
+    threading.Thread(target=_worker_push_categories, daemon=True).start()
 
 
 def delete_product_from_cloud(sku):
@@ -170,8 +195,19 @@ def push_full_backup():
             return
         conn = get_connection()
 
-        for row in conn.execute("SELECT * FROM products").fetchall():
-            db.collection("products").document(str(row["sku"])).set(dict(row))
+        # Push Categories
+        for cat_row in conn.execute("SELECT * FROM categories").fetchall():
+            db.collection("categories").document(str(cat_row["id"])).set(dict(cat_row))
+
+        # Push Products with Category Name
+        for row in conn.execute("""
+            SELECT p.*, c.name AS category_name
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+        """).fetchall():
+            r_dict = dict(row)
+            doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
+            db.collection("products").document(doc_id).set(r_dict)
 
         for row in conn.execute("SELECT * FROM settings").fetchall():
             db.collection("settings").document(row["key"]).set({"value": row["value"]})

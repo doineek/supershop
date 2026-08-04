@@ -414,6 +414,7 @@ def new_category():
         conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
         conn.commit()
         conn.close()
+        remote_control.push_categories_to_cloud()
         flash(f'Category "{name}" added.', "success")
     return redirect(url_for("products"))
 
@@ -2662,6 +2663,7 @@ def api_auth_login():
 try:
     init_db()
     remote_control.start()
+    remote_control.push_categories_to_cloud()
 except Exception as _rc_err:
     print(f"[app.py] Automatic Firebase listener initialization: {_rc_err}")
 
