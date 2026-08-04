@@ -1023,13 +1023,70 @@ def create_customer_admin():
         return redirect(url_for("customers_page"))
 
     conn.execute(
-        "INSERT INTO customer_users (phone, name, email, password_hash, is_verified, created_at) VALUES (?, ?, ?, ?, 1, ?)",
-        (phone, name, email, generate_password_hash(password), datetime.now().isoformat())
+        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+        (phone, name, email, generate_password_hash(password), password, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
 
     flash(f"Customer '{name}' ({phone}) created successfully! They can now log in to the Mobile App using this Mobile Number and Password.", "success")
+    return redirect(url_for("customers_page"))
+
+
+@app.route("/customers/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_customer_admin():
+    old_phone = normalize_phone(request.form.get("old_phone", ""))
+    raw_new_phone = request.form.get("phone", "").strip()
+    new_phone = normalize_phone(raw_new_phone)
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "").strip()
+
+    if not old_phone or not name or not new_phone:
+        flash("Customer Name and Mobile Number are required.", "error")
+        return redirect(url_for("customers_page"))
+
+    if not (len(new_phone) == 11 and new_phone.startswith("01")):
+        flash("Mobile number must start with '01' and be exactly 11 digits.", "error")
+        return redirect(url_for("customers_page"))
+
+    conn = get_connection()
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (old_phone,)).fetchone()
+
+    if not cust:
+        pw_hash = generate_password_hash(password) if password else generate_password_hash("123456")
+        plain_pw = password if password else "123456"
+        conn.execute(
+            "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+            (new_phone, name, email, pw_hash, plain_pw, datetime.now().isoformat())
+        )
+    else:
+        if password:
+            pw_hash = generate_password_hash(password)
+            plain_pw = password
+            conn.execute(
+                "UPDATE customer_users SET phone = ?, name = ?, email = ?, password_hash = ?, plain_password = ? WHERE phone = ?",
+                (new_phone, name, email, pw_hash, plain_pw, old_phone)
+            )
+        else:
+            conn.execute(
+                "UPDATE customer_users SET phone = ?, name = ?, email = ? WHERE phone = ?",
+                (new_phone, name, email, old_phone)
+            )
+
+    if old_phone != new_phone:
+        conn.execute("UPDATE sales SET customer_mobile = ?, customer_name = ? WHERE customer_mobile = ?", (new_phone, name, old_phone))
+        conn.execute("UPDATE online_orders SET customer_phone = ?, customer_name = ? WHERE customer_phone = ?", (new_phone, name, old_phone))
+    else:
+        conn.execute("UPDATE sales SET customer_name = ? WHERE customer_mobile = ?", (name, old_phone))
+        conn.execute("UPDATE online_orders SET customer_name = ? WHERE customer_phone = ?", (name, old_phone))
+
+    conn.commit()
+    conn.close()
+
+    flash(f"Customer '{name}' ({new_phone}) updated successfully!", "success")
     return redirect(url_for("customers_page"))
 
 

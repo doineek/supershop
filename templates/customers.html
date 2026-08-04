@@ -147,6 +147,7 @@
     <tr>
       <th>Name</th>
       <th>Mobile</th>
+      <th>Password / Key</th>
       <th class="num">Visits / Orders</th>
       <th class="num">Total Spent</th>
       <th>Last Activity</th>
@@ -158,6 +159,7 @@
     <tr>
       <td style="font-weight: 600;">{{ c.customer_name or '—' }}</td>
       <td>{{ c.customer_mobile }}</td>
+      <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ c.password }}</code></td>
       <td class="num">{{ c.visit_count }}</td>
       <td class="num">৳{{ "%.2f"|format(c.total_spent) }}</td>
       <td>{{ c.last_visit[:16].replace('T', ' ') if c.last_visit else '—' }}</td>
@@ -189,6 +191,9 @@
       </td>
       <td style="text-align:right;">
         <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+          <button type="button" class="btn btn-outline btn-small" onclick="openEditCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}', '{{ c.email }}', '{{ c.password if c.password != '●●●●●●' and c.password != '—' else '' }}')">
+            ✏️ Edit
+          </button>
           <a class="btn btn-outline btn-small" href="{{ url_for('customers_page', q=c.customer_mobile) }}">History</a>
           {% if c.is_blocked %}
             <form method="POST" action="{{ url_for('block_customer') }}" style="display:inline;">
@@ -317,6 +322,46 @@
   </div>
 </div>
 
+<!-- Edit Customer Modal -->
+<div id="editCustomerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:480px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
+    <h3 style="margin-top:0; color:#1d4ed8; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      ✏️ Edit Customer Information
+    </h3>
+
+    <form method="POST" action="{{ url_for('edit_customer_admin') }}">
+      <input type="hidden" name="old_phone" id="editCustomerOldPhone">
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name (কাস্টমারের নাম) *</label>
+        <input type="text" name="name" id="editCustomerName" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number (১১ ডিজিটের নম্বর) *</label>
+        <input type="text" name="phone" id="editCustomerPhone" required maxlength="11" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Email Address (ইমেইল - Optional)</label>
+        <input type="email" name="email" id="editCustomerEmail" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password (পাসওয়ার্ড পরিবর্তন না করতে খালি রাখুন)</label>
+        <input type="text" name="password" id="editCustomerPassword" placeholder="Enter new password" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeEditCustomerModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#1d4ed8; color:#fff; border:none; padding:10px 18px; border-radius:6px; font-weight:bold; cursor:pointer;">
+          Update Customer Information
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 function openBlockModal(phone, name) {
   document.getElementById('blockPhoneInput').value = phone;
@@ -339,6 +384,17 @@ function openDeleteCustomerModal(phone, name) {
 }
 function closeDeleteCustomerModal() {
   document.getElementById('deleteCustomerModal').style.display = 'none';
+}
+function openEditCustomerModal(oldPhone, name, email, password) {
+  document.getElementById('editCustomerOldPhone').value = oldPhone;
+  document.getElementById('editCustomerName').value = name || '';
+  document.getElementById('editCustomerPhone').value = oldPhone || '';
+  document.getElementById('editCustomerEmail').value = email || '';
+  document.getElementById('editCustomerPassword').value = password || '';
+  document.getElementById('editCustomerModal').style.display = 'flex';
+}
+function closeEditCustomerModal() {
+  document.getElementById('editCustomerModal').style.display = 'none';
 }
 </script>
 {% endblock %}

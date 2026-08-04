@@ -18,8 +18,8 @@
     <div>Invoice #: {{ sale.invoice_number or 'INV-' + sale.id|string }}</div>
     <div>Inv Date: {{ sale.invoice_date or sale.created_at[:16].replace("T", " ") }}</div>
     <div>Print Date: {{ sale.created_at[:16].replace("T", " ") }}</div>
-    {% if sale.customer_name %}<div>Customer: {{ sale.customer_name }}</div>{% endif %}
-    {% if sale.customer_mobile %}<div>Mobile: {{ sale.customer_mobile }}</div>{% endif %}
+    <div>Customer: {{ sale.customer_name if sale.customer_name else '-' }}</div>
+    <div>Mobile: {{ sale.customer_mobile if sale.customer_mobile else '-' }}</div>
     <div>Cashier: {{ sale.cashier_name }}</div>
   </div>
 

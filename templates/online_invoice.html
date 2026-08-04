@@ -122,8 +122,8 @@
   <div class="info-grid">
     <div class="info-box">
       <strong>Customer Details (গ্রাহকের বিবরণী):</strong><br>
-      👤 {{ order.customer_name }}<br>
-      📞 {{ order.customer_phone }}<br>
+      👤 {{ order.customer_name if order.customer_name else '-' }}<br>
+      📞 {{ order.customer_phone if order.customer_phone else '-' }}<br>
       📍 {{ order.area }}, {{ order.district }}<br>
       🏠 {{ order.address_details }}
     </div>
