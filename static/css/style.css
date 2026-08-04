@@ -656,19 +656,27 @@ tr.row-low td {
   border: 1px solid #E8C8BE;
 }
 
-/* ---- 13. Responsive Breakpoints ----------------------------------------- */
-@media (max-width: 1024px) {
-  .pos-layout {
-    grid-template-columns: 1fr;
-  }
-  
-  .cart-panel {
-    position: relative;
-    top: 0;
-  }
+.responsive-split-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  align-items: start;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 768px) {
+  .responsive-split-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 16px !important;
+  }
+
   .app-shell {
     flex-direction: column;
   }

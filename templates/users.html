@@ -4,23 +4,25 @@
 <h1>Staff accounts</h1>
 <p class="subtitle">Admins can manage inventory and staff. Cashiers can only use Checkout and their own Sales log.</p>
 
-<div style="display:grid; grid-template-columns: 1fr 320px; gap: 24px; align-items:start;">
-  <table>
-    <tr><th>Username</th><th>Role</th><th>Created</th><th>Change Password</th></tr>
-    {% for u in users %}
-    <tr>
-      <td>{{ u.username }}</td>
-      <td>{{ u.role }}</td>
-      <td>{{ u.created_at[:10] }}</td>
-      <td>
-        <form method="POST" action="{{ url_for('change_user_password', user_id=u.id) }}" style="display:flex; gap:6px;">
-          <input type="password" name="new_password" placeholder="New Password" required style="padding:4px 8px; font-size:12px; width:120px;">
-          <button class="btn btn-outline btn-small" type="submit">Update</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
+<div class="responsive-split-layout">
+  <div class="table-responsive">
+    <table>
+      <tr><th>Username</th><th>Role</th><th>Created</th><th>Change Password</th></tr>
+      {% for u in users %}
+      <tr>
+        <td><strong>{{ u.username }}</strong></td>
+        <td><span class="badge badge-role">{{ u.role }}</span></td>
+        <td>{{ u.created_at[:10] }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('change_user_password', user_id=u.id) }}" style="display:flex; gap:6px;">
+            <input type="password" name="new_password" placeholder="New Password" required style="padding:4px 8px; font-size:12px; width:110px;">
+            <button class="btn btn-outline btn-small" type="submit">Update</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
 
   <form method="POST" class="form-card">
     <h2>Add staff member</h2>
