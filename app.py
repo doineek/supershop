@@ -1037,23 +1037,30 @@ def create_customer_admin():
 @login_required
 @admin_required
 def delete_customer_admin():
-    phone = normalize_phone(request.form.get("phone", ""))
-    if not phone:
+    raw_phone = request.form.get("phone", "").strip()
+    clean_phone = normalize_phone(raw_phone)
+    if not raw_phone and not clean_phone:
         flash("Customer phone number is required for deletion.", "error")
         return redirect(url_for("customers_page"))
 
     conn = get_connection()
-    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
-    name = cust["name"] if cust else phone
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ? OR phone = ?", (raw_phone, clean_phone)).fetchone()
+    name = cust["name"] if cust else raw_phone
 
-    # Delete from registered users, and clear customer_mobile in sales and online_orders
-    conn.execute("DELETE FROM customer_users WHERE phone = ?", (phone,))
-    conn.execute("UPDATE sales SET customer_mobile = '' WHERE customer_mobile = ?", (phone,))
-    conn.execute("UPDATE online_orders SET customer_phone = '' WHERE customer_phone = ?", (phone,))
+    # Wipes all occurrences across customer_users, sales, and online_orders (raw string, clean string, or matching substring)
+    conn.execute("DELETE FROM customer_users WHERE phone = ? OR phone = ?", (raw_phone, clean_phone))
+    if clean_phone and len(clean_phone) >= 7:
+        like_pattern = f"%{clean_phone}%"
+        conn.execute("UPDATE sales SET customer_mobile = '' WHERE customer_mobile = ? OR customer_mobile = ? OR customer_mobile LIKE ?", (raw_phone, clean_phone, like_pattern))
+        conn.execute("UPDATE online_orders SET customer_phone = '' WHERE customer_phone = ? OR customer_phone = ? OR customer_phone LIKE ?", (raw_phone, clean_phone, like_pattern))
+    else:
+        conn.execute("UPDATE sales SET customer_mobile = '' WHERE customer_mobile = ?", (raw_phone,))
+        conn.execute("UPDATE online_orders SET customer_phone = '' WHERE customer_phone = ?", (raw_phone,))
+
     conn.commit()
     conn.close()
 
-    flash(f"Customer '{name}' ({phone}) has been permanently deleted.", "success")
+    flash(f"Customer '{name}' ({raw_phone}) has been permanently deleted.", "success")
     return redirect(url_for("customers_page"))
 
 
