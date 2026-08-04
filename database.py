@@ -21,7 +21,9 @@ def get_connection():
 
 
 def init_db():
-    conn = get_connection()
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
 
     cur.executescript("""
@@ -225,6 +227,39 @@ def init_db():
             cur.execute(statement)
         except sqlite3.OperationalError:
             pass
+
+    # Check if 'users' table accepts 'delivery' role
+    try:
+        cur.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES ('__test_del__', 'x', 'delivery', '')")
+        cur.execute("DELETE FROM users WHERE username = '__test_del__'")
+    except sqlite3.IntegrityError:
+        cur.execute("PRAGMA foreign_keys = OFF")
+        cur.execute("CREATE TABLE users_dg_tmp AS SELECT * FROM users")
+        cur.execute("DROP TABLE users")
+        cur.execute("""
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'cashier',
+                created_at TEXT NOT NULL,
+                full_name TEXT NOT NULL DEFAULT '',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                plain_password TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        columns = [c[1] for c in cur.execute("PRAGMA table_info(users_dg_tmp)").fetchall()]
+        fn_col = "full_name" if "full_name" in columns else "''"
+        ia_col = "is_active" if "is_active" in columns else "1"
+        pw_col = "plain_password" if "plain_password" in columns else "''"
+        cur.execute(f"""
+            INSERT INTO users (id, username, password_hash, role, created_at, full_name, is_active, plain_password)
+            SELECT id, username, password_hash, role, created_at, {fn_col}, {ia_col}, {pw_col}
+            FROM users_dg_tmp
+        """)
+        cur.execute("DROP TABLE users_dg_tmp")
+        cur.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
 
     cur.execute("SELECT COUNT(*) AS c FROM users")
     if cur.fetchone()["c"] == 0:
