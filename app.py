@@ -1148,13 +1148,38 @@ def riders_page():
     riders_list = []
     for r in riders:
         r_dict = dict(r)
+        r_phone = r_dict.get("username", "")
+        r_id = r_dict.get("id")
+        
+        # Fetch orders assigned or accepted by this rider
+        rider_orders = conn.execute("""
+            SELECT * FROM online_orders 
+            WHERE assigned_rider_id = ? OR assigned_rider_phone = ?
+            ORDER BY id DESC
+        """, (r_id, r_phone)).fetchall()
+        
+        orders_data = []
+        total_delivered = 0
+        total_collected = 0.0
+        
+        for ord_row in rider_orders:
+            o_dict = dict(ord_row)
+            if o_dict.get("order_status") == "delivered":
+                total_delivered += 1
+                total_collected += float(o_dict.get("total_amount", 0))
+            orders_data.append(o_dict)
+
         riders_list.append({
-            "id": r_dict.get("id"),
-            "username": r_dict.get("username", ""),
-            "full_name": r_dict.get("full_name") or r_dict.get("username", ""),
+            "id": r_id,
+            "username": r_phone,
+            "full_name": r_dict.get("full_name") or r_phone,
             "plain_password": r_dict.get("plain_password") or "123456",
             "is_active": r_dict.get("is_active", 1),
-            "created_at": r_dict.get("created_at", "")
+            "created_at": r_dict.get("created_at", ""),
+            "orders": orders_data,
+            "total_orders": len(orders_data),
+            "total_delivered": total_delivered,
+            "total_collected": total_collected
         })
     conn.close()
     return render_template("riders.html", riders=riders_list)

@@ -19,7 +19,7 @@
         <th>Rider Name</th>
         <th>Mobile / Username</th>
         <th>Password / Key</th>
-        <th style="text-align:center;">Role</th>
+        <th style="text-align:center;">Orders Handled</th>
         <th style="text-align:center;">Status</th>
         <th>Created Date</th>
         <th style="text-align:right;">Actions</th>
@@ -34,9 +34,12 @@
         <td>{{ r.username }}</td>
         <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ r.plain_password or '123456' }}</code></td>
         <td style="text-align:center;">
-          <span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">
-            DELIVERY RIDER
-          </span>
+          <div style="font-size:0.83rem;">
+            📦 Total: <strong>{{ r.total_orders }}</strong> | ✅ Delivered: <strong style="color:#16a34a;">{{ r.total_delivered }}</strong>
+            {% if r.total_collected > 0 %}
+            <div style="font-size:0.78rem; color:#16a34a; font-weight:700; margin-top:2px;">Cash: ৳{{ "%.0f"|format(r.total_collected) }}</div>
+            {% endif %}
+          </div>
         </td>
         <td style="text-align:center;">
           {% if r.is_active == 1 %}
@@ -52,6 +55,9 @@
         <td>{{ r.created_at[:10] if r.created_at else '—' }}</td>
         <td style="text-align:right;">
           <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+            <button type="button" class="btn btn-small" style="background:#2563eb; color:#fff; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:0.8rem;" onclick='openRiderOrdersModal({{ r|tojson|safe }})'>
+              📋 Order Details ({{ r.total_orders }})
+            </button>
             <button type="button" class="btn btn-outline btn-small" onclick="openEditRiderModal({{ r.id }}, '{{ r.full_name }}', '{{ r.username }}', {{ r.is_active }})">
               ✏️ Edit
             </button>
@@ -165,7 +171,71 @@
   </div>
 </div>
 
+<!-- Rider Accepted & Delivered Orders Detail Modal -->
+<div id="riderOrdersModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:92%; max-width:680px; max-height:85vh; overflow-y:auto; padding:24px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2);">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px;">
+      <div>
+        <h3 id="riderOrdersTitle" style="margin:0; color:#1e40af; font-size:1.2rem; font-weight:bold;">🛵 Rider Accepted & Delivered Orders</h3>
+        <p id="riderOrdersSubtitle" style="font-size:0.85rem; color:#64748b; margin:2px 0 0 0;">Mobile: 01712345678</p>
+      </div>
+      <button type="button" onclick="closeRiderOrdersModal()" style="background:#ef4444; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; cursor:pointer;">✕ Close</button>
+    </div>
+
+    <div id="riderOrdersBody"></div>
+  </div>
+</div>
+
 <script>
+function openRiderOrdersModal(rider) {
+  document.getElementById('riderOrdersTitle').innerText = '🛵 ' + (rider.full_name || rider.username) + ' - Accepted & Delivered Orders';
+  document.getElementById('riderOrdersSubtitle').innerText = 'Mobile: ' + rider.username + ' | Total Orders Handled: ' + rider.total_orders + ' | Delivered: ' + rider.total_delivered + ' (Cash: ৳' + rider.total_collected.toFixed(0) + ')';
+
+  let bodyDiv = document.getElementById('riderOrdersBody');
+  if (!rider.orders || rider.orders.length === 0) {
+    bodyDiv.innerHTML = '<div style="padding:30px; text-align:center; color:#64748b; font-size:0.95rem;">এই রাইডার এখনো কোনো অর্ডার একসেপ্ট বা ডেলিভারি করেননি।</div>';
+  } else {
+    let html = '';
+    rider.orders.forEach(o => {
+      let statusColor = o.order_status === 'delivered' ? '#16a34a' : (o.order_status === 'on_the_way' ? '#06b6d4' : '#2563eb');
+      let createdStr = o.created_at ? o.created_at.substring(0, 16).replace('T', ' ') : '—';
+      html += `
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 8px;">
+            <div>
+              <span style="font-weight: bold; color: #1e40af; font-size: 1.05rem;">📦 Order #${o.order_number}</span>
+              <span style="font-size: 0.8rem; color: #64748b; margin-left: 8px;">📅 ${createdStr}</span>
+            </div>
+            <span style="background: ${statusColor}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: bold; text-transform: uppercase;">
+              ${o.order_status}
+            </span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.88rem;">
+            <div>
+              <div>👤 <strong>Customer:</strong> ${o.customer_name}</div>
+              <div>📞 <strong>Mobile:</strong> <a href="tel:${o.customer_phone}" style="color: #2563eb; font-weight: bold;">${o.customer_phone}</a></div>
+              <div>📍 <strong>Address:</strong> ${o.address_details}, ${o.area}, ${o.district}</div>
+            </div>
+            <div>
+              <div>💵 <strong>Cash Collection:</strong> <span style="color: #16a34a; font-weight: bold;">৳${o.total_amount.toFixed(2)}</span></div>
+              <div>💳 <strong>Payment Method:</strong> ${o.payment_method || 'COD'}</div>
+              <div>🔑 <strong>Delivery OTP:</strong> <strong style="font-family: monospace; color: #dc2626; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">${o.delivery_otp}</strong></div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    bodyDiv.innerHTML = html;
+  }
+
+  document.getElementById('riderOrdersModal').style.display = 'flex';
+}
+
+function closeRiderOrdersModal() {
+  document.getElementById('riderOrdersModal').style.display = 'none';
+}
+
 function openCreateRiderModal() { document.getElementById('createRiderModal').style.display = 'flex'; }
 function closeCreateRiderModal() { document.getElementById('createRiderModal').style.display = 'none'; }
 
