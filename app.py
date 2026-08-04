@@ -2301,7 +2301,7 @@ def api_cancel_order():
 def api_delivery_orders():
     conn = get_connection()
     orders = conn.execute(
-        "SELECT * FROM online_orders WHERE order_status IN ('verified', 'packed', 'on_the_way') ORDER BY id DESC"
+        "SELECT * FROM online_orders WHERE order_status IN ('new', 'verified', 'packed', 'on_the_way') ORDER BY id DESC"
     ).fetchall()
 
     result = []

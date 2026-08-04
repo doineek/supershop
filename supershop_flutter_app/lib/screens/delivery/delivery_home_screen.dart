@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
 import '../auth/login_screen.dart';
@@ -15,10 +16,14 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   List<OnlineOrder> _deliveryOrders = [];
   bool _isLoading = true;
   Timer? _refreshTimer;
+  String _riderName = 'Delivery Rider';
+  String _riderPhone = '';
+  final Set<int> _notifiedOrderIds = {};
 
   @override
   void initState() {
     super.initState();
+    _loadRiderPrefs();
     _loadDeliveryOrders();
     _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) => _loadDeliveryOrders());
   }
@@ -29,20 +34,101 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     super.dispose();
   }
 
+  void _loadRiderPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _riderName = prefs.getString('user_name') ?? 'Delivery Rider';
+      _riderPhone = prefs.getString('user_phone') ?? '';
+    });
+  }
+
   void _loadDeliveryOrders() async {
     List<OnlineOrder> orders = await ApiService.fetchDeliveryOrders();
     if (!mounted) return;
+
+    for (var o in orders) {
+      if (o.orderStatus == 'new' && !_notifiedOrderIds.contains(o.id)) {
+        _notifiedOrderIds.add(o.id);
+        _showNewOrderAlertModal(o);
+        break;
+      }
+    }
+
     setState(() {
       _deliveryOrders = orders;
       _isLoading = false;
     });
   }
 
+  void _showNewOrderAlertModal(OnlineOrder order) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (alertCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.notifications_active, color: Colors.orange, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "🔔 নতুন অনলাইন অর্ডার এসেছে!",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("📦 অর্ডার নম্বর: ${order.orderNumber}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                  const SizedBox(height: 4),
+                  Text("👤 কাস্টমার: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text("📞 ফোন: ${order.customerPhone}", style: const TextStyle(color: Colors.blue)),
+                  Text("📍 ঠিকানা: ${order.addressDetails}, ${order.area}"),
+                  const Divider(),
+                  Text("💵 ক্যাশ কালেকশন: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(alertCtx),
+            child: const Text("এখন নয়", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(alertCtx);
+              _acceptOrder(order);
+            },
+            icon: const Icon(Icons.delivery_dining, color: Colors.white),
+            label: const Text("🚀 ACCEPT DELIVERY", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _acceptOrder(OnlineOrder order) async {
     var res = await ApiService.acceptRiderOrder(
       orderId: order.id,
-      riderName: 'Delivery Rider',
-      riderPhone: '01712345678',
+      riderName: _riderName,
+      riderPhone: _riderPhone,
     );
     if (!mounted) return;
     if (res['success'] == true) {
