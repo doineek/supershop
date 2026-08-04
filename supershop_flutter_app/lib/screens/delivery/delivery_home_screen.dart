@@ -198,7 +198,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
 
                               Wrap(
                                 alignment: WrapAlignment.spaceBetween,
-                                cross: WrapCrossAlignment.center,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
