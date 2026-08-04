@@ -1132,11 +1132,32 @@ def delete_customer_admin():
 @admin_required
 def riders_page():
     conn = get_connection()
-    riders = conn.execute(
-        "SELECT * FROM users WHERE role = 'delivery' ORDER BY id DESC"
-    ).fetchall()
+    columns = [c[1] for c in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "full_name" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
+        except: pass
+    if "is_active" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        except: pass
+    if "plain_password" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''")
+        except: pass
+    conn.commit()
+
+    riders = conn.execute("SELECT * FROM users WHERE role = 'delivery' ORDER BY id DESC").fetchall()
+    riders_list = []
+    for r in riders:
+        r_dict = dict(r)
+        riders_list.append({
+            "id": r_dict.get("id"),
+            "username": r_dict.get("username", ""),
+            "full_name": r_dict.get("full_name") or r_dict.get("username", ""),
+            "plain_password": r_dict.get("plain_password") or "123456",
+            "is_active": r_dict.get("is_active", 1),
+            "created_at": r_dict.get("created_at", "")
+        })
     conn.close()
-    return render_template("riders.html", riders=riders)
+    return render_template("riders.html", riders=riders_list)
 
 
 @app.route("/riders/create", methods=["POST"])
@@ -1161,6 +1182,18 @@ def create_rider_admin():
         return redirect(url_for("riders_page"))
 
     conn = get_connection()
+    columns = [c[1] for c in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "full_name" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
+        except: pass
+    if "is_active" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        except: pass
+    if "plain_password" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''")
+        except: pass
+    conn.commit()
+
     existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
     if existing:
         conn.close()
