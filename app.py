@@ -2524,9 +2524,14 @@ def api_settings():
 def api_products():
     conn = get_connection()
     rows = conn.execute("""
-        SELECT p.*, c.name AS category_name
+        SELECT p.*,
+               c.name AS category_name,
+               sc.name AS sub_category_name,
+               ssc.name AS sub_sub_category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+        LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
         ORDER BY p.name
     """).fetchall()
     conn.close()

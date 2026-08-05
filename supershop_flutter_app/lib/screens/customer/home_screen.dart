@@ -143,7 +143,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (q == 'uncategorized') {
         list = list.where((p) => p.categoryId == null || p.categoryId == 0 || p.categoryName.trim().isEmpty || p.categoryName.trim().toLowerCase() == 'uncategorized').toList();
       } else {
-        list = list.where((p) => p.name.toLowerCase().contains(q) || p.categoryName.toLowerCase().contains(q)).toList();
+        list = list.where((p) =>
+          p.name.toLowerCase().contains(q) ||
+          p.categoryName.toLowerCase().contains(q) ||
+          p.subCategoryName.toLowerCase().contains(q) ||
+          p.subSubCategoryName.toLowerCase().contains(q)
+        ).toList();
       }
     }
     if (_selectedTab == 'trending') {
@@ -1107,7 +1112,12 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     if (q == 'uncategorized') {
       list = list.where((p) => p.categoryId == null || p.categoryId == 0 || p.categoryName.trim().isEmpty || p.categoryName.trim().toLowerCase() == 'uncategorized').toList();
     } else {
-      list = list.where((p) => p.categoryName.toLowerCase() == q || p.name.toLowerCase().contains(q)).toList();
+      list = list.where((p) =>
+        p.categoryName.trim().toLowerCase() == q ||
+        p.subCategoryName.trim().toLowerCase() == q ||
+        p.subSubCategoryName.trim().toLowerCase() == q ||
+        p.name.toLowerCase().contains(q)
+      ).toList();
     }
 
     List<Product> sortedProducts = List.from(list);

@@ -20,6 +20,11 @@ class Product {
   final String offerValue;
   final String offerBase; // 'mrp' or 'doineek'
 
+  final int? subCategoryId;
+  final String subCategoryName;
+  final int? subSubCategoryId;
+  final String subSubCategoryName;
+
   Product({
     required this.id,
     required this.sku,
@@ -27,6 +32,10 @@ class Product {
     this.brand = '',
     this.categoryId,
     this.categoryName = '',
+    this.subCategoryId,
+    this.subCategoryName = '',
+    this.subSubCategoryId,
+    this.subSubCategoryName = '',
     required this.mrp,
     required this.sellPrice,
     required this.stockQty,
@@ -82,6 +91,10 @@ class Product {
       brand: json['brand'] ?? '',
       categoryId: json['category_id'],
       categoryName: json['category_name'] ?? '',
+      subCategoryId: json['sub_category_id'],
+      subCategoryName: json['sub_category_name'] ?? '',
+      subSubCategoryId: json['sub_sub_category_id'],
+      subSubCategoryName: json['sub_sub_category_name'] ?? '',
       mrp: (json['mrp'] ?? 0).toDouble(),
       sellPrice: (json['sell_price'] ?? 0).toDouble(),
       stockQty: json['stock_qty'] ?? 0,
