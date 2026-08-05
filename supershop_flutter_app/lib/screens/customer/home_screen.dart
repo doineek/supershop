@@ -161,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: const Color(0xFF6B21A8),
         toolbarHeight: 64,
         title: Row(
           children: [
@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         // Persistent Top Search Bar
                         Container(
-                          color: Colors.green,
+                          color: const Color(0xFF6B21A8),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                           child: Container(
                             height: 42,
@@ -246,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               decoration: InputDecoration(
                                 hintText: "Search products or categories...",
                                 hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-                                prefixIcon: const Icon(Icons.search, color: Colors.green),
+                                prefixIcon: const Icon(Icons.search, color: Color(0xFF6B21A8)),
                                 suffixIcon: _searchQuery.isNotEmpty
                                     ? IconButton(
                                         icon: const Icon(Icons.clear, size: 18),
@@ -492,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               Row(
                                 children: [
-                                  const Icon(Icons.sort, size: 15, color: Colors.green),
+                                  const Icon(Icons.sort, size: 15, color: Color(0xFF6B21A8)),
                                   const SizedBox(width: 4),
                                   DropdownButton<String>(
                                     value: _sortBy,
@@ -532,7 +532,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           sliver: SliverGrid(
                                             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                               crossAxisCount: 2,
-                                              childAspectRatio: 0.58,
+                                              childAspectRatio: 0.59,
                                               crossAxisSpacing: 10,
                                               mainAxisSpacing: 10,
                                             ),
@@ -565,13 +565,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                           prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
                                                                           fit: BoxFit.cover,
                                                                           errorBuilder: (_, __, ___) => Container(
-                                                                            color: isDark ? Colors.grey[800] : Colors.grey[200],
-                                                                            child: const Icon(Icons.shopping_bag, size: 40, color: Colors.grey),
+                                                                            color: isDark ? Colors.grey[800] : Colors.purple.shade50,
+                                                                            child: const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF6B21A8)),
                                                                           ),
                                                                         )
                                                                       : Container(
-                                                                          color: isDark ? Colors.grey[800] : Colors.grey[200],
-                                                                          child: const Icon(Icons.shopping_bag, size: 40, color: Colors.grey),
+                                                                          color: isDark ? Colors.grey[800] : Colors.purple.shade50,
+                                                                          child: const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF6B21A8)),
                                                                         ),
                                                                 ),
                                                                 if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)
@@ -581,7 +581,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                     child: Container(
                                                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                                       decoration: BoxDecoration(
-                                                                        color: prod.offerType == 'buy_x_get_y' ? Colors.purple : Colors.red,
+                                                                        color: prod.offerType == 'buy_x_get_y' ? Colors.purple.shade700 : Colors.red,
                                                                         borderRadius: BorderRadius.circular(4),
                                                                       ),
                                                                       child: Text(
@@ -606,12 +606,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                                           ),
 
-                                                          if (prod.categoryName.isNotEmpty)
-                                                            Text(
-                                                              prod.categoryName,
-                                                              style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                                            ),
-
                                                           const SizedBox(height: 4),
 
                                                           Row(
@@ -635,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                       style: const TextStyle(
                                                                         fontSize: 12,
                                                                         fontWeight: FontWeight.bold,
-                                                                        color: Colors.green,
+                                                                        color: Color(0xFF6B21A8),
                                                                       ),
                                                                     ),
                                                                   ],
@@ -644,7 +638,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                               Container(
                                                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                                                                 decoration: BoxDecoration(
-                                                                  color: prod.stockQty > 0 ? Colors.green.shade50 : Colors.red.shade50,
+                                                                  color: prod.stockQty > 0 ? Colors.purple.shade50 : Colors.red.shade50,
                                                                   borderRadius: BorderRadius.circular(4),
                                                                 ),
                                                                 child: Text(
@@ -652,7 +646,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                   style: TextStyle(
                                                                     fontSize: 8,
                                                                     fontWeight: FontWeight.bold,
-                                                                    color: prod.stockQty > 0 ? Colors.green.shade800 : Colors.red.shade800,
+                                                                    color: prod.stockQty > 0 ? Colors.purple.shade900 : Colors.red.shade800,
                                                                   ),
                                                                 ),
                                                               ),
@@ -678,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                       );
                                                                     },
                                                                     style: ElevatedButton.styleFrom(
-                                                                      backgroundColor: Colors.green,
+                                                                      backgroundColor: const Color(0xFF6B21A8),
                                                                       padding: EdgeInsets.zero,
                                                                     ),
                                                                     child: const Text(
@@ -701,7 +695,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                       );
                                                                     },
                                                                     style: ElevatedButton.styleFrom(
-                                                                      backgroundColor: Colors.deepOrange,
+                                                                      backgroundColor: const Color(0xFF9333EA),
                                                                       padding: EdgeInsets.zero,
                                                                     ),
                                                                     child: const Text(
@@ -779,7 +773,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // 4-Tab Bottom Navigation Bar (Home, Category, Cart, Profile)
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _bottomNavIndex,
-        selectedItemColor: Colors.green,
+        selectedItemColor: const Color(0xFF6B21A8),
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
         onTap: (index) {
@@ -825,7 +819,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green.shade200),
+          border: Border.all(color: Colors.purple.shade200),
         ),
         child: ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -849,8 +843,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     : const Icon(Icons.shopping_bag, size: 24, color: Colors.grey),
               ),
               title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: Text("${prod.categoryName} • TK ${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.green),
+              subtitle: Text("TK ${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF6B21A8)),
               onTap: () {
                 setState(() => _searchQuery = "");
                 Navigator.push(
@@ -872,7 +866,7 @@ class _HomeScreenState extends State<HomeScreen> {
         cleanIcon,
         width: size,
         height: size,
-        errorBuilder: (_, __, ___) => Icon(defaultIcon, size: size, color: Colors.green),
+        errorBuilder: (_, __, ___) => Icon(defaultIcon, size: size, color: const Color(0xFF6B21A8)),
       );
     } else if (cleanIcon.isNotEmpty) {
       return Text(
@@ -880,7 +874,7 @@ class _HomeScreenState extends State<HomeScreen> {
         style: TextStyle(fontSize: size),
       );
     }
-    return Icon(defaultIcon, size: size, color: Colors.green);
+    return Icon(defaultIcon, size: size, color: const Color(0xFF6B21A8));
   }
 
   Widget _buildCategoryDirectoryView() {
@@ -1003,7 +997,7 @@ class _HomeScreenState extends State<HomeScreen> {
         showDialog(
           context: context,
           builder: (dialogCtx) => AlertDialog(
-            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6B21A8))),
             content: SingleChildScrollView(
               child: Text(content, style: const TextStyle(fontSize: 14, height: 1.4)),
             ),
@@ -1018,7 +1012,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Text(
         title,
-        style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
+        style: const TextStyle(fontSize: 12, color: Color(0xFF6B21A8), fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
       ),
     );
   }
@@ -1030,7 +1024,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      selectedColor: Colors.green,
+      selectedColor: const Color(0xFF6B21A8),
       backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
       labelStyle: TextStyle(
         color: isSelected
