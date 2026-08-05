@@ -184,8 +184,9 @@ def products():
         ORDER BY p.name
     """).fetchall()
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     conn.close()
-    return render_template("products.html", products=rows, categories=categories)
+    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories)
 
 
 @app.route("/products/new", methods=["GET", "POST"])
@@ -195,11 +196,13 @@ def new_product():
     conn = get_connection()
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     if request.method == "POST":
         sku = request.form["sku"].strip()
         name = request.form["name"].strip()
         category_id = request.form.get("category_id") or None
         sub_category_id = request.form.get("sub_category_id") or None
+        sub_sub_category_id = request.form.get("sub_sub_category_id") or None
         cost_price = float(request.form["cost_price"] or 0)
         mrp = float(request.form["mrp"] or 0)
         sell_price = float(request.form["sell_price"] or 0)
@@ -239,9 +242,9 @@ def new_product():
         try:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO products (sku, name, category_id, sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sku, name, category_id, sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base)
+                "INSERT INTO products (sku, name, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sku, name, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base)
             )
             new_product_id = cur.lastrowid
             create_product_units(conn, new_product_id, stock_qty)
@@ -253,7 +256,7 @@ def new_product():
         except Exception as e:
             flash(f"Could not save product: {e}", "error")
     conn.close()
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, product=None)
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, product=None)
 
 
 @app.route("/products/<int:product_id>/edit", methods=["GET", "POST"])
@@ -263,6 +266,7 @@ def edit_product(product_id):
     conn = get_connection()
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
     if request.method == "POST":
         new_stock_qty = int(request.form["stock_qty"] or 0)
@@ -300,7 +304,7 @@ def edit_product(product_id):
         offer_base = request.form.get("offer_base", "mrp").strip()
 
         conn.execute("""
-            UPDATE products SET sku=?, name=?, category_id=?, sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
+            UPDATE products SET sku=?, name=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
                                  vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
                                  description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
                                  offer_title=?, offer_type=?, offer_value=?, offer_base=?
@@ -310,6 +314,7 @@ def edit_product(product_id):
             request.form["name"].strip(),
             request.form.get("category_id") or None,
             request.form.get("sub_category_id") or None,
+            request.form.get("sub_sub_category_id") or None,
             float(request.form["cost_price"] or 0),
             float(request.form["mrp"] or 0),
             float(request.form["sell_price"] or 0),
@@ -340,7 +345,7 @@ def edit_product(product_id):
         remote_control.push_product_to_cloud(product_id)
         return redirect(url_for("products"))
     conn.close()
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, product=product)
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, product=product)
 
 
 @app.route("/products/<int:product_id>/delete", methods=["POST"])
@@ -1454,7 +1459,34 @@ def new_subcategory():
         conn.commit()
         conn.close()
         flash(f'Sub-category "{name}" created.', "success")
-    return redirect(url_for("products"))
+    return redirect(url_for("categories"))
+
+
+@app.route("/subsubcategories/new", methods=["POST"])
+@login_required
+@admin_required
+def new_subsubcategory():
+    sub_category_id = request.form.get("sub_category_id")
+    name = request.form.get("name", "").strip()
+    if sub_category_id and name:
+        conn = get_connection()
+        conn.execute("INSERT INTO sub_sub_categories (sub_category_id, name) VALUES (?, ?)", (sub_category_id, name))
+        conn.commit()
+        conn.close()
+        flash(f'Sub-sub-category "{name}" created.', "success")
+    return redirect(url_for("categories"))
+
+
+@app.route("/subsubcategories/delete/<int:subsub_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_subsubcategory(subsub_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM sub_sub_categories WHERE id = ?", (subsub_id,))
+    conn.commit()
+    conn.close()
+    flash("Sub-sub-category deleted.", "info")
+    return redirect(url_for("categories"))
 
 
 @app.route("/api/categories/tree", methods=["GET"])
@@ -1462,12 +1494,19 @@ def api_categories_tree():
     conn = get_connection()
     cats = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     subs = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    subsubs = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     conn.close()
     
     cat_list = []
     for c in cats:
         c_dict = dict(c)
-        c_dict["sub_categories"] = [dict(s) for s in subs if s["category_id"] == c["id"]]
+        c_subs = []
+        for s in subs:
+            if s["category_id"] == c["id"]:
+                s_dict = dict(s)
+                s_dict["sub_sub_categories"] = [dict(ss) for ss in subsubs if ss["sub_category_id"] == s["id"]]
+                c_subs.append(s_dict)
+        c_dict["sub_categories"] = c_subs
         cat_list.append(c_dict)
     return jsonify(cat_list)
 

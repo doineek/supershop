@@ -732,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 subtitle: Text(
-                  subs.isNotEmpty ? "${subs.length} sub-categories" : "Tap to view products",
+                  subs.isNotEmpty ? "${subs.length} Sub-Categories" : "Tap to view products",
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 onExpansionChanged: (expanded) {
@@ -745,6 +745,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 },
                 children: subs.map<Widget>((sub) {
+                  final List subsubs = sub["sub_sub_categories"] ?? [];
+                  if (subsubs.isNotEmpty) {
+                    return ExpansionTile(
+                      tilePadding: const EdgeInsets.only(left: 36, right: 16),
+                      leading: const Icon(Icons.folder_open, size: 18, color: Colors.green),
+                      title: Text(
+                        sub["name"] ?? "",
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                      ),
+                      subtitle: Text(
+                        "${subsubs.length} Sub-Sub-Categories",
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                      children: subsubs.map<Widget>((ss) {
+                        return ListTile(
+                          contentPadding: const EdgeInsets.only(left: 64, right: 16),
+                          leading: const Icon(Icons.subdirectory_arrow_right, size: 16, color: Colors.green),
+                          title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5)),
+                          onTap: () {
+                            setState(() {
+                              _selectedTab = 'all';
+                              _searchQuery = ss["name"] ?? "";
+                              _bottomNavIndex = 0;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    );
+                  }
+
                   return ListTile(
                     contentPadding: const EdgeInsets.only(left: 44, right: 16),
                     leading: const Icon(Icons.subdirectory_arrow_right, size: 18, color: Colors.green),

@@ -182,11 +182,19 @@ def init_db():
         name TEXT NOT NULL,
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS sub_sub_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sub_category_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        FOREIGN KEY (sub_category_id) REFERENCES sub_categories(id) ON DELETE CASCADE
+    );
     """)
 
     migrations = [
         "ALTER TABLE categories ADD COLUMN parent_id INTEGER DEFAULT NULL",
         "ALTER TABLE products ADD COLUMN sub_category_id INTEGER DEFAULT NULL",
+        "ALTER TABLE products ADD COLUMN sub_sub_category_id INTEGER DEFAULT NULL",
         "ALTER TABLE products ADD COLUMN is_promotion INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN mrp REAL NOT NULL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN sl_number INTEGER NOT NULL DEFAULT 1",

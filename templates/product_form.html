@@ -21,7 +21,7 @@
 
   <div class="field-row">
     <div class="field">
-      <label>Category</label>
+      <label>Category (ক্যাটাগরি)</label>
       <select name="category_id" id="categorySelect">
         <option value="">— none —</option>
         {% for c in categories %}
@@ -35,6 +35,15 @@
         <option value="">— none —</option>
         {% for s in sub_categories %}
         <option value="{{ s.id }}" {{ 'selected' if product and product.sub_category_id == s.id }}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Sub-Sub-Category (সাব-সাব-ক্যাটাগরি)</label>
+      <select name="sub_sub_category_id" id="subSubCategorySelect">
+        <option value="">— none —</option>
+        {% for ss in sub_sub_categories %}
+        <option value="{{ ss.id }}" {{ 'selected' if product and product.sub_sub_category_id == ss.id }}>{{ ss.name }}</option>
         {% endfor %}
       </select>
     </div>
