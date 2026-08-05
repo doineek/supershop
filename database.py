@@ -14,15 +14,19 @@ DB_NAME = "supershop.db"
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=60.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 60000")
     return conn
 
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=60.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 60000")
     conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
 

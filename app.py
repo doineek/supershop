@@ -268,6 +268,12 @@ def edit_product(product_id):
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    conn.close()
+
+    if not product:
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
     if request.method == "POST":
         new_stock_qty = int(request.form["stock_qty"] or 0)
         old_stock_qty = product["stock_qty"]
@@ -303,7 +309,8 @@ def edit_product(product_id):
         offer_value = request.form.get("offer_value", "").strip()
         offer_base = request.form.get("offer_base", "mrp").strip()
 
-        conn.execute("""
+        w_conn = get_connection()
+        w_conn.execute("""
             UPDATE products SET sku=?, name=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
                                  vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
                                  description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
@@ -336,15 +343,15 @@ def edit_product(product_id):
         ))
         if new_stock_qty > old_stock_qty:
             added = new_stock_qty - old_stock_qty
-            create_product_units(conn, product_id, added)
+            create_product_units(w_conn, product_id, added)
             flash(f"Product updated. {added} new printable tag(s) created for the restock.", "success")
         else:
             flash("Product updated.", "success")
-        conn.commit()
-        conn.close()
+        w_conn.commit()
+        w_conn.close()
         remote_control.push_product_to_cloud(product_id)
         return redirect(url_for("products"))
-    conn.close()
+
     return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, product=product)
 
 
