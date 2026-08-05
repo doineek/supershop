@@ -180,6 +180,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         category_id INTEGER NOT NULL,
         name TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
     );
 
@@ -187,12 +188,16 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sub_category_id INTEGER NOT NULL,
         name TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (sub_category_id) REFERENCES sub_categories(id) ON DELETE CASCADE
     );
     """)
 
     migrations = [
         "ALTER TABLE categories ADD COLUMN parent_id INTEGER DEFAULT NULL",
+        "ALTER TABLE categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sub_categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sub_sub_categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE products ADD COLUMN sub_category_id INTEGER DEFAULT NULL",
         "ALTER TABLE products ADD COLUMN sub_sub_category_id INTEGER DEFAULT NULL",
         "ALTER TABLE products ADD COLUMN is_promotion INTEGER NOT NULL DEFAULT 0",

@@ -704,6 +704,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildIconWidget(String iconStr, {double size = 20.0, IconData defaultIcon = Icons.category}) {
+    final String cleanIcon = iconStr.trim();
+    if (cleanIcon.startsWith('http://') || cleanIcon.startsWith('https://')) {
+      return Image.network(
+        cleanIcon,
+        width: size,
+        height: size,
+        errorBuilder: (_, __, ___) => Icon(defaultIcon, size: size, color: Colors.green),
+      );
+    } else if (cleanIcon.isNotEmpty) {
+      return Text(
+        cleanIcon,
+        style: TextStyle(fontSize: size),
+      );
+    }
+    return Icon(defaultIcon, size: size, color: Colors.green);
+  }
+
   Widget _buildCategoryDirectoryView() {
     return FutureBuilder<List<dynamic>>(
       future: _categoriesTreeFuture,
@@ -722,13 +740,14 @@ class _HomeScreenState extends State<HomeScreen> {
           itemBuilder: (context, index) {
             final cat = categoriesTree[index];
             final List subs = cat["sub_categories"] ?? [];
+            final String catIcon = cat["icon"] ?? "";
 
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               child: ExpansionTile(
-                leading: const Icon(Icons.category, color: Colors.green),
+                leading: _buildIconWidget(catIcon, size: 22.0, defaultIcon: Icons.category),
                 title: Text(
                   cat["name"] ?? "",
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -748,10 +767,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 children: subs.map<Widget>((sub) {
                   final List subsubs = sub["sub_sub_categories"] ?? [];
+                  final String subIcon = sub["icon"] ?? "";
+
                   if (subsubs.isNotEmpty) {
                     return ExpansionTile(
                       tilePadding: const EdgeInsets.only(left: 36, right: 16),
-                      leading: const Icon(Icons.folder_open, size: 18, color: Colors.green),
+                      leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.folder_open),
                       title: Text(
                         sub["name"] ?? "",
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
@@ -761,9 +782,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: const TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                       children: subsubs.map<Widget>((ss) {
+                        final String ssIcon = ss["icon"] ?? "";
                         return ListTile(
                           contentPadding: const EdgeInsets.only(left: 64, right: 16),
-                          leading: const Icon(Icons.subdirectory_arrow_right, size: 16, color: Colors.green),
+                          leading: _buildIconWidget(ssIcon, size: 16.0, defaultIcon: Icons.subdirectory_arrow_right),
                           title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5)),
                           onTap: () {
                             setState(() {
@@ -779,7 +801,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   return ListTile(
                     contentPadding: const EdgeInsets.only(left: 44, right: 16),
-                    leading: const Icon(Icons.subdirectory_arrow_right, size: 18, color: Colors.green),
+                    leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.subdirectory_arrow_right),
                     title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13)),
                     onTap: () {
                       setState(() {
