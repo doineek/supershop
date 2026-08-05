@@ -264,48 +264,64 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ? item["offer_title"].toString()
                                     : "🔥 SPECIAL OFFER";
                                 String imgUrl = item["image_url"] != null ? item["image_url"].toString().split(',').first.trim() : "";
+                                if (imgUrl.isNotEmpty && !imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
+                                  imgUrl = imgUrl.startsWith('/') ? "${ApiService.baseUrl}$imgUrl" : "${ApiService.baseUrl}/$imgUrl";
+                                }
+
                                 double mrp = double.tryParse(item["mrp"]?.toString() ?? "0") ?? 0.0;
                                 double sellPrice = double.tryParse(item["sell_price"]?.toString() ?? "0") ?? 0.0;
 
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [Colors.green.shade800, Colors.teal.shade900],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
+                                return InkWell(
+                                  onTap: () {
+                                    try {
+                                      final prod = Product.fromJson(Map<String, dynamic>.from(item));
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (_) => ProductDetailScreen(product: prod)),
+                                      );
+                                    } catch (e) {
+                                      debugPrint("Error opening promotion product: $e");
+                                    }
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [Colors.green.shade800, Colors.teal.shade900],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
                                     ),
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // Left Half (50%): Product Image Card
-                                      Expanded(
-                                        flex: 1,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          padding: const EdgeInsets.all(6),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: imgUrl.isNotEmpty
-                                                ? Image.network(
-                                                    imgUrl,
-                                                    fit: BoxFit.contain,
-                                                    errorBuilder: (_, __, ___) => const Center(
+                                    child: Row(
+                                      children: [
+                                        // Left Half (50%): Product Image Card
+                                        Expanded(
+                                          flex: 1,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            padding: const EdgeInsets.all(6),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: imgUrl.isNotEmpty
+                                                  ? Image.network(
+                                                      imgUrl,
+                                                      fit: BoxFit.contain,
+                                                      errorBuilder: (_, __, ___) => const Center(
+                                                        child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
+                                                      ),
+                                                    )
+                                                  : const Center(
                                                       child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
                                                     ),
-                                                  )
-                                                : const Center(
-                                                    child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
-                                                  ),
+                                            ),
                                           ),
                                         ),
-                                      ),
                                       const SizedBox(width: 12),
                                       // Right Half (50%): Large Offer Text & Details
                                       Expanded(
