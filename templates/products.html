@@ -261,12 +261,7 @@ const subCategoriesData = [
 
 function toggleCategorySection() {
   const sec = document.getElementById('categoryManagerSection');
-  if (!sec) return;
-  const isHidden = window.getComputedStyle(sec).display === 'none';
-  sec.style.display = isHidden ? 'block' : 'none';
-  if (isHidden) {
-    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  sec.style.display = (sec.style.display === 'none') ? 'block' : 'none';
 }
 
 function switchCategoryTab(tab) {

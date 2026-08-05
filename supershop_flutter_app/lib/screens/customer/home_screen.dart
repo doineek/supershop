@@ -995,8 +995,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 onExpansionChanged: (expanded) {
                   if (subs.isEmpty) {
-                    Navigator.push(
-                      context,
+                    Navigator.of(context, rootNavigator: true).push(
                       MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: cat["name"] ?? "Uncategorized")),
                     );
                   }
@@ -1029,8 +1028,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                           subtitle: Text("$ssFormattedCount Products", style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
                           onTap: () {
-                            Navigator.push(
-                              context,
+                            Navigator.of(context, rootNavigator: true).push(
                               MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: ss["name"] ?? "")),
                             );
                           },
@@ -1045,8 +1043,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                     subtitle: Text("$subProdCount Products", style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     onTap: () {
-                      Navigator.push(
-                        context,
+                      Navigator.of(context, rootNavigator: true).push(
                         MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "")),
                       );
                     },
