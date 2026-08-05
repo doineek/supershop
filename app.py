@@ -1521,7 +1521,7 @@ def offers_page():
         SELECT p.*, c.name AS category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
-        WHERE p.is_offer = 1 OR p.is_promotion = 1
+        WHERE (p.is_offer = 1 OR p.is_promotion = 1) AND (p.offer_title IS NOT NULL AND p.offer_title != '')
         ORDER BY p.id DESC
     """).fetchall()
     settings = get_all_settings(conn)
@@ -1590,7 +1590,7 @@ def remove_product_offer(product_id):
 def save_offer_interval():
     sec = request.form.get("promo_interval_sec", "2").strip()
     conn = get_connection()
-    set_setting(conn, "promo_interval_sec", sec)
+    update_settings(conn, {"promo_interval_sec": sec})
     conn.commit()
     conn.close()
     flash("App banner slide interval updated.", "success")
@@ -1606,7 +1606,7 @@ def api_promotions():
         SELECT p.*, c.name AS category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
-        WHERE p.is_promotion = 1 OR p.is_offer = 1
+        WHERE (p.is_promotion = 1 OR p.is_offer = 1) AND (p.offer_title IS NOT NULL AND p.offer_title != '')
         ORDER BY p.id DESC
     """).fetchall()
     conn.close()
