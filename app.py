@@ -973,11 +973,13 @@ def customers_page():
         if not plain_pass and reg_info:
             plain_pass = "123456"
         email_addr = reg_info.get("email", "") if reg_info else ""
+        profile_img = reg_info.get("profile_image", "") if reg_info else ""
 
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
             "email": email_addr,
+            "profile_image": profile_img,
             "password": plain_pass if plain_pass else "—",
             "visit_count": visits,
             "total_spent": round(total_spent, 2),
@@ -2292,15 +2294,18 @@ def deduct_online_order_stock(conn, order):
         sale_id = cur.lastrowid
         
         for item in items:
+            p_row = conn.execute("SELECT cost_price FROM products WHERE id = ?", (item["product_id"],)).fetchone()
+            c_price = float(p_row["cost_price"]) if p_row else 0.0
             cur.execute("""
                 INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+                VALUES (?, ?, ?, ?, ?, 0, 0, ?)
             """, (
                 sale_id,
                 item["product_id"],
                 item["quantity"],
                 item["unit_price"],
-                item["mrp_price"]
+                item["mrp_price"],
+                c_price
             ))
         remote_control.push_sale_to_cloud(sale_id)
 
@@ -2406,15 +2411,18 @@ def online_order_invoice(order_id):
         
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
         for item in items:
+            p_row = conn.execute("SELECT cost_price FROM products WHERE id = ?", (item["product_id"],)).fetchone()
+            c_price = float(p_row["cost_price"]) if p_row else 0.0
             cur.execute("""
                 INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+                VALUES (?, ?, ?, ?, ?, 0, 0, ?)
             """, (
                 sale_id,
                 item["product_id"],
                 item["quantity"],
                 item["unit_price"],
-                item["mrp_price"]
+                item["mrp_price"],
+                c_price
             ))
         conn.commit()
     else:
@@ -2869,6 +2877,25 @@ def api_cancel_order():
     remote_control.push_online_order_to_cloud(order["id"])
 
     return jsonify({"success": True, "message": "Order has been cancelled successfully."})
+
+
+@app.route("/api/customer/update-profile", methods=["POST"])
+def api_customer_update_profile():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    profile_image = data.get("profile_image", "").strip()
+
+    if not phone:
+        return jsonify({"success": False, "message": "Phone number is required."}), 400
+
+    conn = get_connection()
+    conn.execute(
+        "UPDATE customer_users SET profile_image = ? WHERE phone = ?",
+        (profile_image, phone)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Profile updated successfully."})
 
 
 @app.route("/api/orders/delivery-orders", methods=["GET"])

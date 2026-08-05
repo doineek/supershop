@@ -77,6 +77,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await prefs.setString('user_image_base64', base64String);
         await prefs.setString('user_avatar', '');
 
+        if (_userPhone.isNotEmpty) {
+          ApiService.updateCustomerProfile(phone: _userPhone, profileImage: base64String);
+        }
+
         if (!mounted) return;
         setState(() {
           _userImageBase64 = base64String;

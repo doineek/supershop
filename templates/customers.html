@@ -147,6 +147,7 @@
   {% if customer_directory %}
   <table>
     <tr>
+      <th style="width: 50px; text-align: center;">Photo</th>
       <th>Name</th>
       <th>Mobile</th>
       <th>Password / Key</th>
@@ -159,6 +160,15 @@
     </tr>
     {% for c in customer_directory %}
     <tr>
+      <td style="text-align: center;">
+        {% if c.profile_image and c.profile_image.startswith('data:image') %}
+          <img src="{{ c.profile_image }}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #16a34a;" alt="Avatar">
+        {% elif c.profile_image and c.profile_image.startswith('http') %}
+          <img src="{{ c.profile_image }}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #16a34a;" alt="Avatar">
+        {% else %}
+          <div style="width:36px; height:36px; border-radius:50%; background:#f1f5f9; color:#475569; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; font-size:16px;">👤</div>
+        {% endif %}
+      </td>
       <td style="font-weight: 600;">{{ c.customer_name or '—' }}</td>
       <td>{{ c.customer_mobile }}</td>
       <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ c.password }}</code></td>

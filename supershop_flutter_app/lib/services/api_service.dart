@@ -425,4 +425,20 @@ class ApiService {
     }
     return {'success': false, 'message': 'Network error'};
   }
+
+  static Future<Map<String, dynamic>> updateCustomerProfile({
+    required String phone,
+    required String profileImage,
+  }) async {
+    try {
+      final res = await httpPost('/api/customer/update-profile', body: jsonEncode({
+        'phone': phone,
+        'profile_image': profileImage,
+      }));
+      if (res != null) return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'Network error'};
+  }
 }
