@@ -36,8 +36,11 @@
     <a href="{{ url_for('pos') }}" class="sidebar-item {{ 'active' if request.path == '/pos' }}">
       <span class="sidebar-icon">🛒</span><span>Checkout</span>
     </a>
-    <a href="{{ url_for('products') }}" class="sidebar-item {{ 'active' if request.path == '/products' }}">
+    <a href="{{ url_for('products') }}" class="sidebar-item {{ 'active' if request.path == '/products' and request.args.get('open_cat') != '1' }}">
       <span class="sidebar-icon">📦</span><span>Inventory</span>
+    </a>
+    <a href="{{ url_for('products') }}?open_cat=1" class="sidebar-item {{ 'active' if request.path == '/products' and request.args.get('open_cat') == '1' }}">
+      <span class="sidebar-icon">📂</span><span>Category Directory</span>
     </a>
     <a href="{{ url_for('sales_history') }}" class="sidebar-item {{ 'active' if request.path == '/sales' }}">
       <span class="sidebar-icon">📋</span><span>Sales log</span>

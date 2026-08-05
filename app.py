@@ -172,10 +172,11 @@ def dashboard():
 # Products & Inventory
 # ===========================================================================
 
-@app.route("/products", methods=["GET"])
+@app.route("/products")
 @login_required
 def products():
     conn = get_connection()
+    open_cat = request.args.get("open_cat", "0") == "1"
     rows = conn.execute("""
         SELECT p.*, c.name AS category_name,
                (SELECT COUNT(*) FROM product_units u WHERE u.product_id = p.id AND u.status = 'in_stock') AS tag_count
@@ -188,7 +189,7 @@ def products():
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     conn.close()
-    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands)
+    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, open_cat=open_cat)
 
 
 @app.route("/products/new", methods=["GET", "POST"])
