@@ -9,8 +9,22 @@ import '../models/online_order.dart';
 class ApiService {
   static String _customUrl = "";
 
-  static void setServerUrl(String url) {
+  static Future<void> initServerUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String saved = prefs.getString('server_url') ?? '';
+      if (saved.isNotEmpty) {
+        _customUrl = saved.trim();
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> setServerUrl(String url) async {
     _customUrl = url.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('server_url', _customUrl);
+    } catch (_) {}
   }
 
   /// Get candidate server URLs in priority order for robust mobile connection
@@ -23,6 +37,13 @@ class ApiService {
       String host = Uri.base.host.isNotEmpty ? Uri.base.host : "127.0.0.1";
       list.add("http://$host:5000");
     }
+    // Local Wi-Fi network IPs of PC (direct connection to local software on same Wi-Fi)
+    list.add("http://192.168.0.102:5000");
+    list.add("http://192.168.0.100:5000");
+    list.add("http://192.168.0.101:5000");
+    list.add("http://192.168.0.103:5000");
+    list.add("http://192.168.1.102:5000");
+    list.add("http://192.168.1.100:5000");
     list.add("https://supershop-mj0g.onrender.com");
     list.add("http://127.0.0.1:5000");
     list.add("http://10.0.2.2:5000");

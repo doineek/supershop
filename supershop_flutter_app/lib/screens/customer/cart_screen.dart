@@ -86,23 +86,25 @@ class _CartScreenState extends State<CartScreen> {
       return;
     }
 
-    if (_nameController.text.trim().isEmpty || _phoneController.text.trim().isEmpty) {
+    String savedName = prefs.getString('user_name') ?? '';
+    String custName = _nameController.text.trim().isNotEmpty 
+        ? _nameController.text.trim() 
+        : (savedName.isNotEmpty ? savedName : 'Customer User');
+
+    String custPhone = _phoneController.text.trim().isNotEmpty
+        ? _phoneController.text.trim()
+        : savedPhone;
+
+    if (custPhone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter your full name and phone number")),
+        const SnackBar(content: Text("Please enter a valid phone number")),
       );
       return;
     }
 
     String address = _addressController.text.trim().isNotEmpty
         ? _addressController.text.trim()
-        : cartProv.addressDetails;
-
-    if (address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter your detailed home address")),
-      );
-      return;
-    }
+        : (cartProv.addressDetails.isNotEmpty ? cartProv.addressDetails : "Delivery Location: ${cartProv.selectedArea}, ${cartProv.selectedDistrict}");
 
     setState(() {
       _isSubmitting = true;
@@ -121,8 +123,8 @@ class _CartScreenState extends State<CartScreen> {
     }).toList();
 
     var res = await ApiService.placeOrder(
-      customerName: _nameController.text.trim(),
-      customerPhone: _phoneController.text.trim(),
+      customerName: custName,
+      customerPhone: custPhone,
       customerEmail: '',
       country: cartProv.selectedCountry,
       district: cartProv.selectedDistrict,
