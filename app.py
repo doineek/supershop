@@ -422,9 +422,10 @@ def product_labels(product_id):
 @admin_required
 def new_category():
     name = request.form["name"].strip()
+    icon = request.form.get("icon", "").strip()
     if name:
         conn = get_connection()
-        conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
+        conn.execute("INSERT OR IGNORE INTO categories (name, icon) VALUES (?, ?)", (name, icon))
         conn.commit()
         conn.close()
         remote_control.push_categories_to_cloud()
@@ -1447,19 +1448,82 @@ def settings_page():
     return render_template("settings.html", settings=current_settings)
 
 
+@app.route("/categories/edit/<int:category_id>", methods=["POST"])
+@login_required
+@admin_required
+def edit_category(category_id):
+    name = request.form.get("name", "").strip()
+    icon = request.form.get("icon", "").strip()
+    if name:
+        conn = get_connection()
+        conn.execute("UPDATE categories SET name = ?, icon = ? WHERE id = ?", (name, icon, category_id))
+        conn.commit()
+        conn.close()
+        remote_control.push_categories_to_cloud()
+        flash(f'Category "{name}" updated.', "success")
+    return redirect(url_for("products"))
+
+
+@app.route("/categories/delete/<int:category_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_category(category_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+    conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (category_id,))
+    conn.commit()
+    conn.close()
+    remote_control.push_categories_to_cloud()
+    flash("Category deleted.", "info")
+    return redirect(url_for("products"))
+
+
 @app.route("/subcategories/new", methods=["POST"])
 @login_required
 @admin_required
 def new_subcategory():
     category_id = request.form.get("category_id")
     name = request.form.get("name", "").strip()
+    icon = request.form.get("icon", "").strip()
     if category_id and name:
         conn = get_connection()
-        conn.execute("INSERT INTO sub_categories (category_id, name) VALUES (?, ?)", (category_id, name))
+        conn.execute("INSERT INTO sub_categories (category_id, name, icon) VALUES (?, ?, ?)", (category_id, name, icon))
         conn.commit()
         conn.close()
+        remote_control.push_categories_to_cloud()
         flash(f'Sub-category "{name}" created.', "success")
-    return redirect(url_for("categories"))
+    return redirect(url_for("products"))
+
+
+@app.route("/subcategories/edit/<int:sub_id>", methods=["POST"])
+@login_required
+@admin_required
+def edit_subcategory(sub_id):
+    category_id = request.form.get("category_id")
+    name = request.form.get("name", "").strip()
+    icon = request.form.get("icon", "").strip()
+    if name:
+        conn = get_connection()
+        conn.execute("UPDATE sub_categories SET category_id = ?, name = ?, icon = ? WHERE id = ?", (category_id, name, icon, sub_id))
+        conn.commit()
+        conn.close()
+        remote_control.push_categories_to_cloud()
+        flash(f'Sub-category "{name}" updated.', "success")
+    return redirect(url_for("products"))
+
+
+@app.route("/subcategories/delete/<int:sub_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_subcategory(sub_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM sub_categories WHERE id = ?", (sub_id,))
+    conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (sub_id,))
+    conn.commit()
+    conn.close()
+    remote_control.push_categories_to_cloud()
+    flash("Sub-category deleted.", "info")
+    return redirect(url_for("products"))
 
 
 @app.route("/subsubcategories/new", methods=["POST"])
@@ -1468,13 +1532,32 @@ def new_subcategory():
 def new_subsubcategory():
     sub_category_id = request.form.get("sub_category_id")
     name = request.form.get("name", "").strip()
+    icon = request.form.get("icon", "").strip()
     if sub_category_id and name:
         conn = get_connection()
-        conn.execute("INSERT INTO sub_sub_categories (sub_category_id, name) VALUES (?, ?)", (sub_category_id, name))
+        conn.execute("INSERT INTO sub_sub_categories (sub_category_id, name, icon) VALUES (?, ?, ?)", (sub_category_id, name, icon))
         conn.commit()
         conn.close()
+        remote_control.push_categories_to_cloud()
         flash(f'Sub-sub-category "{name}" created.', "success")
-    return redirect(url_for("categories"))
+    return redirect(url_for("products"))
+
+
+@app.route("/subsubcategories/edit/<int:subsub_id>", methods=["POST"])
+@login_required
+@admin_required
+def edit_subsubcategory(subsub_id):
+    sub_category_id = request.form.get("sub_category_id")
+    name = request.form.get("name", "").strip()
+    icon = request.form.get("icon", "").strip()
+    if name:
+        conn = get_connection()
+        conn.execute("UPDATE sub_sub_categories SET sub_category_id = ?, name = ?, icon = ? WHERE id = ?", (sub_category_id, name, icon, subsub_id))
+        conn.commit()
+        conn.close()
+        remote_control.push_categories_to_cloud()
+        flash(f'Sub-sub-category "{name}" updated.', "success")
+    return redirect(url_for("products"))
 
 
 @app.route("/subsubcategories/delete/<int:subsub_id>", methods=["POST"])
@@ -1485,8 +1568,9 @@ def delete_subsubcategory(subsub_id):
     conn.execute("DELETE FROM sub_sub_categories WHERE id = ?", (subsub_id,))
     conn.commit()
     conn.close()
+    remote_control.push_categories_to_cloud()
     flash("Sub-sub-category deleted.", "info")
-    return redirect(url_for("categories"))
+    return redirect(url_for("products"))
 
 
 @app.route("/api/categories/tree", methods=["GET"])

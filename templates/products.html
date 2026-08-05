@@ -4,39 +4,178 @@
 <div class="toolbar">
   <div>
     <h1>Inventory</h1>
-    <p class="subtitle">Every product your shop sells, and how much is left on the shelf.</p>
+    <p class="subtitle">Manage products, stock levels, printable price tags, and category taxonomy.</p>
   </div>
   {% if session.role == 'admin' %}
-  <div style="display:flex; gap:8px; flex-wrap:wrap;">
-    <form method="POST" action="{{ url_for('new_category') }}">
-      <input type="text" name="name" placeholder="New category name" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;" required>
-      <button class="btn btn-outline" type="submit">+ Category</button>
-    </form>
-    <form method="POST" action="{{ url_for('new_subcategory') }}" style="display:flex; gap:4px;">
-      <select name="category_id" required style="padding:9px; border:1px solid var(--line); border-radius:8px;">
-        <option value="">Select Main Category</option>
-        {% for c in categories %}
-        <option value="{{ c.id }}">{{ c.name }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" name="name" placeholder="New sub-category" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;" required>
-      <button class="btn btn-outline" type="submit">+ Sub-Category</button>
-    </form>
-    <form method="POST" action="{{ url_for('new_subsubcategory') }}" style="display:flex; gap:4px;">
-      <select name="sub_category_id" required style="padding:9px; border:1px solid var(--line); border-radius:8px; max-width: 180px;">
-        <option value="">Select Sub-Category</option>
-        {% for s in sub_categories %}
-        <option value="{{ s.id }}">{{ s.name }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" name="name" placeholder="New sub-sub-category" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;" required>
-      <button class="btn btn-outline" type="submit">+ Sub-Sub-Category</button>
-    </form>
-    <a href="{{ url_for('new_product') }}" class="btn btn-primary">+ Add product</a>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <button type="button" onclick="toggleCategorySection()" class="btn btn-outline">📂 Category Directory Manager</button>
+    <a href="{{ url_for('new_product') }}" class="btn btn-primary">+ Add Product</a>
   </div>
   {% endif %}
 </div>
 
+<!-- Category Directory Manager Section -->
+<div id="categoryManagerSection" style="display:none; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="margin:0; font-size:18px; color:#1e293b;">📂 Category Directory Manager (3-Tier Taxonomy)</h2>
+    <button type="button" onclick="toggleCategorySection()" class="btn btn-outline btn-small">Close Section</button>
+  </div>
+
+  <!-- Category Tabs Header -->
+  <div style="display:flex; gap:8px; border-bottom:1px solid #cbd5e1; margin-bottom:16px;">
+    <button type="button" onclick="switchCategoryTab('main')" id="tabMainBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid #2563eb; color:#2563eb; cursor:pointer;">Main Categories ({{ categories|length }})</button>
+    <button type="button" onclick="switchCategoryTab('sub')" id="tabSubBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid transparent; color:#64748b; cursor:pointer;">Sub Categories ({{ sub_categories|length }})</button>
+    <button type="button" onclick="switchCategoryTab('subsub')" id="tabSubSubBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid transparent; color:#64748b; cursor:pointer;">Sub-Sub Categories ({{ sub_sub_categories|length }})</button>
+  </div>
+
+  <!-- Tab 1: Main Categories -->
+  <div id="catTabMain" style="display:block;">
+    <form method="POST" action="{{ url_for('new_category') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+      <input type="text" name="name" placeholder="Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:200px;" required>
+      <input type="text" name="icon" placeholder="Icon Emoji / Image URL" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:180px;">
+      <button class="btn btn-primary" type="submit">+ Add Main Category</button>
+    </form>
+
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc; text-align:left;">
+          <th style="padding:10px;">Icon</th>
+          <th style="padding:10px;">Category Name</th>
+          <th style="padding:10px; text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in categories %}
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:10px; font-size:18px;">{{ c.icon or '📁' }}</td>
+          <td style="padding:10px; font-weight:600; color:#0f172a;">{{ c.name }}</td>
+          <td style="padding:10px; text-align:right; white-space:nowrap;">
+            <button type="button" onclick="openEditCategoryModal('main', '{{ c.id }}', '{{ c.name }}', '', '{{ c.icon or '' }}')" class="btn btn-outline btn-small" style="margin-right:4px;">Edit</button>
+            <form method="POST" action="{{ url_for('delete_category', category_id=c.id) }}" style="display:inline;" onsubmit="return confirm('Delete category {{ c.name }}? This will also delete related sub-categories.');">
+              <button type="submit" class="btn btn-danger btn-small">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tab 2: Sub Categories -->
+  <div id="catTabSub" style="display:none;">
+    <form method="POST" action="{{ url_for('new_subcategory') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+      <select name="category_id" required style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; min-width:200px;">
+        <option value="">Select Main Category*</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="name" placeholder="Sub-Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:200px;" required>
+      <input type="text" name="icon" placeholder="Icon Emoji / Image URL" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:180px;">
+      <button class="btn btn-primary" type="submit">+ Add Sub-Category</button>
+    </form>
+
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc; text-align:left;">
+          <th style="padding:10px;">Icon</th>
+          <th style="padding:10px;">Sub-Category Name</th>
+          <th style="padding:10px;">Parent Main Category</th>
+          <th style="padding:10px; text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sub_categories %}
+        {% set parent_c = (categories|selectattr("id", "equalto", s.category_id)|first) %}
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:10px; font-size:18px;">{{ s.icon or '🏷️' }}</td>
+          <td style="padding:10px; font-weight:600; color:#0f172a;">{{ s.name }}</td>
+          <td style="padding:10px; color:#475569;">{{ parent_c.name if parent_c else '—' }}</td>
+          <td style="padding:10px; text-align:right; white-space:nowrap;">
+            <button type="button" onclick="openEditCategoryModal('sub', '{{ s.id }}', '{{ s.name }}', '{{ s.category_id }}', '{{ s.icon or '' }}')" class="btn btn-outline btn-small" style="margin-right:4px;">Edit</button>
+            <form method="POST" action="{{ url_for('delete_subcategory', sub_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Delete sub-category {{ s.name }}?');">
+              <button type="submit" class="btn btn-danger btn-small">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tab 3: Sub-Sub Categories -->
+  <div id="catTabSubSub" style="display:none;">
+    <form method="POST" action="{{ url_for('new_subsubcategory') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+      <select name="sub_category_id" required style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; min-width:200px;">
+        <option value="">Select Sub-Category*</option>
+        {% for s in sub_categories %}
+        <option value="{{ s.id }}">{{ s.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="name" placeholder="Sub-Sub-Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:200px;" required>
+      <input type="text" name="icon" placeholder="Icon Emoji / Image URL" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:180px;">
+      <button class="btn btn-primary" type="submit">+ Add Sub-Sub-Category</button>
+    </form>
+
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc; text-align:left;">
+          <th style="padding:10px;">Icon</th>
+          <th style="padding:10px;">Sub-Sub-Category Name</th>
+          <th style="padding:10px;">Parent Sub-Category</th>
+          <th style="padding:10px; text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ss in sub_sub_categories %}
+        {% set parent_s = (sub_categories|selectattr("id", "equalto", ss.sub_category_id)|first) %}
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:10px; font-size:18px;">{{ ss.icon or '📌' }}</td>
+          <td style="padding:10px; font-weight:600; color:#0f172a;">{{ ss.name }}</td>
+          <td style="padding:10px; color:#475569;">{{ parent_s.name if parent_s else '—' }}</td>
+          <td style="padding:10px; text-align:right; white-space:nowrap;">
+            <button type="button" onclick="openEditCategoryModal('subsub', '{{ ss.id }}', '{{ ss.name }}', '{{ ss.sub_category_id }}', '{{ ss.icon or '' }}')" class="btn btn-outline btn-small" style="margin-right:4px;">Edit</button>
+            <form method="POST" action="{{ url_for('delete_subsubcategory', subsub_id=ss.id) }}" style="display:inline;" onsubmit="return confirm('Delete sub-sub-category {{ ss.name }}?');">
+              <button type="submit" class="btn btn-danger btn-small">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Edit Category Modal Dialog -->
+<div id="editCategoryModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:12px; padding:24px; width:90%; max-width:440px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+    <h3 id="modalTitle" style="margin-top:0; color:#0f172a;">Edit Category</h3>
+    <form id="editCategoryForm" method="POST">
+      <div id="parentSelectContainer" style="margin-bottom:12px; display:none;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;" id="parentSelectLabel">Parent Category</label>
+        <select name="category_id" id="modalParentSelect" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        </select>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Name*</label>
+        <input type="text" name="name" id="modalNameInput" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Icon (Emoji / Image URL)</label>
+        <input type="text" name="icon" id="modalIconInput" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" onclick="closeEditCategoryModal()" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Inventory Products Table -->
 <table>
   <tr>
     <th>SKU</th><th>Name</th><th>Category</th>
@@ -72,4 +211,76 @@
   </tr>
   {% endfor %}
 </table>
+
+<script>
+const categoriesData = [
+  {% for c in categories %}
+  { id: '{{ c.id }}', name: '{{ c.name|e }}' },
+  {% endfor %}
+];
+
+const subCategoriesData = [
+  {% for s in sub_categories %}
+  { id: '{{ s.id }}', name: '{{ s.name|e }}' },
+  {% endfor %}
+];
+
+function toggleCategorySection() {
+  const sec = document.getElementById('categoryManagerSection');
+  sec.style.display = (sec.style.display === 'none') ? 'block' : 'none';
+}
+
+function switchCategoryTab(tab) {
+  document.getElementById('catTabMain').style.display = (tab === 'main') ? 'block' : 'none';
+  document.getElementById('catTabSub').style.display = (tab === 'sub') ? 'block' : 'none';
+  document.getElementById('catTabSubSub').style.display = (tab === 'subsub') ? 'block' : 'none';
+
+  document.getElementById('tabMainBtn').style.borderBottomColor = (tab === 'main') ? '#2563eb' : 'transparent';
+  document.getElementById('tabMainBtn').style.color = (tab === 'main') ? '#2563eb' : '#64748b';
+
+  document.getElementById('tabSubBtn').style.borderBottomColor = (tab === 'sub') ? '#2563eb' : 'transparent';
+  document.getElementById('tabSubBtn').style.color = (tab === 'sub') ? '#2563eb' : '#64748b';
+
+  document.getElementById('tabSubSubBtn').style.borderBottomColor = (tab === 'subsub') ? '#2563eb' : 'transparent';
+  document.getElementById('tabSubSubBtn').style.color = (tab === 'subsub') ? '#2563eb' : '#64748b';
+}
+
+function openEditCategoryModal(type, id, name, parentId, icon) {
+  const modal = document.getElementById('editCategoryModal');
+  const form = document.getElementById('editCategoryForm');
+  const title = document.getElementById('modalTitle');
+  const parentContainer = document.getElementById('parentSelectContainer');
+  const parentLabel = document.getElementById('parentSelectLabel');
+  const parentSelect = document.getElementById('modalParentSelect');
+
+  document.getElementById('modalNameInput').value = name;
+  document.getElementById('modalIconInput').value = icon;
+
+  if (type === 'main') {
+    title.innerText = 'Edit Main Category';
+    form.action = '/categories/edit/' + id;
+    parentContainer.style.display = 'none';
+  } else if (type === 'sub') {
+    title.innerText = 'Edit Sub-Category';
+    form.action = '/subcategories/edit/' + id;
+    parentContainer.style.display = 'block';
+    parentLabel.innerText = 'Parent Main Category';
+    parentSelect.name = 'category_id';
+    parentSelect.innerHTML = categoriesData.map(c => `<option value="${c.id}" ${c.id == parentId ? 'selected' : ''}>${c.name}</option>`).join('');
+  } else if (type === 'subsub') {
+    title.innerText = 'Edit Sub-Sub-Category';
+    form.action = '/subsubcategories/edit/' + id;
+    parentContainer.style.display = 'block';
+    parentLabel.innerText = 'Parent Sub-Category';
+    parentSelect.name = 'sub_category_id';
+    parentSelect.innerHTML = subCategoriesData.map(s => `<option value="${s.id}" ${s.id == parentId ? 'selected' : ''}>${s.name}</option>`).join('');
+  }
+
+  modal.style.display = 'flex';
+}
+
+function closeEditCategoryModal() {
+  document.getElementById('editCategoryModal').style.display = 'none';
+}
+</script>
 {% endblock %}
