@@ -622,9 +622,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ListTile(
                           leading: const Icon(Icons.language, color: Colors.orange),
                           title: const Text('App Language', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(
-                            localeProv.locale.languageCode == 'bn' ? 'বাংলা' : 'English',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                          subtitle: const Text(
+                            'English',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                           ),
                           onTap: () {
                             localeProv.toggleLanguage();

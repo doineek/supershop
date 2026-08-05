@@ -65,7 +65,10 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                "🔔 নতুন অনলাইন অর্ডার এসেছে!",
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "🔔 New Online Order Received!",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepOrange),
               ),
             ),
@@ -85,13 +88,13 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("📦 অর্ডার নম্বর: ${order.orderNumber}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                  Text("📦 Order #${order.orderNumber}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
                   const SizedBox(height: 4),
-                  Text("👤 কাস্টমার: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text("📞 ফোন: ${order.customerPhone}", style: const TextStyle(color: Colors.blue)),
-                  Text("📍 ঠিকানা: ${order.addressDetails}, ${order.area}"),
+                  Text("👤 Customer: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text("📞 Phone: ${order.customerPhone}", style: const TextStyle(color: Colors.blue)),
+                  Text("📍 Address: ${order.addressDetails}, ${order.area}"),
                   const Divider(),
-                  Text("💵 ক্যাশ কালেকশন: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)),
+                  Text("💵 Cash Collection: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)),
                 ],
               ),
             ),
@@ -100,7 +103,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(alertCtx),
-            child: const Text("এখন নয়", style: TextStyle(color: Colors.grey)),
+            child: const Text("Not Now", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -152,10 +155,10 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("গ্রাহক: ${order.customerName}"),
-            Text("ফোন: ${order.customerPhone}"),
+            Text("Customer: ${order.customerName}"),
+            Text("Phone: ${order.customerPhone}"),
             const SizedBox(height: 12),
-            const Text("কাস্টমার অ্যাপের ভেতরে থাকা OTP টি সংগ্রহ করে লিখুন:"),
+            const Text("Enter OTP provided by the customer:"),
             const SizedBox(height: 8),
             TextField(
               controller: otpController,
@@ -173,7 +176,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text("বাতিল"),
+            child: const Text("Cancel"),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -198,7 +201,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text("ওটিপি ভেরিফাই ও ডেলিভারি সম্পন্ন"),
+            child: const Text("Verify OTP & Complete Delivery"),
           ),
         ],
       ),
@@ -257,7 +260,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _deliveryOrders.isEmpty
-              ? const Center(child: Text("ডেলিভারির জন্য কোনো সক্রিয় অর্ডার নেই"))
+              ? const Center(child: Text("No active orders for delivery"))
               : RefreshIndicator(
                   onRefresh: () async => _loadDeliveryOrders(),
                   child: ListView.builder(
@@ -286,7 +289,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                     children: [
                                       Text("📦 Order #${order.orderNumber}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                       const SizedBox(height: 2),
-                                      Text("📅 সময়: $timeStr", style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                                      Text("📅 Time: $timeStr", style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
                                     ],
                                   ),
                                   Container(
@@ -308,11 +311,11 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                               ),
                               const Divider(),
 
-                              Text("👤 কাস্টমার: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                              Text("📞 ফোন: ${order.customerPhone}", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                              Text("👤 Customer: ${order.customerName}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Text("📞 Phone: ${order.customerPhone}", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
                               const SizedBox(height: 4),
-                              Text("📍 এলাকা: ${order.area}, ${order.district}"),
-                              Text("🏠 ঠিকানা: ${order.addressDetails}", style: const TextStyle(color: Colors.grey)),
+                              Text("📍 Area: ${order.area}, ${order.district}"),
+                              Text("🏠 Address: ${order.addressDetails}", style: const TextStyle(color: Colors.grey)),
                               const SizedBox(height: 8),
 
                               Wrap(
@@ -321,7 +324,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  Text("ক্যাশ কালেকশন: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                  Text("Cash Collection: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [

@@ -37,7 +37,7 @@ class ApiService {
       debugPrint("Error fetching shop settings: $e");
     }
     return {
-      "shop_name": "DOINEEK দৈনিক",
+      "shop_name": "DOINEEK Supershop",
       "shop_phone": "+880-1XXX-XXXXXX",
       "shop_address": "House 12, Road 5, Tangail",
     };

@@ -35,7 +35,7 @@ class SupershopApp extends StatelessWidget {
       child: Consumer2<LocaleProvider, ThemeProvider>(
         builder: (context, localeProv, themeProv, child) {
           return MaterialApp(
-            title: 'DOINEEK (দৈনিক) Supershop',
+            title: 'DOINEEK Supershop',
             debugShowCheckedModeBanner: false,
             themeMode: themeProv.themeMode,
             theme: ThemeData(

@@ -66,17 +66,17 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     switch (status) {
       case 'new':
       case 'pending':
-        return 'অপেক্ষমান (Pending)';
+        return 'Pending';
       case 'verified':
-        return 'যাচাইকৃত (Verified)';
+        return 'Verified';
       case 'packed':
-        return 'প্যাকড (Packed)';
+        return 'Packed';
       case 'on_the_way':
-        return 'রাস্তায় (On the way)';
+        return 'On the way';
       case 'delivered':
-        return 'ডেলিভারি সম্পন্ন (Delivered)';
+        return 'Delivered';
       default:
-        return 'বাতিল (Cancelled)';
+        return 'Cancelled';
     }
   }
 
@@ -98,14 +98,14 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
           children: [
             Icon(Icons.warning, color: Colors.red),
             SizedBox(width: 8),
-            Text("অর্ডার বাতিলের নিশ্চিতকরণ"),
+            Text("Confirm Order Cancellation"),
           ],
         ),
-        content: Text("আপনি কি নিশ্চিত যে অর্ডার #$orderNumber বাতিল করতে চান?"),
+        content: Text("Are you sure you want to cancel order #$orderNumber?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text("না"),
+            child: const Text("No"),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -119,21 +119,21 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
               if (res['success'] == true) {
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text(res['message'] ?? "অর্ডারটি সফলভাবে বাতিল করা হয়েছে।"),
+                    content: Text(res['message'] ?? "Order cancelled successfully."),
                     backgroundColor: Colors.green,
                   ),
                 );
               } else {
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text(res['message'] ?? "বাতিল করা সম্ভব হয়নি"),
+                    content: Text(res['message'] ?? "Could not cancel order."),
                     backgroundColor: Colors.red,
                   ),
                 );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text("হ্যাঁ, বাতিল করুন", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text("Yes, Cancel Order", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -152,7 +152,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
       body: _isLoadingPhone
           ? const Center(child: CircularProgressIndicator())
           : _userPhone.isEmpty
-              ? const Center(child: Text("লগইন ফোন নম্বর পাওয়া যায়নি"))
+              ? const Center(child: Text("Login phone number not found"))
               : StreamBuilder<List<OnlineOrder>>(
                   stream: ApiService.myOrdersStream(_userPhone),
                   builder: (context, snapshot) {
@@ -163,7 +163,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                     final orders = snapshot.data ?? [];
 
                     if (orders.isEmpty) {
-                      return const Center(child: Text("আপনার কোনো পূর্ববর্তী অর্ডার নেই"));
+                      return const Center(child: Text("You have no previous orders"));
                     }
 
                     return ListView.builder(
@@ -211,7 +211,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'তারিখ: ${order.createdAt.length >= 19 ? order.createdAt.substring(0, 19).replaceAll('T', ' ') : order.createdAt}',
+                                  'Date: ${order.createdAt.length >= 19 ? order.createdAt.substring(0, 19).replaceAll('T', ' ') : order.createdAt}',
                                   style: const TextStyle(color: Colors.grey, fontSize: 12),
                                 ),
                                 const Divider(),
@@ -236,7 +236,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    const Text("মোট পরিশোধযোগ্য:", style: TextStyle(fontWeight: FontWeight.bold)),
+                                    const Text("Total Payable:", style: TextStyle(fontWeight: FontWeight.bold)),
                                     Text(
                                       '৳${order.totalAmount.toStringAsFixed(2)}',
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
@@ -262,7 +262,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                "🛵 ডেলিভারি রাইডার: ${order.assignedRiderName.isNotEmpty ? order.assignedRiderName : 'Assigned'}",
+                                                "🛵 Delivery Rider: ${order.assignedRiderName.isNotEmpty ? order.assignedRiderName : 'Assigned'}",
                                                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 13),
                                               ),
                                               if (order.assignedRiderPhone.isNotEmpty)
@@ -313,7 +313,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                                   const Icon(Icons.timer, color: Colors.orange, size: 20),
                                                   const SizedBox(width: 6),
                                                   Text(
-                                                    'বাতিল বাকী: ${_formatSeconds(remainingSeconds)}',
+                                                    'Cancel Window: ${_formatSeconds(remainingSeconds)}',
                                                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 12),
                                                   ),
                                                 ],
@@ -321,7 +321,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                               ElevatedButton.icon(
                                                 onPressed: () => _confirmCancelOrder(order.orderNumber),
                                                 icon: const Icon(Icons.cancel, size: 16, color: Colors.white),
-                                                label: const Text('বাতিল করুন', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                label: const Text('Cancel Order', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
                                               ),
                                             ],
@@ -342,7 +342,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                               Icon(Icons.lock_clock, color: Colors.grey, size: 16),
                                               SizedBox(width: 6),
                                               Text(
-                                                'অর্ডার বাতিলের সময় পার হয়ে গেছে (১০ মিনিট অতিক্রান্ত)',
+                                                'Cancellation window closed (10 minutes passed)',
                                                 style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.w600),
                                               ),
                                             ],
@@ -370,7 +370,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                             Icon(Icons.vpn_key, color: Colors.red, size: 18),
                                             SizedBox(width: 6),
                                             Text(
-                                              "আপনার ডেলিভারি ওটিপি (OTP):",
+                                              "Your Delivery OTP:",
                                               style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
                                             ),
                                           ],

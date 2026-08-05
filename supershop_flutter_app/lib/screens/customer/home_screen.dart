@@ -24,7 +24,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String _selectedTab = 'all'; // all, trending, flash_sale, offers
-  String _shopName = "DOINEEK (দৈনিক) Supershop";
+  String _shopName = "DOINEEK Supershop";
   String _userAvatar = "👤";
   String _userImageBase64 = "";
   int _bottomNavIndex = 0;
@@ -37,10 +37,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _promoList = [];
 
   final List<Map<String, String>> _promotions = [
-    {"title": "🔥 20% OFF Flash Sale!", "subtitle": "দৈনন্দিন মুদি বাজার সেরা মূল্যে!", "color": "0xFFE65100"},
-    {"title": "🚀 Superfast 30-Min Delivery", "subtitle": "আপনার এলাকার নিকটস্থ রাইডার প্রস্তুত!", "color": "0xFF1B5E20"},
-    {"title": "🎁 Buy 1 Get 1 Free Offers", "subtitle": "আজকের সেরা ডিল মিস করবেন না!", "color": "0xFF4A148C"},
-    {"title": "💳 Cash On Delivery Guaranteed", "subtitle": "পণ্য হাতে পেয়ে নিশ্চিন্তে পেমেন্ট করুন!", "color": "0xFF006064"},
+    {"title": "🔥 20% OFF Flash Sale!", "subtitle": "Daily groceries at best prices!", "color": "0xFFE65100"},
+    {"title": "🚀 Superfast 30-Min Delivery", "subtitle": "Nearest rider ready in your area!", "color": "0xFF1B5E20"},
+    {"title": "🎁 Buy 1 Get 1 Free Offers", "subtitle": "Don't miss today's best deals!", "color": "0xFF4A148C"},
+    {"title": "💳 Cash On Delivery Guaranteed", "subtitle": "Pay safely upon receiving products!", "color": "0xFF006064"},
   ];
 
   @override
@@ -89,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
     var settings = await ApiService.fetchShopSettings();
     if (!mounted) return;
     setState(() {
-      _shopName = settings['shop_name'] ?? "DOINEEK (দৈনিক) Supershop";
+      _shopName = settings['shop_name'] ?? "DOINEEK Supershop";
     });
   }
 
@@ -217,9 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: TextField(
                               onChanged: (val) => setState(() => _searchQuery = val),
                               decoration: InputDecoration(
-                                hintText: localeProv.locale.languageCode == 'bn'
-                                    ? "পণ্য বা ক্যাটাগরির নাম দিয়ে খুঁজুন..."
-                                    : "Search products or categories...",
+                                hintText: "Search products or categories...",
                                 hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
                                 prefixIcon: const Icon(Icons.search, color: Colors.green),
                                 suffixIcon: _searchQuery.isNotEmpty
@@ -775,7 +773,7 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogCtx),
-                child: const Text("বন্ধ করুন"),
+                child: const Text("Close"),
               ),
             ],
           ),

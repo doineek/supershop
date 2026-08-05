@@ -48,7 +48,7 @@ class _CartScreenState extends State<CartScreen> {
 
     if (_nameController.text.trim().isEmpty || _phoneController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("অনুগ্রহ করে আপনার নাম ও মোবাইল নম্বর পূরণ করুন")),
+        const SnackBar(content: Text("Please enter your full name and phone number")),
       );
       return;
     }
@@ -59,7 +59,7 @@ class _CartScreenState extends State<CartScreen> {
 
     if (address.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("অনুগ্রহ করে আপনার বিস্তারিত ঠিকানা লিখুন")),
+        const SnackBar(content: Text("Please enter your detailed home address")),
       );
       return;
     }
@@ -103,14 +103,14 @@ class _CartScreenState extends State<CartScreen> {
             children: [
               Icon(Icons.check_circle, color: Colors.green),
               SizedBox(width: 8),
-              Text("অর্ডার সফল হয়েছে!"),
+              Text("Order Placed Successfully!"),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("অর্ডার নম্বর: ${res['order_number']}"),
+              Text("Order Number: ${res['order_number']}"),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -122,7 +122,7 @@ class _CartScreenState extends State<CartScreen> {
                 child: Column(
                   children: [
                     const Text(
-                      "🔑 ডেলিভারি ওটিপি (Delivery OTP):",
+                      "🔑 Delivery OTP:",
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     const SizedBox(height: 4),
@@ -156,7 +156,7 @@ class _CartScreenState extends State<CartScreen> {
                 );
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text("অর্ডার ট্র্যাকিং দেখুন"),
+              child: const Text("Track Order Status"),
             ),
           ],
         ),
@@ -169,14 +169,14 @@ class _CartScreenState extends State<CartScreen> {
             children: [
               Icon(Icons.error, color: Colors.red),
               SizedBox(width: 8),
-              Text("অর্ডার দেওয়া সম্ভব হয়নি"),
+              Text("Could Not Place Order"),
             ],
           ),
           content: Text(res['message'] ?? 'Error placing order'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("ঠিক আছে"),
+              child: const Text("OK"),
             ),
           ],
         ),
@@ -235,7 +235,7 @@ class _CartScreenState extends State<CartScreen> {
         backgroundColor: Colors.green,
       ),
       body: cartProv.items.isEmpty
-          ? const Center(child: Text("আপনার কার্ট খালি রয়েছে"))
+          ? const Center(child: Text("Your shopping cart is empty"))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -323,7 +323,7 @@ class _CartScreenState extends State<CartScreen> {
                                 children: [
                                   Icon(Icons.location_on, color: Colors.blue),
                                   SizedBox(width: 6),
-                                  Text("ডেলিভারি লোকেশন:", style: TextStyle(fontWeight: FontWeight.bold)),
+                                  Text("Delivery Location:", style: TextStyle(fontWeight: FontWeight.bold)),
                                 ],
                               ),
                               TextButton(
@@ -333,7 +333,7 @@ class _CartScreenState extends State<CartScreen> {
                                     builder: (_) => const LocationSelectorDialog(),
                                   );
                                 },
-                                child: const Text("পরিবর্তন করুন"),
+                                child: const Text("Change"),
                               )
                             ],
                           ),
@@ -342,7 +342,7 @@ class _CartScreenState extends State<CartScreen> {
                           TextField(
                             controller: _addressController,
                             decoration: const InputDecoration(
-                              labelText: 'বাসা/রোড নম্বর ও বিস্তারিত ঠিকানা',
+                              labelText: 'House/Road Number & Detailed Address',
                               border: OutlineInputBorder(),
                               isDense: true,
                             ),
@@ -384,21 +384,21 @@ class _CartScreenState extends State<CartScreen> {
                       _buildPaymentOption(
                         value: 'cod',
                         title: loc.translate('cod'),
-                        subtitle: "পণ্য হাতে পাওয়ার পর নগদ মূল্য পরিশোধ করুন",
+                        subtitle: "Pay cash upon receiving product",
                         enabled: true,
                       ),
                       const SizedBox(height: 8),
                       _buildPaymentOption(
                         value: 'bkash',
-                        title: "${loc.translate('bkash')} (সাময়িকভাবে বন্ধ)",
-                        subtitle: "অনলাইন পেমেন্ট গেটওয়ে সাময়িকভাবে নিষ্ক্রিয় রয়েছে",
+                        title: loc.translate('bkash'),
+                        subtitle: "Online payment gateway temporarily disabled",
                         enabled: false,
                       ),
                       const SizedBox(height: 8),
                       _buildPaymentOption(
                         value: 'nagad',
-                        title: "${loc.translate('nagad')} (সাময়িকভাবে বন্ধ)",
-                        subtitle: "অনলাইন পেমেন্ট গেটওয়ে সাময়িকভাবে নিষ্ক্রিয় রয়েছে",
+                        title: loc.translate('nagad'),
+                        subtitle: "Online payment gateway temporarily disabled",
                         enabled: false,
                       ),
                     ],
@@ -410,7 +410,7 @@ class _CartScreenState extends State<CartScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("পণ্যমূল্য (Subtotal):"),
+                      const Text("Subtotal:"),
                       Text('৳${cartProv.subtotal.toStringAsFixed(2)}'),
                     ],
                   ),
