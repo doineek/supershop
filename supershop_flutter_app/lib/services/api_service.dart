@@ -13,18 +13,24 @@ class ApiService {
     _customUrl = url.trim();
   }
 
-  /// Dynamic Base URL:
-  /// - Global 24/7 Online Production Server: https://supershop-mj0g.onrender.com
-  /// - Web / Chrome: http://127.0.0.1:5000
-  static String get baseUrl {
+  /// Get candidate server URLs in priority order for robust mobile connection
+  static List<String> get candidateUrls {
+    List<String> list = [];
     if (_customUrl.isNotEmpty) {
-      return _customUrl;
+      list.add(_customUrl);
     }
     if (kIsWeb) {
       String host = Uri.base.host.isNotEmpty ? Uri.base.host : "127.0.0.1";
-      return "http://$host:5000";
+      list.add("http://$host:5000");
     }
-    return "https://supershop-mj0g.onrender.com";
+    list.add("https://supershop-mj0g.onrender.com");
+    list.add("http://127.0.0.1:5000");
+    list.add("http://10.0.2.2:5000");
+    return list;
+  }
+
+  static String get baseUrl {
+    return candidateUrls.first;
   }
 
   static Future<Map<String, dynamic>> fetchShopSettings() async {
@@ -125,32 +131,39 @@ class ApiService {
     required String paymentMethod,
     required List<Map<String, dynamic>> cartItems,
   }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/orders/place'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'customer_name': customerName,
-          'customer_phone': customerPhone,
-          'customer_email': customerEmail,
-          'country': country,
-          'district': district,
-          'area': area,
-          'address_details': addressDetails,
-          'payment_method': paymentMethod,
-          'cart_items': cartItems,
-        }),
-      );
+    String lastError = "";
+    final payload = jsonEncode({
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'customer_email': customerEmail,
+      'country': country,
+      'district': district,
+      'area': area,
+      'address_details': addressDetails,
+      'payment_method': paymentMethod,
+      'cart_items': cartItems,
+    });
 
-      final body = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return body;
-      } else {
-        return {'success': false, 'message': body['message'] ?? 'Failed to place order'};
+    for (String serverUrl in candidateUrls) {
+      try {
+        final response = await http.post(
+          Uri.parse('$serverUrl/api/orders/place'),
+          headers: {'Content-Type': 'application/json'},
+          body: payload,
+        ).timeout(const Duration(seconds: 12));
+
+        final body = jsonDecode(response.body);
+        if (response.statusCode == 200) {
+          _customUrl = serverUrl;
+          return body;
+        } else {
+          lastError = body['message'] ?? 'Failed to place order (${response.statusCode})';
+        }
+      } catch (e) {
+        lastError = '$e';
       }
-    } catch (e) {
-      return {'success': false, 'message': 'Network connection error: $e'};
     }
+    return {'success': false, 'message': 'Network connection error: $lastError'};
   }
 
   static Future<List<OnlineOrder>> fetchMyOrders(String phone) async {
