@@ -973,13 +973,12 @@ def customers_page():
         if not plain_pass and reg_info:
             plain_pass = "123456"
         email_addr = reg_info.get("email", "") if reg_info else ""
-        profile_img = reg_info.get("profile_image", "") if reg_info else ""
 
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
+            "profile_image": reg_info.get("profile_image") or reg_info.get("avatar") or reg_info.get("image_url") or "",
             "email": email_addr,
-            "profile_image": profile_img,
             "password": plain_pass if plain_pass else "—",
             "visit_count": visits,
             "total_spent": round(total_spent, 2),
@@ -1948,24 +1947,50 @@ def reports():
         date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
         ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
 
-    sales_summary = conn.execute(f"""
+    # Offline POS counter sales summary
+    offline_sales_summary = conn.execute(f"""
         SELECT 
             COALESCE(SUM(rounded_total), 0) AS revenue,
             COALESCE(SUM(vat_amount), 0) AS vat,
             COALESCE(SUM(saved_amount), 0) AS discounts,
             COUNT(id) AS tx_count
-        FROM sales WHERE {date_filter}
+        FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}
     """).fetchone()
 
-    cogs_row = conn.execute(f"""
+    # Online orders summary (direct from online_orders table)
+    online_orders_summary = conn.execute(f"""
+        SELECT 
+            COUNT(*) AS tx_count,
+            COALESCE(SUM(total_amount), 0) AS revenue
+        FROM online_orders WHERE {date_filter}
+    """).fetchone()
+
+    # Offline COGS
+    offline_cogs_row = conn.execute(f"""
         SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
-        WHERE {date_filter.replace('created_at', 's.created_at')}
+        WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}
     """).fetchone()
 
-    revenue = float(sales_summary["revenue"])
-    cogs = float(cogs_row["total_cogs"])
+    # Online COGS
+    online_cogs_row = conn.execute(f"""
+        SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs
+        FROM online_order_items oi
+        JOIN online_orders o ON oi.order_id = o.id
+        LEFT JOIN products p ON oi.product_id = p.id
+        WHERE {date_filter.replace('created_at', 'o.created_at')}
+    """).fetchone()
+
+    pos_rev = float(offline_sales_summary["revenue"])
+    online_rev = float(online_orders_summary["revenue"])
+    revenue = pos_rev + online_rev
+
+    pos_cnt = int(offline_sales_summary["tx_count"])
+    online_cnt = int(online_orders_summary["tx_count"])
+    tx_count = pos_cnt + online_cnt
+
+    cogs = float(offline_cogs_row["total_cogs"]) + float(online_cogs_row["total_cogs"])
     gross_profit = revenue - cogs
 
     income_row = conn.execute(f"""
@@ -1989,14 +2014,6 @@ def reports():
         ORDER BY entry_date DESC, id DESC
     """).fetchall()
 
-    # ------------------------------------------------------------------
-    # Advanced Product Analysis: which products are selling well vs
-    # poorly *within the selected period*. Built from a single per-product
-    # performance subquery so top-sellers, slow-movers, and "not sold at
-    # all" dead stock are all consistent with the Daily/Monthly/Yearly/
-    # All-Time filter above (the previous version of this query ignored
-    # the period entirely for slow movers).
-    # ------------------------------------------------------------------
     sold_subquery = f"""
         SELECT si.product_id AS product_id,
                SUM(si.quantity) AS qty_sold,
@@ -2028,17 +2045,6 @@ def reports():
     slow_movers = sorted(slow_movers, key=lambda r: r["qty_sold"])[:8]
     max_qty_sold = max((row["qty_sold"] for row in product_performance), default=0) or 1
 
-    # Online vs Offline Orders Breakdown
-    online_row = conn.execute(f"""
-        SELECT COUNT(*) AS tx_count, COALESCE(SUM(total_amount), 0) AS revenue
-        FROM sales WHERE channel = 'Online' AND {date_filter}
-    """).fetchone()
-
-    offline_row = conn.execute(f"""
-        SELECT COUNT(*) AS tx_count, COALESCE(SUM(total_amount), 0) AS revenue
-        FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}
-    """).fetchone()
-
     conn.close()
     return render_template(
         "reports.html",
@@ -2055,9 +2061,9 @@ def reports():
         dead_stock=dead_stock,
         total_units_sold=total_units_sold,
         max_qty_sold=max_qty_sold,
-        tx_count=sales_summary["tx_count"],
-        online_summary=dict(online_row),
-        offline_summary=dict(offline_row)
+        tx_count=tx_count,
+        online_summary={"tx_count": online_cnt, "revenue": online_rev},
+        offline_summary={"tx_count": pos_cnt, "revenue": pos_rev}
     )
 
 
@@ -2294,18 +2300,15 @@ def deduct_online_order_stock(conn, order):
         sale_id = cur.lastrowid
         
         for item in items:
-            p_row = conn.execute("SELECT cost_price FROM products WHERE id = ?", (item["product_id"],)).fetchone()
-            c_price = float(p_row["cost_price"]) if p_row else 0.0
             cur.execute("""
                 INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, ?)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
             """, (
                 sale_id,
                 item["product_id"],
                 item["quantity"],
                 item["unit_price"],
-                item["mrp_price"],
-                c_price
+                item["mrp_price"]
             ))
         remote_control.push_sale_to_cloud(sale_id)
 
@@ -2411,18 +2414,15 @@ def online_order_invoice(order_id):
         
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
         for item in items:
-            p_row = conn.execute("SELECT cost_price FROM products WHERE id = ?", (item["product_id"],)).fetchone()
-            c_price = float(p_row["cost_price"]) if p_row else 0.0
             cur.execute("""
                 INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, ?)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
             """, (
                 sale_id,
                 item["product_id"],
                 item["quantity"],
                 item["unit_price"],
-                item["mrp_price"],
-                c_price
+                item["mrp_price"]
             ))
         conn.commit()
     else:
@@ -2877,25 +2877,6 @@ def api_cancel_order():
     remote_control.push_online_order_to_cloud(order["id"])
 
     return jsonify({"success": True, "message": "Order has been cancelled successfully."})
-
-
-@app.route("/api/customer/update-profile", methods=["POST"])
-def api_customer_update_profile():
-    data = request.json or {}
-    phone = data.get("phone", "").strip()
-    profile_image = data.get("profile_image", "").strip()
-
-    if not phone:
-        return jsonify({"success": False, "message": "Phone number is required."}), 400
-
-    conn = get_connection()
-    conn.execute(
-        "UPDATE customer_users SET profile_image = ? WHERE phone = ?",
-        (profile_image, phone)
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True, "message": "Profile updated successfully."})
 
 
 @app.route("/api/orders/delivery-orders", methods=["GET"])

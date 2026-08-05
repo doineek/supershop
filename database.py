@@ -123,7 +123,6 @@ def init_db():
         is_blocked INTEGER NOT NULL DEFAULT 0,
         blocked_until TEXT NOT NULL DEFAULT '',
         block_reason TEXT NOT NULL DEFAULT '',
-        profile_image TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL
     );
 
@@ -256,7 +255,6 @@ def init_db():
         "ALTER TABLE online_orders ADD COLUMN assigned_rider_name TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE online_orders ADD COLUMN assigned_rider_phone TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE customer_users ADD COLUMN profile_image TEXT NOT NULL DEFAULT ''",
     ]
     for statement in migrations:
         try:
