@@ -505,7 +505,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 20),
                     // Website Brand Logo Image with Crisp White Background Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
@@ -515,9 +515,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: Image.asset(
                         'assets/images/logo.png',
-                        height: 120,
+                        height: 140,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 80, color: Color(0xFF6B21A8)),
+                        errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 90, color: Color(0xFF6B21A8)),
                       ),
                     ),
                     const SizedBox(height: 12),

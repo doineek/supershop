@@ -172,12 +172,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF6B21A8),
-        toolbarHeight: 64,
+        toolbarHeight: 70,
         title: Row(
           children: [
-            // Website Brand Logo Image with Crisp White Background Badge
+            // Website Brand Logo Image with Crisp White Background Badge (Tightly Cropped & Prominent)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
@@ -187,9 +187,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Image.asset(
                 'assets/images/logo.png',
-                height: 36,
+                height: 44,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, color: Color(0xFF6B21A8), size: 28),
+                errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, color: Color(0xFF6B21A8), size: 32),
               ),
             ),
             const SizedBox(width: 10),
