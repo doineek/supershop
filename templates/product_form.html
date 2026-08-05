@@ -228,6 +228,60 @@
 </form>
 
 <script>
+function updateCategorySubOptions() {
+  const mainCatId = document.getElementById('mainCategorySelect').value;
+  const subSelect = document.getElementById('subCategorySelect');
+  const subOptions = subSelect.querySelectorAll('option');
+
+  let hasSelectedMatch = false;
+  subOptions.forEach(opt => {
+    if (!opt.value) {
+      opt.style.display = 'block';
+      return;
+    }
+    const catId = opt.getAttribute('data-cat-id');
+    if (!mainCatId || catId === mainCatId) {
+      opt.style.display = 'block';
+      if (opt.selected) hasSelectedMatch = true;
+    } else {
+      opt.style.display = 'none';
+      if (opt.selected) opt.selected = false;
+    }
+  });
+
+  if (!hasSelectedMatch && mainCatId) {
+    subSelect.value = '';
+  }
+
+  updateSubSubOptions();
+}
+
+function updateSubSubOptions() {
+  const subCatId = document.getElementById('subCategorySelect').value;
+  const subSubSelect = document.getElementById('subSubCategorySelect');
+  const subSubOptions = subSubSelect.querySelectorAll('option');
+
+  let hasSelectedMatch = false;
+  subSubOptions.forEach(opt => {
+    if (!opt.value) {
+      opt.style.display = 'block';
+      return;
+    }
+    const subcatId = opt.getAttribute('data-subcat-id');
+    if (!subCatId || subcatId === subCatId) {
+      opt.style.display = 'block';
+      if (opt.selected) hasSelectedMatch = true;
+    } else {
+      opt.style.display = 'none';
+      if (opt.selected) opt.selected = false;
+    }
+  });
+
+  if (!hasSelectedMatch && subCatId) {
+    subSubSelect.value = '';
+  }
+}
+
 function autoCalculateDoineekPrice() {
   const mrp = parseFloat(document.getElementById('mrpInput').value) || 0;
   const pct = parseFloat(document.getElementById('discountPctInput').value) || 0;
@@ -284,6 +338,7 @@ function onBuyGetChange() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  updateCategorySubOptions();
   toggleOfferInputs();
 });
 </script>
