@@ -686,7 +686,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                       ),
                                                                     ),
                                                                     Text(
-                                                                      'Doineek Price: TK ${prod.effectivePrice.toStringAsFixed(0)}',
+                                                                      'Doineek: TK ${prod.effectivePrice.toStringAsFixed(0)}',
                                                                       style: const TextStyle(
                                                                         fontSize: 12.5,
                                                                         fontWeight: FontWeight.w900,
@@ -1360,7 +1360,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                           ),
                                         ),
                                         Text(
-                                          'Doineek Price: TK ${prod.effectivePrice.toStringAsFixed(0)}',
+                                          'Doineek: TK ${prod.effectivePrice.toStringAsFixed(0)}',
                                           style: const TextStyle(
                                             fontSize: 12.5,
                                             fontWeight: FontWeight.w900,

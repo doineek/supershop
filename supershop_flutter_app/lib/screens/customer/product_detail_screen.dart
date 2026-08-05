@@ -444,7 +444,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   },
                   icon: const Icon(Icons.flash_on, size: 18, color: Colors.white),
                   label: const Text(
-                    "Buy Now",
+                    "⚡ Buy Now",
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
