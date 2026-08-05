@@ -2516,6 +2516,26 @@ def toggle_delivery_area(area_id):
     return redirect(url_for("delivery_areas"))
 
 
+@app.route("/delivery_areas/<int:area_id>/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_delivery_area(area_id):
+    conn = get_connection()
+    country = request.form.get("country", "Bangladesh").strip()
+    district = request.form.get("district", "").strip()
+    area = request.form.get("area", "").strip()
+    if district and area:
+        conn.execute(
+            "UPDATE delivery_areas SET country = ?, district = ?, area = ? WHERE id = ?",
+            (country, district, area, area_id)
+        )
+        conn.commit()
+        remote_control.push_delivery_areas_to_cloud()
+        flash("Delivery area updated successfully.", "success")
+    conn.close()
+    return redirect(url_for("delivery_areas"))
+
+
 @app.route("/delivery_areas/<int:area_id>/delete", methods=["POST"])
 @login_required
 @admin_required

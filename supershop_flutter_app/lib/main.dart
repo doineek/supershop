@@ -58,20 +58,36 @@ class SupershopApp extends StatelessWidget {
             darkTheme: ThemeData(
               brightness: Brightness.dark,
               primarySwatch: Colors.purple,
-              primaryColor: const Color(0xFF9333EA),
+              primaryColor: const Color(0xFFA855F7),
               useMaterial3: true,
-              scaffoldBackgroundColor: const Color(0xFF120B1A),
+              scaffoldBackgroundColor: const Color(0xFF0F0716),
               appBarTheme: const AppBarTheme(
                 backgroundColor: Color(0xFF2E1065),
                 foregroundColor: Colors.white,
-                elevation: 0,
+                elevation: 1,
+                titleTextStyle: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              cardTheme: const CardThemeData(
-                color: Color(0xFF1E152A),
-                elevation: 2,
+              cardTheme: CardThemeData(
+                color: const Color(0xFF1E1033),
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: Color(0xFF4C1D95), width: 1.2),
+                ),
               ),
-              dialogTheme: const DialogThemeData(
-                backgroundColor: Color(0xFF1E152A),
+              dialogTheme: DialogThemeData(
+                backgroundColor: const Color(0xFF1E1033),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xFF6B21A8), width: 1.5),
+                ),
+              ),
+              textTheme: const TextTheme(
+                bodyLarge: TextStyle(color: Color(0xFFF3E8FF), fontSize: 16),
+                bodyMedium: TextStyle(color: Color(0xFFE9D5FF), fontSize: 14),
+                titleLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                titleMedium: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                labelLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
             locale: localeProv.locale,
