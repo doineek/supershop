@@ -1670,6 +1670,7 @@ def api_categories_tree():
     cat_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL GROUP BY category_id").fetchall())
     sub_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL GROUP BY sub_category_id").fetchall())
     subsub_counts = dict(conn.execute("SELECT sub_sub_category_id, COUNT(*) FROM products WHERE sub_sub_category_id IS NOT NULL GROUP BY sub_sub_category_id").fetchall())
+    uncategorized_count = conn.execute("SELECT COUNT(*) FROM products WHERE category_id IS NULL OR category_id NOT IN (SELECT id FROM categories)").fetchone()[0]
     conn.close()
     
     cat_list = []
@@ -1691,6 +1692,15 @@ def api_categories_tree():
         c_dict["product_count"] = cat_counts.get(c["id"], 0)
         c_dict["sub_categories"] = c_subs
         cat_list.append(c_dict)
+
+    # Append virtual 'Uncategorized' category node
+    cat_list.append({
+        "id": -1,
+        "name": "Uncategorized",
+        "icon": "📦",
+        "product_count": uncategorized_count,
+        "sub_categories": []
+    })
     return jsonify(cat_list)
 
 

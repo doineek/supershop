@@ -140,7 +140,11 @@ class _HomeScreenState extends State<HomeScreen> {
     List<Product> list = allProducts;
     if (_searchQuery.trim().isNotEmpty) {
       String q = _searchQuery.trim().toLowerCase();
-      list = list.where((p) => p.name.toLowerCase().contains(q) || p.categoryName.toLowerCase().contains(q)).toList();
+      if (q == 'uncategorized') {
+        list = list.where((p) => p.categoryId == null || p.categoryId == 0 || p.categoryName.trim().isEmpty || p.categoryName.trim().toLowerCase() == 'uncategorized').toList();
+      } else {
+        list = list.where((p) => p.name.toLowerCase().contains(q) || p.categoryName.toLowerCase().contains(q)).toList();
+      }
     }
     if (_selectedTab == 'trending') {
       return list.where((p) => p.isTrending).toList();
@@ -954,7 +958,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 subtitle: Text(
-                  "${subs.length} Sub-Categories, $catProdCount Products",
+                  subs.isNotEmpty ? "${subs.length} Sub-Categories, $catProdCount Products" : "$catProdCount Products",
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 onExpansionChanged: (expanded) {
