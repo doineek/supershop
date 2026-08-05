@@ -541,10 +541,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 final prod = displayProducts[index];
                                                 final savedAmount = prod.mrp > prod.sellPrice ? prod.mrp - prod.sellPrice : 0.0;
 
-                                                return Card(
-                                                  elevation: 2,
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                return Container(
+                                                  decoration: BoxDecoration(
+                                                    color: isDark ? const Color(0xFF1E152A) : Colors.white,
+                                                    borderRadius: BorderRadius.circular(16),
+                                                    border: Border.all(
+                                                      color: isDark ? Colors.purple.shade900.withOpacity(0.4) : Colors.purple.shade100.withOpacity(0.6),
+                                                      width: 1,
+                                                    ),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.purple.withOpacity(isDark ? 0.2 : 0.05),
+                                                        blurRadius: 8,
+                                                        offset: const Offset(0, 3),
+                                                      ),
+                                                    ],
+                                                  ),
                                                   child: InkWell(
+                                                    borderRadius: BorderRadius.circular(16),
                                                     onTap: () {
                                                       Navigator.push(
                                                         context,
@@ -556,58 +570,69 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       child: Column(
                                                         crossAxisAlignment: CrossAxisAlignment.start,
                                                         children: [
+                                                          // Product Image Container
                                                           Expanded(
-                                                            child: Stack(
-                                                              children: [
-                                                                Center(
-                                                                  child: prod.imageUrl.isNotEmpty
-                                                                      ? Image.network(
-                                                                          prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
-                                                                          fit: BoxFit.cover,
-                                                                          errorBuilder: (_, __, ___) => Container(
-                                                                            color: isDark ? Colors.grey[800] : Colors.purple.shade50,
-                                                                            child: const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF6B21A8)),
-                                                                          ),
-                                                                        )
-                                                                      : Container(
-                                                                          color: isDark ? Colors.grey[800] : Colors.purple.shade50,
-                                                                          child: const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF6B21A8)),
-                                                                        ),
-                                                                ),
-                                                                if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)
-                                                                  Positioned(
-                                                                    top: 0,
-                                                                    left: 0,
-                                                                    child: Container(
-                                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                                      decoration: BoxDecoration(
-                                                                        color: prod.offerType == 'buy_x_get_y' ? Colors.purple.shade700 : Colors.red,
-                                                                        borderRadius: BorderRadius.circular(4),
-                                                                      ),
-                                                                      child: Text(
-                                                                        prod.offerTitle.isNotEmpty
-                                                                            ? prod.offerTitle
-                                                                            : (prod.offerType == 'percentage'
-                                                                                ? '${prod.offerValue}% OFF'
-                                                                                : 'TK ${savedAmount.toStringAsFixed(0)} ${loc.translate('save')}'),
-                                                                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                                                      ),
+                                                            child: Container(
+                                                              decoration: BoxDecoration(
+                                                                color: isDark ? const Color(0xFF2D1F3F) : const Color(0xFFFAF5FF),
+                                                                borderRadius: BorderRadius.circular(12),
+                                                              ),
+                                                              child: Stack(
+                                                                children: [
+                                                                  Center(
+                                                                    child: ClipRRect(
+                                                                      borderRadius: BorderRadius.circular(10),
+                                                                      child: prod.imageUrl.isNotEmpty
+                                                                          ? Image.network(
+                                                                              prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
+                                                                              fit: BoxFit.cover,
+                                                                              errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF7E22CE)),
+                                                                            )
+                                                                          : const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF7E22CE)),
                                                                     ),
                                                                   ),
-                                                              ],
+                                                                  if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)
+                                                                    Positioned(
+                                                                      top: 6,
+                                                                      left: 6,
+                                                                      child: Container(
+                                                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                                        decoration: BoxDecoration(
+                                                                          gradient: LinearGradient(
+                                                                            colors: prod.offerType == 'buy_x_get_y'
+                                                                                ? [const Color(0xFF7E22CE), const Color(0xFFA855F7)]
+                                                                                : [const Color(0xFFE11D48), const Color(0xFFF43F5E)],
+                                                                          ),
+                                                                          borderRadius: BorderRadius.circular(6),
+                                                                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 3)],
+                                                                        ),
+                                                                        child: Text(
+                                                                          prod.offerTitle.isNotEmpty
+                                                                              ? prod.offerTitle
+                                                                              : (prod.offerType == 'percentage'
+                                                                                  ? '${prod.offerValue}% OFF'
+                                                                                  : 'TK ${savedAmount.toStringAsFixed(0)} ${loc.translate('save')}'),
+                                                                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                ],
+                                                              ),
                                                             ),
                                                           ),
-                                                          const SizedBox(height: 4),
+                                                          const SizedBox(height: 6),
 
+                                                          // Product Title
                                                           Text(
                                                             prod.name,
                                                             maxLines: 1,
                                                             overflow: TextOverflow.ellipsis,
-                                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.2),
                                                           ),
 
                                                           const SizedBox(height: 4),
 
+                                                          // Dual Price & Stock Row
                                                           Row(
                                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                             crossAxisAlignment: CrossAxisAlignment.end,
@@ -627,8 +652,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                     Text(
                                                                       'Doineek: TK ${prod.effectivePrice.toStringAsFixed(0)}',
                                                                       style: const TextStyle(
-                                                                        fontSize: 12,
-                                                                        fontWeight: FontWeight.bold,
+                                                                        fontSize: 12.5,
+                                                                        fontWeight: FontWeight.w900,
                                                                         color: Color(0xFF6B21A8),
                                                                       ),
                                                                     ),
@@ -636,31 +661,32 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                 ),
                                                               ),
                                                               Container(
-                                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                                                 decoration: BoxDecoration(
-                                                                  color: prod.stockQty > 0 ? Colors.purple.shade50 : Colors.red.shade50,
-                                                                  borderRadius: BorderRadius.circular(4),
+                                                                  color: prod.stockQty > 0 ? const Color(0xFFF3E8FF) : Colors.red.shade50,
+                                                                  borderRadius: BorderRadius.circular(6),
                                                                 ),
                                                                 child: Text(
                                                                   prod.stockQty > 0 ? 'Stock: ${prod.stockQty}' : 'Out',
                                                                   style: TextStyle(
-                                                                    fontSize: 8,
+                                                                    fontSize: 8.5,
                                                                     fontWeight: FontWeight.bold,
-                                                                    color: prod.stockQty > 0 ? Colors.purple.shade900 : Colors.red.shade800,
+                                                                    color: prod.stockQty > 0 ? const Color(0xFF6B21A8) : Colors.red.shade800,
                                                                   ),
                                                                 ),
                                                               ),
                                                             ],
                                                           ),
 
-                                                          const SizedBox(height: 6),
+                                                          const SizedBox(height: 8),
 
-                                                          // Add to Cart & Buy Now Buttons Row
+                                                          // High-Contrast Buttons Row (Cart vs Buy Now)
                                                           Row(
                                                             children: [
+                                                              // Cart Button (Deep Royal Purple)
                                                               Expanded(
                                                                 child: SizedBox(
-                                                                  height: 30,
+                                                                  height: 32,
                                                                   child: ElevatedButton(
                                                                     onPressed: () {
                                                                       cartProv.addToCart(prod);
@@ -673,19 +699,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                     },
                                                                     style: ElevatedButton.styleFrom(
                                                                       backgroundColor: const Color(0xFF6B21A8),
+                                                                      elevation: 0,
+                                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                                                       padding: EdgeInsets.zero,
                                                                     ),
-                                                                    child: const Text(
-                                                                      "Cart",
-                                                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                    child: const Row(
+                                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                                      children: [
+                                                                        Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
+                                                                        SizedBox(width: 3),
+                                                                        Text(
+                                                                          "Cart",
+                                                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                        ),
+                                                                      ],
                                                                     ),
                                                                   ),
                                                                 ),
                                                               ),
-                                                              const SizedBox(width: 4),
+                                                              const SizedBox(width: 5),
+                                                              // Buy Now Button (Vibrant Coral Orange Gradient)
                                                               Expanded(
                                                                 child: SizedBox(
-                                                                  height: 30,
+                                                                  height: 32,
                                                                   child: ElevatedButton(
                                                                     onPressed: () {
                                                                       cartProv.addToCart(prod);
@@ -695,12 +731,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                       );
                                                                     },
                                                                     style: ElevatedButton.styleFrom(
-                                                                      backgroundColor: const Color(0xFF9333EA),
+                                                                      backgroundColor: const Color(0xFFFF5722),
+                                                                      elevation: 0,
+                                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                                                       padding: EdgeInsets.zero,
                                                                     ),
-                                                                    child: const Text(
-                                                                      "Buy Now",
-                                                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                    child: const Row(
+                                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                                      children: [
+                                                                        Icon(Icons.bolt, size: 13, color: Colors.white),
+                                                                        SizedBox(width: 2),
+                                                                        Text(
+                                                                          "Buy Now",
+                                                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                        ),
+                                                                      ],
                                                                     ),
                                                                   ),
                                                                 ),
