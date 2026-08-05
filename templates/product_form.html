@@ -21,13 +21,16 @@
       <input type="text" name="name" required value="{{ product.name if product else '' }}">
     </div>
     <div class="field">
-      <label>Brand Name (Select or Type to Search)</label>
-      <input type="text" name="brand" id="brandInput" list="brandList" value="{{ product.brand if product else '' }}" placeholder="Type or select brand (e.g. Nestlé, Unilever)" autocomplete="off">
-      <datalist id="brandList">
+      <label>Brand Name</label>
+      <select name="brand" id="brandSelect" style="width:100%; padding:10px 14px; border:1px solid var(--line); border-radius:8px; font-size:14px;">
+        <option value="">-- Select Brand --</option>
         {% for b in brands %}
-        <option value="{{ b.name }}">
+        <option value="{{ b.name }}" {{ 'selected' if product and product.brand == b.name }}>{{ b.name }}</option>
         {% endfor %}
-      </datalist>
+        {% if product and product.brand and product.brand not in (brands|map(attribute='name')|list) %}
+        <option value="{{ product.brand }}" selected>{{ product.brand }}</option>
+        {% endif %}
+      </select>
     </div>
   </div>
 
