@@ -15,12 +15,10 @@
 </div>
 
 <!-- Category Directory Manager Section -->
-<div id="categoryManagerSection" style="display: {{ 'block' if request.args.get('open_categories') else 'block' }}; background: white; border: 2px solid #6d28d9; border-radius: 12px; padding: 20px; box-shadow: 0 4px 14px rgba(109,40,217,0.1); margin-bottom: 24px;">
+<div id="categoryManagerSection" style="display: {{ 'block' if open_cat else 'none' }}; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <h2 style="margin:0; font-size:18px; color:#5b21b6; font-weight:800; display:flex; align-items:center; gap:8px;">
-      📂 Category Directory & Taxonomy Manager
-    </h2>
-    <button type="button" onclick="toggleCategorySection()" class="btn btn-outline btn-small">Toggle Hide / Show</button>
+    <h2 style="margin:0; font-size:18px; color:#1e293b;">📂 Taxonomy & Brand Directory Manager</h2>
+    <button type="button" onclick="toggleCategorySection()" class="btn btn-outline btn-small">Close Section</button>
   </div>
 
   <!-- Category & Brand Tabs Header -->
