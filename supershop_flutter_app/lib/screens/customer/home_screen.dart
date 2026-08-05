@@ -215,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          MaterialPageRoute(builder: (_) => LoginScreen()),
                         );
                       } else {
                         showDialog(
