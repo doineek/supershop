@@ -322,71 +322,72 @@ class _HomeScreenState extends State<HomeScreen> {
                                             ),
                                           ),
                                         ),
-                                      const SizedBox(width: 12),
-                                      // Right Half (50%): Large Offer Text & Details
-                                      Expanded(
-                                        flex: 1,
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                              decoration: BoxDecoration(
-                                                color: Colors.amber.shade700,
-                                                borderRadius: BorderRadius.circular(6),
+                                        const SizedBox(width: 12),
+                                        // Right Half (50%): Large Offer Text & Details
+                                        Expanded(
+                                          flex: 1,
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber.shade700,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  offerTitle,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: Colors.black,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
                                               ),
-                                              child: Text(
-                                                offerTitle,
-                                                maxLines: 1,
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                name,
+                                                maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: const TextStyle(
-                                                  color: Colors.black,
-                                                  fontSize: 11,
+                                                  color: Colors.white,
+                                                  fontSize: 14,
                                                   fontWeight: FontWeight.bold,
+                                                  height: 1.2,
                                                 ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              name,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.bold,
-                                                height: 1.2,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Row(
-                                              children: [
-                                                if (mrp > sellPrice && mrp > 0) ...[
+                                              const SizedBox(height: 6),
+                                              Row(
+                                                children: [
+                                                  if (mrp > sellPrice && mrp > 0) ...[
+                                                    Text(
+                                                      "৳${mrp.toStringAsFixed(0)}",
+                                                      style: const TextStyle(
+                                                        color: Colors.white60,
+                                                        fontSize: 11,
+                                                        decoration: TextDecoration.lineThrough,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                  ],
                                                   Text(
-                                                    "৳${mrp.toStringAsFixed(0)}",
+                                                    "৳${sellPrice.toStringAsFixed(0)}",
                                                     style: const TextStyle(
-                                                      color: Colors.white60,
-                                                      fontSize: 11,
-                                                      decoration: TextDecoration.lineThrough,
+                                                      color: Colors.amberAccent,
+                                                      fontSize: 17,
+                                                      fontWeight: FontWeight.w900,
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 6),
                                                 ],
-                                                Text(
-                                                  "৳${sellPrice.toStringAsFixed(0)}",
-                                                  style: const TextStyle(
-                                                    color: Colors.amberAccent,
-                                                    fontSize: 17,
-                                                    fontWeight: FontWeight.w900,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 );
                               }
