@@ -68,19 +68,9 @@
           </td>
           <td style="padding: 12px 16px; text-align: center;">
             <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
-              <button onclick='openEditAreaModal({{ area|tojson|safe }})' style="background: #2563eb; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600;">
-                Action / Edit
+              <button type="button" onclick="openEditAreaModalById({{ area.id }})" style="background: #2563eb; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; box-shadow: 0 2px 4px rgba(37,99,235,0.2);">
+                Action
               </button>
-              <form action="{{ url_for('toggle_delivery_area', area_id=area.id) }}" method="POST" style="margin:0;">
-                <button style="background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600;">
-                  {% if area.is_active == 1 %}Disable{% else %}Enable{% endif %}
-                </button>
-              </form>
-              <form action="{{ url_for('delete_delivery_area', area_id=area.id) }}" method="POST" onsubmit="return confirm('Delete this area?');" style="margin:0;">
-                <button style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600;">
-                  Delete
-                </button>
-              </form>
             </div>
           </td>
         </tr>
@@ -167,7 +157,7 @@
       let html = '';
       matched.forEach(a => {
         html += `
-          <div onclick='openEditAreaModal(${JSON.stringify(a)}); document.getElementById("areaSearchResults").style.display="none";' 
+          <div onclick="openEditAreaModalById(${a.id}); document.getElementById('areaSearchResults').style.display='none';" 
                style="padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
                onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
             <div>
@@ -184,7 +174,9 @@
     resDiv.style.display = 'block';
   }
 
-  function openEditAreaModal(areaObj) {
+  function openEditAreaModalById(areaId) {
+    let areaObj = allAreasData.find(a => Number(a.id) === Number(areaId));
+    if (!areaObj) return;
     currentEditingAreaId = areaObj.id;
     document.getElementById('editAreaForm').action = '/delivery_areas/' + areaObj.id + '/edit';
     document.getElementById('editCountry').value = areaObj.country || 'Bangladesh';
