@@ -9,6 +9,7 @@ import '../models/online_order.dart';
 
 class ApiService {
   static String _customUrl = "";
+  static String _activeUrl = "";
 
   static Future<void> initServerUrl() async {
     try {
@@ -22,44 +23,89 @@ class ApiService {
 
   static Future<void> setServerUrl(String url) async {
     _customUrl = url.trim();
+    _activeUrl = "";
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('server_url', _customUrl);
     } catch (_) {}
   }
 
-  /// Get candidate server URLs in priority order for robust mobile connection
+  /// Candidate server URLs in priority order for global & local connectivity
   static List<String> get candidateUrls {
     List<String> list = [];
     if (_customUrl.isNotEmpty) {
       list.add(_customUrl);
     }
+    if (_activeUrl.isNotEmpty && !list.contains(_activeUrl)) {
+      list.add(_activeUrl);
+    }
     if (kIsWeb) {
       String host = Uri.base.host.isNotEmpty ? Uri.base.host : "127.0.0.1";
-      list.add("http://$host:5000");
+      String webUrl = "http://$host:5000";
+      if (!list.contains(webUrl)) list.add(webUrl);
     }
-    // Local Wi-Fi network IPs of PC (direct connection to local software on same Wi-Fi)
-    list.add("http://192.168.0.102:5000");
-    list.add("http://192.168.0.100:5000");
-    list.add("http://192.168.0.101:5000");
-    list.add("http://192.168.0.103:5000");
-    list.add("http://192.168.1.102:5000");
-    list.add("http://192.168.1.100:5000");
-    list.add("https://supershop-mj0g.onrender.com");
-    list.add("http://127.0.0.1:5000");
-    list.add("http://10.0.2.2:5000");
+    // 1. Global 24/7 Online Production Server (accessible from anywhere on 4G, 5G, Wi-Fi)
+    const String cloudUrl = "https://supershop-mj0g.onrender.com";
+    if (!list.contains(cloudUrl)) list.add(cloudUrl);
+
+    // 2. Direct Local Wi-Fi network IPs of PC (fallback when on same Wi-Fi)
+    final localIps = [
+      "http://192.168.0.102:5000",
+      "http://192.168.0.100:5000",
+      "http://192.168.0.101:5000",
+      "http://192.168.0.103:5000",
+      "http://192.168.1.102:5000",
+      "http://192.168.1.100:5000",
+      "http://127.0.0.1:5000",
+      "http://10.0.2.2:5000"
+    ];
+
+    for (var ip in localIps) {
+      if (!list.contains(ip)) list.add(ip);
+    }
     return list;
   }
 
   static String get baseUrl {
-    return candidateUrls.first;
+    return _activeUrl.isNotEmpty ? _activeUrl : candidateUrls.first;
+  }
+
+  static Future<http.Response?> httpGet(String path, {Duration timeout = const Duration(seconds: 4)}) async {
+    for (String serverUrl in candidateUrls) {
+      try {
+        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
+        if (res.statusCode == 200) {
+          _activeUrl = serverUrl;
+          return res;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 10)}) async {
+    for (String serverUrl in candidateUrls) {
+      try {
+        final res = await http.post(
+          Uri.parse('$serverUrl$path'),
+          headers: headers ?? {'Content-Type': 'application/json'},
+          body: body,
+        ).timeout(timeout);
+
+        if (res.statusCode == 200 || res.statusCode == 201) {
+          _activeUrl = serverUrl;
+          return res;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   static Future<Map<String, dynamic>> fetchShopSettings() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/settings'));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final res = await httpGet('/api/settings');
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body);
       }
     } catch (e) {
       debugPrint("Error fetching shop settings: $e");
@@ -73,9 +119,9 @@ class ApiService {
 
   static Future<Map<String, String>> fetchStorePolicies() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/settings/policies'));
-      if (response.statusCode == 200) {
-        Map<String, dynamic> data = jsonDecode(response.body);
+      final res = await httpGet('/api/settings/policies');
+      if (res != null && res.statusCode == 200) {
+        Map<String, dynamic> data = jsonDecode(res.body);
         return data.map((key, value) => MapEntry(key, value.toString()));
       }
     } catch (e) {
@@ -86,9 +132,9 @@ class ApiService {
 
   static Future<List<dynamic>> fetchCategoriesTree() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/categories/tree'));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final res = await httpGet('/api/categories/tree');
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body);
       }
     } catch (e) {
       debugPrint("Error fetching category tree: $e");
@@ -98,9 +144,9 @@ class ApiService {
 
   static Future<Map<String, dynamic>> fetchPromotions() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/promotions'));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final res = await httpGet('/api/promotions');
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body);
       }
     } catch (e) {
       debugPrint("Error fetching promotions: $e");
@@ -110,9 +156,9 @@ class ApiService {
 
   static Future<List<Product>> fetchProducts() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/products'));
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
+      final res = await httpGet('/api/products');
+      if (res != null && res.statusCode == 200) {
+        List<dynamic> data = jsonDecode(res.body);
         return data.map((json) => Product.fromJson(json)).toList();
       }
     } catch (e) {
@@ -121,7 +167,6 @@ class ApiService {
     return [];
   }
 
-  /// Real-time Auto Data Stream for Products (Pulls latest data every 5 seconds)
   static Stream<List<Product>> productsStream() async* {
     while (true) {
       yield await fetchProducts();
@@ -131,9 +176,9 @@ class ApiService {
 
   static Future<List<DeliveryArea>> fetchDeliveryAreas() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/delivery-areas'));
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
+      final res = await httpGet('/api/delivery-areas');
+      if (res != null && res.statusCode == 200) {
+        List<dynamic> data = jsonDecode(res.body);
         return data.map((json) => DeliveryArea.fromJson(json)).toList();
       }
     } catch (e) {
@@ -153,7 +198,6 @@ class ApiService {
     required String paymentMethod,
     required List<Map<String, dynamic>> cartItems,
   }) async {
-    String lastError = "";
     final payload = jsonEncode({
       'customer_name': customerName,
       'customer_phone': customerPhone,
@@ -166,33 +210,25 @@ class ApiService {
       'cart_items': cartItems,
     });
 
-    for (String serverUrl in candidateUrls) {
+    final res = await httpPost('/api/orders/place', body: payload, timeout: const Duration(seconds: 12));
+    if (res != null) {
       try {
-        final response = await http.post(
-          Uri.parse('$serverUrl/api/orders/place'),
-          headers: {'Content-Type': 'application/json'},
-          body: payload,
-        ).timeout(const Duration(seconds: 12));
-
-        final body = jsonDecode(response.body);
-        if (response.statusCode == 200) {
-          _customUrl = serverUrl;
+        final body = jsonDecode(res.body);
+        if (res.statusCode == 200) {
           return body;
         } else {
-          lastError = body['message'] ?? 'Failed to place order (${response.statusCode})';
+          return {'success': false, 'message': body['message'] ?? 'Failed to place order (${res.statusCode})'};
         }
-      } catch (e) {
-        lastError = '$e';
-      }
+      } catch (_) {}
     }
-    return {'success': false, 'message': 'Network connection error: $lastError'};
+    return {'success': false, 'message': 'Network connection error: Unable to connect to server.'};
   }
 
   static Future<List<OnlineOrder>> fetchMyOrders(String phone) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/orders/my-orders?phone=$phone'));
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
+      final res = await httpGet('/api/orders/my-orders?phone=$phone');
+      if (res != null && res.statusCode == 200) {
+        List<dynamic> data = jsonDecode(res.body);
         return data.map((json) => OnlineOrder.fromJson(json)).toList();
       }
     } catch (e) {
@@ -201,7 +237,6 @@ class ApiService {
     return [];
   }
 
-  /// Real-time Auto Data Stream for Customer Orders (Pulls latest status every 3 seconds)
   static Stream<List<OnlineOrder>> myOrdersStream(String phone) async* {
     while (true) {
       yield await fetchMyOrders(phone);
@@ -211,9 +246,9 @@ class ApiService {
 
   static Future<List<OnlineOrder>> fetchDeliveryOrders() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/orders/delivery-orders'));
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
+      final res = await httpGet('/api/orders/delivery-orders');
+      if (res != null && res.statusCode == 200) {
+        List<dynamic> data = jsonDecode(res.body);
         return data.map((json) => OnlineOrder.fromJson(json)).toList();
       }
     } catch (e) {
@@ -224,18 +259,15 @@ class ApiService {
 
   static Future<Map<String, dynamic>> verifyDeliveryOtp(String orderNumber, String otp) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/delivery/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'order_number': orderNumber,
-          'otp': otp,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/delivery/verify-otp', body: jsonEncode({
+        'order_number': orderNumber,
+        'otp': otp,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> login({
@@ -244,19 +276,16 @@ class ApiService {
     bool isDeliveryMan = false,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'password': password,
-          'is_delivery_man': isDeliveryMan,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/auth/login', body: jsonEncode({
+        'phone': phone,
+        'password': password,
+        'is_delivery_man': isDeliveryMan,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> register({
@@ -266,19 +295,17 @@ class ApiService {
     required String password,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'name': name,
-          'email': email,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/auth/register', body: jsonEncode({
+        'phone': phone,
+        'name': name,
+        'email': email,
+        'password': password,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> cancelOrder({
@@ -286,18 +313,15 @@ class ApiService {
     required String phone,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/orders/cancel'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'order_number': orderNumber,
-          'customer_phone': phone,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/orders/cancel', body: jsonEncode({
+        'order_number': orderNumber,
+        'customer_phone': phone,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> changePassword({
@@ -306,19 +330,16 @@ class ApiService {
     required String newPassword,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/auth/change-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'old_password': oldPassword,
-          'new_password': newPassword,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/auth/change-password', body: jsonEncode({
+        'phone': phone,
+        'old_password': oldPassword,
+        'new_password': newPassword,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> resetForgotPassword({
@@ -326,18 +347,15 @@ class ApiService {
     required String newPassword,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/auth/forgot-password/reset'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'new_password': newPassword,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/auth/forgot-password/reset', body: jsonEncode({
+        'phone': phone,
+        'new_password': newPassword,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> sendCustomerOtp({
@@ -345,18 +363,15 @@ class ApiService {
     String purpose = 'registration',
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/customer/send-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'purpose': purpose,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/customer/send-otp', body: jsonEncode({
+        'phone': phone,
+        'purpose': purpose,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> verifyCustomerOtp({
@@ -364,18 +379,15 @@ class ApiService {
     required String otp,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/customer/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'otp': otp,
-        }),
-      );
-      return jsonDecode(response.body);
+      final res = await httpPost('/api/customer/verify-otp', body: jsonEncode({
+        'phone': phone,
+        'otp': otp,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> acceptRiderOrder({
@@ -384,23 +396,16 @@ class ApiService {
     required String riderPhone,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/rider/accept-order'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'order_id': orderId,
-          'rider_name': riderName,
-          'rider_phone': riderPhone,
-        }),
-      );
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-      var decoded = jsonDecode(response.body);
-      return {'success': false, 'message': decoded['message'] ?? 'Failed to accept order'};
+      final res = await httpPost('/api/rider/accept-order', body: jsonEncode({
+        'order_id': orderId,
+        'rider_name': riderName,
+        'rider_phone': riderPhone,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> updateRiderOrderStatus({
@@ -409,22 +414,15 @@ class ApiService {
     String otp = '',
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/rider/update-order-status'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'order_id': orderId,
-          'status': status,
-          'otp': otp,
-        }),
-      );
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-      var decoded = jsonDecode(response.body);
-      return {'success': false, 'message': decoded['message'] ?? 'Failed to update order status'};
+      final res = await httpPost('/api/rider/update-order-status', body: jsonEncode({
+        'order_id': orderId,
+        'status': status,
+        'otp': otp,
+      }));
+      if (res != null) return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+    return {'success': false, 'message': 'Network error'};
   }
 }
