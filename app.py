@@ -685,7 +685,7 @@ def checkout():
 
     # Real-time backup: push this invoice and updated product stocks to Firebase immediately
     remote_control.push_sale_to_cloud(sale_id)
-    for item in cart_items:
+    for item in items:
         if item.get("product_id"):
             remote_control.push_product_to_cloud(item["product_id"])
 
@@ -2644,14 +2644,42 @@ def api_place_order():
         if prod:
             unit_price = float(prod["sell_price"])
             mrp_price = float(prod["mrp"])
-            line_total = unit_price * qty
+
+            offer_type = prod["offer_type"] or ""
+            offer_value = prod["offer_value"] or ""
+            offer_title = prod["offer_title"] or ""
+
+            paid_qty = qty
+            actual_qty = qty
+
+            if offer_type == 'buy_x_get_y' or ('buy' in offer_title.lower()):
+                buy_qty, free_qty_set = 2, 1
+                if offer_value and ',' in offer_value:
+                    try:
+                        parts = [int(p.strip()) for p in offer_value.split(',')]
+                        if len(parts) >= 2:
+                            buy_qty, free_qty_set = parts[0], parts[1]
+                    except Exception:
+                        pass
+                
+                total_set = buy_qty + free_qty_set
+                if qty % total_set == 0:
+                    paid_qty = (qty // total_set) * buy_qty
+                    actual_qty = qty
+                elif qty >= buy_qty:
+                    free_items = (qty // buy_qty) * free_qty_set
+                    paid_qty = qty
+                    actual_qty = qty + free_items
+
+            line_total = unit_price * paid_qty
             subtotal += line_total
             processed_items.append({
                 "product_id": prod_id,
                 "product_name": prod["name"],
                 "unit_price": unit_price,
                 "mrp_price": mrp_price,
-                "quantity": qty,
+                "quantity": actual_qty,
+                "paid_qty": paid_qty,
                 "total_price": line_total
             })
 

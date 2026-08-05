@@ -150,8 +150,14 @@
       {% for item in items %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td><strong>{{ item.product_name }}</strong></td>
-        <td style="text-align: center;">{{ item.quantity }}</td>
+        <td>
+          <strong>{{ item.product_name }}</strong>
+          {% set expected_paid = (item.total_price / item.unit_price)|round|int if item.unit_price > 0 else item.quantity %}
+          {% if item.quantity > expected_paid %}
+            <br><small style="color: #9333ea; font-weight: bold;">🎁 Buy 2 Get 1 FREE Offer Applied ({{ item.quantity - expected_paid }} Free Item Included)</small>
+          {% endif %}
+        </td>
+        <td style="text-align: center;"><strong>{{ item.quantity }}</strong></td>
         <td style="text-align: right;">TK {{ "%.2f"|format(item.unit_price) }}</td>
         <td style="text-align: right;">TK {{ "%.2f"|format(item.total_price) }}</td>
       </tr>
