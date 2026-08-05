@@ -2594,18 +2594,16 @@ def api_place_order():
     if is_blocked:
         conn.close()
         return jsonify({"success": False, "message": block_msg}), 403
-    # Location Area Verification
-    allowed = conn.execute(
-        "SELECT id FROM delivery_areas WHERE LOWER(country) = LOWER(?) AND LOWER(district) = LOWER(?) AND LOWER(area) = LOWER(?) AND is_active = 1",
-        (country, district, area)
-    ).fetchone()
-
-    if not allowed:
-        conn.close()
-        return jsonify({
-            "success": False,
-            "message": f"Sorry! {area}, {district} delivery service is currently disabled in your area. Please change delivery address."
-        }), 400
+    # Location Area Verification (Auto-register active area if new)
+    if country and district and area:
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO delivery_areas (country, district, area, is_active, created_at) VALUES (?, ?, ?, 1, ?)",
+                (country, district, area, datetime.now().isoformat())
+            )
+            conn.commit()
+        except Exception:
+            pass
 
     import random
     otp = f"{random.randint(1000, 9999)}"

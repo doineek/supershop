@@ -298,6 +298,75 @@ def _ensure_remote_doc(db):
         ref.set(STATE)
 
 
+def _on_online_orders_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `online_orders` collection in Firestore.
+    If a customer places an order on mobile app / website cloud server,
+    it syncs into local SQLite database automatically in real time!
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            order_number = doc.id
+            if change.type.name in ("ADDED", "MODIFIED"):
+                existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+                if not existing:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO online_orders (
+                            order_number, customer_name, customer_phone, customer_email,
+                            country, district, area, address_details, payment_method,
+                            payment_status, subtotal, delivery_charge, total_amount,
+                            order_status, delivery_otp, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        order_number,
+                        data.get("customer_name", ""),
+                        data.get("customer_phone", ""),
+                        data.get("customer_email", ""),
+                        data.get("country", "Bangladesh"),
+                        data.get("district", ""),
+                        data.get("area", ""),
+                        data.get("address_details", ""),
+                        data.get("payment_method", "cod"),
+                        data.get("payment_status", "pending"),
+                        float(data.get("subtotal") or 0.0),
+                        float(data.get("delivery_charge") or 60.0),
+                        float(data.get("total_amount") or 0.0),
+                        data.get("order_status", "new"),
+                        data.get("delivery_otp", ""),
+                        data.get("created_at", datetime.now().isoformat()),
+                        data.get("updated_at", datetime.now().isoformat())
+                    ))
+                    new_order_id = cur.lastrowid
+                    items = data.get("items", [])
+                    for item in items:
+                        cur.execute("""
+                            INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            new_order_id,
+                            item.get("product_id", 0),
+                            item.get("product_name", ""),
+                            float(item.get("unit_price") or 0.0),
+                            float(item.get("mrp_price") or 0.0),
+                            int(item.get("quantity") or 1),
+                            float(item.get("total_price") or 0.0)
+                        ))
+                    print(f"[remote_control] [SYNC] Real-time online order #{order_number} synced from Firebase to local SQLite DB.")
+                else:
+                    conn.execute(
+                        "UPDATE online_orders SET order_status = ?, payment_status = ?, updated_at = ? WHERE order_number = ?",
+                        (data.get("order_status", "new"), data.get("payment_status", "pending"), datetime.now().isoformat(), order_number)
+                    )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[remote_control] online orders sync failed: {e}")
+
+
 def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
@@ -311,6 +380,7 @@ def start():
         # Live listeners (Firebase Console -> Local App)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
         db.collection("products").on_snapshot(_on_products_change)
+        db.collection("online_orders").on_snapshot(_on_online_orders_change)
 
         def _safety_net_loop():
             while True:
