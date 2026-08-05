@@ -186,8 +186,9 @@ def products():
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     conn.close()
-    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories)
+    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands)
 
 
 @app.route("/products/new", methods=["GET", "POST"])
@@ -198,6 +199,7 @@ def new_product():
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     if request.method == "POST":
         sku = request.form["sku"].strip()
         name = request.form["name"].strip()
@@ -215,6 +217,16 @@ def new_product():
         description = request.form.get("description", "").strip()
         image_url = request.form.get("image_url", "").strip()
         
+        # Auto-insert brand into brands table if new
+        if brand:
+            try:
+                b_conn = get_connection()
+                b_conn.execute("INSERT OR IGNORE INTO brands (name) VALUES (?)", (brand,))
+                b_conn.commit()
+                b_conn.close()
+            except Exception:
+                pass
+
         # Multi-file upload handling
         files = request.files.getlist("product_image_files") or request.files.getlist("product_image_file")
         uploaded_urls = []
@@ -258,7 +270,7 @@ def new_product():
         except Exception as e:
             flash(f"Could not save product: {e}", "error")
     conn.close()
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, product=None)
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=None)
 
 
 @app.route("/products/<int:product_id>/edit", methods=["GET", "POST"])
@@ -269,6 +281,7 @@ def edit_product(product_id):
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
     conn.close()
 
@@ -283,8 +296,17 @@ def edit_product(product_id):
         description = request.form.get("description", "").strip()
         image_url = request.form.get("image_url", "").strip()
         
+        # Auto-insert brand into brands table if new
+        if brand:
+            try:
+                b_conn = get_connection()
+                b_conn.execute("INSERT OR IGNORE INTO brands (name) VALUES (?)", (brand,))
+                b_conn.commit()
+                b_conn.close()
+            except Exception:
+                pass
+
         # Multi-file upload handling
-        sku_clean = request.form["sku"].strip()
         files = request.files.getlist("product_image_files") or request.files.getlist("product_image_file")
         uploaded_urls = []
         import random
@@ -356,7 +378,7 @@ def edit_product(product_id):
         remote_control.push_product_to_cloud(product_id)
         return redirect(url_for("products"))
 
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, product=product)
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=product)
 
 
 @app.route("/products/<int:product_id>/delete", methods=["POST"])
@@ -1582,6 +1604,60 @@ def delete_subsubcategory(subsub_id):
     remote_control.push_categories_to_cloud()
     flash("Sub-sub-category deleted.", "info")
     return redirect(url_for("products"))
+
+
+@app.route("/brands/new", methods=["POST"])
+@login_required
+@admin_required
+def add_brand():
+    name = request.form.get("name", "").strip()
+    if name:
+        try:
+            conn = get_connection()
+            conn.execute("INSERT INTO brands (name) VALUES (?)", (name,))
+            conn.commit()
+            conn.close()
+            flash(f'Brand "{name}" added.', "success")
+        except Exception as e:
+            flash(f"Could not add brand: {e}", "error")
+    return redirect(url_for("products"))
+
+
+@app.route("/brands/edit/<int:brand_id>", methods=["POST"])
+@login_required
+@admin_required
+def edit_brand(brand_id):
+    name = request.form.get("name", "").strip()
+    if name:
+        try:
+            conn = get_connection()
+            conn.execute("UPDATE brands SET name = ? WHERE id = ?", (name, brand_id))
+            conn.commit()
+            conn.close()
+            flash(f'Brand updated to "{name}".', "success")
+        except Exception as e:
+            flash(f"Could not update brand: {e}", "error")
+    return redirect(url_for("products"))
+
+
+@app.route("/brands/delete/<int:brand_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_brand(brand_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
+    conn.commit()
+    conn.close()
+    flash("Brand deleted.", "info")
+    return redirect(url_for("products"))
+
+
+@app.route("/api/brands", methods=["GET"])
+def api_brands():
+    conn = get_connection()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
+    conn.close()
+    return jsonify([dict(b) for b in brands])
 
 
 @app.route("/api/categories/tree", methods=["GET"])

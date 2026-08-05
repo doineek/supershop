@@ -196,6 +196,12 @@ def init_db():
         icon TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (sub_category_id) REFERENCES sub_categories(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS brands (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        logo TEXT NOT NULL DEFAULT ''
+    );
     """)
 
     migrations = [

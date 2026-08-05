@@ -17,15 +17,16 @@
 <!-- Category Directory Manager Section -->
 <div id="categoryManagerSection" style="display:none; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <h2 style="margin:0; font-size:18px; color:#1e293b;">📂 Category Directory Manager (3-Tier Taxonomy)</h2>
+    <h2 style="margin:0; font-size:18px; color:#1e293b;">📂 Taxonomy & Brand Directory Manager</h2>
     <button type="button" onclick="toggleCategorySection()" class="btn btn-outline btn-small">Close Section</button>
   </div>
 
-  <!-- Category Tabs Header -->
+  <!-- Category & Brand Tabs Header -->
   <div style="display:flex; gap:8px; border-bottom:1px solid #cbd5e1; margin-bottom:16px;">
     <button type="button" onclick="switchCategoryTab('main')" id="tabMainBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid #2563eb; color:#2563eb; cursor:pointer;">Main Categories ({{ categories|length }})</button>
     <button type="button" onclick="switchCategoryTab('sub')" id="tabSubBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid transparent; color:#64748b; cursor:pointer;">Sub Categories ({{ sub_categories|length }})</button>
     <button type="button" onclick="switchCategoryTab('subsub')" id="tabSubSubBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid transparent; color:#64748b; cursor:pointer;">Sub-Sub Categories ({{ sub_sub_categories|length }})</button>
+    <button type="button" onclick="switchCategoryTab('brand')" id="tabBrandBtn" style="padding:10px 16px; font-weight:700; border:none; background:none; border-bottom:3px solid transparent; color:#64748b; cursor:pointer;">Brands ({{ brands|length }})</button>
   </div>
 
   <!-- Tab 1: Main Categories -->
@@ -144,6 +145,38 @@
       </tbody>
     </table>
   </div>
+
+  <!-- Tab 4: Brand Directory -->
+  <div id="catTabBrand" style="display:none;">
+    <form method="POST" action="{{ url_for('add_brand') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+      <input type="text" name="name" placeholder="Brand Name* (e.g. Nestlé, Unilever, PRAN)" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:240px;" required>
+      <button class="btn btn-primary" type="submit">+ Add New Brand</button>
+    </form>
+
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc; text-align:left;">
+          <th style="padding:10px;">#</th>
+          <th style="padding:10px;">Brand Name</th>
+          <th style="padding:10px; text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in brands %}
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:10px; font-weight:600; color:#64748b;">{{ loop.index }}</td>
+          <td style="padding:10px; font-weight:700; color:#0f172a;">{{ b.name }}</td>
+          <td style="padding:10px; text-align:right; white-space:nowrap;">
+            <button type="button" onclick="openEditCategoryModal('brand', '{{ b.id }}', '{{ b.name }}', '', '')" class="btn btn-outline btn-small" style="margin-right:4px;">Edit</button>
+            <form method="POST" action="{{ url_for('delete_brand', brand_id=b.id) }}" style="display:inline;" onsubmit="return confirm('Delete brand {{ b.name }}?');">
+              <button type="submit" class="btn btn-danger btn-small">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <!-- Edit Category Modal Dialog -->
@@ -235,6 +268,7 @@ function switchCategoryTab(tab) {
   document.getElementById('catTabMain').style.display = (tab === 'main') ? 'block' : 'none';
   document.getElementById('catTabSub').style.display = (tab === 'sub') ? 'block' : 'none';
   document.getElementById('catTabSubSub').style.display = (tab === 'subsub') ? 'block' : 'none';
+  document.getElementById('catTabBrand').style.display = (tab === 'brand') ? 'block' : 'none';
 
   document.getElementById('tabMainBtn').style.borderBottomColor = (tab === 'main') ? '#2563eb' : 'transparent';
   document.getElementById('tabMainBtn').style.color = (tab === 'main') ? '#2563eb' : '#64748b';
@@ -244,6 +278,9 @@ function switchCategoryTab(tab) {
 
   document.getElementById('tabSubSubBtn').style.borderBottomColor = (tab === 'subsub') ? '#2563eb' : 'transparent';
   document.getElementById('tabSubSubBtn').style.color = (tab === 'subsub') ? '#2563eb' : '#64748b';
+
+  document.getElementById('tabBrandBtn').style.borderBottomColor = (tab === 'brand') ? '#2563eb' : 'transparent';
+  document.getElementById('tabBrandBtn').style.color = (tab === 'brand') ? '#2563eb' : '#64748b';
 }
 
 function openEditCategoryModal(type, id, name, parentId, icon) {
@@ -253,9 +290,11 @@ function openEditCategoryModal(type, id, name, parentId, icon) {
   const parentContainer = document.getElementById('parentSelectContainer');
   const parentLabel = document.getElementById('parentSelectLabel');
   const parentSelect = document.getElementById('modalParentSelect');
+  const iconInputRow = document.getElementById('modalIconInput')?.parentElement;
 
   document.getElementById('modalNameInput').value = name;
   document.getElementById('modalIconInput').value = icon;
+  if (iconInputRow) iconInputRow.style.display = (type === 'brand') ? 'none' : 'block';
 
   if (type === 'main') {
     title.innerText = 'Edit Main Category';
@@ -275,7 +314,14 @@ function openEditCategoryModal(type, id, name, parentId, icon) {
     parentLabel.innerText = 'Parent Sub-Category';
     parentSelect.name = 'sub_category_id';
     parentSelect.innerHTML = subCategoriesData.map(s => `<option value="${s.id}" ${s.id == parentId ? 'selected' : ''}>${s.name}</option>`).join('');
+  } else if (type === 'brand') {
+    title.innerText = 'Edit Brand';
+    form.action = '/brands/edit/' + id;
+    parentContainer.style.display = 'none';
   }
+
+  modal.style.display = 'flex';
+}
 
   modal.style.display = 'flex';
 }

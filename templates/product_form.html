@@ -21,8 +21,13 @@
       <input type="text" name="name" required value="{{ product.name if product else '' }}">
     </div>
     <div class="field">
-      <label>Brand Name</label>
-      <input type="text" name="brand" value="{{ product.brand if product else '' }}" placeholder="e.g. Nestlé, Unilever, PRAN">
+      <label>Brand Name (Select or Type to Search)</label>
+      <input type="text" name="brand" id="brandInput" list="brandList" value="{{ product.brand if product else '' }}" placeholder="Type or select brand (e.g. Nestlé, Unilever)" autocomplete="off">
+      <datalist id="brandList">
+        {% for b in brands %}
+        <option value="{{ b.name }}">
+        {% endfor %}
+      </datalist>
     </div>
   </div>
 
