@@ -310,9 +310,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             const SizedBox(height: 6),
 
-            // Category & SKU
+            // Category, Brand & SKU
             Text(
-              'SKU: ${product.sku} | ${product.categoryName}',
+              'SKU: ${product.sku}${product.brand.isNotEmpty ? " | Brand: ${product.brand}" : ""}${product.categoryName.isNotEmpty ? " | ${product.categoryName}" : ""}',
               style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 12),

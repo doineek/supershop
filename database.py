@@ -48,6 +48,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sku TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
+        brand TEXT NOT NULL DEFAULT '',
         category_id INTEGER,
         cost_price REAL NOT NULL DEFAULT 0,
         mrp REAL NOT NULL DEFAULT 0,

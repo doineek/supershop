@@ -4,6 +4,7 @@ class Product {
   final int id;
   final String sku;
   final String name;
+  final String brand;
   final int? categoryId;
   final String categoryName;
   final double mrp;
@@ -23,6 +24,7 @@ class Product {
     required this.id,
     required this.sku,
     required this.name,
+    this.brand = '',
     this.categoryId,
     this.categoryName = '',
     required this.mrp,
@@ -77,6 +79,7 @@ class Product {
       id: json['id'] ?? 0,
       sku: json['sku'] ?? '',
       name: json['name'] ?? '',
+      brand: json['brand'] ?? '',
       categoryId: json['category_id'],
       categoryName: json['category_name'] ?? '',
       mrp: (json['mrp'] ?? 0).toDouble(),

@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userImageBase64 = "";
   int _bottomNavIndex = 0;
   String _searchQuery = "";
+  String _sortBy = "default";
   Future<List<dynamic>>? _categoriesTreeFuture;
 
   final PageController _bannerController = PageController();
@@ -212,7 +213,16 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snapshot) {
           final allProducts = snapshot.data ?? [];
           final filteredProducts = _filterProducts(allProducts);
-          final displayProducts = filteredProducts.take(20).toList();
+
+          List<Product> sortedProducts = List.from(filteredProducts);
+          if (_sortBy == 'price_low') {
+            sortedProducts.sort((a, b) => a.effectivePrice.compareTo(b.effectivePrice));
+          } else if (_sortBy == 'price_high') {
+            sortedProducts.sort((a, b) => b.effectivePrice.compareTo(a.effectivePrice));
+          } else if (_sortBy == 'newest') {
+            sortedProducts.sort((a, b) => b.id.compareTo(a.id));
+          }
+          final displayProducts = sortedProducts.take(20).toList();
 
           return Stack(
             children: [
@@ -463,6 +473,49 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _buildTabChip(loc.translate('offers'), 'offers'),
                               ],
                             ),
+                          ),
+                        ),
+
+                        // Sort By & Filter Status Bar
+                        Container(
+                          color: isDark ? Colors.grey[850] : Colors.grey[100],
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _searchQuery.isNotEmpty ? 'Category: $_searchQuery (${sortedProducts.length})' : 'Products (${sortedProducts.length})',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(Icons.sort, size: 15, color: Colors.green),
+                                  const SizedBox(width: 4),
+                                  DropdownButton<String>(
+                                    value: _sortBy,
+                                    underline: const SizedBox.shrink(),
+                                    isDense: true,
+                                    style: TextStyle(fontSize: 11.5, color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                                    items: const [
+                                      DropdownMenuItem(value: 'default', child: Text('Sort: Featured')),
+                                      DropdownMenuItem(value: 'price_low', child: Text('Price: Low to High')),
+                                      DropdownMenuItem(value: 'price_high', child: Text('Price: High to Low')),
+                                      DropdownMenuItem(value: 'newest', child: Text('Sort: Newest')),
+                                    ],
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setState(() {
+                                          _sortBy = val;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
 
@@ -829,6 +882,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final cat = categoriesTree[index];
             final List subs = cat["sub_categories"] ?? [];
             final String catIcon = cat["icon"] ?? "";
+            final int catProdCount = cat["product_count"] ?? 0;
 
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
@@ -841,7 +895,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 subtitle: Text(
-                  subs.isNotEmpty ? "${subs.length} Sub-Categories" : "Tap to view products",
+                  "${subs.length} Sub-Categories, $catProdCount Products",
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 onExpansionChanged: (expanded) {
@@ -856,6 +910,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: subs.map<Widget>((sub) {
                   final List subsubs = sub["sub_sub_categories"] ?? [];
                   final String subIcon = sub["icon"] ?? "";
+                  final int subProdCount = sub["product_count"] ?? 0;
 
                   if (subsubs.isNotEmpty) {
                     return ExpansionTile(
@@ -866,15 +921,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
                       ),
                       subtitle: Text(
-                        "${subsubs.length} Sub-Sub-Categories",
+                        "${subsubs.length} Sub-Categories, $subProdCount Products",
                         style: const TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                       children: subsubs.map<Widget>((ss) {
                         final String ssIcon = ss["icon"] ?? "";
+                        final int ssProdCount = ss["product_count"] ?? 0;
+                        final String ssFormattedCount = ssProdCount.toString().padLeft(2, '0');
+
                         return ListTile(
                           contentPadding: const EdgeInsets.only(left: 64, right: 16),
                           leading: _buildIconWidget(ssIcon, size: 16.0, defaultIcon: Icons.subdirectory_arrow_right),
-                          title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5)),
+                          title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                          subtitle: Text("$ssFormattedCount Products", style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
                           onTap: () {
                             setState(() {
                               _selectedTab = 'all';
@@ -890,7 +949,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   return ListTile(
                     contentPadding: const EdgeInsets.only(left: 44, right: 16),
                     leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.subdirectory_arrow_right),
-                    title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13)),
+                    title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    subtitle: Text("$subProdCount Products", style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     onTap: () {
                       setState(() {
                         _selectedTab = 'all';

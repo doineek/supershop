@@ -172,7 +172,7 @@ def dashboard():
 # Products & Inventory
 # ===========================================================================
 
-@app.route("/products")
+@app.route("/products", methods=["GET"])
 @login_required
 def products():
     conn = get_connection()
@@ -185,8 +185,9 @@ def products():
     """).fetchall()
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     conn.close()
-    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories)
+    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories)
 
 
 @app.route("/products/new", methods=["GET", "POST"])
@@ -200,6 +201,7 @@ def new_product():
     if request.method == "POST":
         sku = request.form["sku"].strip()
         name = request.form["name"].strip()
+        brand = request.form.get("brand", "").strip()
         category_id = request.form.get("category_id") or None
         sub_category_id = request.form.get("sub_category_id") or None
         sub_sub_category_id = request.form.get("sub_sub_category_id") or None
@@ -242,9 +244,9 @@ def new_product():
         try:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO products (sku, name, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sku, name, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base)
+                "INSERT INTO products (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base)
             )
             new_product_id = cur.lastrowid
             create_product_units(conn, new_product_id, stock_qty)
@@ -277,6 +279,7 @@ def edit_product(product_id):
     if request.method == "POST":
         new_stock_qty = int(request.form["stock_qty"] or 0)
         old_stock_qty = product["stock_qty"]
+        brand = request.form.get("brand", "").strip()
         description = request.form.get("description", "").strip()
         image_url = request.form.get("image_url", "").strip()
         
@@ -311,7 +314,7 @@ def edit_product(product_id):
 
         w_conn = get_connection()
         w_conn.execute("""
-            UPDATE products SET sku=?, name=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
+            UPDATE products SET sku=?, name=?, brand=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
                                  vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
                                  description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
                                  offer_title=?, offer_type=?, offer_value=?, offer_base=?
@@ -319,6 +322,7 @@ def edit_product(product_id):
         """, (
             request.form["sku"].strip(),
             request.form["name"].strip(),
+            brand,
             request.form.get("category_id") or None,
             request.form.get("sub_category_id") or None,
             request.form.get("sub_sub_category_id") or None,
@@ -1586,6 +1590,10 @@ def api_categories_tree():
     cats = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     subs = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     subsubs = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+
+    cat_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL GROUP BY category_id").fetchall())
+    sub_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL GROUP BY sub_category_id").fetchall())
+    subsub_counts = dict(conn.execute("SELECT sub_sub_category_id, COUNT(*) FROM products WHERE sub_sub_category_id IS NOT NULL GROUP BY sub_sub_category_id").fetchall())
     conn.close()
     
     cat_list = []
@@ -1595,8 +1603,16 @@ def api_categories_tree():
         for s in subs:
             if s["category_id"] == c["id"]:
                 s_dict = dict(s)
-                s_dict["sub_sub_categories"] = [dict(ss) for ss in subsubs if ss["sub_category_id"] == s["id"]]
+                s_subsubs = []
+                for ss in subsubs:
+                    if ss["sub_category_id"] == s["id"]:
+                        ss_dict = dict(ss)
+                        ss_dict["product_count"] = subsub_counts.get(ss["id"], 0)
+                        s_subsubs.append(ss_dict)
+                s_dict["product_count"] = sub_counts.get(s["id"], 0)
+                s_dict["sub_sub_categories"] = s_subsubs
                 c_subs.append(s_dict)
+        c_dict["product_count"] = cat_counts.get(c["id"], 0)
         c_dict["sub_categories"] = c_subs
         cat_list.append(c_dict)
     return jsonify(cat_list)

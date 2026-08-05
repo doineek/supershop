@@ -178,7 +178,7 @@
 <!-- Inventory Products Table -->
 <table>
   <tr>
-    <th>SKU</th><th>Name</th><th>Category</th>
+    <th>SKU</th><th>Name</th><th>Brand</th><th>Category</th>
     <th class="num">Cost</th><th class="num">MRP</th><th class="num">Sell price</th>
     <th class="num">VAT %</th><th class="num">Stock</th><th></th>
     {% if session.role == 'admin' %}<th></th>{% endif %}
@@ -187,6 +187,7 @@
   <tr class="{{ 'row-low' if p.stock_qty <= p.low_stock_threshold }}">
     <td>{{ p.sku }}</td>
     <td>{{ p.name }}</td>
+    <td>{{ p.brand or '—' }}</td>
     <td>{{ p.category_name or '—' }}</td>
     <td class="num">TK {{ "%.2f"|format(p.cost_price) }}</td>
     <td class="num">{{ "TK %.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
