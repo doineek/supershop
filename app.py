@@ -2496,8 +2496,9 @@ def delivery_areas():
             flash(f"Delivery area '{area}, {district}' added successfully.", "success")
     
     areas = conn.execute("SELECT * FROM delivery_areas ORDER BY district, area").fetchall()
+    areas_list = [dict(a) for a in areas]
     conn.close()
-    return render_template("delivery_areas.html", areas=areas)
+    return render_template("delivery_areas.html", areas=areas_list)
 
 
 @app.route("/delivery_areas/<int:area_id>/toggle", methods=["POST"])
