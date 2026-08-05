@@ -111,7 +111,12 @@ class _CartScreenState extends State<CartScreen> {
     List<Map<String, dynamic>> cartPayload = cartProv.items.map((item) {
       return {
         'product_id': item.product.id,
+        'id': item.product.id,
+        'product_name': item.product.name,
+        'name': item.product.name,
         'quantity': item.quantity,
+        'unit_price': item.product.sellPrice,
+        'mrp_price': item.product.mrp,
       };
     }).toList();
 

@@ -2661,48 +2661,73 @@ def api_place_order():
     for item in cart_items:
         prod_id = item.get("product_id") or item.get("id") or item.get("prod_id")
         qty = int(item.get("quantity") or item.get("qty") or item.get("count") or 1)
-        prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+        
+        prod = None
+        if prod_id is not None:
+            try:
+                prod = conn.execute("SELECT * FROM products WHERE id = ?", (int(prod_id),)).fetchone()
+            except Exception:
+                prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+        
+        if not prod:
+            p_title = (item.get("product_name") or item.get("name") or item.get("title") or "").strip()
+            if p_title:
+                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (p_title,)).fetchone()
+
         if prod:
+            p_id = prod["id"]
+            p_name = prod["name"]
             unit_price = float(prod["sell_price"])
             mrp_price = float(prod["mrp"])
-
             offer_type = prod["offer_type"] or ""
             offer_value = prod["offer_value"] or ""
             offer_title = prod["offer_title"] or ""
+        else:
+            p_id = prod_id or 0
+            p_name = (item.get("product_name") or item.get("name") or item.get("title") or "Item").strip()
+            unit_price = float(item.get("unit_price") or item.get("sell_price") or item.get("price") or 0.0)
+            mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
+            offer_type = ""
+            offer_value = ""
+            offer_title = ""
 
-            paid_qty = qty
-            actual_qty = qty
+        paid_qty = qty
+        actual_qty = qty
 
-            if offer_type == 'buy_x_get_y' or ('buy' in offer_title.lower()):
-                buy_qty, free_qty_set = 2, 1
-                if offer_value and ',' in offer_value:
-                    try:
-                        parts = [int(p.strip()) for p in offer_value.split(',')]
-                        if len(parts) >= 2:
-                            buy_qty, free_qty_set = parts[0], parts[1]
-                    except Exception:
-                        pass
-                
-                total_set = buy_qty + free_qty_set
-                if qty % total_set == 0:
-                    paid_qty = (qty // total_set) * buy_qty
-                    actual_qty = qty
-                elif qty >= buy_qty:
-                    free_items = (qty // buy_qty) * free_qty_set
-                    paid_qty = qty
-                    actual_qty = qty + free_items
+        if offer_type == 'buy_x_get_y' or ('buy' in offer_title.lower()):
+            buy_qty, free_qty_set = 2, 1
+            if offer_value and ',' in offer_value:
+                try:
+                    parts = [int(p.strip()) for p in offer_value.split(',')]
+                    if len(parts) >= 2:
+                        buy_qty, free_qty_set = parts[0], parts[1]
+                except Exception:
+                    pass
+            
+            total_set = buy_qty + free_qty_set
+            if qty % total_set == 0:
+                paid_qty = (qty // total_set) * buy_qty
+                actual_qty = qty
+            elif qty >= buy_qty:
+                free_items = (qty // buy_qty) * free_qty_set
+                paid_qty = qty
+                actual_qty = qty + free_items
 
-            line_total = unit_price * paid_qty
-            subtotal += line_total
-            processed_items.append({
-                "product_id": prod_id,
-                "product_name": prod["name"],
-                "unit_price": unit_price,
-                "mrp_price": mrp_price,
-                "quantity": actual_qty,
-                "paid_qty": paid_qty,
-                "total_price": line_total
-            })
+        line_total = unit_price * paid_qty
+        subtotal += line_total
+        processed_items.append({
+            "product_id": p_id,
+            "product_name": p_name,
+            "unit_price": unit_price,
+            "mrp_price": mrp_price,
+            "quantity": actual_qty,
+            "paid_qty": paid_qty,
+            "total_price": line_total
+        })
+
+    if not processed_items:
+        conn.close()
+        return jsonify({"success": False, "message": "No valid cart items found."}), 400
 
     shop_settings = get_all_settings(conn)
     delivery_charge = float(data.get("delivery_charge") or shop_settings.get("delivery_charge") or 60.0)
