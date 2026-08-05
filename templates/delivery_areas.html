@@ -15,75 +15,78 @@
   <div id="areaSearchResults" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 105; max-height: 300px; overflow-y: auto; margin-top: 4px;"></div>
 </div>
 
-<div class="responsive-split-layout">
-  <!-- Add Delivery Area Form -->
-  <div style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); align-self: start;">
-    <h3 style="margin-top: 0; font-family: 'Space Grotesk', sans-serif;">Add Active Delivery Area</h3>
-    <form action="{{ url_for('delivery_areas') }}" method="POST">
-      <div style="margin-bottom: 14px;">
-        <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem;">Country</label>
-        <input type="text" name="country" value="Bangladesh" required readonly style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; font-size: 0.95rem;">
-      </div>
-      
-      <div style="margin-bottom: 14px;">
-        <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem;">District</label>
-        <input type="text" name="district" placeholder="e.g. Tangail" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
-      </div>
+<!-- Add Delivery Area Form (Full Width) -->
+<div style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 24px;">
+  <h3 style="margin-top: 0; margin-bottom: 14px; font-family: 'Space Grotesk', sans-serif;">Add Active Delivery Area</h3>
+  <form action="{{ url_for('delivery_areas') }}" method="POST" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) auto; gap: 14px; align-items: end;">
+    <div>
+      <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem;">Country</label>
+      <input type="text" name="country" value="Bangladesh" required readonly style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; font-size: 0.95rem;">
+    </div>
+    
+    <div>
+      <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem;">District</label>
+      <input type="text" name="district" placeholder="e.g. Tangail" required style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
+    </div>
 
-      <div style="margin-bottom: 16px;">
-        <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem;">Area Location Name</label>
-        <input type="text" name="area" placeholder="e.g. Akur Takur Para" required style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
-      </div>
+    <div>
+      <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.9rem;">Area Location Name</label>
+      <input type="text" name="area" placeholder="e.g. Akur Takur Para" required style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
+    </div>
 
-      <button type="submit" style="width: 100%; background: #16a34a; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.95rem;">
+    <div>
+      <button type="submit" style="background: #16a34a; color: white; border: none; padding: 11px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.95rem; white-space: nowrap; width: 100%;">
         Save Active Area
       </button>
-    </form>
-  </div>
+    </div>
+  </form>
+</div>
 
-  <!-- Delivery Areas Table -->
-  <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
-      <thead>
-        <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569;">
-          <th style="padding: 12px 16px;">Country</th>
-          <th style="padding: 12px 16px;">District</th>
-          <th style="padding: 12px 16px;">Area Name</th>
-          <th style="padding: 12px 16px;">Status</th>
-          <th style="padding: 12px 16px; text-align: center;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for area in areas %}
-        <tr id="areaRow_{{ area.id }}" style="border-bottom: 1px solid #f1f5f9;">
-          <td style="padding: 12px 16px; color: #64748b;">{{ area.country }}</td>
-          <td style="padding: 12px 16px; font-weight: 600;">{{ area.district }}</td>
-          <td style="padding: 12px 16px; font-weight: 600; color: #2563eb;">{{ area.area }}</td>
-          <td style="padding: 12px 16px;">
-            {% if area.is_active == 1 %}
-            <span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">ACTIVE</span>
-            {% else %}
-            <span style="background: #fee2e2; color: #b91c1c; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">DISABLED</span>
-            {% endif %}
-          </td>
-          <td style="padding: 12px 16px; text-align: center;">
-            <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
-              <button type="button" onclick="openEditAreaModalById({{ area.id }})" style="background: #2563eb; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; box-shadow: 0 2px 4px rgba(37,99,235,0.2);">
-                Action
-              </button>
-            </div>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">
-            No delivery areas added yet.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<!-- Delivery Areas Table (Full Width Below Add Form) -->
+<div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 30px;">
+  <div style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+    <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; color: #1e293b;">Active Coverage Areas List</h3>
   </div>
+  <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+    <thead>
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569;">
+        <th style="padding: 12px 16px;">Country</th>
+        <th style="padding: 12px 16px;">District</th>
+        <th style="padding: 12px 16px;">Area Name</th>
+        <th style="padding: 12px 16px;">Status</th>
+        <th style="padding: 12px 16px; text-align: center;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for area in areas %}
+      <tr id="areaRow_{{ area.id }}" style="border-bottom: 1px solid #f1f5f9;">
+        <td style="padding: 12px 16px; color: #64748b;">{{ area.country }}</td>
+        <td style="padding: 12px 16px; font-weight: 600;">{{ area.district }}</td>
+        <td style="padding: 12px 16px; font-weight: 600; color: #2563eb;">{{ area.area }}</td>
+        <td style="padding: 12px 16px;">
+          {% if area.is_active == 1 %}
+          <span style="background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">ACTIVE</span>
+          {% else %}
+          <span style="background: #fee2e2; color: #b91c1c; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">DISABLED</span>
+          {% endif %}
+        </td>
+        <td style="padding: 12px 16px; text-align: center;">
+          <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+            <button type="button" onclick="openEditAreaModalById({{ area.id }})" style="background: #2563eb; color: white; border: none; padding: 6px 16px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; box-shadow: 0 2px 4px rgba(37,99,235,0.2);">
+              Action
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">
+          No delivery areas added yet.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 
 <!-- Edit Delivery Area Modal -->
