@@ -517,6 +517,10 @@ def pos_lookup():
         "mrp": product["mrp"],
         "vat_pct": product["vat_pct"],
         "stock_qty": product["stock_qty"],
+        "is_offer": product["is_offer"],
+        "offer_type": product["offer_type"],
+        "offer_value": product["offer_value"],
+        "offer_title": product["offer_title"],
         "unit_serial": unit["a_code"] if unit else None,
     })
 
@@ -580,7 +584,25 @@ def checkout():
                 }), 400
             valid_serials.append((serial, unit_row["id"]))
 
-        line_subtotal = product["sell_price"] * quantity
+        offer_type = product["offer_type"] or ""
+        offer_value = product["offer_value"] or ""
+        offer_title = product["offer_title"] or ""
+        paid_qty = quantity
+        if offer_type == 'buy_x_get_y' or ('buy' in offer_title.lower()):
+            buy_qty, free_qty = 2, 1
+            if offer_value and ',' in offer_value:
+                try:
+                    parts = [int(p.strip()) for p in offer_value.split(',')]
+                    if len(parts) >= 2:
+                        buy_qty, free_qty = parts[0], parts[1]
+                except Exception:
+                    pass
+            total_set = buy_qty + free_qty
+            sets = quantity // total_set
+            remainder = quantity % total_set
+            paid_qty = sets * buy_qty + min(remainder, buy_qty)
+
+        line_subtotal = product["sell_price"] * paid_qty
         vat_rate = product["vat_pct"] / 100.0 if product["vat_pct"] else 0
         line_vat = line_subtotal * vat_rate
 
@@ -706,7 +728,7 @@ def sale_receipt(sale_id):
         WHERE s.id = ?
     """, (sale_id,)).fetchone()
     items = conn.execute("""
-        SELECT si.*, p.name AS product_name, p.sku
+        SELECT si.*, p.name AS product_name, p.sku, p.offer_type, p.offer_value, p.offer_title
         FROM sale_items si JOIN products p ON si.product_id = p.id
         WHERE si.sale_id = ?
     """, (sale_id,)).fetchall()
@@ -1383,7 +1405,7 @@ def sale_receipt_print(sale_id):
             WHERE s.id = ?
         """, (sale_id,)).fetchone()
     items = conn.execute("""
-        SELECT si.*, p.name AS product_name, p.sku
+        SELECT si.*, p.name AS product_name, p.sku, p.offer_type, p.offer_value, p.offer_title
         FROM sale_items si JOIN products p ON si.product_id = p.id
         WHERE si.sale_id = ?
     """, (sale_id,)).fetchall()
@@ -2572,18 +2594,18 @@ def api_delivery_areas():
 @app.route("/api/orders/place", methods=["POST"])
 def api_place_order():
     data = request.json or {}
-    country = data.get("country", "Bangladesh")
-    district = data.get("district", "").strip()
-    area = data.get("area", "").strip()
-    customer_name = data.get("customer_name", "").strip()
-    customer_phone = data.get("customer_phone", "").strip()
-    customer_email = data.get("customer_email", "").strip()
-    address_details = data.get("address_details", "").strip()
-    payment_method = data.get("payment_method", "cod").lower()
-    cart_items = data.get("cart_items", [])
+    country = (data.get("country") or data.get("country_name") or "Bangladesh").strip()
+    district = (data.get("district") or data.get("district_name") or "Tangail").strip()
+    area = (data.get("area") or data.get("area_name") or "Main Area").strip()
+    customer_name = (data.get("customer_name") or data.get("name") or "Customer").strip()
+    customer_phone = (data.get("customer_phone") or data.get("phone") or "").strip()
+    customer_email = (data.get("customer_email") or data.get("email") or "").strip()
+    address_details = (data.get("address_details") or data.get("address") or data.get("location") or "Delivery Address").strip()
+    payment_method = (data.get("payment_method") or "cod").lower()
+    cart_items = data.get("cart_items") or data.get("items") or data.get("products") or []
 
-    if not customer_name or not customer_phone or not address_details:
-        return jsonify({"success": False, "message": "Please enter Name, Phone, and Delivery Address."}), 400
+    if not customer_phone:
+        return jsonify({"success": False, "message": "Please enter a valid Phone number."}), 400
 
     if not cart_items:
         return jsonify({"success": False, "message": "Your cart is empty."}), 400
@@ -2594,6 +2616,7 @@ def api_place_order():
     if is_blocked:
         conn.close()
         return jsonify({"success": False, "message": block_msg}), 403
+
     # Location Area Verification (Auto-register active area if new)
     if country and district and area:
         try:
@@ -2615,8 +2638,8 @@ def api_place_order():
     processed_items = []
 
     for item in cart_items:
-        prod_id = item.get("product_id")
-        qty = int(item.get("quantity", 1))
+        prod_id = item.get("product_id") or item.get("id") or item.get("prod_id")
+        qty = int(item.get("quantity") or item.get("qty") or item.get("count") or 1)
         prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
         if prod:
             unit_price = float(prod["sell_price"])

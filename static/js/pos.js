@@ -155,16 +155,48 @@ allTiles.forEach(btn => {
     mrp: parseFloat(btn.dataset.mrp) || 0,
     vat_pct: parseFloat(btn.dataset.vat) || 0,
     stock: parseInt(btn.dataset.stock, 10),
+    offer_type: btn.dataset.offerType || "",
+    offer_value: btn.dataset.offerValue || "",
+    offer_title: btn.dataset.offerTitle || "",
     serial: null,
   }));
 });
+
+function getBuyXGetYStats(item) {
+  const offerType = item.offer_type || "";
+  const offerTitle = item.offer_title || "";
+  const offerValue = item.offer_value || "";
+  const isOffer = offerType === "buy_x_get_y" || offerTitle.toLowerCase().includes("buy");
+
+  if (!isOffer) {
+    return { isOffer: false, buyQty: 0, freeQty: 0, paidQty: item.quantity, freeQtyTotal: 0 };
+  }
+
+  let buyQty = 2, freeQty = 1;
+  if (offerValue && offerValue.includes(",")) {
+    const parts = offerValue.split(",").map(n => parseInt(n.trim(), 10));
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      buyQty = parts[0];
+      freeQty = parts[1];
+    }
+  }
+
+  const totalSet = buyQty + freeQty;
+  const sets = Math.floor(item.quantity / totalSet);
+  const remainder = item.quantity % totalSet;
+  const paidQty = sets * buyQty + Math.min(remainder, buyQty);
+  const freeQtyTotal = item.quantity - paidQty;
+
+  return { isOffer: true, buyQty, freeQty, paidQty, freeQtyTotal };
+}
 
 function addToCart(data) {
   const id = String(data.id);
   if (!cart[id]) {
     cart[id] = {
       name: data.name, sku: data.sku || "", price: data.price, mrp: data.mrp || 0,
-      vat_pct: data.vat_pct || 0, stock: data.stock, quantity: 0, serials: []
+      vat_pct: data.vat_pct || 0, stock: data.stock, quantity: 0, serials: [],
+      offer_type: data.offer_type || "", offer_value: data.offer_value || "", offer_title: data.offer_title || ""
     };
   }
   if (cart[id].quantity >= cart[id].stock) {
@@ -177,6 +209,13 @@ function addToCart(data) {
   }
   cart[id].serials.push(data.serial || null);
   cart[id].quantity += 1;
+
+  // Buy 2 Get 1 Scan Prompt
+  const stats = getBuyXGetYStats(cart[id]);
+  if (stats.isOffer && cart[id].quantity === stats.buyQty) {
+    alert(`🎁 BUY ${stats.buyQty} GET ${stats.freeQty} OFFER ACTIVE!\n\nYou scanned ${stats.buyQty} items of "${cart[id].name}". Please scan/bring 1 more unit to get it 100% FREE!`);
+  }
+
   saveCart();
   renderCart();
 }
@@ -194,9 +233,12 @@ function renderCart() {
 
   ids.forEach((id, idx) => {
     const item = cart[id];
-    const lineSub = item.price * item.quantity;
+    const offerStats = getBuyXGetYStats(item);
+    const lineSub = item.price * offerStats.paidQty;
+    const freeDiscount = item.price * offerStats.freeQtyTotal;
     const lineVat = lineSub * (item.vat_pct / 100);
     const lineTotalWithVat = lineSub + lineVat;
+
     subTotal += lineSub;
     totalVat += lineVat;
     mrpTotal += (item.mrp > 0 ? item.mrp : item.price) * item.quantity;
@@ -207,10 +249,22 @@ function renderCart() {
     const serialNote = scannedCount > 0
       ? `<br><small style="color:var(--green)">Scanned: ${scannedCount}/${item.quantity} (${item.serials.filter(Boolean).join(", ")})</small>`
       : `<br><small style="color:var(--ink-soft)">No tag scanned yet</small>`;
+
+    let offerNote = "";
+    if (offerStats.isOffer) {
+      if (offerStats.freeQtyTotal > 0) {
+        offerNote = `<br><span style="color:#9333ea; font-weight:bold; font-size:11px;">🎁 Buy ${offerStats.buyQty} Get ${offerStats.freeQty} FREE (${offerStats.freeQtyTotal} Free Item(s): -৳${freeDiscount.toFixed(2)})</span>`;
+      } else if (item.quantity === offerStats.buyQty) {
+        offerNote = `<br><span style="color:#d97706; font-weight:bold; font-size:11px;">💡 ${item.quantity} scanned! Scan 1 more item to get 3rd item 100% FREE!</span>`;
+      } else {
+        offerNote = `<br><span style="color:#9333ea; font-size:11px;">🎁 Buy ${offerStats.buyQty} Get ${offerStats.freeQty} Offer Available</span>`;
+      }
+    }
+
     tr.innerHTML = `
       <td style="padding:8px 4px;">${idx + 1}</td>
       <td style="padding:8px 4px;">
-        <strong>${item.sku ? item.sku + " - " : ""}${item.name}</strong>${serialNote}
+        <strong>${item.sku ? item.sku + " - " : ""}${item.name}</strong>${serialNote}${offerNote}
       </td>
       <td style="padding:8px 4px; text-align:center;">
         <input class="qty-input" type="number" min="1" max="${item.stock}" value="${item.quantity}" 

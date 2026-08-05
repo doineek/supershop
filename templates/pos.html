@@ -40,7 +40,13 @@
       <button class="pos-product"
               data-id="{{ p.id }}" data-name="{{ p.name }}" data-sku="{{ p.sku }}"
               data-price="{{ p.sell_price }}" data-mrp="{{ p.mrp }}" data-vat="{{ p.vat_pct }}"
-              data-stock="{{ p.stock_qty }}" data-search="{{ (p.name ~ ' ' ~ p.sku)|lower }}">
+              data-stock="{{ p.stock_qty }}" data-search="{{ (p.name ~ ' ' ~ p.sku)|lower }}"
+              data-offer-type="{{ p.offer_type }}" data-offer-value="{{ p.offer_value }}" data-offer-title="{{ p.offer_title }}">
+        {% if p.offer_type == 'buy_x_get_y' or ('buy' in (p.offer_title or '')|lower) %}
+        <span style="background: #9333ea; color: white; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">
+          🎁 Buy 2 Get 1 FREE
+        </span>
+        {% endif %}
         <div class="pname" style="font-weight:600; font-size:13px;">{{ p.name }}</div>
         <div class="pprice" style="color:var(--green); font-weight:700;">TK {{ "%.2f"|format(p.sell_price) }}</div>
         <div class="pstock" style="font-size:11px; color:#666;">Stock: {{ p.stock_qty }}</div>
