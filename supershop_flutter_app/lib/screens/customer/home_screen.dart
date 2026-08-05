@@ -250,27 +250,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
-                        // Top 1/4 Screen Promotion Banner Carousel (Auto-slide N seconds set by Admin)
+                        // Top 1/4 Screen Promotion Banner Carousel (50-50 Split: Left Image, Right Big Offer)
                         SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.22,
+                          height: 165,
                           child: PageView.builder(
                             controller: _bannerController,
                             itemCount: _promoList.isNotEmpty ? _promoList.length : _promotions.length,
                             itemBuilder: (context, index) {
                               if (_promoList.isNotEmpty) {
                                 final item = _promoList[index];
-                                String title = item["name"] ?? "Special Promotion";
-                                String subtitle = item["offer_title"] != null && item["offer_title"].toString().isNotEmpty
-                                    ? item["offer_title"]
-                                    : "৳${item['sell_price']} (Doineek Special)";
+                                String name = item["name"] ?? "Special Offer";
+                                String offerTitle = item["offer_title"] != null && item["offer_title"].toString().isNotEmpty
+                                    ? item["offer_title"].toString()
+                                    : "🔥 SPECIAL OFFER";
                                 String imgUrl = item["image_url"] != null ? item["image_url"].toString().split(',').first.trim() : "";
+                                double mrp = double.tryParse(item["mrp"]?.toString() ?? "0") ?? 0.0;
+                                double sellPrice = double.tryParse(item["sell_price"]?.toString() ?? "0") ?? 0.0;
 
                                 return Container(
-                                  margin: const EdgeInsets.all(8),
-                                  padding: const EdgeInsets.all(14),
+                                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
-                                      colors: [Colors.green.shade800, Colors.teal.shade600],
+                                      colors: [Colors.green.shade800, Colors.teal.shade900],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
@@ -279,39 +281,95 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   child: Row(
                                     children: [
+                                      // Left Half (50%): Product Image Card
                                       Expanded(
+                                        flex: 1,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          padding: const EdgeInsets.all(6),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: imgUrl.isNotEmpty
+                                                ? Image.network(
+                                                    imgUrl,
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder: (_, __, ___) => const Center(
+                                                      child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
+                                                    ),
+                                                  )
+                                                : const Center(
+                                                    child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      // Right Half (50%): Large Offer Text & Details
+                                      Expanded(
+                                        flex: 1,
                                         child: Column(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(4)),
-                                              child: const Text("PROMOTION", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.shade700,
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                offerTitle,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: Colors.black,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
                                             ),
-                                            const SizedBox(height: 4),
+                                            const SizedBox(height: 6),
                                             Text(
-                                              title,
-                                              maxLines: 1,
+                                              name,
+                                              maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                height: 1.2,
+                                              ),
                                             ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              subtitle,
-                                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                            const SizedBox(height: 6),
+                                            Row(
+                                              children: [
+                                                if (mrp > sellPrice && mrp > 0) ...[
+                                                  Text(
+                                                    "৳${mrp.toStringAsFixed(0)}",
+                                                    style: const TextStyle(
+                                                      color: Colors.white60,
+                                                      fontSize: 11,
+                                                      decoration: TextDecoration.lineThrough,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                ],
+                                                Text(
+                                                  "৳${sellPrice.toStringAsFixed(0)}",
+                                                  style: const TextStyle(
+                                                    color: Colors.amberAccent,
+                                                    fontSize: 17,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
-                                      if (imgUrl.isNotEmpty)
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Image.network(imgUrl, width: 64, height: 64, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_basket, size: 50, color: Colors.white38)),
-                                        )
-                                      else
-                                        const Icon(Icons.shopping_basket, size: 56, color: Colors.white38),
                                     ],
                                   ),
                                 );
@@ -320,8 +378,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               final promo = _promotions[index];
                               final colorVal = int.parse(promo["color"]!);
                               return Container(
-                                margin: const EdgeInsets.all(8),
-                                padding: const EdgeInsets.all(16),
+                                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     colors: [Color(colorVal), Color(colorVal).withValues(alpha: 0.75)],
@@ -334,23 +392,36 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: Row(
                                   children: [
                                     Expanded(
+                                      flex: 1,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white24,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: const Center(
+                                          child: Icon(Icons.local_offer, size: 54, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      flex: 1,
                                       child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             promo["title"]!,
-                                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                                            style: const TextStyle(color: Colors.amberAccent, fontSize: 16, fontWeight: FontWeight.bold),
                                           ),
                                           const SizedBox(height: 6),
                                           Text(
                                             promo["subtitle"]!,
-                                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                            style: const TextStyle(color: Colors.white, fontSize: 12),
                                           ),
                                         ],
                                       ),
                                     ),
-                                    const Icon(Icons.shopping_basket, size: 56, color: Colors.white38),
                                   ],
                                 ),
                               );

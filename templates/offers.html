@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Offers & Banner Promotions{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div>
+    <h1>🎁 Product Offers & Banner Promotions</h1>
+    <p class="subtitle">Manage special deals, discounts, and app front-page banner slides in one place.</p>
+  </div>
+</div>
+
+<!-- Promo Banner Timer Setting -->
+<div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
+  <h3 style="margin-top:0; color:#16a34a; font-size:16px;">⏱️ App Banner Slide Interval Settings</h3>
+  <form method="POST" action="{{ url_for('save_offer_interval') }}" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <label style="font-weight:600; font-size:14px;">Banner Auto-Slide Duration (Seconds):</label>
+    <input type="number" name="promo_interval_sec" value="{{ settings.get('promo_interval_sec') or 2 }}" min="1" max="60" style="width:100px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;" required>
+    <button type="submit" class="btn btn-primary" style="padding:8px 16px;">Save Interval</button>
+    <span style="font-size:12px; color:#64748b;">(App top promotion banner will automatically slide at this interval)</span>
+  </form>
+</div>
+
+<!-- Add / Edit Offer Form -->
+<div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
+  <h3 style="margin-top:0; color:#2563eb; font-size:16px;">➕ Add / Update Product Offer</h3>
+  <form method="POST" action="{{ url_for('save_product_offer') }}">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:16px;">
+      
+      <div>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Select Product (প্রোডাক্ট সিলেক্ট করুন)*</label>
+        <select name="product_id" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+          <option value="">— Choose Product —</option>
+          {% for p in all_products %}
+          <option value="{{ p.id }}">#{{ p.sku }} - {{ p.name }} (MRP: ৳{{ p.mrp }})</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Title (অফারের শিরোনাম)*</label>
+        <input type="text" name="offer_title" placeholder="e.g. 🔥 Mega Summer Sale 30% OFF" required style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+
+      <div>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Type (অফারের ধরন)</label>
+        <select name="offer_type" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+          <option value="pct">Percentage Off (% ডিসকাউন্ট)</option>
+          <option value="flat">Flat Discount (৳ ফ্ল্যাট ছাড়)</option>
+          <option value="bogo">Buy 1 Get 1 Free (বিওজিও)</option>
+          <option value="special">Special Bundle Offer</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Value (অফারের পরিমাণ / ভ্যালু)</label>
+        <input type="text" name="offer_value" placeholder="e.g. 20 (for 20%) or Free Item" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+
+    </div>
+
+    <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap; background:#f8fafc; padding:12px; border-radius:8px; margin-bottom:16px;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+        <input type="checkbox" name="is_offer" value="1" checked style="width:18px; height:18px; accent-color:#16a34a;">
+        <span>Active Product Offer (প্রোডাক্ট পেজে অফার ব্যাজ দেখাবে)</span>
+      </label>
+
+      <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+        <input type="checkbox" name="is_promotion" value="1" checked style="width:18px; height:18px; accent-color:#2563eb;">
+        <span>Show on App Front-Page Banner Slider (অ্যাপের সামনের ব্যানার স্লাইডারে দেখাবে)</span>
+      </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="padding:10px 24px; font-size:15px;">💾 Save Offer & Push to App</button>
+  </form>
+</div>
+
+<!-- Active Offers List Table -->
+<div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+  <h3 style="margin-top:0; color:#1e293b; font-size:16px;">🔥 Active Offers & Banner Promotions List ({{ offer_products|length }})</h3>
+  
+  {% if not offer_products %}
+  <p style="color:#64748b; font-style:italic;">No active offers set yet. Add an offer above to showcase it in the app slider!</p>
+  {% else %}
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="background:#f1f5f9; text-align:left;">
+        <th style="padding:12px;">Image</th>
+        <th style="padding:12px;">Product SKU & Name</th>
+        <th style="padding:12px;">MRP (৳)</th>
+        <th style="padding:12px;">Offer Price (৳)</th>
+        <th style="padding:12px;">Offer Title & Details</th>
+        <th style="padding:12px; text-align:center;">App Banner Slider</th>
+        <th style="padding:12px; text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in offer_products %}
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:12px; width:60px;">
+          {% set img_first = (p.image_url or '').split(',')[0].strip() %}
+          {% if img_first %}
+          <img src="{{ img_first }}" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0;">
+          {% else %}
+          <div style="width:48px; height:48px; background:#f1f5f9; border-radius:6px; display:flex; align-items:center; justify-content:center;">📦</div>
+          {% endif %}
+        </td>
+        <td style="padding:12px;">
+          <div style="font-weight:700; color:#0f172a;">{{ p.name }}</div>
+          <div style="font-size:12px; color:#64748b;">SKU: {{ p.sku }}</div>
+        </td>
+        <td style="padding:12px; color:#64748b; text-decoration:line-through;">
+          ৳{{ "%.2f"|format(p.mrp) }}
+        </td>
+        <td style="padding:12px; font-weight:700; color:#16a34a;">
+          ৳{{ "%.2f"|format(p.sell_price) }}
+        </td>
+        <td style="padding:12px;">
+          <span style="background:#dbeafe; color:#1d4ed8; padding:3px 8px; border-radius:4px; font-size:12px; font-weight:600; display:inline-block; margin-bottom:4px;">
+            {{ p.offer_title or 'Special Offer' }}
+          </span>
+          <div style="font-size:12px; color:#475569;">Type: {{ p.offer_type|upper }} (Value: {{ p.offer_value }})</div>
+        </td>
+        <td style="padding:12px; text-align:center;">
+          {% if p.is_promotion == 1 %}
+          <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:700;">✓ Active Slide</span>
+          {% else %}
+          <span style="background:#f1f5f9; color:#64748b; padding:4px 10px; border-radius:12px; font-size:12px;">Off</span>
+          {% endif %}
+        </td>
+        <td style="padding:12px; text-align:right;">
+          <form method="POST" action="{{ url_for('remove_product_offer', product_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Remove offer from {{ p.name }}?');">
+            <button type="submit" class="btn btn-danger btn-small">Remove Offer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

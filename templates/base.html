@@ -49,6 +49,9 @@
       <span class="sidebar-icon">📱</span><span>Online Orders</span>
     </a>
     {% if session.role == 'admin' %}
+    <a href="{{ url_for('offers_page') }}" class="sidebar-item {{ 'active' if request.path == '/offers' }}">
+      <span class="sidebar-icon">🎁</span><span>Offers & Banner</span>
+    </a>
     <a href="{{ url_for('delivery_areas') }}" class="sidebar-item {{ 'active' if request.path == '/delivery_areas' }}">
       <span class="sidebar-icon">📍</span><span>Delivery Areas</span>
     </a>

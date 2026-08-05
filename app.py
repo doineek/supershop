@@ -1511,6 +1511,92 @@ def api_categories_tree():
     return jsonify(cat_list)
 
 
+@app.route("/offers", methods=["GET"])
+@login_required
+@admin_required
+def offers_page():
+    conn = get_connection()
+    all_products = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
+    offer_products = conn.execute("""
+        SELECT p.*, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.is_offer = 1 OR p.is_promotion = 1
+        ORDER BY p.id DESC
+    """).fetchall()
+    settings = get_all_settings(conn)
+    conn.close()
+    return render_template("offers.html", all_products=all_products, offer_products=offer_products, settings=settings)
+
+
+@app.route("/offers/save", methods=["POST"])
+@login_required
+@admin_required
+def save_product_offer():
+    product_id = request.form.get("product_id")
+    offer_title = request.form.get("offer_title", "").strip()
+    offer_type = request.form.get("offer_type", "pct").strip()
+    offer_value = request.form.get("offer_value", "").strip()
+    is_offer = 1 if request.form.get("is_offer") == "1" else 0
+    is_promotion = 1 if request.form.get("is_promotion") == "1" else 0
+
+    if product_id:
+        conn = get_connection()
+        product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+        if product:
+            mrp = product["mrp"] or product["sell_price"] or 0
+            sell_price = product["sell_price"]
+            
+            # Recalculate sell_price if offer value is numeric
+            if offer_type == "pct" and offer_value.replace('.', '', 1).isdigit() and mrp > 0:
+                pct = float(offer_value)
+                sell_price = max(0, mrp * (1.0 - pct / 100.0))
+            elif offer_type == "flat" and offer_value.replace('.', '', 1).isdigit() and mrp > 0:
+                flat_amt = float(offer_value)
+                sell_price = max(0, mrp - flat_amt)
+
+            conn.execute("""
+                UPDATE products
+                SET is_offer = ?, offer_title = ?, offer_type = ?, offer_value = ?, is_promotion = ?, sell_price = ?
+                WHERE id = ?
+            """, (is_offer, offer_title, offer_type, offer_value, is_promotion, sell_price, product_id))
+            conn.commit()
+            remote_control.push_product_to_cloud(product_id)
+            flash(f'Offer saved for "{product["name"]}".', "success")
+        conn.close()
+    return redirect(url_for("offers_page"))
+
+
+@app.route("/offers/remove/<int:product_id>", methods=["POST"])
+@login_required
+@admin_required
+def remove_product_offer(product_id):
+    conn = get_connection()
+    conn.execute("""
+        UPDATE products
+        SET is_offer = 0, is_promotion = 0, offer_title = '', offer_type = '', offer_value = ''
+        WHERE id = ?
+    """, (product_id,))
+    conn.commit()
+    remote_control.push_product_to_cloud(product_id)
+    conn.close()
+    flash("Offer removed from product.", "info")
+    return redirect(url_for("offers_page"))
+
+
+@app.route("/offers/interval", methods=["POST"])
+@login_required
+@admin_required
+def save_offer_interval():
+    sec = request.form.get("promo_interval_sec", "2").strip()
+    conn = get_connection()
+    set_setting(conn, "promo_interval_sec", sec)
+    conn.commit()
+    conn.close()
+    flash("App banner slide interval updated.", "success")
+    return redirect(url_for("offers_page"))
+
+
 @app.route("/api/promotions", methods=["GET"])
 def api_promotions():
     conn = get_connection()
@@ -1520,7 +1606,7 @@ def api_promotions():
         SELECT p.*, c.name AS category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
-        WHERE p.is_promotion = 1
+        WHERE p.is_promotion = 1 OR p.is_offer = 1
         ORDER BY p.id DESC
     """).fetchall()
     conn.close()
