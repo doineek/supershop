@@ -41,13 +41,29 @@ def _init_firebase():
         if _db is not None:
             return _db
 
-        if not os.path.exists(CRED_FILE):
-            print(f"[remote_control] [ALERT] {CRED_FILE} missing! Please download Service Account Key JSON from Firebase Console.")
+        cred = None
+        if os.path.exists(CRED_FILE):
+            try:
+                cred = credentials.Certificate(CRED_FILE)
+            except Exception as e:
+                print(f"[remote_control] Failed to load {CRED_FILE}: {e}")
+
+        if not cred:
+            env_json = os.environ.get("FIREBASE_CREDENTIALS_JSON") or os.environ.get("FIREBASE_CREDENTIALS")
+            if env_json:
+                try:
+                    import json
+                    cred_dict = json.loads(env_json)
+                    cred = credentials.Certificate(cred_dict)
+                except Exception as e:
+                    print(f"[remote_control] Failed to parse FIREBASE_CREDENTIALS env var: {e}")
+
+        if not cred:
+            print(f"[remote_control] [ALERT] Neither {CRED_FILE} nor FIREBASE_CREDENTIALS env var found.")
             return None
 
         try:
             if not firebase_admin._apps:
-                cred = credentials.Certificate(CRED_FILE)
                 firebase_admin.initialize_app(cred)
             _db = firestore.client()
             return _db
