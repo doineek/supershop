@@ -504,64 +504,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  // User Avatar Card
-                  Card(
-                    elevation: 3,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Row(
-                        children: [
-                          Stack(
-                            children: [
-                              GestureDetector(
-                                onTap: _changeAvatarDialog,
-                                child: CircleAvatar(
-                                  radius: 38,
-                                  backgroundColor: Colors.green.shade100,
-                                  backgroundImage: imageProvider,
-                                  child: imageProvider == null
-                                      ? Text(_userAvatar, style: const TextStyle(fontSize: 36))
-                                      : null,
-                                ),
+                  if (_userPhone.isEmpty)
+                    Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.account_circle, size: 64, color: Colors.green),
+                            const SizedBox(height: 10),
+                            const Text(
+                              "Welcome Guest Customer!",
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              "Sign in or register an account to view your orders, save delivery address, and place orders smoothly.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey, fontSize: 13),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 44,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                  );
+                                  _loadProfileData();
+                                },
+                                icon: const Icon(Icons.login, color: Colors.white),
+                                label: const Text("Sign In / Register Now", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                               ),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: GestureDetector(
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Row(
+                          children: [
+                            Stack(
+                              children: [
+                                GestureDetector(
                                   onTap: _changeAvatarDialog,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.green,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                                  child: CircleAvatar(
+                                    radius: 38,
+                                    backgroundColor: Colors.green.shade100,
+                                    backgroundImage: imageProvider,
+                                    child: imageProvider == null
+                                        ? Text(_userAvatar, style: const TextStyle(fontSize: 36))
+                                        : null,
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _userName.isNotEmpty ? _userName : 'Customer User',
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: GestureDetector(
+                                    onTap: _changeAvatarDialog,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(_userPhone, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600)),
-                                if (_userEmail.isNotEmpty)
-                                  Text(_userEmail, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                               ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _userName.isNotEmpty ? _userName : 'Customer User',
+                                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(_userPhone, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600)),
+                                  if (_userEmail.isNotEmpty)
+                                    Text(_userEmail, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                   const SizedBox(height: 16),
 
                   // Location & Default Delivery Address Card (Clean: Exactly 1 icon)
@@ -642,36 +683,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Logout Button (Clean: Exactly 1 icon)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Confirm Logout'),
-                            content: const Text('Are you sure you want to log out?'),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                              ElevatedButton(
-                                onPressed: () {
-                                  Navigator.pop(ctx);
-                                  _logout();
-                                },
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                child: const Text('Log Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.logout, color: Colors.white),
-                      label: const Text('Log Out', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  if (_userPhone.isNotEmpty) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Confirm Logout'),
+                              content: const Text('Are you sure you want to log out?'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    _logout();
+                                  },
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                  child: const Text('Log Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.logout, color: Colors.white),
+                        label: const Text('Log Out', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

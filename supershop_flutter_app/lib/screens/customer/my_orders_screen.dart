@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../localization/app_localizations.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
+import '../auth/login_screen.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({Key? key}) : super(key: key);
@@ -152,7 +153,41 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
       body: _isLoadingPhone
           ? const Center(child: CircularProgressIndicator())
           : _userPhone.isEmpty
-              ? const Center(child: Text("Login phone number not found"))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.shopping_bag_outlined, size: 64, color: Colors.grey),
+                        const SizedBox(height: 12),
+                        const Text(
+                          "Sign in to view your order history",
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          "You must be logged in to track current or past purchases.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const LoginScreen()),
+                            );
+                            _loadUserPhone();
+                          },
+                          icon: const Icon(Icons.login, color: Colors.white),
+                          label: const Text("Sign In / Register Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
               : StreamBuilder<List<OnlineOrder>>(
                   stream: ApiService.myOrdersStream(_userPhone),
                   builder: (context, snapshot) {

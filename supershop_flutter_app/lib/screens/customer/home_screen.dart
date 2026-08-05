@@ -14,6 +14,7 @@ import '../../widgets/location_selector_dialog.dart';
 import 'my_orders_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
+import '../delivery/delivery_home_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -95,6 +96,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _loadUserProfile() async {
     final prefs = await SharedPreferences.getInstance();
+    bool staySignedIn = prefs.getBool('stay_signed_in') ?? true;
+    String userPhone = prefs.getString('user_phone') ?? '';
+    bool isDelivery = prefs.getBool('is_delivery_man') ?? false;
+
+    if (staySignedIn && userPhone.isNotEmpty && isDelivery) {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const DeliveryHomeScreen()),
+      );
+      return;
+    }
+
     if (!mounted) return;
     setState(() {
       _userAvatar = prefs.getString('user_avatar') ?? '👤';

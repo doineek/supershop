@@ -425,6 +425,26 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Stack(
           children: [
+            // Top Left Corner Browse App Button
+            Positioned(
+              top: 12,
+              left: 12,
+              child: TextButton.icon(
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.arrow_back, size: 18, color: Colors.green),
+                label: const Text("Browse App", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+            ),
+
             // Top Right Corner Rider Mode Button
             Positioned(
               top: 12,

@@ -6,6 +6,7 @@ import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/location_selector_dialog.dart';
 import 'my_orders_screen.dart';
+import '../auth/login_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -45,6 +46,45 @@ class _CartScreenState extends State<CartScreen> {
     final loc = AppLocalizations.of(context);
 
     if (cartProv.items.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    String savedPhone = prefs.getString('user_phone') ?? '';
+
+    if (savedPhone.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: Colors.green),
+              SizedBox(width: 8),
+              Text("Sign In Required"),
+            ],
+          ),
+          content: const Text("You must be signed in to place an order. Please sign in or register to complete your purchase."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+                _loadUserData();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text("Sign In / Register", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     if (_nameController.text.trim().isEmpty || _phoneController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

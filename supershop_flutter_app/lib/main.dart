@@ -8,6 +8,7 @@ import 'providers/cart_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/customer/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -84,7 +85,7 @@ class SupershopApp extends StatelessWidget {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            home: const LoginScreen(),
+            home: const HomeScreen(),
           );
         },
       ),
