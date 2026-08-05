@@ -616,10 +616,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                                           Row(
                                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                            crossAxisAlignment: CrossAxisAlignment.end,
                                                             children: [
-                                                              Text(
-                                                                'TK ${prod.effectivePrice.toStringAsFixed(0)}',
-                                                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green),
+                                                              Expanded(
+                                                                child: Column(
+                                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                                  children: [
+                                                                    Text(
+                                                                      'MRP: TK ${(prod.mrp > 0 ? prod.mrp : prod.sellPrice).toStringAsFixed(0)}',
+                                                                      style: const TextStyle(
+                                                                        fontSize: 9.5,
+                                                                        color: Colors.grey,
+                                                                        decoration: TextDecoration.lineThrough,
+                                                                      ),
+                                                                    ),
+                                                                    Text(
+                                                                      'Doineek: TK ${prod.effectivePrice.toStringAsFixed(0)}',
+                                                                      style: const TextStyle(
+                                                                        fontSize: 12,
+                                                                        fontWeight: FontWeight.bold,
+                                                                        color: Colors.green,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
                                                               ),
                                                               Container(
                                                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
