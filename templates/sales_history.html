@@ -31,6 +31,11 @@
     <td>
       <a class="btn btn-outline btn-small" href="{{ url_for('sale_receipt', sale_id=s.id) }}">View receipt</a>
       <a class="btn btn-primary btn-small" href="{{ url_for('sale_receipt_print', sale_id=s.id) }}" target="_blank">Print</a>
+      {% if session.role == 'admin' %}
+      <form action="{{ url_for('delete_sale', sale_id=s.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Permanently delete sale entry {{ s.invoice_number or s.id }}?');">
+        <button type="submit" class="btn btn-danger btn-small" style="background:#dc2626; color:#fff; border:none; padding:5px 10px; border-radius:6px; font-weight:bold; cursor:pointer; margin-left:4px;">🗑️ Delete</button>
+      </form>
+      {% endif %}
     </td>
     <td style="font-size:11.5px; color:var(--ink-soft); white-space:nowrap;">
       {% if s.print_count > 0 %}Printed {{ s.print_count }} time{{ 's' if s.print_count != 1 }}{% endif %}

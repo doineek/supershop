@@ -719,6 +719,23 @@ def sales_history():
     return render_template("sales_history.html", sales=rows)
 
 
+@app.route("/sales/<int:sale_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_sale(sale_id):
+    conn = get_connection()
+    sale = conn.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
+    if sale:
+        conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (sale_id,))
+        conn.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
+        conn.commit()
+        flash("Sale log entry deleted successfully.", "success")
+    else:
+        flash("Sale entry not found.", "error")
+    conn.close()
+    return redirect(url_for("sales_history"))
+
+
 @app.route("/sales/<int:sale_id>")
 @login_required
 def sale_receipt(sale_id):
@@ -2372,6 +2389,19 @@ def update_online_order_status(order_id):
     conn.close()
     remote_control.push_online_order_to_cloud(order_id)
     flash(f"Order #{order_id} status updated to {new_status}.", "success")
+    return redirect(url_for("online_orders"))
+
+
+@app.route("/online_orders/<int:order_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_online_order(order_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM online_order_items WHERE order_id = ?", (order_id,))
+    conn.execute("DELETE FROM online_orders WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+    flash("Online order deleted successfully.", "success")
     return redirect(url_for("online_orders"))
 
 

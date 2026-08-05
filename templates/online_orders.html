@@ -172,6 +172,14 @@
               </button>
             </form>
             {% endif %}
+
+            {% if session.role == 'admin' %}
+            <form action="{{ url_for('delete_online_order', order_id=order.id) }}" method="POST" onsubmit="return confirm('Permanently delete Online Order {{ order.order_number }}?');">
+              <button style="width: 100%; background: #dc2626; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-weight: bold; margin-top: 2px;">
+                🗑️ Delete Order
+              </button>
+            </form>
+            {% endif %}
           </div>
         </td>
       </tr>
