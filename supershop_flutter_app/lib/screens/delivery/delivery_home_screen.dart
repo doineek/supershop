@@ -59,12 +59,9 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
       barrierDismissible: false,
       builder: (alertCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
+        title: const Row(
+          children: [
             Icon(Icons.notifications_active, color: Colors.orange, size: 28),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
             SizedBox(width: 8),
             Expanded(
               child: Text(
