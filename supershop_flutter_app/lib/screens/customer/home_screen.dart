@@ -174,12 +174,22 @@ class _HomeScreenState extends State<HomeScreen> {
         toolbarHeight: 64,
         title: Row(
           children: [
-            // Website Brand Logo Image (Prominent & Large)
-            Image.asset(
-              'assets/images/logo.png',
-              height: 48,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, color: Colors.white, size: 36),
+            // Website Brand Logo Image with Crisp White Background Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                ],
+              ),
+              child: Image.asset(
+                'assets/images/logo.png',
+                height: 36,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, color: Color(0xFF6B21A8), size: 28),
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -192,11 +202,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   GestureDetector(
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => const LocationSelectorDialog(),
-                      );
+                    onTap: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      String phone = prefs.getString('user_phone') ?? '';
+                      if (phone.isEmpty) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Location পরিবর্তন করতে অনুগ্রহ করে পূর্বে Login করুন।"),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CustomerLoginScreen()),
+                        );
+                      } else {
+                        showDialog(
+                          context: context,
+                          builder: (_) => const LocationSelectorDialog(),
+                        );
+                      }
                     },
                     child: Row(
                       children: [

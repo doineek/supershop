@@ -503,12 +503,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const SizedBox(height: 20),
-                    // Website Brand Logo Image (Large & Prominent)
-                    Image.asset(
-                      'assets/images/logo.png',
-                      height: 140,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 100, color: Colors.green),
+                    // Website Brand Logo Image with Crisp White Background Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
+                        ],
+                      ),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        height: 120,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 80, color: Color(0xFF6B21A8)),
+                      ),
                     ),
                     const SizedBox(height: 12),
 
