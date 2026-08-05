@@ -260,7 +260,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text('${item.productName} × ${item.quantity}'),
-                                          Text('৳${item.totalPrice.toStringAsFixed(0)}'),
+                                          Text('TK ${item.totalPrice.toStringAsFixed(0)}'),
                                         ],
                                       ),
                                     );
@@ -273,7 +273,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                   children: [
                                     const Text("Total Payable:", style: TextStyle(fontWeight: FontWeight.bold)),
                                     Text(
-                                      '৳${order.totalAmount.toStringAsFixed(2)}',
+                                      'TK ${order.totalAmount.toStringAsFixed(2)}',
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
                                     ),
                                   ],

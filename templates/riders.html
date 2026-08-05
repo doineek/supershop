@@ -37,7 +37,7 @@
           <div style="font-size:0.83rem;">
             📦 Total: <strong>{{ r.total_orders }}</strong> | ✅ Delivered: <strong style="color:#16a34a;">{{ r.total_delivered }}</strong>
             {% if r.total_collected > 0 %}
-            <div style="font-size:0.78rem; color:#16a34a; font-weight:700; margin-top:2px;">Cash: ৳{{ "%.0f"|format(r.total_collected) }}</div>
+            <div style="font-size:0.78rem; color:#16a34a; font-weight:700; margin-top:2px;">Cash: TK {{ "%.0f"|format(r.total_collected) }}</div>
             {% endif %}
           </div>
         </td>
@@ -91,17 +91,17 @@
 
     <form method="POST" action="{{ url_for('create_rider_admin') }}">
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Rider Full Name (রাইডারের নাম) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Rider Full Name ( ) *</label>
         <input type="text" name="full_name" required placeholder="e.g. Karim Delivery" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number / Username (মোবাইল নম্বর) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number / Username ( ) *</label>
         <input type="text" name="username" required maxlength="11" placeholder="e.g. 01712345678" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:18px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password (পাসওয়ার্ড) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password () *</label>
         <input type="password" name="password" required placeholder="Minimum 4 characters" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
@@ -132,7 +132,7 @@
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">New Password (পাসওয়ার্ড পরিবর্তন না করতে খালি রাখুন)</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">New Password (     )</label>
         <input type="password" name="password" placeholder="Leave empty to keep unchanged" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
@@ -189,11 +189,11 @@
 <script>
 function openRiderOrdersModal(rider) {
   document.getElementById('riderOrdersTitle').innerText = '🛵 ' + (rider.full_name || rider.username) + ' - Accepted & Delivered Orders';
-  document.getElementById('riderOrdersSubtitle').innerText = 'Mobile: ' + rider.username + ' | Total Orders Handled: ' + rider.total_orders + ' | Delivered: ' + rider.total_delivered + ' (Cash: ৳' + rider.total_collected.toFixed(0) + ')';
+  document.getElementById('riderOrdersSubtitle').innerText = 'Mobile: ' + rider.username + ' | Total Orders Handled: ' + rider.total_orders + ' | Delivered: ' + rider.total_delivered + ' (Cash: TK ' + rider.total_collected.toFixed(0) + ')';
 
   let bodyDiv = document.getElementById('riderOrdersBody');
   if (!rider.orders || rider.orders.length === 0) {
-    bodyDiv.innerHTML = '<div style="padding:30px; text-align:center; color:#64748b; font-size:0.95rem;">এই রাইডার এখনো কোনো অর্ডার একসেপ্ট বা ডেলিভারি করেননি।</div>';
+    bodyDiv.innerHTML = '<div style="padding:30px; text-align:center; color:#64748b; font-size:0.95rem;">        ।</div>';
   } else {
     let html = '';
     rider.orders.forEach(o => {
@@ -218,7 +218,7 @@ function openRiderOrdersModal(rider) {
               <div>📍 <strong>Address:</strong> ${o.address_details}, ${o.area}, ${o.district}</div>
             </div>
             <div>
-              <div>💵 <strong>Cash Collection:</strong> <span style="color: #16a34a; font-weight: bold;">৳${o.total_amount.toFixed(2)}</span></div>
+              <div>💵 <strong>Cash Collection:</strong> <span style="color: #16a34a; font-weight: bold;">TK ${o.total_amount.toFixed(2)}</span></div>
               <div>💳 <strong>Payment Method:</strong> ${o.payment_method || 'COD'}</div>
               <div>🔑 <strong>Delivery OTP:</strong> <strong style="font-family: monospace; color: #dc2626; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">${o.delivery_otp}</strong></div>
             </div>

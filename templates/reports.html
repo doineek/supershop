@@ -26,12 +26,12 @@
 <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
   <div class="card">
     <div class="label">Total Sales Revenue</div>
-    <div class="value" style="color:var(--green);">৳{{ "%.2f"|format(revenue) }}</div>
+    <div class="value" style="color:var(--green);">TK {{ "%.2f"|format(revenue) }}</div>
     <small style="color:var(--ink-soft);">{{ tx_count }} Total invoices</small>
   </div>
   <div class="card">
     <div class="label">Cost of Goods Sold (COGS)</div>
-    <div class="value">৳{{ "%.2f"|format(cogs) }}</div>
+    <div class="value">TK {{ "%.2f"|format(cogs) }}</div>
     <small style="color:var(--ink-soft);">Product purchase costs</small>
   </div>
   <div class="card" style="border:2px solid {{ 'var(--green)' if net_profit >= 0 else 'var(--danger)' }}; background: {{ 'var(--green-soft)' if net_profit >= 0 else 'var(--danger-soft)' }};">
@@ -39,7 +39,7 @@
       NET {{ 'PROFIT' if net_profit >= 0 else 'LOSS' }}
     </div>
     <div class="value" style="color:{{ 'var(--green)' if net_profit >= 0 else 'var(--danger)' }}; font-size:26px;">
-      {{ "+" if net_profit >= 0 else "-" }}৳{{ "%.2f"|format(net_profit|abs) }}
+      {{ "+" if net_profit >= 0 else "-" }}TK {{ "%.2f"|format(net_profit|abs) }}
     </div>
     <small style="color:var(--ink-soft); font-weight:600;">Gross Profit + Income − Expenses</small>
   </div>
@@ -54,7 +54,7 @@
       <span style="background: #0284c7; color: white; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem;">Mobile App & Web</span>
     </h3>
     <div style="font-size: 1.8rem; font-weight: bold; color: #0284c7; margin: 8px 0;">
-      ৳{{ "%.2f"|format(online_summary.revenue or 0) }}
+      TK {{ "%.2f"|format(online_summary.revenue or 0) }}
     </div>
     <div style="font-size: 0.9rem; color: #334155; font-weight: 600;">
       📦 Total Online Orders: <strong>{{ online_summary.tx_count or 0 }}</strong>
@@ -68,7 +68,7 @@
       <span style="background: #64748b; color: white; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem;">In-Store Counter</span>
     </h3>
     <div style="font-size: 1.8rem; font-weight: bold; color: #1e293b; margin: 8px 0;">
-      ৳{{ "%.2f"|format(offline_summary.revenue or 0) }}
+      TK {{ "%.2f"|format(offline_summary.revenue or 0) }}
     </div>
     <div style="font-size: 0.9rem; color: #334155; font-weight: 600;">
       🏬 Total POS Counter Orders: <strong>{{ offline_summary.tx_count or 0 }}</strong>
@@ -96,7 +96,7 @@
           <div style="background:var(--paper-dim); border-radius:4px; height:8px; overflow:hidden;">
             <div style="background:var(--green); height:100%; width:{{ (p.qty_sold / max_qty_sold * 100)|round(1) }}%;"></div>
           </div>
-          <small style="color:var(--ink-soft);">Revenue ৳{{ "%.2f"|format(p.revenue) }} · Profit ৳{{ "%.2f"|format(p.profit) }}</small>
+          <small style="color:var(--ink-soft);">Revenue TK {{ "%.2f"|format(p.revenue) }} · Profit TK {{ "%.2f"|format(p.profit) }}</small>
         </div>
         {% endfor %}
       {% else %}
@@ -117,7 +117,7 @@
           <div style="background:var(--paper-dim); border-radius:4px; height:8px; overflow:hidden;">
             <div style="background:#D4A017; height:100%; width:{{ (p.qty_sold / max_qty_sold * 100)|round(1) }}%;"></div>
           </div>
-          <small style="color:var(--ink-soft);">Stock left: {{ p.stock_qty }} · Revenue ৳{{ "%.2f"|format(p.revenue) }}</small>
+          <small style="color:var(--ink-soft);">Stock left: {{ p.stock_qty }} · Revenue TK {{ "%.2f"|format(p.revenue) }}</small>
         </div>
         {% endfor %}
       {% else %}
@@ -161,7 +161,7 @@
       </select>
     </div>
     <div class="field">
-      <label>Amount (৳)</label>
+      <label>Amount (TK )</label>
       <input type="number" step="0.01" name="amount" placeholder="0.00" required>
     </div>
     <div class="field">
@@ -190,7 +190,7 @@
           </span>
         </td>
         <td><strong>{{ item.title }}</strong></td>
-        <td class="num" style="font-weight:700;">৳{{ "%.2f"|format(item.amount) }}</td>
+        <td class="num" style="font-weight:700;">TK {{ "%.2f"|format(item.amount) }}</td>
         <td style="white-space:nowrap;">
           <button class="btn btn-outline btn-small" onclick="toggleEdit('edit-row-{{ item.id }}')">Edit</button>
           <form method="POST" action="{{ url_for('delete_ledger_entry', entry_id=item.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">

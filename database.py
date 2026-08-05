@@ -307,7 +307,7 @@ def init_db():
     # Seed default shop settings (only if not already present) so the Settings
     # page and every receipt/label always has a value to fall back on.
     default_settings = {
-        "shop_name": "DOINEEK দৈনিক",
+        "shop_name": "DOINEEK",
         "shop_address": "House 12, Road 5, Dhanmondi, Dhaka-1205",
         "shop_phone": "+880-1XXX-XXXXXX",
         "vat_reg_no": "0",
@@ -321,7 +321,7 @@ def init_db():
 
 
 DEFAULT_SETTINGS = {
-    "shop_name": "DOINEEK দৈনিক",
+    "shop_name": "DOINEEK",
     "shop_address": "House 12, Road 5, Dhanmondi, Dhaka-1205",
     "shop_phone": "+880-1XXX-XXXXXX",
     "vat_reg_no": "0",

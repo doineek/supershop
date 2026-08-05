@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}{{ shop.shop_name or 'DOINEEK (দৈনিক) Supershop' }}{% endblock %}</title>
+<title>{% block title %}{{ shop.shop_name or 'DOINEEK Supershop' }}{% endblock %}</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}?v=2">
 <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}?v=2">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.png') }}?v=2">
@@ -146,8 +146,8 @@
       // Desktop Notification
       if ("Notification" in window) {
         if (Notification.permission === "granted") {
-          new Notification("🔔 নতুন অনলাইন অর্ডার পাওয়া গেছে!", {
-            body: `অর্ডার নম্বর: ${ordNum} (${ordName} - ৳${ordAmount})`,
+          new Notification("🔔 New Online Order Received!", {
+            body: `Order # ${ordNum} (${ordName} - TK ${ordAmount})`,
             icon: "/static/images/logo.png"
           });
         } else if (Notification.permission === "default") {
@@ -159,7 +159,7 @@
       let banner = document.getElementById('globalOrderToastBanner');
       let textDiv = document.getElementById('globalOrderToastText');
       if (banner && textDiv) {
-        textDiv.innerHTML = `Order #${ordNum} (${ordName} - ৳${ordAmount})`;
+        textDiv.innerHTML = `Order #${ordNum} (${ordName} - TK ${ordAmount})`;
         banner.style.display = 'block';
         setTimeout(function() {
           banner.style.display = 'none';

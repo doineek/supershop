@@ -46,9 +46,9 @@
         {% if item.unit_serials %}<br><small style="color:#888">SL: {{ item.unit_serials }}</small>{% endif %}
       </td>
       <td style="text-align:right">{{ item.quantity }}</td>
-      <td style="text-align:right">৳{{ "%.2f"|format(item.unit_price) }}</td>
+      <td style="text-align:right">TK {{ "%.2f"|format(item.unit_price) }}</td>
       {% if sale.vat_amount and sale.vat_amount > 0 %}<td style="text-align:right">{{ "%.1f"|format(item.vat_pct) }}%</td>{% endif %}
-      <td style="text-align:right">৳{{ "%.2f"|format(item.unit_price * item.quantity + item.vat_amount) }}</td>
+      <td style="text-align:right">TK {{ "%.2f"|format(item.unit_price * item.quantity + item.vat_amount) }}</td>
     </tr>
     {% endfor %}
   </table>
@@ -56,24 +56,24 @@
 
   <div class="receipt-line" style="border-bottom:none; padding-top:6px;">
     <span>Sub-total</span>
-    <span>৳{{ "%.2f"|format(sale.total_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.total_amount) }}</span>
   </div>
   {% if sale.vat_amount and sale.vat_amount > 0 %}
   <div class="receipt-line" style="border-bottom:none;">
     <span>VAT</span>
-    <span>৳{{ "%.2f"|format(sale.vat_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.vat_amount) }}</span>
   </div>
   {% endif %}
   {% if sale.saved_amount > 0.004 %}
   <div class="receipt-line" style="border-bottom:none;">
     <span>You saved</span>
-    <span>৳{{ "%.2f"|format(sale.saved_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.saved_amount) }}</span>
   </div>
   {% endif %}
 
   <div class="receipt-total">
     <span>NET PAYABLE</span>
-    <span>৳{{ "%.2f"|format(sale.rounded_total) }}</span>
+    <span>TK {{ "%.2f"|format(sale.rounded_total) }}</span>
   </div>
   <div style="font-size:11px; text-align:center; margin-top:4px; color:#555;">
     ({{ total_words }})
@@ -81,19 +81,19 @@
 
   <div class="receipt-line" style="border-bottom:none; padding-top:10px;">
     <span>Cash</span>
-    <span>৳{{ "%.2f"|format(sale.cash_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.cash_amount) }}</span>
   </div>
   <div class="receipt-line" style="border-bottom:none;">
     <span>Card / mobile</span>
-    <span>৳{{ "%.2f"|format(sale.card_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.card_amount) }}</span>
   </div>
   <div class="receipt-line" style="border-bottom:none; font-weight:600;">
     <span>Total paid</span>
-    <span>৳{{ "%.2f"|format(sale.cash_amount + sale.card_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.cash_amount + sale.card_amount) }}</span>
   </div>
   <div class="receipt-line" style="border-bottom:none;">
     <span>Change</span>
-    <span>৳{{ "%.2f"|format(sale.change_amount) }}</span>
+    <span>TK {{ "%.2f"|format(sale.change_amount) }}</span>
   </div>
 
   <p style="font-size:11px; color:#555; text-align:center; margin-top:14px; border-top:1px dashed #ccc; padding-top:10px;">

@@ -364,7 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 children: [
                                                   if (mrp > sellPrice && mrp > 0) ...[
                                                     Text(
-                                                      "৳${mrp.toStringAsFixed(0)}",
+                                                      "TK ${mrp.toStringAsFixed(0)}",
                                                       style: const TextStyle(
                                                         color: Colors.white60,
                                                         fontSize: 11,
@@ -374,7 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     const SizedBox(width: 6),
                                                   ],
                                                   Text(
-                                                    "৳${sellPrice.toStringAsFixed(0)}",
+                                                    "TK ${sellPrice.toStringAsFixed(0)}",
                                                     style: const TextStyle(
                                                       color: Colors.amberAccent,
                                                       fontSize: 17,
@@ -536,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                             ? prod.offerTitle
                                                                             : (prod.offerType == 'percentage'
                                                                                 ? '${prod.offerValue}% OFF'
-                                                                                : '৳${savedAmount.toStringAsFixed(0)} ${loc.translate('save')}'),
+                                                                                : 'TK ${savedAmount.toStringAsFixed(0)} ${loc.translate('save')}'),
                                                                         style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                                                                       ),
                                                                     ),
@@ -565,7 +565,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                             children: [
                                                               Text(
-                                                                '৳${prod.effectivePrice.toStringAsFixed(0)}',
+                                                                'TK ${prod.effectivePrice.toStringAsFixed(0)}',
                                                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green),
                                                               ),
                                                               Container(
@@ -776,7 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : const Icon(Icons.shopping_bag, size: 24, color: Colors.grey),
               ),
               title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              subtitle: Text("${prod.categoryName} • ৳${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              subtitle: Text("${prod.categoryName} • TK ${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
               trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.green),
               onTap: () {
                 setState(() => _searchQuery = "");

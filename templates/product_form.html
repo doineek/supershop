@@ -21,7 +21,7 @@
 
   <div class="field-row">
     <div class="field">
-      <label>Category (ক্যাটাগরি)</label>
+      <label>Category ()</label>
       <select name="category_id" id="categorySelect">
         <option value="">— none —</option>
         {% for c in categories %}
@@ -30,7 +30,7 @@
       </select>
     </div>
     <div class="field">
-      <label>Sub-Category (সাব-ক্যাটাগরি)</label>
+      <label>Sub-Category (-)</label>
       <select name="sub_category_id" id="subCategorySelect">
         <option value="">— none —</option>
         {% for s in sub_categories %}
@@ -39,7 +39,7 @@
       </select>
     </div>
     <div class="field">
-      <label>Sub-Sub-Category (সাব-সাব-ক্যাটাগরি)</label>
+      <label>Sub-Sub-Category (--)</label>
       <select name="sub_sub_category_id" id="subSubCategorySelect">
         <option value="">— none —</option>
         {% for ss in sub_sub_categories %}
@@ -55,7 +55,7 @@
       <input type="number" step="0.01" name="cost_price" required value="{{ product.cost_price if product else 0 }}">
     </div>
     <div class="field">
-      <label>MRP (Regular Price ৳)</label>
+      <label>MRP (Regular Price TK )</label>
       <input type="number" step="0.01" name="mrp" id="mrpInput" value="{{ product.mrp if product else 0 }}" oninput="autoCalculateDoineekPrice()">
     </div>
   </div>
@@ -63,12 +63,12 @@
   <!-- Auto-Calculating Doineek Price from Discount % (Starting from 0%) -->
   <div class="field-row">
     <div class="field">
-      <label style="color:#0284c7; font-weight:bold;">Discount % (ছাড়ের শতাংশ 0 - 100%)</label>
+      <label style="color:#0284c7; font-weight:bold;">Discount % (  0 - 100%)</label>
       <input type="number" step="0.1" min="0" max="100" id="discountPctInput" placeholder="e.g. 0 to 100% off" oninput="autoCalculateDoineekPrice()">
-      <span style="font-size: 0.75rem; color: #64748b;">(MRP এবং % লিখলে নিচে Doineek Price অটো সেট হবে, 0% দিলে MRP আর Doineek সমান হবে)</span>
+      <span style="font-size: 0.75rem; color: #64748b;">(MRP  %   Doineek Price   , 0%  MRP  Doineek  )</span>
     </div>
     <div class="field">
-      <label style="color:#15803d; font-weight:bold;">Doineek Price (Sell price for customer ৳)</label>
+      <label style="color:#15803d; font-weight:bold;">Doineek Price (Sell price for customer TK )</label>
       <input type="number" step="0.01" name="sell_price" id="sellPriceInput" required value="{{ product.sell_price if product else 0 }}">
     </div>
   </div>
@@ -101,12 +101,12 @@
     
     <!-- Multi-File Batch Select & Drag-and-Drop Dropzone -->
     <div style="margin-top:10px;">
-      <label style="font-weight:bold; color:#0f172a;">Upload Product Images (একবারে ড্র্যাগ বা সিলেক্ট করে একাধিক ছবি আপলোড করতে পারবেন)</label>
+      <label style="font-weight:bold; color:#0f172a;">Upload Product Images (         )</label>
       
       <div id="dropZone" onclick="document.getElementById('multiFileInput').click()" style="border: 2px dashed #0284c7; background: #f0f9ff; padding: 22px; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s;">
         <div style="font-size: 2.2rem; color: #0284c7;">📁 📸</div>
-        <div style="font-weight: bold; color: #0369a1; font-size: 1rem; margin-top: 4px;">এখানে ক্লিক করুন অথবা একাধিক ছবি ড্র্যাগ করে এনে ছেড়ে দিন</div>
-        <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">(Ctrl চেপে ধরে একসাথে অসংখ্য প্রোডাক্ট ছবি নির্বাচন করার অপশন দেওয়া আছে)</div>
+        <div style="font-weight: bold; color: #0369a1; font-size: 1rem; margin-top: 4px;">          </div>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">(Ctrl           )</div>
         <input type="file" id="multiFileInput" name="product_image_files" accept="image/*" multiple style="display:none;" onchange="handleFileSelect(this.files)">
       </div>
 
@@ -114,7 +114,7 @@
 
       {% if product and product.image_url %}
       <div style="margin-top:12px;">
-        <label style="font-size:0.85rem; color:#475569; font-weight:bold;">বর্তমান রাখা ছবিসমূহ:</label>
+        <label style="font-size:0.85rem; color:#475569; font-weight:bold;">  :</label>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
           {% for img_path in product.image_url.split(',') %}
             {% if img_path.strip() %}
@@ -129,48 +129,48 @@
     </div>
 
     <div class="field" style="margin-top:12px;">
-      <label>Product Image URL (অথবা ইমেজের ওয়েব লিঙ্ক দিন)</label>
-      <input type="text" name="image_url" placeholder="https://example.com/image.jpg বা /static/uploads/..." value="{{ product.image_url if product else '' }}">
+      <label>Product Image URL (    )</label>
+      <input type="text" name="image_url" placeholder="https://example.com/image.jpg  /static/uploads/..." value="{{ product.image_url if product else '' }}">
     </div>
 
     <div class="field" style="margin-top: 10px;">
-      <label>Product Description (পণ্যের বিবরণ)</label>
-      <textarea name="description" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" placeholder="পণ্যের গুণাগুণ ও বিস্তারিত বর্ণনা...">{{ product.description if product else '' }}</textarea>
+      <label>Product Description ( )</label>
+      <textarea name="description" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" placeholder="    ...">{{ product.description if product else '' }}</textarea>
     </div>
 
     <div style="display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap;">
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" name="is_trending" {{ 'checked' if product and product.is_trending == 1 }}>
-        🔥 Trending Product (ট্রেন্ডিং পণ্য)
+        🔥 Trending Product ( )
       </label>
 
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" name="is_flash_sale" {{ 'checked' if product and product.is_flash_sale == 1 }}>
-        ⚡ Flash Sale (ফ্ল্যাশ সেল)
+        ⚡ Flash Sale ( )
       </label>
 
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" name="is_offer" {{ 'checked' if product and product.is_offer == 1 }}>
-        🎁 Current Offer (বিশেষ অফার)
+        🎁 Current Offer ( )
       </label>
 
       <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#e65100; font-weight:bold;">
         <input type="checkbox" name="is_promotion" {{ 'checked' if product and product.is_promotion == 1 }}>
-        🚀 Show in Front Page Promotion Banner (অ্যাপের ১/৪ অফার ব্যানার স্লাইডারে দেখাবে)
+        🚀 Show in Front Page Promotion Banner ( /    )
       </label>
     </div>
 
     <!-- Enhanced Advance Offer Section -->
     <div style="background: #fff; border: 1px solid #cbd5e1; padding: 14px; border-radius: 8px; margin-top: 14px;">
-      <h4 style="margin: 0 0 10px 0; color: #0284c7;">🎯 Advance Offer Settings (অফার কাস্টমাইজেশন)</h4>
+      <h4 style="margin: 0 0 10px 0; color: #0284c7;">🎯 Advance Offer Settings ( )</h4>
       
       <div class="field-row">
         <div class="field">
-          <label>Offer Type (অফারের ধরন)</label>
+          <label>Offer Type ( )</label>
           <select name="offer_type" id="offerTypeSelect" onchange="toggleOfferInputs()">
-            <option value="" {{ 'selected' if not product or not product.offer_type }}>Standard (সাধারণ অফার)</option>
-            <option value="percentage" {{ 'selected' if product and product.offer_type == 'percentage' }}>Percentage Discount (% ছাড়)</option>
-            <option value="buy_x_get_y" {{ 'selected' if product and product.offer_type == 'buy_x_get_y' }}>Buy X Get Y (X টি কিনলে Y টি ফ্রি)</option>
+            <option value="" {{ 'selected' if not product or not product.offer_type }}>Standard ( )</option>
+            <option value="percentage" {{ 'selected' if product and product.offer_type == 'percentage' }}>Percentage Discount (% )</option>
+            <option value="buy_x_get_y" {{ 'selected' if product and product.offer_type == 'buy_x_get_y' }}>Buy X Get Y (X   Y  )</option>
           </select>
         </div>
 
@@ -181,7 +181,7 @@
         </div>
 
         <div class="field" id="buyGetOfferBox" style="display:none;">
-          <label>Buy X Get Y Value (১ - ১০)</label>
+          <label>Buy X Get Y Value ( - )</label>
           <div style="display:flex; gap:6px; align-items:center;">
             <span>Buy</span>
             <select id="buyXSelect" onchange="onBuyGetChange()" style="padding:6px; border-radius:4px; border:1px solid #cbd5e1;">
@@ -203,12 +203,12 @@
 
       <!-- Discount Price Base Selector (MRP vs Doineek Price) -->
       <div class="field" id="offerBaseBox" style="margin-top:10px; display:none;">
-        <label style="font-weight:bold; color:#0369a1;">Discount Price Base (ছাড়ের হিসাব হবে কোন দাম থেকে?)</label>
+        <label style="font-weight:bold; color:#0369a1;">Discount Price Base (     ?)</label>
         <select name="offer_base" id="offerBaseSelect" onchange="onOfferPctChange()">
-          <option value="mrp" {{ 'selected' if not product or product.offer_base == 'mrp' }}>From MRP / Regular Price (MRP থেকে ডিসকাউন্ট)</option>
-          <option value="doineek" {{ 'selected' if product and product.offer_base == 'doineek' }}>From Doineek Price (Doineek Price থেকে অতিরিক্ত ডিসকাউন্ট)</option>
+          <option value="mrp" {{ 'selected' if not product or product.offer_base == 'mrp' }}>From MRP / Regular Price (MRP  )</option>
+          <option value="doineek" {{ 'selected' if product and product.offer_base == 'doineek' }}>From Doineek Price (Doineek Price   )</option>
         </select>
-        <span style="font-size: 0.75rem; color: #64748b;">(MRP সিলেক্ট করলে MRP থেকে % ছাড় কেটে কার্টে যোগ হবে, আর Doineek Price সিলেক্ট করলে Doineek Price থেকে % ছাড় কেটে কার্টে যোগ হবে)</span>
+        <span style="font-size: 0.75rem; color: #64748b;">(MRP   MRP  %     ,  Doineek Price   Doineek Price  %     )</span>
       </div>
 
       <div class="field" style="margin-top:10px;">

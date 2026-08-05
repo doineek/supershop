@@ -42,7 +42,7 @@
               data-price="{{ p.sell_price }}" data-mrp="{{ p.mrp }}" data-vat="{{ p.vat_pct }}"
               data-stock="{{ p.stock_qty }}" data-search="{{ (p.name ~ ' ' ~ p.sku)|lower }}">
         <div class="pname" style="font-weight:600; font-size:13px;">{{ p.name }}</div>
-        <div class="pprice" style="color:var(--green); font-weight:700;">৳{{ "%.2f"|format(p.sell_price) }}</div>
+        <div class="pprice" style="color:var(--green); font-weight:700;">TK {{ "%.2f"|format(p.sell_price) }}</div>
         <div class="pstock" style="font-size:11px; color:#666;">Stock: {{ p.stock_qty }}</div>
       </button>
       {% endfor %}
@@ -54,15 +54,15 @@
     
     <div style="background:var(--green-soft); padding:16px; border-radius:10px; text-align:center; margin-bottom:18px;">
       <div style="font-size:13px; text-transform:uppercase; font-weight:700; color:var(--green);">NET PAYABLE</div>
-      <div id="cartTotal" style="font-family:var(--font-mono); font-size:42px; font-weight:700; color:var(--green); line-height:1.1;">৳0.00</div>
-      <div id="subTotalText" style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Subtotal: ৳0.00</div>
+      <div id="cartTotal" style="font-family:var(--font-mono); font-size:42px; font-weight:700; color:var(--green); line-height:1.1;">TK 0.00</div>
+      <div id="subTotalText" style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Subtotal: TK 0.00</div>
     </div>
 
     <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;" id="vatRow">
-      <span>VAT Amount:</span><strong id="vatAmount">৳0.00</strong>
+      <span>VAT Amount:</span><strong id="vatAmount">TK 0.00</strong>
     </div>
     <div style="display:flex; justify-content:space-between; font-size:13px; color:var(--green); margin-bottom:14px;" id="savedRow">
-      <span>Customer Savings:</span><strong id="savedAmount">৳0.00</strong>
+      <span>Customer Savings:</span><strong id="savedAmount">TK 0.00</strong>
     </div>
 
     <div class="field" style="margin-bottom:12px;">
@@ -86,7 +86,7 @@
 
     <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px dashed var(--line); padding-top:12px; margin-bottom:20px;">
       <span style="font-weight:600; font-size:15px;">Change Due:</span>
-      <span id="changeDue" style="font-family:var(--font-mono); font-size:22px; font-weight:700; color:var(--green);">৳0.00</span>
+      <span id="changeDue" style="font-family:var(--font-mono); font-size:22px; font-weight:700; color:var(--green);">TK 0.00</span>
     </div>
 
     <button class="btn btn-gold" style="width:100%; justify-content:center; padding:14px; font-size:17px; font-weight:700;" id="checkoutBtn">

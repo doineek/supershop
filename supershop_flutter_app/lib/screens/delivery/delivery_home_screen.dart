@@ -91,7 +91,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                   Text("📞 Phone: ${order.customerPhone}", style: const TextStyle(color: Colors.blue)),
                   Text("📍 Address: ${order.addressDetails}, ${order.area}"),
                   const Divider(),
-                  Text("💵 Cash Collection: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)),
+                  Text("💵 Cash Collection: TK ${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)),
                 ],
               ),
             ),
@@ -321,7 +321,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  Text("Cash Collection: ৳${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                  Text("Cash Collection: TK ${order.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [

@@ -27,7 +27,7 @@
       <span style="background: #e2e8f0; color: #334155; padding: 3px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: bold;">🛒 Offline POS</span>
       {% endif %}
     </td>
-    <td class="num">৳{{ "%.2f"|format(s.rounded_total or s.total_amount) }}</td>
+    <td class="num">TK {{ "%.2f"|format(s.rounded_total or s.total_amount) }}</td>
     <td>
       <a class="btn btn-outline btn-small" href="{{ url_for('sale_receipt', sale_id=s.id) }}">View receipt</a>
       <a class="btn btn-primary btn-small" href="{{ url_for('sale_receipt_print', sale_id=s.id) }}" target="_blank">Print</a>

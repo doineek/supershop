@@ -323,7 +323,7 @@ class _CartScreenState extends State<CartScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                Text('৳${item.product.sellPrice.toStringAsFixed(0)} × ${item.quantity}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                Text('TK ${item.product.sellPrice.toStringAsFixed(0)} × ${item.quantity}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                               ],
                             ),
                           ),
@@ -340,7 +340,7 @@ class _CartScreenState extends State<CartScreen> {
                               ),
                             ],
                           ),
-                          Text('৳${item.totalPrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
+                          Text('TK ${item.totalPrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
                         ],
                       );
                     },
@@ -451,7 +451,7 @@ class _CartScreenState extends State<CartScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text("Subtotal:"),
-                      Text('৳${cartProv.subtotal.toStringAsFixed(2)}'),
+                      Text('TK ${cartProv.subtotal.toStringAsFixed(2)}'),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -459,7 +459,7 @@ class _CartScreenState extends State<CartScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(loc.translate('delivery_charge')),
-                      Text('৳${cartProv.deliveryCharge.toStringAsFixed(2)}'),
+                      Text('TK ${cartProv.deliveryCharge.toStringAsFixed(2)}'),
                     ],
                   ),
                   const Divider(),
@@ -468,7 +468,7 @@ class _CartScreenState extends State<CartScreen> {
                     children: [
                       Text(loc.translate('total'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                       Text(
-                        '৳${cartProv.grandTotal.toStringAsFixed(2)}',
+                        'TK ${cartProv.grandTotal.toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green),
                       ),
                     ],

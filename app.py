@@ -1,7 +1,7 @@
 """
 app.py
 ------
-Entry point of the DOINEEK (দৈনিক) Supershop POS application.
+Entry point of the DOINEEK Supershop POS application.
 Run it with:  python app.py
 Then open a browser at: http://127.0.0.1:5000
 """
@@ -973,25 +973,25 @@ def block_customer():
         )
         conn.commit()
         conn.close()
-        flash(f"গ্রাহক {phone} কে সফলভাবে আনব্লক (Unblock) করা হয়েছে।", "success")
+        flash(f"Customer {phone} has been successfully unblocked.", "success")
         return redirect(url_for("customers_page"))
 
     now = datetime.now()
     if duration == "1h":
         until = (now + timedelta(hours=1)).isoformat()
-        dur_label = "১ ঘন্টা (1 Hour)"
+        dur_label = "1 Hour"
     elif duration == "24h":
         until = (now + timedelta(days=1)).isoformat()
-        dur_label = "১ দিন (24 Hours)"
+        dur_label = "24 Hours"
     elif duration == "7d":
         until = (now + timedelta(days=7)).isoformat()
-        dur_label = "৭ দিন (7 Days)"
+        dur_label = "7 Days"
     elif duration == "30d":
         until = (now + timedelta(days=30)).isoformat()
-        dur_label = "৩০ দিন (1 Month)"
+        dur_label = "1 Month"
     else:
         until = "PERMANENT"
-        dur_label = "স্থায়ীভাবে (Permanent)"
+        dur_label = "Permanent"
 
     conn.execute(
         "UPDATE customer_users SET is_blocked = 1, blocked_until = ?, block_reason = ? WHERE phone = ?",
@@ -999,7 +999,7 @@ def block_customer():
     )
     conn.commit()
     conn.close()
-    flash(f"গ্রাহক {phone} কে {dur_label} এর জন্য ব্লক (Blocked) করা হয়েছে।", "warning")
+    flash(f"Customer {phone}  {dur_label} has been blocked.", "warning")
     return redirect(url_for("customers_page"))
 
 
@@ -1312,23 +1312,23 @@ def check_customer_block(conn, phone):
     
     until = user["blocked_until"]
     reason = user.get("block_reason", "")
-    reason_str = f" (কারণ: {reason})" if reason else ""
+    reason_str = f" (Reason: {reason})" if reason else ""
     
     if until == "PERMANENT":
-        return True, f"আপনার অ্যাকাউন্টটি স্থায়ীভাবে স্থগিত (Blocked) করা হয়েছে{reason_str}। প্রয়োজনে শপ কর্তৃপক্ষের সাথে যোগাযোগ করুন।"
+        return True, f"Your account has been permanently blocked{reason_str}। Please contact shop administration."
     
     try:
         until_dt = datetime.fromisoformat(until)
         if datetime.now() < until_dt:
             time_left_str = until_dt.strftime("%d-%m-%Y %I:%M %p")
-            return True, f"আপনার অ্যাকাউন্টটি {time_left_str} পর্যন্ত সাময়িকভাবে স্থগিত করা হয়েছে{reason_str}।"
+            return True, f"Your account is temporarily blocked for {time_left_str} {reason_str}।"
         else:
             # Auto unblock
             conn.execute("UPDATE customer_users SET is_blocked = 0, blocked_until = '', block_reason = '' WHERE phone = ?", (phone_clean,))
             conn.commit()
             return False, ""
     except Exception:
-        return True, f"আপনার অ্যাকাউন্টটি স্থগিত করা হয়েছে{reason_str}।"
+        return True, f"Your account is temporarily blocked for   {reason_str}।"
 
 
 @app.route("/sales/<int:sale_id>/print")
@@ -1521,7 +1521,7 @@ def offers_page():
         SELECT p.*, c.name AS category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
-        WHERE (p.is_offer = 1 OR p.is_promotion = 1) AND (p.offer_title IS NOT NULL AND p.offer_title != '')
+        WHERE p.is_offer = 1 OR p.is_promotion = 1 OR p.offer_type = 'bogo'
         ORDER BY p.id DESC
     """).fetchall()
     settings = get_all_settings(conn)
@@ -1537,29 +1537,36 @@ def save_product_offer():
     offer_title = request.form.get("offer_title", "").strip()
     offer_type = request.form.get("offer_type", "pct").strip()
     offer_value = request.form.get("offer_value", "").strip()
+    offer_base = request.form.get("offer_base", "mrp").strip()
     is_offer = 1 if request.form.get("is_offer") == "1" else 0
     is_promotion = 1 if request.form.get("is_promotion") == "1" else 0
+
+    if offer_type == "bogo" and not offer_title:
+        offer_title = f"Buy {offer_value or '1'} Get 1 Free"
+        is_offer = 1
 
     if product_id:
         conn = get_connection()
         product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
         if product:
+            cost_price = product["cost_price"] or 0
             mrp = product["mrp"] or product["sell_price"] or 0
+            base_price = cost_price if offer_base == "cost_price" and cost_price > 0 else mrp
             sell_price = product["sell_price"]
             
-            # Recalculate sell_price if offer value is numeric
-            if offer_type == "pct" and offer_value.replace('.', '', 1).isdigit() and mrp > 0:
+            # Recalculate sell_price based on offer_base and offer_type
+            if offer_type == "pct" and offer_value.replace('.', '', 1).isdigit() and base_price > 0:
                 pct = float(offer_value)
-                sell_price = max(0, mrp * (1.0 - pct / 100.0))
-            elif offer_type == "flat" and offer_value.replace('.', '', 1).isdigit() and mrp > 0:
+                sell_price = max(0, base_price * (1.0 - pct / 100.0))
+            elif offer_type == "flat" and offer_value.replace('.', '', 1).isdigit() and base_price > 0:
                 flat_amt = float(offer_value)
-                sell_price = max(0, mrp - flat_amt)
+                sell_price = max(0, base_price - flat_amt)
 
             conn.execute("""
                 UPDATE products
-                SET is_offer = ?, offer_title = ?, offer_type = ?, offer_value = ?, is_promotion = ?, sell_price = ?
+                SET is_offer = ?, offer_title = ?, offer_type = ?, offer_value = ?, offer_base = ?, is_promotion = ?, sell_price = ?
                 WHERE id = ?
-            """, (is_offer, offer_title, offer_type, offer_value, is_promotion, sell_price, product_id))
+            """, (is_offer, offer_title, offer_type, offer_value, offer_base, is_promotion, sell_price, product_id))
             conn.commit()
             remote_control.push_product_to_cloud(product_id)
             flash(f'Offer saved for "{product["name"]}".', "success")
@@ -1574,7 +1581,7 @@ def remove_product_offer(product_id):
     conn = get_connection()
     conn.execute("""
         UPDATE products
-        SET is_offer = 0, is_promotion = 0, offer_title = '', offer_type = '', offer_value = ''
+        SET is_offer = 0, is_promotion = 0, offer_title = '', offer_type = '', offer_value = '', offer_base = 'mrp'
         WHERE id = ?
     """, (product_id,))
     conn.commit()
@@ -1606,7 +1613,7 @@ def api_promotions():
         SELECT p.*, c.name AS category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
-        WHERE (p.is_promotion = 1 OR p.is_offer = 1) AND (p.offer_title IS NOT NULL AND p.offer_title != '')
+        WHERE p.is_promotion = 1 OR p.is_offer = 1 OR p.offer_type = 'bogo'
         ORDER BY p.id DESC
     """).fetchall()
     conn.close()
@@ -1853,7 +1860,7 @@ def add_ledger_entry():
     )
     conn.commit()
     conn.close()
-    flash(f"Added {entry_type.upper()}: {title} (৳{amount:,.2f})", "success")
+    flash(f"Added {entry_type.upper()}: {title} (TK {amount:,.2f})", "success")
     return redirect(url_for("reports"))
 
 
@@ -2378,10 +2385,10 @@ def api_place_order():
     cart_items = data.get("cart_items", [])
 
     if not customer_name or not customer_phone or not address_details:
-        return jsonify({"success": False, "message": "নাম, মোবাইল নম্বর এবং ঠিকানা পূরণ করুন"}), 400
+        return jsonify({"success": False, "message": "Please enter Name, Phone, and Delivery Address."}), 400
 
     if not cart_items:
-        return jsonify({"success": False, "message": "কার্ট খালি"}), 400
+        return jsonify({"success": False, "message": "Your cart is empty."}), 400
 
     conn = get_connection()
     # Check Customer Block Status
@@ -2399,7 +2406,7 @@ def api_place_order():
         conn.close()
         return jsonify({
             "success": False,
-            "message": f"ক্ষমা করবেন! {area}, {district} এলাকায় আমাদের শপের ডেলিভারি সার্ভিস বর্তমানে বন্ধ আছে। অনুগ্রহ করে ঠিকানা পরিবর্তন করুন।"
+            "message": f"Sorry! {area}, {district} delivery service is currently disabled in your area. Please change delivery address."
         }), 400
 
     import random
@@ -2471,7 +2478,7 @@ def api_place_order():
 
     return jsonify({
         "success": True,
-        "message": "অর্ডার সফলভাবে জমা দেওয়া হয়েছে!",
+        "message": "Order submitted successfully!",
         "order_number": order_number,
         "delivery_otp": otp,
         "total_amount": total_amount
@@ -2528,7 +2535,7 @@ def api_cancel_order():
     phone = data.get("customer_phone", "").strip()
 
     if not order_number or not phone:
-        return jsonify({"success": False, "message": "অর্ডার নম্বর ও মোবাইল নম্বর দিন"}), 400
+        return jsonify({"success": False, "message": "Please enter Order Number and Phone Number."}), 400
 
     conn = get_connection()
     order = conn.execute(
@@ -2538,11 +2545,11 @@ def api_cancel_order():
 
     if not order:
         conn.close()
-        return jsonify({"success": False, "message": "অর্ডারটি পাওয়া যায়নি!"}), 404
+        return jsonify({"success": False, "message": "Order not found!"}), 404
 
     if order["order_status"] in ("delivered", "cancelled"):
         conn.close()
-        return jsonify({"success": False, "message": "এই অর্ডারটি ইতোমধ্যে সম্পন্ন বা বাতিল করা হয়েছে।"}), 400
+        return jsonify({"success": False, "message": "This order has already been completed or cancelled."}), 400
 
     # 10 minutes limit check (600 seconds)
     try:
@@ -2552,7 +2559,7 @@ def api_cancel_order():
             conn.close()
             return jsonify({
                 "success": False,
-                "message": "ক্ষমা করবেন! অর্ডার দেওয়ার ১০ মিনিট পার হয়ে গেছে, এখন আর বাতিল করা সম্ভব নয়।"
+                "message": "Sorry! Order was placed more than 10 minutes ago and cannot be cancelled."
             }), 400
     except Exception as e:
         pass
@@ -2568,7 +2575,7 @@ def api_cancel_order():
     conn.close()
     remote_control.push_online_order_to_cloud(order["id"])
 
-    return jsonify({"success": True, "message": "অর্ডারটি সফলভাবে বাতিল করা হয়েছে।"})
+    return jsonify({"success": True, "message": "Order has been cancelled successfully."})
 
 
 @app.route("/api/orders/delivery-orders", methods=["GET"])

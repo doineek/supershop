@@ -22,7 +22,7 @@ CRED_FILE = "firebase_credentials.json"
 
 STATE = {
     "maintenance_mode": False,
-    "maintenance_message": "দোকান সাময়িকভাবে বন্ধ আছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
+    "maintenance_message": "Shop is temporarily closed. Please try again later.",
     "announcement": "",
     "force_logout": False,
 }

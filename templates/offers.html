@@ -4,7 +4,7 @@
 <div class="toolbar">
   <div>
     <h1>🎁 Product Offers & Banner Promotions</h1>
-    <p class="subtitle">Manage special deals, discounts, and app front-page banner slides in one place.</p>
+    <p class="subtitle">Manage special deals, discounts, Buy 1 Get 1 (BOGO) offers, and app front-page banner slides in one place.</p>
   </div>
 </div>
 
@@ -27,7 +27,7 @@
       
       <!-- Searchable Product Selection -->
       <div style="position:relative;">
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Search & Select Product (প্রোডাক্ট খুঁজুন ও সিলেক্ট করুন)*</label>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Search & Select Product*</label>
         <input type="text" id="productSearchInput" placeholder="🔍 Type SKU or Name to search..." style="width:100%; padding:9px 12px; border:1px solid #2563eb; border-radius:8px; font-weight:600; background:#f0f7ff;" autocomplete="off" onkeyup="filterProducts()" onfocus="showProductDropdown()">
         
         <input type="hidden" name="product_id" id="selectedProductId" required>
@@ -39,10 +39,12 @@
                data-name="{{ p.name }}"
                data-sku="{{ p.sku }}"
                data-mrp="{{ p.mrp }}"
+               data-costprice="{{ p.cost_price }}"
                data-sellprice="{{ p.sell_price }}"
                data-offertitle="{{ p.offer_title or '' }}"
                data-offertype="{{ p.offer_type or 'pct' }}"
                data-offervalue="{{ p.offer_value or '' }}"
+               data-offerbase="{{ p.offer_base or 'mrp' }}"
                data-isoffer="{{ p.is_offer or 0 }}"
                data-ispromotion="{{ p.is_promotion or 0 }}"
                onclick="selectProduct(this)"
@@ -50,30 +52,38 @@
                onmouseover="this.style.background='#eff6ff'"
                onmouseout="this.style.background='white'">
             <div style="font-weight:700; color:#0f172a;">{{ p.name }}</div>
-            <div style="font-size:11px; color:#64748b;">SKU: {{ p.sku }} | MRP: ৳{{ p.mrp }} | Sell Price: ৳{{ p.sell_price }}</div>
+            <div style="font-size:11px; color:#64748b;">SKU: {{ p.sku }} | MRP: TK {{ p.mrp }} | Cost: TK {{ p.cost_price }} | Sell Price: TK {{ p.sell_price }}</div>
           </div>
           {% endfor %}
         </div>
       </div>
 
       <div>
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Title (অফারের শিরোনাম)*</label>
-        <input type="text" name="offer_title" id="offerTitleInput" placeholder="e.g. 🔥 Mega Summer Sale 30% OFF" required style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Title*</label>
+        <input type="text" name="offer_title" id="offerTitleInput" placeholder="e.g. 🔥 Mega Sale 30% OFF or Buy 1 Get 1 Free" required style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
       </div>
 
       <div>
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Type (অফারের ধরন)</label>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Type</label>
         <select name="offer_type" id="offerTypeSelect" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
-          <option value="pct">Percentage Off (% ডিসকাউন্ট)</option>
-          <option value="flat">Flat Discount (৳ ফ্ল্যাট ছাড়)</option>
-          <option value="bogo">Buy 1 Get 1 Free (বিওজিও)</option>
-          <option value="special">Special Bundle Offer</option>
+          <option value="pct">Percentage Off (%)</option>
+          <option value="flat">Flat Discount (TK Amount)</option>
+          <option value="bogo">Buy 1 Get 1 Free (BOGO)</option>
+          <option value="special">Special Bundle Deal</option>
         </select>
       </div>
 
       <div>
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Value (অফারের পরিমাণ / ভ্যালু)</label>
-        <input type="text" name="offer_value" id="offerValueInput" placeholder="e.g. 20 (for 20%) or Free Item" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Value</label>
+        <input type="text" name="offer_value" id="offerValueInput" placeholder="e.g. 20 (for 20%) or Free Item Name" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+
+      <div>
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Discount Price Base</label>
+        <select name="offer_base" id="offerBaseSelect" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+          <option value="mrp">Regular Retail Price (MRP)</option>
+          <option value="cost_price">Wholesale Cost Price</option>
+        </select>
       </div>
 
     </div>
@@ -81,12 +91,12 @@
     <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap; background:#f8fafc; padding:12px; border-radius:8px; margin-bottom:16px;">
       <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
         <input type="checkbox" name="is_offer" id="isOfferCheck" value="1" checked style="width:18px; height:18px; accent-color:#16a34a;">
-        <span>Active Special Offer (প্রোডাক্ট পেজে অফার ব্যাজ দেখাবে)</span>
+        <span>Active Special Offer (Show Offer Badge on Product Page)</span>
       </label>
 
       <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
         <input type="checkbox" name="is_promotion" id="isPromotionCheck" value="1" checked style="width:18px; height:18px; accent-color:#2563eb;">
-        <span>Show on App Front-Page Banner Slider (অ্যাপের সামনের ব্যানার স্লাইডারে দেখাবে)</span>
+        <span>Show on App Front-Page Banner Slider</span>
       </label>
     </div>
 
@@ -98,7 +108,7 @@
 <!-- Active Offers List Table -->
 <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
   <h3 style="margin-top:0; color:#1e293b; font-size:16px;">🔥 Active Special Offers & Banner Promotions List ({{ offer_products|length }})</h3>
-  <p style="font-size:12px; color:#64748b; margin-top:-8px; margin-bottom:14px;">(💡 তালিকায় থাকা যেকোনো প্রোডাক্টে ক্লিক করলে উপরে এডিটের জন্য সিলেক্ট হয়ে যাবে)</p>
+  <p style="font-size:12px; color:#64748b; margin-top:-8px; margin-bottom:14px;">(💡 Click any product row in the table below to edit its offer details)</p>
   
   {% if not offer_products %}
   <p style="color:#64748b; font-style:italic;">No special offers set yet. Add an offer above to showcase it in the app slider!</p>
@@ -108,9 +118,10 @@
       <tr style="background:#f1f5f9; text-align:left;">
         <th style="padding:12px;">Image</th>
         <th style="padding:12px;">Product SKU & Name</th>
-        <th style="padding:12px;">MRP (৳)</th>
-        <th style="padding:12px;">Offer Price (৳)</th>
-        <th style="padding:12px;">Offer Title & Details</th>
+        <th style="padding:12px;">MRP (TK)</th>
+        <th style="padding:12px;">Cost Price (TK)</th>
+        <th style="padding:12px;">Offer Price (TK)</th>
+        <th style="padding:12px;">Offer Title & Base</th>
         <th style="padding:12px; text-align:center;">App Banner Slider</th>
         <th style="padding:12px; text-align:right;">Actions</th>
       </tr>
@@ -122,9 +133,13 @@
           data-id="{{ p.id }}"
           data-name="{{ p.name }}"
           data-sku="{{ p.sku }}"
+          data-mrp="{{ p.mrp }}"
+          data-costprice="{{ p.cost_price }}"
+          data-sellprice="{{ p.sell_price }}"
           data-offertitle="{{ p.offer_title or '' }}"
           data-offertype="{{ p.offer_type or 'pct' }}"
           data-offervalue="{{ p.offer_value or '' }}"
+          data-offerbase="{{ p.offer_base or 'mrp' }}"
           data-isoffer="{{ p.is_offer or 0 }}"
           data-ispromotion="{{ p.is_promotion or 0 }}"
           style="border-bottom:1px solid #e2e8f0; cursor:pointer; transition:background 0.15s;"
@@ -143,16 +158,21 @@
           <div style="font-size:12px; color:#64748b;">SKU: {{ p.sku }}</div>
         </td>
         <td style="padding:12px; color:#64748b; text-decoration:line-through;">
-          ৳{{ "%.2f"|format(p.mrp) }}
+          TK {{ "%.2f"|format(p.mrp) }}
+        </td>
+        <td style="padding:12px; color:#475569;">
+          TK {{ "%.2f"|format(p.cost_price) }}
         </td>
         <td style="padding:12px; font-weight:700; color:#16a34a;">
-          ৳{{ "%.2f"|format(p.sell_price) }}
+          TK {{ "%.2f"|format(p.sell_price) }}
         </td>
         <td style="padding:12px;">
           <span style="background:#dbeafe; color:#1d4ed8; padding:3px 8px; border-radius:4px; font-size:12px; font-weight:600; display:inline-block; margin-bottom:4px;">
             {{ p.offer_title or 'Special Offer' }}
           </span>
-          <div style="font-size:12px; color:#475569;">Type: {{ (p.offer_type or 'pct')|upper }} (Value: {{ p.offer_value }})</div>
+          <div style="font-size:11px; color:#475569;">
+            Type: {{ (p.offer_type or 'pct')|upper }} | Base: {{ (p.offer_base or 'mrp')|upper }}
+          </div>
         </td>
         <td style="padding:12px; text-align:center;">
           {% if p.is_promotion == 1 %}
@@ -212,6 +232,7 @@ function selectProduct(element) {
   const title = element.getAttribute('data-offertitle');
   const type = element.getAttribute('data-offertype');
   const val = element.getAttribute('data-offervalue');
+  const base = element.getAttribute('data-offerbase');
   const isOffer = element.getAttribute('data-isoffer');
   const isPromo = element.getAttribute('data-ispromotion');
 
@@ -222,6 +243,7 @@ function selectProduct(element) {
   if (title) document.getElementById('offerTitleInput').value = title;
   if (type) document.getElementById('offerTypeSelect').value = type;
   if (val) document.getElementById('offerValueInput').value = val;
+  if (base) document.getElementById('offerBaseSelect').value = base;
   
   document.getElementById('isOfferCheck').checked = (isOffer == '1');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
@@ -236,6 +258,7 @@ function editOfferFromRow(row) {
   const title = row.getAttribute('data-offertitle');
   const type = row.getAttribute('data-offertype');
   const val = row.getAttribute('data-offervalue');
+  const base = row.getAttribute('data-offerbase');
   const isOffer = row.getAttribute('data-isoffer');
   const isPromo = row.getAttribute('data-ispromotion');
 
@@ -245,6 +268,7 @@ function editOfferFromRow(row) {
   if (title) document.getElementById('offerTitleInput').value = title;
   if (type) document.getElementById('offerTypeSelect').value = type;
   if (val) document.getElementById('offerValueInput').value = val;
+  if (base) document.getElementById('offerBaseSelect').value = base;
 
   document.getElementById('isOfferCheck').checked = (isOffer == '1');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
@@ -265,6 +289,7 @@ function resetOfferForm() {
   document.getElementById('offerTitleInput').value = '';
   document.getElementById('offerValueInput').value = '';
   document.getElementById('offerTypeSelect').value = 'pct';
+  document.getElementById('offerBaseSelect').value = 'mrp';
   document.getElementById('isOfferCheck').checked = true;
   document.getElementById('isPromotionCheck').checked = true;
   document.getElementById('formHeading').innerText = '➕ Add / Update Product Offer';

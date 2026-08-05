@@ -20,7 +20,7 @@
       <input type="text" name="shop_phone" value="{{ settings.shop_phone }}" required>
     </div>
     <div class="field">
-      <label>Customer Support Helpline Number (কাস্টমার সাপোর্ট হেল্পলাইন নম্বর)</label>
+      <label>Customer Support Helpline Number (   )</label>
       <input type="text" name="customer_support_phone" value="{{ settings.customer_support_phone or settings.shop_phone }}" placeholder="e.g. +8801700000000">
     </div>
     <div class="field">
@@ -28,45 +28,45 @@
       <input type="text" name="vat_reg_no" value="{{ settings.vat_reg_no }}">
     </div>
     <div class="field">
-      <label>Default Cash on Delivery Charge (৳)</label>
+      <label>Default Cash on Delivery Charge (TK )</label>
       <input type="number" step="1" name="delivery_charge" value="{{ settings.delivery_charge or 60 }}" required>
     </div>
     <div class="field">
-      <label>Promotion Banner Auto-Slide Interval (seconds - প্রতি কত সেকেন্ড পরপর ১/৪ ব্যানার স্লাইড হবে)</label>
+      <label>Promotion Banner Auto-Slide Interval (seconds -     /   )</label>
       <input type="number" step="1" min="1" max="60" name="promo_interval_sec" value="{{ settings.promo_interval_sec or 2 }}" required>
     </div>
 
-    <h2 style="margin-top:24px; margin-bottom:12px; color:#15803d; border-top:1px solid #e2e8f0; padding-top:16px;">📜 CartUp Store Policies & Info (অ্যাপ ও ওয়েবসাইট কাস্টমার পেজ সেটিংস)</h2>
+    <h2 style="margin-top:24px; margin-bottom:12px; color:#15803d; border-top:1px solid #e2e8f0; padding-top:16px;">📜 CartUp Store Policies & Info (     )</h2>
     <div class="field">
-      <label>About Us (আমাদের কথা)</label>
+      <label>About Us ( )</label>
       <textarea name="policy_about_us" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_about_us or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Blog (ব্লগ ও আর্টিকেলের বার্তা)</label>
+      <label>Blog (   )</label>
       <textarea name="policy_blog" rows="2" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_blog or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Cookies Policy (কুকিজ পলিসি)</label>
+      <label>Cookies Policy ( )</label>
       <textarea name="policy_cookies" rows="2" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_cookies or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Return & Refund Policy (রিটার্ন ও রিফান্ড নীতি)</label>
+      <label>Return & Refund Policy (   )</label>
       <textarea name="policy_return_refund" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_return_refund or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Privacy Policy (গোপনীয়তা নীতি)</label>
+      <label>Privacy Policy ( )</label>
       <textarea name="policy_privacy" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_privacy or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Terms & Conditions (শর্তাবলী)</label>
+      <label>Terms & Conditions ()</label>
       <textarea name="policy_terms" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_terms or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Warranty Policy (ওয়ারেন্টি পলিসি)</label>
+      <label>Warranty Policy ( )</label>
       <textarea name="policy_warranty" rows="2" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_warranty or '' }}</textarea>
     </div>
     <div class="field">
-      <label>Help Center (হেল্প সেন্টার সহায়তা)</label>
+      <label>Help Center (  )</label>
       <textarea name="policy_help_center" rows="2" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_help_center or '' }}</textarea>
     </div>
 

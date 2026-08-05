@@ -322,7 +322,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               children: [
                 if (product.effectivePrice < product.sellPrice)
                   Text(
-                    'Regular: ৳${product.sellPrice.toStringAsFixed(2)}',
+                    'Regular: TK ${product.sellPrice.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 15,
                       color: Colors.grey,
@@ -331,7 +331,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   )
                 else if (product.mrp > 0 && product.mrp > product.sellPrice)
                   Text(
-                    '${loc.translate('mrp')}: ৳${product.mrp.toStringAsFixed(2)}',
+                    '${loc.translate('mrp')}: TK ${product.mrp.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 15,
                       color: Colors.grey,
@@ -341,7 +341,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 if (product.effectivePrice < product.sellPrice || (product.mrp > 0 && product.mrp > product.sellPrice))
                   const SizedBox(width: 12),
                 Text(
-                  '${loc.translate('doineek_price')}: ৳${product.effectivePrice.toStringAsFixed(2)}',
+                  '${loc.translate('doineek_price')}: TK ${product.effectivePrice.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,

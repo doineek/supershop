@@ -49,9 +49,9 @@
     <td>{{ p.sku }}</td>
     <td>{{ p.name }}</td>
     <td>{{ p.category_name or '—' }}</td>
-    <td class="num">৳{{ "%.2f"|format(p.cost_price) }}</td>
-    <td class="num">{{ "৳%.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
-    <td class="num">৳{{ "%.2f"|format(p.sell_price) }}</td>
+    <td class="num">TK {{ "%.2f"|format(p.cost_price) }}</td>
+    <td class="num">{{ "TK %.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
+    <td class="num">TK {{ "%.2f"|format(p.sell_price) }}</td>
     <td class="num">{{ "%.1f"|format(p.vat_pct) if p.vat_pct > 0 else '—' }}</td>
     <td class="num">{{ p.stock_qty }}</td>
     <td>

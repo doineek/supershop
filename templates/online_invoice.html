@@ -104,7 +104,7 @@
 <body>
 
 <div style="text-align: center;" class="no-print">
-  <button class="print-btn" onclick="window.print()">🖨️ Print Invoice (ইনভয়েস প্রিন্ট করুন)</button>
+  <button class="print-btn" onclick="window.print()">🖨️ Print Invoice (  )</button>
 </div>
 
 <div class="invoice-card">
@@ -121,14 +121,14 @@
 
   <div class="info-grid">
     <div class="info-box">
-      <strong>Customer Details (গ্রাহকের বিবরণী):</strong><br>
+      <strong>Customer Details (Customer ):</strong><br>
       👤 {{ order.customer_name if order.customer_name else '-' }}<br>
       📞 {{ order.customer_phone if order.customer_phone else '-' }}<br>
       📍 {{ order.area }}, {{ order.district }}<br>
       🏠 {{ order.address_details }}
     </div>
     <div class="info-box">
-      <strong>Invoice Details (ইনভয়েস ডিটেইলস):</strong><br>
+      <strong>Invoice Details ( ):</strong><br>
       📄 Invoice No: <strong>INV-ONLINE-{{ order.order_number }}</strong><br>
       📅 Order Date: {{ order.created_at[:16].replace('T', ' ') }}<br>
       💳 Payment: <span style="text-transform: uppercase; font-weight: bold;">{{ order.payment_method }}</span><br>
@@ -140,7 +140,7 @@
     <thead>
       <tr>
         <th>SL</th>
-        <th>Product Name (পণ্যের নাম)</th>
+        <th>Product Name ( )</th>
         <th style="text-align: center;">Qty</th>
         <th style="text-align: right;">Unit Price</th>
         <th style="text-align: right;">Total Price</th>
@@ -152,8 +152,8 @@
         <td>{{ loop.index }}</td>
         <td><strong>{{ item.product_name }}</strong></td>
         <td style="text-align: center;">{{ item.quantity }}</td>
-        <td style="text-align: right;">৳{{ "%.2f"|format(item.unit_price) }}</td>
-        <td style="text-align: right;">৳{{ "%.2f"|format(item.total_price) }}</td>
+        <td style="text-align: right;">TK {{ "%.2f"|format(item.unit_price) }}</td>
+        <td style="text-align: right;">TK {{ "%.2f"|format(item.total_price) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -161,21 +161,21 @@
 
   <table class="total-table">
     <tr>
-      <td>Subtotal (সাবটোটাল):</td>
-      <td style="text-align: right;"><strong>৳{{ "%.2f"|format(order.subtotal) }}</strong></td>
+      <td>Subtotal ():</td>
+      <td style="text-align: right;"><strong>TK {{ "%.2f"|format(order.subtotal) }}</strong></td>
     </tr>
     <tr>
-      <td>Delivery Charge (ডেলিভারি চার্জ):</td>
-      <td style="text-align: right;"><strong>৳{{ "%.2f"|format(order.delivery_charge) }}</strong></td>
+      <td>Delivery Charge ( ):</td>
+      <td style="text-align: right;"><strong>TK {{ "%.2f"|format(order.delivery_charge) }}</strong></td>
     </tr>
     <tr style="font-size: 1.1rem; border-top: 2px solid #0f172a;">
-      <td><strong>Net Payable (মোট দেয়):</strong></td>
-      <td style="text-align: right; color: #16a34a;"><strong>৳{{ "%.2f"|format(order.total_amount) }}</strong></td>
+      <td><strong>Net Payable ( ):</strong></td>
+      <td style="text-align: right; color: #16a34a;"><strong>TK {{ "%.2f"|format(order.total_amount) }}</strong></td>
     </tr>
   </table>
 
   <div style="margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 12px; text-align: center; font-size: 0.85rem; color: #64748b;">
-    আমাদের দোকান থেকে কেনাকাটা করার জন্য ধন্যবাদ! | Thank you for shopping with {{ shop.shop_name }}
+          ! | Thank you for shopping with {{ shop.shop_name }}
   </div>
 </div>
 

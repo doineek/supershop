@@ -4,12 +4,12 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
   <div>
-    <h1 style="margin: 0; font-size: 1.8rem; font-family: 'Space Grotesk', sans-serif;">📱 Online Orders (অনলাইন অর্ডারসমূহ)</h1>
-    <p style="margin: 5px 0 0 0; color: #666;">Customer Mobile App ও Web থেকে আসা সকল লাইভ অর্ডারের বিবরণী ও ডিটেইলস</p>
+    <h1 style="margin: 0; font-size: 1.8rem; font-family: 'Space Grotesk', sans-serif;">📱 Online Orders ( )</h1>
+    <p style="margin: 5px 0 0 0; color: #666;">Customer Mobile App  Web        </p>
   </div>
   <div style="display: flex; gap: 10px; align-items: center;">
     <button id="enableSoundBtn" onclick="toggleNotifications()" style="background: #15803d; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-      🔔 Notifications: ON (ক্লিক করে বন্ধ করুন)
+      🔔 Notifications: ON (   )
     </button>
     <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer;">
       🔄 Refresh Orders
@@ -20,14 +20,14 @@
 <!-- Custom Live Customer Search & Order Number Search Section -->
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
   <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.03); position: relative;">
-    <label style="font-weight: 700; color: #1e293b; display: block; margin-bottom: 6px;">📦 Live Order Number Search (অর্ডার নম্বর দিয়ে সার্চ করুন):</label>
+    <label style="font-weight: 700; color: #1e293b; display: block; margin-bottom: 6px;">📦 Live Order Number Search (    ):</label>
     <input type="text" id="orderNumSearchInput" placeholder="Type Order Number (e.g. 1001, ORD-1002)..." style="width: 100%; padding: 10px 14px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem;" oninput="onOrderNumberSearchInput()">
     
     <div id="orderNumSearchResults" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 105; max-height: 320px; overflow-y: auto; margin-top: 4px;"></div>
   </div>
 
   <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.03); position: relative;">
-    <label style="font-weight: 700; color: #1e293b; display: block; margin-bottom: 6px;">🔍 Customer Search (মোবাইল নম্বর, নাম বা এলাকা দিয়ে সার্চ করুন):</label>
+    <label style="font-weight: 700; color: #1e293b; display: block; margin-bottom: 6px;">🔍 Customer Search ( ,      ):</label>
     <input type="text" id="custSearchInput" placeholder="Type mobile (e.g. 01712...), name or area..." style="width: 100%; padding: 10px 14px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem;" oninput="onCustomerSearchInput()">
     
     <div id="custSearchResults" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 100; max-height: 300px; overflow-y: auto; margin-top: 4px;"></div>
@@ -78,11 +78,11 @@
         <td style="padding: 14px 16px; vertical-align: top;">
           <ul style="margin: 0; padding-left: 16px; font-size: 0.88rem; color: #334155;">
             {% for item in order.order_items %}
-            <li><strong>{{ item.product_name }}</strong> × {{ item.quantity }} (৳{{ "%.2f"|format(item.total_price) }})</li>
+            <li><strong>{{ item.product_name }}</strong> × {{ item.quantity }} (TK {{ "%.2f"|format(item.total_price) }})</li>
             {% endfor %}
           </ul>
           <div style="margin-top: 6px; font-weight: 700; color: #0f172a;">
-            Total: ৳{{ "%.2f"|format(order.total_amount) }} <span style="font-size: 0.75rem; color: #64748b;">(Delivery ৳{{ "%.2f"|format(order.delivery_charge) }})</span>
+            Total: TK {{ "%.2f"|format(order.total_amount) }} <span style="font-size: 0.75rem; color: #64748b;">(Delivery TK {{ "%.2f"|format(order.delivery_charge) }})</span>
           </div>
         </td>
 
@@ -101,15 +101,15 @@
 
         <td style="padding: 14px 16px; vertical-align: top;">
           {% if order.order_status == 'new' %}
-          <span style="background: #3b82f6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">NEW (নতুন)</span>
+          <span style="background: #3b82f6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">NEW ()</span>
           {% elif order.order_status == 'verified' %}
-          <span style="background: #8b5cf6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">VERIFIED (যাচাইকৃত)</span>
+          <span style="background: #8b5cf6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">VERIFIED ()</span>
           {% elif order.order_status == 'packed' %}
-          <span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">PACKED (প্যাকড)</span>
+          <span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">PACKED ()</span>
           {% elif order.order_status == 'on_the_way' %}
-          <span style="background: #06b6d4; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">ON THE WAY (রাস্তায়)</span>
+          <span style="background: #06b6d4; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">ON THE WAY ()</span>
           {% elif order.order_status == 'delivered' %}
-          <span style="background: #10b981; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">DELIVERED (সম্পন্ন)</span>
+          <span style="background: #10b981; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">DELIVERED ()</span>
           {% else %}
           <span style="background: #ef4444; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">CANCELLED</span>
           {% endif %}
@@ -178,7 +178,7 @@
       {% else %}
       <tr>
         <td colspan="7" style="padding: 30px; text-align: center; color: #94a3b8;">
-          কোনো অনলাইন অর্ডার পাওয়া যায়নি।
+              ।
         </td>
       </tr>
       {% endfor %}
@@ -217,12 +217,12 @@
       playChimeBeep();
       if (btn) {
         btn.style.background = "#15803d";
-        btn.innerHTML = "🔔 Notifications: ON (অ্যালার্ট চালু)";
+        btn.innerHTML = "🔔 Notifications: ON ( )";
       }
     } else {
       if (btn) {
         btn.style.background = "#dc2626";
-        btn.innerHTML = "🔕 Notifications: OFF (অ্যালার্ট বন্ধ)";
+        btn.innerHTML = "🔕 Notifications: OFF ( )";
       }
     }
   }
@@ -281,8 +281,8 @@
     if (soundEnabled) {
       playChimeBeep();
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("🔔 নতুন অনলাইন অর্ডার!", {
-          body: "কাস্টমার অ্যাপ থেকে একটি নতুন অনলাইন অর্ডার জমা হয়েছে।",
+        new Notification("🔔   !", {
+          body: "        ।",
           icon: "/static/images/logo.png"
         });
       }
@@ -322,7 +322,7 @@
     });
 
     if (matched.length === 0) {
-      resDiv.innerHTML = '<div style="padding: 14px; color: #64748b; text-align: center;">কোনো ম্যাচিং অর্ডার পাওয়া যায়নি</div>';
+      resDiv.innerHTML = '<div style="padding: 14px; color: #64748b; text-align: center;">    </div>';
     } else {
       let html = '';
       matched.forEach(o => {
@@ -331,7 +331,7 @@
           <div onclick="scrollToOrderRow('${o.id}')" style="padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; background: white;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: bold; color: #1e40af; font-size: 1rem;">📦 Order #${o.order_number}</span>
-              <span style="background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 6px; font-weight: bold; font-size: 0.8rem;">৳${o.total_amount}</span>
+              <span style="background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 6px; font-weight: bold; font-size: 0.8rem;">TK ${o.total_amount}</span>
             </div>
             <div style="font-size: 0.83rem; color: #475569; margin-top: 4px;">
               👤 <strong>${o.customer_name}</strong> (${o.customer_phone}) | Status: <strong style="text-transform: uppercase; color: #2563eb;">${o.order_status}</strong>${riderInfo}
@@ -372,7 +372,7 @@
         .then(res => res.json())
         .then(data => {
           if (data.length === 0) {
-            resDiv.innerHTML = '<div style="padding: 12px; color: #94a3b8; text-align: center;">কোনো ম্যাচ পাওয়া যায়নি</div>';
+            resDiv.innerHTML = '<div style="padding: 12px; color: #94a3b8; text-align: center;">   </div>';
           } else {
             let html = '';
             data.forEach(cust => {
@@ -489,7 +489,7 @@
         <div>📧 <strong>Email:</strong> ${cust.customer_email || 'N/A'}</div>
         <div>📦 <strong>Total Orders Placed:</strong> ${cust.order_count}</div>
       </div>
-      <h4 style="margin: 12px 0 8px 0; color: #1e293b;">📋 Order History (পূর্ববর্তী অর্ডারসমূহ):</h4>
+      <h4 style="margin: 12px 0 8px 0; color: #1e293b;">📋 Order History ( ):</h4>
     `;
 
     cust.orders.forEach(o => {
@@ -497,7 +497,7 @@
         <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: white;">
           <div style="display: flex; justify-content: space-between; font-weight: bold;">
             <span>Order #${o.order_number}</span>
-            <span style="color: #16a34a;">৳${o.total_amount.toFixed(2)}</span>
+            <span style="color: #16a34a;">TK ${o.total_amount.toFixed(2)}</span>
           </div>
           <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">Status: <strong>${o.order_status.toUpperCase()}</strong> | Date: ${o.created_at.substring(0, 16)}</div>
           <div style="font-size: 0.8rem; color: #dc2626; margin-top: 2px;">🔑 Delivery OTP: <strong>${o.delivery_otp}</strong></div>
