@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userImageBase64 = "";
   int _bottomNavIndex = 0;
   String _searchQuery = "";
+  Future<List<dynamic>>? _categoriesTreeFuture;
 
   final PageController _bannerController = PageController();
   Timer? _bannerTimer;
@@ -47,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _categoriesTreeFuture = ApiService.fetchCategoriesTree();
     _loadShopName();
     _loadUserProfile();
     _loadPromotions();
@@ -704,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildCategoryDirectoryView() {
     return FutureBuilder<List<dynamic>>(
-      future: ApiService.fetchCategoriesTree(),
+      future: _categoriesTreeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
