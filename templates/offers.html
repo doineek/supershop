@@ -3,14 +3,14 @@
 {% block content %}
 <div class="toolbar">
   <div>
-    <h1>🎁 Product Offers & Banner Promotions</h1>
+    <h1>Product Offers & Banner Promotions</h1>
     <p class="subtitle">Manage special deals, discounts, Buy X Get Y (BOGO) offers, and app front-page banner slides in one place.</p>
   </div>
 </div>
 
 <!-- Promo Banner Timer Setting -->
 <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
-  <h3 style="margin-top:0; color:#16a34a; font-size:16px;">⏱️ App Banner Slide Interval Settings</h3>
+  <h3 style="margin-top:0; color:#16a34a; font-size:16px;">App Banner Slide Interval Settings</h3>
   <form method="POST" action="{{ url_for('save_offer_interval') }}" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <label style="font-weight:600; font-size:14px;">Banner Auto-Slide Duration (Seconds):</label>
     <input type="number" name="promo_interval_sec" value="{{ settings.get('promo_interval_sec') or 2 }}" min="1" max="60" style="width:100px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;" required>
@@ -21,14 +21,14 @@
 
 <!-- Add / Edit Offer Form -->
 <div id="offerFormContainer" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
-  <h3 id="formHeading" style="margin-top:0; color:#2563eb; font-size:16px;">➕ Add / Update Product Offer</h3>
+  <h3 id="formHeading" style="margin-top:0; color:#2563eb; font-size:16px;">Add / Update Product Offer</h3>
   <form method="POST" action="{{ url_for('save_product_offer') }}" id="offerForm">
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:16px;">
       
       <!-- Searchable Product Selection -->
       <div style="position:relative;">
         <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Search & Select Product*</label>
-        <input type="text" id="productSearchInput" placeholder="🔍 Type SKU or Name to search..." style="width:100%; padding:9px 12px; border:1px solid #2563eb; border-radius:8px; font-weight:600; background:#f0f7ff;" autocomplete="off" onkeyup="filterProducts()" onfocus="showProductDropdown()">
+        <input type="text" id="productSearchInput" placeholder="Type SKU or Name to search..." style="width:100%; padding:9px 12px; border:1px solid #2563eb; border-radius:8px; font-weight:600; background:#f0f7ff;" autocomplete="off" onkeyup="filterProducts()" onfocus="showProductDropdown()">
         
         <input type="hidden" name="product_id" id="selectedProductId" required>
         
@@ -60,7 +60,7 @@
 
       <div>
         <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Title*</label>
-        <input type="text" name="offer_title" id="offerTitleInput" placeholder="e.g. 🔥 Mega Sale 30% OFF or Buy 1 Get 1 Free" required style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        <input type="text" name="offer_title" id="offerTitleInput" placeholder="e.g. Mega Sale 30% OFF or Buy 1 Get 1 Free" required style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
       </div>
 
       <div>
@@ -119,15 +119,15 @@
       </label>
     </div>
 
-    <button type="submit" class="btn btn-primary" style="padding:10px 24px; font-size:15px;">💾 Save Offer & Push to App</button>
+    <button type="submit" class="btn btn-primary" style="padding:10px 24px; font-size:15px;">Save Offer & Push to App</button>
     <button type="button" onclick="resetOfferForm()" class="btn btn-outline" style="padding:10px 16px; margin-left:8px;">Clear / Reset</button>
   </form>
 </div>
 
 <!-- Active Offers List Table -->
 <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-  <h3 style="margin-top:0; color:#1e293b; font-size:16px;">🔥 Active Special Offers & Banner Promotions List ({{ offer_products|length }})</h3>
-  <p style="font-size:12px; color:#64748b; margin-top:-8px; margin-bottom:14px;">(💡 Click any product row in the table below to edit its offer details)</p>
+  <h3 style="margin-top:0; color:#1e293b; font-size:16px;">Active Special Offers & Banner Promotions List ({{ offer_products|length }})</h3>
+  <p style="font-size:12px; color:#64748b; margin-top:-8px; margin-bottom:14px;">(Click any product row in the table below to edit its offer details or click Inventory button to modify product)</p>
   
   {% if not offer_products %}
   <p style="color:#64748b; font-style:italic;">No special offers set yet. Add an offer above to showcase it in the app slider!</p>
@@ -169,7 +169,7 @@
           {% if img_first %}
           <img src="{{ img_first }}" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0;">
           {% else %}
-          <div style="width:48px; height:48px; background:#f1f5f9; border-radius:6px; display:flex; align-items:center; justify-content:center;">📦</div>
+          <div style="width:48px; height:48px; background:#f1f5f9; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; color:#94a3b8;">No Image</div>
           {% endif %}
         </td>
         <td style="padding:12px;">
@@ -195,13 +195,14 @@
         </td>
         <td style="padding:12px; text-align:center;">
           {% if p.is_promotion == 1 %}
-          <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:700;">✓ Active Slide</span>
+          <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:700;">Active Slide</span>
           {% else %}
           <span style="background:#f1f5f9; color:#64748b; padding:4px 10px; border-radius:12px; font-size:12px;">Off</span>
           {% endif %}
         </td>
         <td style="padding:12px; text-align:right;" onclick="event.stopPropagation();">
-          <button type="button" onclick="editOfferFromButton(this, event)" class="btn btn-outline btn-small" style="margin-right:4px;">✏️ Edit</button>
+          <button type="button" onclick="editOfferFromButton(this, event)" class="btn btn-outline btn-small" style="margin-right:4px;">Edit</button>
+          <a href="{{ url_for('edit_product', product_id=p.id) }}" class="btn btn-outline btn-small" style="margin-right:4px;" onclick="event.stopPropagation();">Inventory</a>
           <form method="POST" action="{{ url_for('remove_product_offer', product_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Remove offer from {{ p.name }}?');">
             <button type="submit" class="btn btn-danger btn-small">Remove Offer</button>
           </form>
@@ -288,7 +289,7 @@ function selectProduct(element) {
   document.getElementById('isOfferCheck').checked = (isOffer == '1');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
-  document.getElementById('formHeading').innerText = '✏️ Update Offer for #' + sku + ' - ' + name;
+  document.getElementById('formHeading').innerText = 'Update Offer for #' + sku + ' - ' + name;
 }
 
 function editOfferFromRow(row) {
@@ -324,7 +325,7 @@ function editOfferFromRow(row) {
   document.getElementById('isOfferCheck').checked = (isOffer == '1');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
-  document.getElementById('formHeading').innerText = '✏️ Update Offer for #' + sku + ' - ' + name;
+  document.getElementById('formHeading').innerText = 'Update Offer for #' + sku + ' - ' + name;
   document.getElementById('offerFormContainer').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -343,7 +344,7 @@ function resetOfferForm() {
   document.getElementById('offerBaseSelect').value = 'mrp';
   document.getElementById('isOfferCheck').checked = true;
   document.getElementById('isPromotionCheck').checked = true;
-  document.getElementById('formHeading').innerText = '➕ Add / Update Product Offer';
+  document.getElementById('formHeading').innerText = 'Add / Update Product Offer';
   toggleOfferTypeInputs();
 }
 </script>
