@@ -31,9 +31,12 @@
 
   <!-- Tab 1: Main Categories -->
   <div id="catTabMain" style="display:block;">
-    <form method="POST" action="{{ url_for('new_category') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+    <form method="POST" action="{{ url_for('new_category') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
       <input type="text" name="name" placeholder="Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:200px;" required>
-      <input type="text" name="icon" placeholder="Icon Emoji / Image URL" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:180px;">
+      <div style="display:flex; align-items:center; gap:4px;">
+        <input type="text" name="icon" id="mainCatIconInput" placeholder="Select Emoji" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:140px; font-size:16px;">
+        <button type="button" class="btn btn-outline" onclick="openEmojiPickerModal('mainCatIconInput')" style="padding:7px 10px; font-size:16px;" title="Choose Emoji">😀 Emoji</button>
+      </div>
       <button class="btn btn-primary" type="submit">+ Add Main Category</button>
     </form>
 
@@ -64,15 +67,18 @@
 
   <!-- Tab 2: Sub Categories -->
   <div id="catTabSub" style="display:none;">
-    <form method="POST" action="{{ url_for('new_subcategory') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+    <form method="POST" action="{{ url_for('new_subcategory') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
       <select name="category_id" required style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; min-width:200px;">
         <option value="">Select Main Category*</option>
         {% for c in categories %}
         <option value="{{ c.id }}">{{ c.name }}</option>
         {% endfor %}
       </select>
-      <input type="text" name="name" placeholder="Sub-Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:200px;" required>
-      <input type="text" name="icon" placeholder="Icon Emoji / Image URL" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:180px;">
+      <input type="text" name="name" placeholder="Sub-Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:180px;" required>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <input type="text" name="icon" id="subCatIconInput" placeholder="Select Emoji" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:140px; font-size:16px;">
+        <button type="button" class="btn btn-outline" onclick="openEmojiPickerModal('subCatIconInput')" style="padding:7px 10px; font-size:16px;" title="Choose Emoji">😀 Emoji</button>
+      </div>
       <button class="btn btn-primary" type="submit">+ Add Sub-Category</button>
     </form>
 
@@ -106,15 +112,24 @@
 
   <!-- Tab 3: Sub-Sub Categories -->
   <div id="catTabSubSub" style="display:none;">
-    <form method="POST" action="{{ url_for('new_subsubcategory') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-      <select name="sub_category_id" required style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; min-width:200px;">
-        <option value="">Select Sub-Category*</option>
-        {% for s in sub_categories %}
-        <option value="{{ s.id }}">{{ s.name }}</option>
+    <form method="POST" action="{{ url_for('new_subsubcategory') }}" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+      <select id="subsubMainCatSelect" onchange="filterSubCategoriesForSubSub()" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; min-width:180px;">
+        <option value="">Select Main Category*</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
         {% endfor %}
       </select>
-      <input type="text" name="name" placeholder="Sub-Sub-Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:200px;" required>
-      <input type="text" name="icon" placeholder="Icon Emoji / Image URL" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:180px;">
+      <select name="sub_category_id" id="subsubSubCatSelect" required style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; min-width:180px;">
+        <option value="">Select Sub-Category*</option>
+        {% for s in sub_categories %}
+        <option value="{{ s.id }}" data-parent-cat="{{ s.category_id }}">{{ s.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="name" placeholder="Sub-Sub-Category Name*" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; flex:1; min-width:180px;" required>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <input type="text" name="icon" id="subSubIconInput" placeholder="Select Emoji" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; width:130px; font-size:16px;">
+        <button type="button" class="btn btn-outline" onclick="openEmojiPickerModal('subSubIconInput')" style="padding:7px 10px; font-size:16px;" title="Choose Emoji">😀 Emoji</button>
+      </div>
       <button class="btn btn-primary" type="submit">+ Add Sub-Sub-Category</button>
     </form>
 
@@ -196,8 +211,11 @@
       </div>
 
       <div style="margin-bottom:16px;">
-        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Icon (Emoji / Image URL)</label>
-        <input type="text" name="icon" id="modalIconInput" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Icon Emoji</label>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <input type="text" name="icon" id="modalIconInput" style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:16px;">
+          <button type="button" class="btn btn-outline" onclick="openEmojiPickerModal('modalIconInput')" style="padding:7px 10px; font-size:16px;" title="Choose Emoji">😀 Emoji</button>
+        </div>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px;">
@@ -205,6 +223,18 @@
         <button type="submit" class="btn btn-primary">Save Changes</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Interactive Emoji Picker Modal -->
+<div id="emojiPickerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:16px; padding:20px; width:90%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px; color:#0f172a;">😀 Select Category Emoji</h3>
+      <button type="button" onclick="closeEmojiPickerModal()" style="background:#f1f5f9; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold;">✕</button>
+    </div>
+    <div id="emojiGrid" style="display:grid; grid-template-columns:repeat(6, 1fr); gap:8px; max-height:260px; overflow-y:auto; padding:8px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0;">
+    </div>
   </div>
 </div>
 
@@ -247,6 +277,56 @@
 </table>
 
 <script>
+let activeEmojiTargetInputId = null;
+
+const emojiList = [
+  '🍎', '🍌', '🍊', '🍇', '🍉', '🥦', '🥬', '🌽', '🥩', '🍗', '🍞', '🧀',
+  '🥛', '🧃', '☕', '🍪', '🍫', '🍿', '🧼', '🧴', '💄', '🧻', '🧹', '🏠',
+  '📦', '⚡', '🎁', '🛍️', '📁', '🏷️', '📌', '🛒', '🍕', '🍔', '🍰', '🍨',
+  '🍼', '👟', '👕', '🎒', '💻', '📱', '💊', '🌾', '🐟', '🍤', '🧂', '🍳'
+];
+
+function filterSubCategoriesForSubSub() {
+  const mainCatId = document.getElementById('subsubMainCatSelect').value;
+  const subSelect = document.getElementById('subsubSubCatSelect');
+  const options = subSelect.querySelectorAll('option');
+  
+  options.forEach(opt => {
+    if (!opt.value) {
+      opt.style.display = 'block';
+    } else if (!mainCatId || opt.getAttribute('data-parent-cat') == mainCatId) {
+      opt.style.display = 'block';
+    } else {
+      opt.style.display = 'none';
+    }
+  });
+  subSelect.value = '';
+}
+
+function openEmojiPickerModal(inputId) {
+  activeEmojiTargetInputId = inputId;
+  const grid = document.getElementById('emojiGrid');
+  grid.innerHTML = emojiList.map(e => `
+    <button type="button" onclick="selectEmoji('${e}')" style="font-size:22px; padding:8px; border:1px solid #cbd5e1; background:white; border-radius:8px; cursor:pointer;">
+      ${e}
+    </button>
+  `).join('');
+  document.getElementById('emojiPickerModal').style.display = 'flex';
+}
+
+function selectEmoji(emoji) {
+  if (activeEmojiTargetInputId) {
+    const el = document.getElementById(activeEmojiTargetInputId);
+    if (el) el.value = emoji;
+  }
+  closeEmojiPickerModal();
+}
+
+function closeEmojiPickerModal() {
+  document.getElementById('emojiPickerModal').style.display = 'none';
+  activeEmojiTargetInputId = null;
+}
+
 const categoriesData = [
   {% for c in categories %}
   { id: '{{ c.id }}', name: '{{ c.name|e }}' },
@@ -290,11 +370,11 @@ function openEditCategoryModal(type, id, name, parentId, icon) {
   const parentContainer = document.getElementById('parentSelectContainer');
   const parentLabel = document.getElementById('parentSelectLabel');
   const parentSelect = document.getElementById('modalParentSelect');
-  const iconInputRow = document.getElementById('modalIconInput')?.parentElement;
+  const iconInputRow = document.getElementById('modalIconInput')?.closest('div').parentElement;
 
   document.getElementById('modalNameInput').value = name;
   document.getElementById('modalIconInput').value = icon;
-  if (iconInputRow) iconInputRow.style.display = (type === 'brand') ? 'none' : 'block';
+  if (iconInputRow) iconInputRow.style.display = (type === 'brand') ? 'none' : 'flex';
 
   if (type === 'main') {
     title.innerText = 'Edit Main Category';
