@@ -281,12 +281,15 @@
     if (soundEnabled) {
       playChimeBeep();
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("🔔   !", {
-          body: "        ।",
+        new Notification("🔔 New Order Received!", {
+          body: "A new order arrived. Updating page...",
           icon: "/static/images/logo.png"
         });
       }
     }
+    setTimeout(function() {
+      window.location.reload();
+    }, 600);
   }
 
   // Live Order Number & Global Order Search JS Logic
