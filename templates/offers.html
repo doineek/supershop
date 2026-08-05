@@ -4,7 +4,7 @@
 <div class="toolbar">
   <div>
     <h1>🎁 Product Offers & Banner Promotions</h1>
-    <p class="subtitle">Manage special deals, discounts, Buy 1 Get 1 (BOGO) offers, and app front-page banner slides in one place.</p>
+    <p class="subtitle">Manage special deals, discounts, Buy X Get Y (BOGO) offers, and app front-page banner slides in one place.</p>
   </div>
 </div>
 
@@ -65,17 +65,36 @@
 
       <div>
         <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Type</label>
-        <select name="offer_type" id="offerTypeSelect" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+        <select name="offer_type" id="offerTypeSelect" onchange="toggleOfferTypeInputs()" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
           <option value="pct">Percentage Off (%)</option>
           <option value="flat">Flat Discount (TK Amount)</option>
-          <option value="bogo">Buy 1 Get 1 Free (BOGO)</option>
+          <option value="bogo">Buy X Get Y Free (Selectable BOGO)</option>
           <option value="special">Special Bundle Deal</option>
         </select>
       </div>
 
-      <div>
+      <!-- Selectable Buy X Get Y Box -->
+      <div id="bogoSelectBox" style="display:none;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Selectable Buy X Get Y (BOGO)</label>
+        <div style="display:flex; gap:8px; align-items:center; background:#f0f9ff; padding:7px 12px; border:1px solid #bfdbfe; border-radius:8px;">
+          <span style="font-weight:700; color:#0369a1; font-size:13px;">Buy</span>
+          <select id="buyXSelect" onchange="updateBogoOfferValue()" style="padding:6px 10px; border:1px solid #0284c7; border-radius:6px; font-weight:700; background:white;">
+            {% for i in range(1, 11) %}
+            <option value="{{ i }}">{{ i }}</option>
+            {% endfor %}
+          </select>
+          <span style="font-weight:700; color:#0369a1; font-size:13px;">Get</span>
+          <select id="getYSelect" onchange="updateBogoOfferValue()" style="padding:6px 10px; border:1px solid #0284c7; border-radius:6px; font-weight:700; background:white;">
+            {% for j in range(1, 11) %}
+            <option value="{{ j }}">{{ j }} Free</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div id="offerValueContainer">
         <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Value</label>
-        <input type="text" name="offer_value" id="offerValueInput" placeholder="e.g. 20 (for 20%) or Free Item Name" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        <input type="text" name="offer_value" id="offerValueInput" placeholder="e.g. 20 (for 20%) or Buy 1 Get 1 Free" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;">
       </div>
 
       <div>
@@ -195,6 +214,25 @@
 </div>
 
 <script>
+function toggleOfferTypeInputs() {
+  const type = document.getElementById('offerTypeSelect').value;
+  const bogoBox = document.getElementById('bogoSelectBox');
+  if (type === 'bogo') {
+    bogoBox.style.display = 'block';
+    updateBogoOfferValue();
+  } else {
+    bogoBox.style.display = 'none';
+  }
+}
+
+function updateBogoOfferValue() {
+  const x = document.getElementById('buyXSelect').value;
+  const y = document.getElementById('getYSelect').value;
+  const bogoStr = `Buy ${x} Get ${y} Free`;
+  document.getElementById('offerValueInput').value = bogoStr;
+  document.getElementById('offerTitleInput').value = bogoStr;
+}
+
 function filterProducts() {
   const query = document.getElementById('productSearchInput').value.toLowerCase().trim();
   const dropdown = document.getElementById('productDropdown');
@@ -244,6 +282,8 @@ function selectProduct(element) {
   if (type) document.getElementById('offerTypeSelect').value = type;
   if (val) document.getElementById('offerValueInput').value = val;
   if (base) document.getElementById('offerBaseSelect').value = base;
+
+  toggleOfferTypeInputs();
   
   document.getElementById('isOfferCheck').checked = (isOffer == '1');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
@@ -270,6 +310,17 @@ function editOfferFromRow(row) {
   if (val) document.getElementById('offerValueInput').value = val;
   if (base) document.getElementById('offerBaseSelect').value = base;
 
+  toggleOfferTypeInputs();
+
+  // Try parsing Buy X Get Y if val is like Buy 2 Get 1 Free
+  if (val && val.toLowerCase().includes('buy') && val.toLowerCase().includes('get')) {
+    const match = val.match(/buy\s+(\d+)\s+get\s+(\d+)/i);
+    if (match) {
+      document.getElementById('buyXSelect').value = match[1];
+      document.getElementById('getYSelect').value = match[2];
+    }
+  }
+
   document.getElementById('isOfferCheck').checked = (isOffer == '1');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
@@ -293,6 +344,7 @@ function resetOfferForm() {
   document.getElementById('isOfferCheck').checked = true;
   document.getElementById('isPromotionCheck').checked = true;
   document.getElementById('formHeading').innerText = '➕ Add / Update Product Offer';
+  toggleOfferTypeInputs();
 }
 </script>
 {% endblock %}
