@@ -300,21 +300,21 @@ class _CartScreenState extends State<CartScreen> {
                             child: imgUrl.isNotEmpty
                                 ? Image.network(
                                     imgUrl.split(',').first.trim(),
-                                    width: 44,
-                                    height: 44,
+                                    width: 56,
+                                    height: 56,
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) => Container(
-                                      width: 44,
-                                      height: 44,
+                                      width: 56,
+                                      height: 56,
                                       color: Colors.grey.shade200,
-                                      child: const Icon(Icons.shopping_bag, size: 22, color: Colors.grey),
+                                      child: const Icon(Icons.shopping_bag, size: 28, color: Colors.grey),
                                     ),
                                   )
                                 : Container(
-                                    width: 44,
-                                    height: 44,
+                                    width: 56,
+                                    height: 56,
                                     color: Colors.grey.shade200,
-                                    child: const Icon(Icons.shopping_bag, size: 22, color: Colors.grey),
+                                    child: const Icon(Icons.shopping_bag, size: 28, color: Colors.grey),
                                   ),
                           ),
                           const SizedBox(width: 10),

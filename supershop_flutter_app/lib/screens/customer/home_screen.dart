@@ -159,16 +159,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green,
+        toolbarHeight: 64,
         title: Row(
           children: [
-            // Website Brand Logo Image
+            // Website Brand Logo Image (Prominent & Large)
             Image.asset(
               'assets/images/logo.png',
-              height: 32,
+              height: 48,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, color: Colors.white, size: 28),
+              errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, color: Colors.white, size: 36),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

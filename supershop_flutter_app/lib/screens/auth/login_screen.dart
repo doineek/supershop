@@ -503,12 +503,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const SizedBox(height: 20),
-                    // Website Brand Logo Image
+                    // Website Brand Logo Image (Large & Prominent)
                     Image.asset(
                       'assets/images/logo.png',
-                      height: 100,
+                      height: 140,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 80, color: Colors.green),
+                      errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 100, color: Colors.green),
                     ),
                     const SizedBox(height: 12),
 
