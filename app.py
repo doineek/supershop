@@ -422,9 +422,8 @@ def restock_product(product_id):
     new_sl = (p_dict.get("sl_number") or 1) + 1
     p_dict["id"] = None
     p_dict["sl_number"] = new_sl
-    # Append suffix to SKU for new batch
-    base_sku = p_dict["sku"].split("-R")[0]
-    p_dict["sku"] = f"{base_sku}-R{new_sl}"
+    # Keep original SKU intact as requested by user
+    p_dict["sku"] = orig["sku"]
     p_dict["stock_qty"] = 10
 
     flash(f"Restocking product: SL Number incremented to {new_sl}. You can modify price/stock/expiry and save.", "info")
