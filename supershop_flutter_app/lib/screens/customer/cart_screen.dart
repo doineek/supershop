@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
@@ -182,9 +183,12 @@ class _CartScreenState extends State<CartScreen> {
         ? _phoneController.text.trim()
         : savedPhone;
 
-    if (custPhone.isEmpty) {
+    if (custPhone.isEmpty || custPhone.length != 11 || !custPhone.startsWith('01')) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a valid phone number")),
+        const SnackBar(
+          content: Text("Mobile number must start with '01' and be exactly 11 digits (e.g. 01700000000)."),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -501,8 +505,15 @@ class _CartScreenState extends State<CartScreen> {
                   TextField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
+                    maxLength: 11,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(11),
+                    ],
                     decoration: InputDecoration(
                       labelText: loc.translate('phone_number'),
+                      hintText: "01700000000",
+                      counterText: "",
                       border: const OutlineInputBorder(),
                       isDense: true,
                     ),

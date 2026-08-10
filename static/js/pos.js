@@ -360,6 +360,13 @@ checkoutBtn.addEventListener("click", async () => {
   const customer_name = customerIdInput.value.trim();
   const customer_mobile = customerMobileInput.value.trim();
 
+  if (customer_mobile) {
+    if (!/^01\d{9}$/.test(customer_mobile)) {
+      alert("Customer Mobile Number must start with '01' and be exactly 11 digits (e.g. 01700000000).");
+      return;
+    }
+  }
+
   checkoutBtn.disabled = true;
   checkoutBtn.textContent = "Processing...";
 
@@ -395,10 +402,11 @@ customerIdInput.addEventListener("input", () => {
   localStorage.setItem(CUSTOMER_ID_KEY, customerIdInput.value || "");
 });
 customerMobileInput.addEventListener("input", () => {
-  // Mobile number must be digits only - strip anything else immediately
-  // (covers typing, paste, and autofill, not just keypresses).
-  const digitsOnly = customerMobileInput.value.replace(/\D/g, "");
-  if (digitsOnly !== customerMobileInput.value) customerMobileInput.value = digitsOnly;
+  let digitsOnly = customerMobileInput.value.replace(/\D/g, "");
+  if (digitsOnly.length > 11) {
+    digitsOnly = digitsOnly.slice(0, 11);
+  }
+  customerMobileInput.value = digitsOnly;
   localStorage.setItem(CUSTOMER_MOBILE_KEY, customerMobileInput.value || "");
 });
 
