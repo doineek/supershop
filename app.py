@@ -2059,12 +2059,40 @@ def api_apply_voucher():
     discount_type = v["discount_type"]
     discount_value = v["discount_value"]
 
+    # Check if cart contains any Combo Package items
+    has_combo_package = False
+    for item in cart_items:
+        p_id = item.get("product_id") or item.get("id")
+        p_name = (item.get("product_name") or item.get("name") or "").strip()
+        p_unit = (item.get("unit") or "").strip()
+
+        if p_unit == "Combo Package" or p_name.startswith("📦"):
+            has_combo_package = True
+            break
+        if p_id:
+            pkg_row = conn.execute("SELECT id FROM packages WHERE id = ?", (p_id,)).fetchone()
+            if pkg_row:
+                has_combo_package = True
+                break
+
+    if has_combo_package and scope_type in ("product", "category", "sub_category", "sub_sub_category"):
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": f"ভাউচার/কুপন '{code}' কম্বো প্যাকেজের পণ্যে প্রযোজ্য নয়। (Voucher '{code}' cannot be applied when a Combo Package is in the cart.)"
+        }), 400
+
     total_eligible_price = 0.0
 
     for item in cart_items:
         p_id = item.get("product_id")
         qty = int(item.get("quantity") or 1)
         sell_price = float(item.get("price") or 0)
+        p_name_raw = (item.get("product_name") or item.get("name") or "").strip()
+        p_unit_raw = (item.get("unit") or "").strip()
+
+        if p_unit_raw == "Combo Package" or p_name_raw.startswith("📦"):
+            continue
 
         p = conn.execute("SELECT * FROM products WHERE id = ?", (p_id,)).fetchone()
         if not p:
