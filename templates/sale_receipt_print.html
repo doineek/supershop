@@ -80,29 +80,11 @@
   </thead>
   <tbody>
     {% for item in items %}
-    {% set is_buy_offer = (item.offer_type == 'buy_x_get_y' or ('buy' in (item.offer_title or '')|lower)) %}
-    {% if is_buy_offer %}
-      {% set total_set = 3 %}
-      {% set sets = item.quantity // total_set %}
-      {% set remainder = item.quantity % total_set %}
-      {% set paid_qty = sets * 2 + (2 if remainder >= 2 else remainder) %}
-      {% set free_qty = item.quantity - paid_qty %}
-      {% set line_total = paid_qty * item.unit_price %}
-    {% else %}
-      {% set paid_qty = item.quantity %}
-      {% set free_qty = 0 %}
-      {% set line_total = item.unit_price * item.quantity %}
-    {% endif %}
+    {% set line_total = item.unit_price * item.quantity %}
     <tr>
       <td>{{ loop.index }}</td>
       <td>
-        {{ item.sku }} - {{ item.product_name }}
-        {% if is_buy_offer %}
-          <br><small style="font-weight:bold;">[Buy 2 Get 1 FREE Offer]</small>
-          {% if free_qty > 0 %}
-            <br><small>({{ free_qty }} Free Item Included)</small>
-          {% endif %}
-        {% endif %}
+        {% if item.sku %}{{ item.sku }} - {% endif %}{{ item.product_name }}
         {% if item.unit_serials %}<br><small>SL: {{ item.unit_serials }}</small>{% endif %}
       </td>
       <td class="num">{{ item.quantity }}</td>
