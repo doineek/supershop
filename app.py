@@ -1590,11 +1590,34 @@ def sale_receipt_print(sale_id):
             FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
             WHERE s.id = ?
         """, (sale_id,)).fetchone()
-    items = conn.execute("""
-        SELECT si.*, p.name AS product_name, p.sku, p.offer_type, p.offer_value, p.offer_title
-        FROM sale_items si JOIN products p ON si.product_id = p.id
+    raw_items = conn.execute("""
+        SELECT si.*, COALESCE(p.name, '') AS prod_name_tbl, COALESCE(p.sku, '') AS prod_sku, p.offer_type, p.offer_value, p.offer_title
+        FROM sale_items si LEFT JOIN products p ON si.product_id = p.id
         WHERE si.sale_id = ?
     """, (sale_id,)).fetchall()
+    
+    items = []
+    for r in raw_items:
+        i_dict = dict(r)
+        pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (i_dict["product_id"],)).fetchone()
+        if pkg:
+            p_items = conn.execute("""
+                SELECT pi.*, p.sku, p.name AS product_name
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg["id"],)).fetchall()
+            details = []
+            sl = 1
+            for pi in p_items:
+                details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                sl += 1
+            i_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
+            i_dict["sku"] = "COMBO"
+        else:
+            i_dict["product_name"] = i_dict["prod_name_tbl"] or "Item"
+            i_dict["sku"] = i_dict["prod_sku"] or ""
+        items.append(i_dict)
+
     settings = get_all_settings(conn)
     conn.close()
     
@@ -2593,7 +2616,35 @@ def online_orders():
     for ord_row in orders:
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
         o_dict = dict(ord_row)
-        item_list = [dict(i) for i in items]
+        item_list = []
+        for i in items:
+            it_dict = dict(i)
+            p_id = it_dict.get("product_id")
+            p_name = (it_dict.get("product_name") or "").strip()
+            
+            pkg = None
+            if p_id:
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (p_id,)).fetchone()
+            if not pkg and p_name:
+                clean_pname = p_name.replace("📦", "").split("(")[0].strip()
+                pkg = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0", (clean_pname, clean_pname)).fetchone()
+
+            if pkg and "(" not in p_name:
+                p_items = conn.execute("""
+                    SELECT pi.*, p.sku, p.name AS product_name
+                    FROM package_items pi JOIN products p ON pi.product_id = p.id
+                    WHERE pi.package_id = ?
+                """, (pkg["id"],)).fetchall()
+                details = []
+                sl = 1
+                for pi in p_items:
+                    details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                    sl += 1
+                if details:
+                    it_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
+
+            item_list.append(it_dict)
+
         o_dict["items"] = item_list
         o_dict["order_items"] = item_list
         orders_list.append(o_dict)
