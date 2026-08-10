@@ -10,7 +10,33 @@ class CartItem {
 
   double get unitPrice => product.effectivePrice;
 
-  double get totalPrice => unitPrice * quantity;
+  bool get isBuyOffer {
+    String ot = product.offerType.toLowerCase();
+    String title = product.offerTitle.toLowerCase();
+    return ot == 'buy_x_get_y' || ot == 'bogo' || title.contains('buy');
+  }
+
+  int get paidQuantity {
+    if (!isBuyOffer) return quantity;
+    int buyQty = 2;
+    int freeQty = 1;
+    if (product.offerValue.contains(',')) {
+      var parts = product.offerValue.split(',').map((e) => int.tryParse(e.trim()) ?? 0).toList();
+      if (parts.length >= 2 && parts[0] > 0 && parts[1] > 0) {
+        buyQty = parts[0];
+        freeQty = parts[1];
+      }
+    }
+    int totalSet = buyQty + freeQty;
+    int sets = quantity ~/ totalSet;
+    int remainder = quantity % totalSet;
+    int paid = (sets * buyQty) + (remainder > buyQty ? buyQty : remainder);
+    return paid;
+  }
+
+  int get freeQuantity => quantity - paidQuantity;
+
+  double get totalPrice => unitPrice * paidQuantity;
 }
 
 class CartProvider extends ChangeNotifier {

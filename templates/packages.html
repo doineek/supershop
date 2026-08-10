@@ -17,7 +17,7 @@
         <button type="button" id="cancelPkgEditBtn" onclick="resetPkgForm()" style="display:none; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:bold;">Cancel Edit</button>
       </div>
 
-      <form method="POST" id="pkgForm" action="{{ url_for('packages_page') }}" onsubmit="return validateAndConfirmPackage(event);">
+      <form method="POST" id="pkgForm" action="{{ url_for('packages_page') }}" enctype="multipart/form-data" onsubmit="return validateAndConfirmPackage(event);">
         <input type="hidden" id="pkgEditId" value="">
 
         <div style="margin-bottom:12px;">
@@ -36,8 +36,9 @@
         </div>
 
         <div style="margin-bottom:12px;">
-          <label style="display:block; font-weight:600; margin-bottom:4px;">Image URL (Optional)</label>
-          <input type="text" id="pkgImageInput" name="image_url" placeholder="https://..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Upload Package Image or Image URL</label>
+          <input type="file" name="package_image_file" accept="image/*" style="width:100%; margin-bottom:6px; font-size:13px;">
+          <input type="text" id="pkgImageInput" name="image_url" placeholder="Or enter Image URL (https://...)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
         </div>
 
         <!-- Searchable Product Selection -->

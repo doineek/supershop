@@ -2955,52 +2955,48 @@ def online_order_invoice(order_id):
         flash("Order not found.", "error")
         return redirect(url_for("online_orders"))
 
-    inv_num = f"INV-ONLINE-{order['order_number']}"
-    sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
+    order_dict = dict(order)
+    raw_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
     
-    if not sale:
-        # Create sale record if not created yet
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_name, customer_mobile,
-                                total_amount, rounded_total, vat_amount, saved_amount, cash_amount,
-                                card_amount, change_amount, created_at, channel)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Online')
-        """, (
-            inv_num,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            session.get("user_id", 1),
-            order["customer_name"],
-            order["customer_phone"],
-            order["subtotal"],
-            order["total_amount"],
-            0,
-            0,
-            order["total_amount"],
-            0,
-            0,
-            datetime.now().isoformat()
-        ))
-        sale_id = cur.lastrowid
+    items = []
+    for item in raw_items:
+        it_dict = dict(item)
+        p_id = it_dict.get("product_id")
+        p_name = (it_dict.get("product_name") or "").strip()
         
-        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
-        for item in items:
-            cur.execute("""
-                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
-            """, (
-                sale_id,
-                item["product_id"],
-                item["quantity"],
-                item["unit_price"],
-                item["mrp_price"]
-            ))
-        conn.commit()
-    else:
-        sale_id = sale["id"]
+        pkg = None
+        is_combo = p_name.startswith("📦") or it_dict.get("unit") == "Combo Package"
+        if p_id:
+            pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (p_id,)).fetchone()
+        if not pkg and is_combo:
+            clean_name = p_name.replace("📦", "").split("(")[0].strip()
+            pkg = conn.execute("SELECT * FROM packages WHERE name = ?", (clean_name,)).fetchone()
 
+        if pkg and "(" not in p_name:
+            p_items = conn.execute("""
+                SELECT pi.*, p.sku, p.name AS product_name
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg["id"],)).fetchall()
+            details = []
+            sl = 1
+            for pi in p_items:
+                details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                sl += 1
+            if details:
+                it_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
+
+        items.append(it_dict)
+
+    settings = get_all_settings(conn)
     conn.close()
-    return redirect(url_for("sale_receipt_print", sale_id=sale_id))
+
+    return render_template(
+        "online_invoice.html",
+        order=order_dict,
+        items=items,
+        shop=settings
+    )
 
 
 @app.route("/api/online_orders/customer_search")
@@ -3808,6 +3804,18 @@ def packages_page():
         image_url = request.form.get("image_url", "").strip()
         prod_ids = request.form.getlist("product_ids")
 
+        file = request.files.get("package_image_file")
+        if file and file.filename:
+            import os, time
+            from werkzeug.utils import secure_filename
+            upload_dir = os.path.join(app.root_path, "static", "uploads", "packages")
+            os.makedirs(upload_dir, exist_ok=True)
+            fn = secure_filename(file.filename)
+            file_path = os.path.join(upload_dir, f"{int(time.time())}_{fn}")
+            file.save(file_path)
+            rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
+            image_url = f"/{rel_path}"
+
         if name and package_price > 0 and prod_ids:
             cur = conn.cursor()
             cur.execute("""
@@ -3823,6 +3831,9 @@ def packages_page():
                     VALUES (?, ?, ?)
                 """, (pkg_id, int(pid), item_qty))
             conn.commit()
+            
+            # Push updated packages to Cloud Firestore
+            remote_control.push_packages_to_cloud()
             flash(f"Package '{name}' created successfully.", "success")
         else:
             flash("Please enter package name, price, and select at least 1 product.", "error")
@@ -3862,6 +3873,18 @@ def edit_package(package_id):
     image_url = request.form.get("image_url", "").strip()
     prod_ids = request.form.getlist("product_ids")
 
+    file = request.files.get("package_image_file")
+    if file and file.filename:
+        import os, time
+        from werkzeug.utils import secure_filename
+        upload_dir = os.path.join(app.root_path, "static", "uploads", "packages")
+        os.makedirs(upload_dir, exist_ok=True)
+        fn = secure_filename(file.filename)
+        file_path = os.path.join(upload_dir, f"{int(time.time())}_{fn}")
+        file.save(file_path)
+        rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
+        image_url = f"/{rel_path}"
+
     if name and package_price > 0 and prod_ids:
         cur = conn.cursor()
         cur.execute("""
@@ -3877,6 +3900,9 @@ def edit_package(package_id):
                 VALUES (?, ?, ?)
             """, (package_id, int(pid), item_qty))
         conn.commit()
+        
+        # Push updated packages to Cloud Firestore
+        remote_control.push_packages_to_cloud()
         flash(f"Package '{name}' updated successfully.", "success")
     else:
         flash("Please enter package name, price, and select at least 1 product.", "error")
@@ -3904,12 +3930,23 @@ def api_packages():
     packages_list = []
     for pkg in pkg_rows:
         p_dict = dict(pkg)
+        img = (p_dict.get("image_url") or "").strip()
+        if img and img.startswith("/static/"):
+            p_dict["image_url"] = request.host_url.rstrip("/") + img
+
         items = conn.execute("""
-            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
-        p_dict["items"] = [dict(i) for i in items]
+        item_list = []
+        for i in items:
+            it_d = dict(i)
+            p_img = (it_d.get("image_url") or "").strip()
+            if p_img and p_img.startswith("/static/"):
+                it_d["image_url"] = request.host_url.rstrip("/") + p_img
+            item_list.append(it_d)
+        p_dict["items"] = item_list
         packages_list.append(p_dict)
     conn.close()
     return jsonify(packages_list)

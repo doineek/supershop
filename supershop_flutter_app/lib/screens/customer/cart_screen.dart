@@ -423,6 +423,19 @@ class _CartScreenState extends State<CartScreen> {
                               children: [
                                 Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                 Text('TK ${item.product.sellPrice.toStringAsFixed(0)} × ${item.quantity}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                if (item.isBuyOffer) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item.freeQuantity > 0
+                                        ? "🎁 BOGO Offer: ${item.freeQuantity} Free Item(s) Included!"
+                                        : "💡 Buy 2 Get 1 FREE Offer Available",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: item.freeQuantity > 0 ? Colors.purple : Colors.orange.shade800,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
