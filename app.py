@@ -3979,15 +3979,22 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-RESET_SENDER_EMAIL = "doineek.supershop@gmail.com"
-RESET_SENDER_PASS = "Bangladesh@2"
+RESET_SENDER_EMAIL = os.environ.get("SMTP_SENDER_EMAIL") or "doineek.supershop@gmail.com"
+RESET_SENDER_PASS = os.environ.get("SMTP_APP_PASSWORD") or os.environ.get("SMTP_SENDER_PASS") or "Bangladesh@2"
 RESET_RECIPIENT_EMAIL = "najmul.djd@gmail.com"
 
 def send_reset_otp_email(otp_code):
+    sender = RESET_SENDER_EMAIL.strip()
+    password = RESET_SENDER_PASS.replace(" ", "").strip()
+
+    print(f"\n=======================================================")
+    print(f"🚨 SYSTEM RESET OTP GENERATED FOR {RESET_RECIPIENT_EMAIL}: [{otp_code}]")
+    print(f"=======================================================\n")
+
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"CRITICAL: System Reset Confirmation OTP [{otp_code}]"
-        msg["From"] = f"DOINEEK Supershop Security <{RESET_SENDER_EMAIL}>"
+        msg["From"] = f"DOINEEK Supershop Security <{sender}>"
         msg["To"] = RESET_RECIPIENT_EMAIL
 
         text_content = f"DOINEEK Supershop - System Reset OTP: {otp_code}\n\nWarning: Entering this OTP will permanently delete selected system records."
@@ -3999,21 +4006,36 @@ def send_reset_otp_email(otp_code):
             {otp_code}
           </div>
           <p style="color: #991b1b; font-weight: bold; font-size: 14px;">⚠️ WARNING: Authorizing this OTP will permanently wipe selected database categories (Inventory, Sales, Customers, Orders, Reports, Staff, etc.).</p>
-          <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Sent from connected account {RESET_SENDER_EMAIL} to {RESET_RECIPIENT_EMAIL}. If you did not request this, please ignore this email.</p>
+          <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Sent from connected account {sender} to {RESET_RECIPIENT_EMAIL}. If you did not request this, please ignore this email.</p>
         </div>
         """
         msg.attach(MIMEText(text_content, "plain"))
         msg.attach(MIMEText(html_content, "html"))
 
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(RESET_SENDER_EMAIL, RESET_SENDER_PASS)
-        server.sendmail(RESET_SENDER_EMAIL, RESET_RECIPIENT_EMAIL, msg.as_string())
-        server.quit()
-        return True, "OTP email sent successfully."
+        # 1. Try Port 587 (TLS)
+        try:
+            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
+            server.starttls()
+            server.login(sender, password)
+            server.sendmail(sender, RESET_RECIPIENT_EMAIL, msg.as_string())
+            server.quit()
+            return True, "OTP email sent successfully."
+        except Exception as err587:
+            # 2. Try Port 465 (SSL)
+            try:
+                server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)
+                server.login(sender, password)
+                server.sendmail(sender, RESET_RECIPIENT_EMAIL, msg.as_string())
+                server.quit()
+                return True, "OTP email sent successfully."
+            except Exception:
+                raise err587
     except Exception as e:
-        print(f"[send_reset_otp_email] Error sending email: {e}")
-        return False, str(e)
+        err_str = str(e)
+        print(f"[send_reset_otp_email] SMTP Error: {err_str}")
+        if "BadCredentials" in err_str or "Username and Password not accepted" in err_str:
+            return False, f"Google Gmail SMTP Auth Error: Gmail requires a 16-character App Password (Google Account -> Security -> 2-Step Verification -> App Passwords). Generated OTP: {otp_code}"
+        return False, err_str
 
 
 @app.route("/admin/system-reset/send-otp", methods=["POST"])
