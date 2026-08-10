@@ -4145,8 +4145,12 @@ def admin_reset_confirm():
         conn.commit()
         conn.close()
 
-        # Push clean database to Cloud Firestore
-        remote_control.push_all_to_cloud()
+        # Push clean database to Cloud Firestore safely
+        try:
+            if hasattr(remote_control, "push_all_to_cloud"):
+                remote_control.push_all_to_cloud()
+        except Exception as _rc_err:
+            print(f"[admin_reset_confirm] Cloud push notice: {_rc_err}")
         
         session.pop("reset_otp", None)
         session.pop("reset_categories", None)

@@ -204,6 +204,18 @@ def push_delivery_areas_to_cloud():
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def push_all_to_cloud():
+    """Pushes full state to cloud after a system reset or major change."""
+    try:
+        push_full_backup()
+        push_categories_to_cloud()
+        if 'push_packages_to_cloud' in globals():
+            push_packages_to_cloud()
+        push_delivery_areas_to_cloud()
+    except Exception as e:
+        print(f"[remote_control] push_all_to_cloud error: {e}")
+
+
 def push_full_backup():
     """Full periodic sync safety net."""
     try:
