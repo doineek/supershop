@@ -926,6 +926,59 @@ def customers_api_search():
     return jsonify(results)
 
 
+@app.route("/customers/api/profile")
+@login_required
+def customers_api_profile():
+    phone = request.args.get("phone", "").strip()
+    if not phone:
+        return jsonify({"success": False, "message": "Phone number is required"}), 400
+
+    conn = get_connection()
+    user = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    
+    online_stats = conn.execute("""
+        SELECT COUNT(*) AS count, SUM(total_amount) AS total
+        FROM online_orders WHERE customer_phone = ?
+    """, (phone,)).fetchone()
+
+    sales_stats = conn.execute("""
+        SELECT COUNT(*) AS count, SUM(rounded_total) AS total
+        FROM sales WHERE customer_mobile = ?
+    """, (phone,)).fetchone()
+
+    total_orders = (online_stats["count"] or 0) + (sales_stats["count"] or 0)
+    total_spent = (online_stats["total"] or 0.0) + (sales_stats["total"] or 0.0)
+
+    district = user["district"] if user and "district" in user.keys() else ""
+    area = user["area"] if user and "area" in user.keys() else ""
+    address_details = user["address_details"] if user and "address_details" in user.keys() else ""
+    profile_image = user["profile_image"] if user and "profile_image" in user.keys() else ""
+
+    if not district or not area:
+        latest_order = conn.execute("SELECT district, area, address_details FROM online_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
+        if latest_order:
+            if not district: district = latest_order["district"] or ""
+            if not area: area = latest_order["area"] or ""
+            if not address_details: address_details = latest_order["address_details"] or ""
+
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "name": user["name"] if user else "Customer User",
+        "phone": phone,
+        "email": user["email"] if user else "",
+        "profile_image": profile_image,
+        "district": district or "Not specified",
+        "area": area or "Not specified",
+        "address_details": address_details or "No detailed address recorded",
+        "is_blocked": user["is_blocked"] if user else 0,
+        "block_reason": user["block_reason"] if user else "",
+        "total_orders": total_orders,
+        "total_spent": round(total_spent, 2)
+    })
+
+
 @app.route("/customers")
 @login_required
 def customers_page():
@@ -2593,11 +2646,23 @@ def deduct_online_order_stock(conn, order):
 
     items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
     for item in items:
-        conn.execute(
-            "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
-            (item["quantity"], item["product_id"])
-        )
-        remote_control.push_product_to_cloud(item["product_id"])
+        pid = item["product_id"]
+        qty = item["quantity"]
+        pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
+        if pkg:
+            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pid,)).fetchall()
+            for pi in p_items:
+                conn.execute(
+                    "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                    (pi["quantity"] * qty, pi["product_id"])
+                )
+                remote_control.push_product_to_cloud(pi["product_id"])
+        else:
+            conn.execute(
+                "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                (qty, pid)
+            )
+            remote_control.push_product_to_cloud(pid)
 
     conn.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
 
@@ -2654,11 +2719,23 @@ def restore_online_order_stock(conn, order):
     if is_deducted:
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
         for item in items:
-            conn.execute(
-                "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
-                (item["quantity"], item["product_id"])
-            )
-            remote_control.push_product_to_cloud(item["product_id"])
+            pid = item["product_id"]
+            qty = item["quantity"]
+            pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
+            if pkg:
+                p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pid,)).fetchall()
+                for pi in p_items:
+                    conn.execute(
+                        "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
+                        (pi["quantity"] * qty, pi["product_id"])
+                    )
+                    remote_control.push_product_to_cloud(pi["product_id"])
+            else:
+                conn.execute(
+                    "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
+                    (qty, pid)
+                )
+                remote_control.push_product_to_cloud(pid)
 
         conn.execute("UPDATE online_orders SET is_stock_deducted = 0 WHERE id = ?", (order_id,))
 
@@ -3551,10 +3628,11 @@ def packages_page():
             pkg_id = cur.lastrowid
 
             for pid in prod_ids:
+                item_qty = int(request.form.get(f"qty_{pid}") or 1)
                 cur.execute("""
                     INSERT INTO package_items (package_id, product_id, quantity)
-                    VALUES (?, ?, 1)
-                """, (pkg_id, int(pid)))
+                    VALUES (?, ?, ?)
+                """, (pkg_id, int(pid), item_qty))
             conn.commit()
             flash(f"Package '{name}' created successfully.", "success")
         else:

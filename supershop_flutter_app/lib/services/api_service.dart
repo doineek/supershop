@@ -425,4 +425,14 @@ class ApiService {
     }
     return {'success': false, 'message': 'Network error'};
   }
+
+  static Future<List<dynamic>> getPackages() async {
+    try {
+      final res = await httpGet('/api/packages');
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body) as List<dynamic>;
+      }
+    } catch (_) {}
+    return [];
+  }
 }

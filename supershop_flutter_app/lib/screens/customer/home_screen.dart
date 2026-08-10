@@ -562,13 +562,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             scrollDirection: Axis.horizontal,
                             child: Row(
                               children: [
-                                _buildTabChip(loc.translate('all_products'), 'all'),
+                                _buildTabChip(loc.translate('offers'), 'offers'),
                                 const SizedBox(width: 8),
-                                _buildTabChip(loc.translate('trending'), 'trending'),
+                                _buildTabChip('🎁 Combo Packages', 'packages'),
                                 const SizedBox(width: 8),
                                 _buildTabChip(loc.translate('flash_sale'), 'flash_sale'),
                                 const SizedBox(width: 8),
-                                _buildTabChip(loc.translate('offers'), 'offers'),
+                                _buildTabChip(loc.translate('all_products'), 'all'),
+                                const SizedBox(width: 8),
+                                _buildTabChip(loc.translate('trending'), 'trending'),
                               ],
                             ),
                           ),

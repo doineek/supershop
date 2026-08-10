@@ -13,7 +13,7 @@
   <div style="flex:1;">
     <div class="card">
       <h3 style="margin-top:0; color:#15803d; font-size:16px;">+ Create New Combo Package</h3>
-      <form method="POST" action="{{ url_for('packages_page') }}">
+      <form method="POST" action="{{ url_for('packages_page') }}" onsubmit="return validatePackageForm();">
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Package Name*</label>
           <input type="text" name="name" placeholder="e.g. Weekly Family Grocery Bundle" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
@@ -34,13 +34,48 @@
           <input type="text" name="image_url" placeholder="https://..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
         </div>
 
-        <div style="margin-bottom:16px;">
-          <label style="display:block; font-weight:600; margin-bottom:4px;">Select Included Products (Hold Ctrl to select multiple)*</label>
-          <select name="product_ids" multiple required style="width:100%; height:160px; padding:8px; border:1px solid #cbd5e1; border-radius:8px;">
+        <!-- Searchable Product Selection -->
+        <div style="margin-bottom:16px; position:relative;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Search & Add Included Products*</label>
+          <input type="text" id="pkgProductSearch" placeholder="Type SKU or Product Name..." style="width:100%; padding:9px 12px; border:1px solid #0284c7; border-radius:8px; background:#f0f9ff; font-weight:600;" autocomplete="off" onkeyup="filterPkgProducts()" onfocus="showPkgDropdown()">
+          
+          <div id="pkgDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:220px; overflow-y:auto; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:100; margin-top:4px;">
             {% for p in products %}
-            <option value="{{ p.id }}">{{ p.name }} (Sell: TK {{ p.sell_price }})</option>
+            <div class="pkg-product-option"
+                 data-id="{{ p.id }}"
+                 data-name="{{ p.name|e }}"
+                 data-sku="{{ p.sku|e }}"
+                 data-price="{{ p.sell_price }}"
+                 onclick="addPkgProductRow(this)"
+                 style="padding:10px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; font-size:13px;"
+                 onmouseover="this.style.background='#eff6ff'"
+                 onmouseout="this.style.background='white'">
+              <div style="font-weight:700; color:#0f172a;">{{ p.name }}</div>
+              <div style="font-size:11px; color:#64748b;">SKU: {{ p.sku }} | Price: TK {{ p.sell_price }}</div>
+            </div>
             {% endfor %}
-          </select>
+          </div>
+        </div>
+
+        <!-- Selected Products Table -->
+        <div style="margin-bottom:16px;">
+          <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:#0f172a;">Selected Items for this Combo:</label>
+          <div class="table-responsive" style="border:1px solid #e2e8f0; border-radius:8px; max-height:220px; overflow-y:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;" id="selectedPkgTable">
+              <thead>
+                <tr style="background:#f8fafc; text-align:left; border-bottom:1px solid #cbd5e1;">
+                  <th style="padding:6px 8px;">Product</th>
+                  <th style="padding:6px 8px; width:70px;">Qty</th>
+                  <th style="padding:6px 8px; text-align:right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="selectedPkgBody">
+                <tr id="emptyPkgRow">
+                  <td colspan="3" style="text-align:center; padding:16px; color:#94a3b8;">No products added yet. Search above to add items.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <button type="submit" class="btn btn-primary" style="width:100%; padding:10px;">+ Save Package</button>
@@ -72,7 +107,7 @@
               <td style="padding:10px; font-size:12px;">
                 <ul style="margin:0; padding-left:16px;">
                   {% for item in pkg.items %}
-                  <li>{{ item.product_name }} (TK {{ item.sell_price }})</li>
+                  <li>{{ item.product_name }} × {{ item.quantity }} (TK {{ item.sell_price }})</li>
                   {% endfor %}
                 </ul>
               </td>
@@ -94,4 +129,93 @@
     </div>
   </div>
 </div>
+
+<script>
+let selectedPkgProductIds = new Set();
+
+function showPkgDropdown() {
+  document.getElementById('pkgDropdown').style.display = 'block';
+  filterPkgProducts();
+}
+
+function filterPkgProducts() {
+  const query = document.getElementById('pkgProductSearch').value.toLowerCase().trim();
+  const options = document.querySelectorAll('.pkg-product-option');
+  options.forEach(opt => {
+    const name = opt.getAttribute('data-name').toLowerCase();
+    const sku = opt.getAttribute('data-sku').toLowerCase();
+    if (name.includes(query) || sku.includes(query)) {
+      opt.style.display = 'block';
+    } else {
+      opt.style.display = 'none';
+    }
+  });
+}
+
+function addPkgProductRow(el) {
+  const id = el.getAttribute('data-id');
+  const name = el.getAttribute('data-name');
+  const sku = el.getAttribute('data-sku');
+  const price = el.getAttribute('data-price');
+
+  if (selectedPkgProductIds.has(id)) {
+    alert("Product is already added to this package.");
+    document.getElementById('pkgDropdown').style.display = 'none';
+    return;
+  }
+
+  selectedPkgProductIds.add(id);
+  document.getElementById('emptyPkgRow')?.remove();
+
+  const tbody = document.getElementById('selectedPkgBody');
+  const tr = document.createElement('tr');
+  tr.id = 'pkgRow_' + id;
+  tr.style.borderBottom = '1px solid #f1f5f9';
+  tr.innerHTML = `
+    <td style="padding:6px 8px;">
+      <div style="font-weight:600; color:#0f172a;">${name}</div>
+      <div style="font-size:11px; color:#64748b;">SKU: ${sku} | TK ${price}</div>
+      <input type="hidden" name="product_ids" value="${id}">
+    </td>
+    <td style="padding:6px 8px;">
+      <input type="number" name="qty_${id}" value="1" min="1" style="width:55px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; font-weight:bold;">
+    </td>
+    <td style="padding:6px 8px; text-align:right;">
+      <button type="button" onclick="removePkgProductRow('${id}')" style="background:#ef4444; color:white; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">✕</button>
+    </td>
+  `;
+  tbody.appendChild(tr);
+
+  document.getElementById('pkgProductSearch').value = '';
+  document.getElementById('pkgDropdown').style.display = 'none';
+}
+
+function removePkgProductRow(id) {
+  selectedPkgProductIds.delete(id);
+  document.getElementById('pkgRow_' + id)?.remove();
+  const tbody = document.getElementById('selectedPkgBody');
+  if (tbody.children.length === 0) {
+    tbody.innerHTML = `
+      <tr id="emptyPkgRow">
+        <td colspan="3" style="text-align:center; padding:16px; color:#94a3b8;">No products added yet. Search above to add items.</td>
+      </tr>
+    `;
+  }
+}
+
+function validatePackageForm() {
+  if (selectedPkgProductIds.size === 0) {
+    alert("Please search and select at least 1 product for this package.");
+    return false;
+  }
+  return true;
+}
+
+document.addEventListener('click', function(e) {
+  const container = document.getElementById('pkgProductSearch')?.parentElement;
+  if (container && !container.contains(e.target)) {
+    document.getElementById('pkgDropdown').style.display = 'none';
+  }
+});
+</script>
 {% endblock %}
