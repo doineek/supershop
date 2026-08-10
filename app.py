@@ -1921,17 +1921,17 @@ def api_categories_tree():
 @admin_required
 def offers_page():
     conn = get_connection()
-    all_products = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
-    offer_products = conn.execute("""
+    all_products = [dict(p) for p in conn.execute("SELECT * FROM products ORDER BY name").fetchall()]
+    offer_products = [dict(p) for p in conn.execute("""
         SELECT p.*, c.name AS category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
         WHERE p.is_offer = 1 OR p.is_promotion = 1 OR p.offer_type = 'bogo'
         ORDER BY p.id DESC
-    """).fetchall()
-    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
-    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
-    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    """).fetchall()]
+    categories = [dict(c) for c in conn.execute("SELECT * FROM categories ORDER BY name").fetchall()]
+    sub_categories = [dict(s) for s in conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()]
+    sub_sub_categories = [dict(ss) for ss in conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()]
     vouchers = [dict(v) for v in conn.execute("SELECT * FROM vouchers ORDER BY id DESC").fetchall()]
     settings = get_all_settings(conn)
     conn.close()

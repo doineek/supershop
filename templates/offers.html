@@ -393,6 +393,11 @@ function updateVoucherScopeOptions() {
 </div>
 
 <script>
+const productsData = {{ all_products|tojson }};
+const categoriesData = {{ categories|tojson }};
+const subCategoriesData = {{ sub_categories|tojson }};
+const subSubCategoriesData = {{ sub_sub_categories|tojson }};
+
 function toggleOfferTypeInputs() {
   const type = document.getElementById('offerTypeSelect').value;
   const bogoBox = document.getElementById('bogoSelectBox');
