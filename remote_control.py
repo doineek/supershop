@@ -187,6 +187,57 @@ def delete_product_from_cloud(sku):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def _worker_push_packages():
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        pkg_rows = conn.execute("SELECT * FROM packages WHERE is_active = 1 ORDER BY id DESC").fetchall()
+        
+        active_ids = {str(r["id"]) for r in pkg_rows}
+        try:
+            cloud_docs = db.collection("packages").stream()
+            for doc in cloud_docs:
+                if doc.id not in active_ids:
+                    db.collection("packages").document(doc.id).delete()
+        except Exception:
+            pass
+
+        for pkg in pkg_rows:
+            p_dict = dict(pkg)
+            items = conn.execute("""
+                SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg["id"],)).fetchall()
+            p_dict["items"] = [dict(i) for i in items]
+            db.collection("packages").document(str(pkg["id"])).set(p_dict)
+        conn.close()
+        print(f"[remote_control] [OK] {len(pkg_rows)} Packages pushed & synced to Firebase Cloud.")
+    except Exception as e:
+        print(f"[remote_control] push packages failed: {e}")
+
+
+def push_packages_to_cloud():
+    """Upload product packages & combo bundles to Firestore in background."""
+    threading.Thread(target=_worker_push_packages, daemon=True).start()
+
+
+def delete_package_from_cloud(package_id):
+    """Mirror local package deletion into Firestore."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            db.collection("packages").document(str(package_id)).delete()
+            push_packages_to_cloud()
+        except Exception as e:
+            print(f"[remote_control] package delete failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def _worker_push_online_order(order_id):
     try:
         db = _init_firebase()

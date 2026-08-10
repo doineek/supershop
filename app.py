@@ -3943,6 +3943,11 @@ def delete_package(package_id):
     conn.execute("DELETE FROM packages WHERE id = ?", (package_id,))
     conn.commit()
     conn.close()
+    
+    # Mirror deletion in Cloud Firestore and sync cloud packages
+    remote_control.delete_package_from_cloud(package_id)
+    remote_control.push_packages_to_cloud()
+    
     flash("Product package deleted successfully.", "success")
     return redirect(url_for("packages_page"))
 
