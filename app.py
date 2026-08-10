@@ -1855,9 +1855,6 @@ def api_categories_tree():
 @app.route("/offers", methods=["GET"])
 @login_required
 @admin_required
-@app.route("/offers", methods=["GET"])
-@login_required
-@admin_required
 def offers_page():
     conn = get_connection()
     all_products = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
