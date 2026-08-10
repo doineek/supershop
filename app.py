@@ -2357,6 +2357,7 @@ def users():
                 (username, generate_password_hash(password), role, datetime.now().isoformat())
             )
             conn.commit()
+            remote_control.push_users_to_cloud()
             flash(f'User "{username}" created.', "success")
         except Exception as e:
             flash(f"Could not create user: {e}", "error")
@@ -2381,6 +2382,7 @@ def change_user_password(user_id):
     )
     conn.commit()
     conn.close()
+    remote_control.push_users_to_cloud()
     flash("Password updated successfully.", "success")
     return redirect(url_for("users"))
 
@@ -2401,6 +2403,7 @@ def edit_user(user_id):
         else:
             conn.execute("UPDATE users SET username = ?, role = ? WHERE id = ?", (username, role, user_id))
         conn.commit()
+        remote_control.push_users_to_cloud()
         flash(f"Staff user '{username}' updated successfully.", "success")
     conn.close()
     return redirect(url_for("users"))
@@ -2418,6 +2421,7 @@ def delete_user(user_id):
     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
+    remote_control.push_users_to_cloud()
     flash("Staff account deleted successfully.", "success")
     return redirect(url_for("users"))
 

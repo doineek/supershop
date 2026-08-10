@@ -153,6 +153,27 @@ def push_categories_to_cloud():
     threading.Thread(target=_worker_push_categories, daemon=True).start()
 
 
+def _worker_push_users():
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        users = conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall()
+        conn.close()
+        for u in users:
+            u_dict = dict(u)
+            db.collection("users").document(str(u_dict["username"])).set(u_dict)
+        print(f"[remote_control] [OK] {len(users)} Staff/Admin users pushed to Firebase Cloud.")
+    except Exception as e:
+        print(f"[remote_control] push users failed: {e}")
+
+
+def push_users_to_cloud():
+    """Upload staff & admin user accounts and password hashes to Firestore in background."""
+    threading.Thread(target=_worker_push_users, daemon=True).start()
+
+
 def delete_product_from_cloud(sku):
     """Mirror local product deletion into Firestore."""
     def _worker():
@@ -396,6 +417,36 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] online orders sync failed: {e}")
 
 
+def _on_users_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `users` collection in Firestore.
+    Syncs admin & staff user account credentials and password hashes in real time across local & cloud servers!
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            username = doc.id
+            if change.type.name in ("ADDED", "MODIFIED"):
+                password_hash = data.get("password_hash")
+                role = data.get("role", "admin")
+                created_at = data.get("created_at", datetime.now().isoformat())
+                if username and password_hash:
+                    existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+                    if existing:
+                        conn.execute("UPDATE users SET password_hash = ?, role = ? WHERE username = ?", (password_hash, role, username))
+                    else:
+                        conn.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)", (username, password_hash, role, created_at))
+            elif change.type.name == "REMOVED":
+                conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        conn.commit()
+        conn.close()
+        print(f"[remote_control] [SYNC] Real-time user accounts & passwords synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way users sync failed: {e}")
+
+
 def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
@@ -406,15 +457,16 @@ def start():
     try:
         _ensure_remote_doc(db)
 
-        # Live listeners (Firebase Console -> Local App)
-        db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
-        db.collection("products").on_snapshot(_on_products_change)
-        db.collection("online_orders").on_snapshot(_on_online_orders_change)
-
         def _safety_net_loop():
             while True:
                 push_full_backup()
                 time.sleep(300)
+
+        # Live listeners (Firebase Console -> Local App)
+        db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
+        db.collection("products").on_snapshot(_on_products_change)
+        db.collection("online_orders").on_snapshot(_on_online_orders_change)
+        db.collection("users").on_snapshot(_on_users_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
         print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.")
