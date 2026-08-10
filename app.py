@@ -4097,49 +4097,62 @@ def admin_reset_confirm():
     wiped_items = []
 
     try:
+        def safe_del(tbl, clause="", p=()):
+            try:
+                q = f"DELETE FROM {tbl}"
+                if clause:
+                    q += f" WHERE {clause}"
+                cur.execute(q, p)
+            except Exception as _t_err:
+                print(f"[system_reset] Notice for table {tbl}: {_t_err}")
+
         if "inventory" in categories:
-            cur.execute("DELETE FROM product_units")
-            cur.execute("DELETE FROM products")
+            safe_del("product_units")
+            safe_del("products")
             wiped_items.append("Inventory & Products")
 
         if "sales_log" in categories:
-            cur.execute("DELETE FROM sale_items")
-            cur.execute("DELETE FROM sales")
+            safe_del("sale_items")
+            safe_del("sales")
             wiped_items.append("Sales Log")
 
         if "customers" in categories:
-            cur.execute("DELETE FROM customers")
+            safe_del("customer_users")
+            safe_del("customers")
             wiped_items.append("Customers")
 
         if "online_orders" in categories:
-            cur.execute("DELETE FROM online_order_items")
-            cur.execute("DELETE FROM online_orders")
+            safe_del("online_order_items")
+            safe_del("online_orders")
             wiped_items.append("Online Orders")
 
         if "returned_expired" in categories:
-            cur.execute("DELETE FROM returned_items")
+            safe_del("returned_items")
             wiped_items.append("Returned / Expired Items")
 
         if "packages" in categories:
-            cur.execute("DELETE FROM package_items")
-            cur.execute("DELETE FROM packages")
+            safe_del("package_items")
+            safe_del("packages")
             wiped_items.append("Product Packages & Combos")
 
         if "offers_promotions" in categories:
-            cur.execute("DELETE FROM vouchers")
-            cur.execute("UPDATE products SET is_offer = 0, is_promotion = 0, offer_type = NULL, offer_value = NULL, offer_title = NULL")
+            safe_del("vouchers")
+            try:
+                cur.execute("UPDATE products SET is_offer = 0, is_promotion = 0, offer_type = NULL, offer_value = NULL, offer_title = NULL")
+            except Exception:
+                pass
             wiped_items.append("Offers, Banner Promotions & Vouchers")
 
         if "delivery_areas" in categories:
-            cur.execute("DELETE FROM delivery_areas")
+            safe_del("delivery_areas")
             wiped_items.append("Delivery Areas")
 
         if "riders_staff" in categories:
-            cur.execute("DELETE FROM users WHERE role != 'admin' AND id != ?", (session.get("user_id", 0),))
+            safe_del("users", "role != 'admin' AND id != ?", (session.get("user_id", 0),))
             wiped_items.append("Riders & Staff Users")
 
         if "reports" in categories:
-            cur.execute("DELETE FROM ledger_entries")
+            safe_del("ledger_entries")
             wiped_items.append("Reports & Ledger Entries")
 
         conn.commit()
