@@ -2661,8 +2661,11 @@ def deduct_online_order_stock(conn, order):
         pid = item["product_id"]
         qty = item["quantity"]
         pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
+        if not pkg and item["product_name"]:
+            pkg = conn.execute("SELECT id FROM packages WHERE name = ? OR instr(?, name) > 0", (item["product_name"], item["product_name"])).fetchone()
+
         if pkg:
-            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pid,)).fetchall()
+            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pkg["id"],)).fetchall()
             for pi in p_items:
                 conn.execute(
                     "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
@@ -3135,7 +3138,10 @@ def api_place_order():
             offer_title = prod["offer_title"] or ""
         else:
             p_id = prod_id or 0
+            sku_val = (item.get("sku") or "").strip()
             p_name = (item.get("product_name") or item.get("name") or item.get("title") or "Item").strip()
+            if sku_val and "(" in sku_val:
+                p_name = sku_val
             unit_price = float(item.get("unit_price") or item.get("sell_price") or item.get("price") or 0.0)
             mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
             offer_type = ""

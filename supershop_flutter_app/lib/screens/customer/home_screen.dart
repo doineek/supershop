@@ -690,6 +690,58 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   padding: const EdgeInsets.symmetric(vertical: 2),
                                                   child: Text("• ${it['product_name']} × ${it['quantity']}", style: const TextStyle(fontSize: 13, color: Colors.black54)),
                                                 )),
+                                                const SizedBox(height: 12),
+                                                SizedBox(
+                                                  width: double.infinity,
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () {
+                                                      List<String> itemSummaries = [];
+                                                      double regTotal = 0.0;
+                                                      for (var it in items) {
+                                                        String pSku = it['sku'] ?? 'SKU';
+                                                        String pName = it['product_name'] ?? 'Item';
+                                                        int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                        double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
+                                                        regTotal += pPrice * pQty;
+                                                        itemSummaries.add("$pSku $pName (Qty:$pQty)");
+                                                      }
+                                                      String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
+
+                                                      Product pkgProduct = Product(
+                                                        id: pkg['id'],
+                                                        sku: skuSerialFormat,
+                                                        name: "📦 $name",
+                                                        sellPrice: price,
+                                                        mrp: regTotal > price ? regTotal : price,
+                                                        stockQty: 99,
+                                                      );
+
+                                                      cartProv.addToCart(pkgProduct);
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text("⚡ Combo Package '$name' added to cart!"),
+                                                          backgroundColor: Colors.green,
+                                                          action: SnackBarAction(
+                                                            label: "Checkout",
+                                                            textColor: Colors.white,
+                                                            onPressed: () {
+                                                              setState(() {
+                                                                _bottomNavIndex = 2;
+                                                              });
+                                                            },
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
+                                                    icon: const Icon(Icons.bolt, color: Colors.white),
+                                                    label: const Text("⚡ Order Combo Package Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: Colors.green,
+                                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                    ),
+                                                  ),
+                                                ),
                                               ],
                                             ),
                                           ),
