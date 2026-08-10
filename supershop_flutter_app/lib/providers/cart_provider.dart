@@ -11,22 +11,45 @@ class CartItem {
   double get unitPrice => product.effectivePrice;
 
   bool get isBuyOffer {
-    String ot = product.offerType.toLowerCase();
-    String title = product.offerTitle.toLowerCase();
-    return ot == 'buy_x_get_y' || ot == 'bogo' || title.contains('buy');
+    String ot = product.offerType.toLowerCase().trim();
+    String title = product.offerTitle.toLowerCase().trim();
+    String val = product.offerValue.toLowerCase().trim();
+    String pName = product.name.toLowerCase().trim();
+
+    return ot == 'buy_x_get_y' ||
+        ot == 'buy_x_get_x' ||
+        ot == 'bogo' ||
+        title.contains('buy') ||
+        val.contains('buy') ||
+        pName.contains('buy 2 get 1') ||
+        pName.contains('buy 1 get 1') ||
+        (product.isOffer && val.contains(','));
   }
 
   int get paidQuantity {
     if (!isBuyOffer) return quantity;
     int buyQty = 2;
     int freeQty = 1;
-    if (product.offerValue.contains(',')) {
-      var parts = product.offerValue.split(',').map((e) => int.tryParse(e.trim()) ?? 0).toList();
+
+    String val = product.offerValue;
+    String title = product.offerTitle;
+
+    if (val.contains(',')) {
+      var parts = val.split(',').map((e) => int.tryParse(e.trim()) ?? 0).toList();
       if (parts.length >= 2 && parts[0] > 0 && parts[1] > 0) {
         buyQty = parts[0];
         freeQty = parts[1];
       }
+    } else {
+      RegExp reg = RegExp(r'buy\s*(\d+)\s*get\s*(\d+)', caseSensitive: false);
+      Match? match = reg.firstMatch(title.isEmpty ? val : title);
+      if (match == null) match = reg.firstMatch(product.name);
+      if (match != null) {
+        buyQty = int.tryParse(match.group(1)!) ?? 2;
+        freeQty = int.tryParse(match.group(2)!) ?? 1;
+      }
     }
+
     int totalSet = buyQty + freeQty;
     int sets = quantity ~/ totalSet;
     int remainder = quantity % totalSet;

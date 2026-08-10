@@ -3340,24 +3340,21 @@ def api_place_order():
         paid_qty = qty
         actual_qty = qty
 
-        if offer_type == 'buy_x_get_y' or ('buy' in offer_title.lower()):
+        if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in p_name.lower()):
             buy_qty, free_qty_set = 2, 1
             if offer_value and ',' in offer_value:
                 try:
                     parts = [int(p.strip()) for p in offer_value.split(',')]
-                    if len(parts) >= 2:
+                    if len(parts) >= 2 and parts[0] > 0 and parts[1] > 0:
                         buy_qty, free_qty_set = parts[0], parts[1]
                 except Exception:
                     pass
             
             total_set = buy_qty + free_qty_set
-            if qty % total_set == 0:
-                paid_qty = (qty // total_set) * buy_qty
-                actual_qty = qty
-            elif qty >= buy_qty:
-                free_items = (qty // buy_qty) * free_qty_set
-                paid_qty = qty
-                actual_qty = qty + free_items
+            sets = qty // total_set
+            remainder = qty % total_set
+            paid_qty = (sets * buy_qty) + min(remainder, buy_qty)
+            actual_qty = qty
 
         line_total = unit_price * paid_qty
         subtotal += line_total
