@@ -596,7 +596,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  _searchQuery.isNotEmpty ? 'Category: $_searchQuery (${sortedProducts.length})' : 'Products (${sortedProducts.length})',
+                                  _selectedTab == 'packages'
+                                      ? 'Combo Packages (${_packagesList.length})'
+                                      : (_searchQuery.isNotEmpty ? 'Category: $_searchQuery (${sortedProducts.length})' : 'Products (${sortedProducts.length})'),
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                                 ),

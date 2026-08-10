@@ -9,29 +9,35 @@
 </div>
 
 <div class="responsive-split-layout">
-  <!-- Create New Package Form -->
+  <!-- Create / Edit Package Form -->
   <div style="flex:1;">
-    <div class="card">
-      <h3 style="margin-top:0; color:#15803d; font-size:16px;">+ Create New Combo Package</h3>
-      <form method="POST" action="{{ url_for('packages_page') }}" onsubmit="return validatePackageForm();">
+    <div class="card" id="pkgFormCard">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 id="pkgFormHeading" style="margin:0; color:#15803d; font-size:16px;">+ Create New Combo Package</h3>
+        <button type="button" id="cancelPkgEditBtn" onclick="resetPkgForm()" style="display:none; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:bold;">Cancel Edit</button>
+      </div>
+
+      <form method="POST" id="pkgForm" action="{{ url_for('packages_page') }}" onsubmit="return validateAndConfirmPackage(event);">
+        <input type="hidden" id="pkgEditId" value="">
+
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Package Name*</label>
-          <input type="text" name="name" placeholder="e.g. Weekly Family Grocery Bundle" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <input type="text" id="pkgNameInput" name="name" placeholder="e.g. Weekly Family Grocery Bundle" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
         </div>
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Combo Special Price (TK)*</label>
-          <input type="number" step="0.01" name="package_price" placeholder="e.g. 499.00" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#16a34a;">
+          <input type="number" step="0.01" id="pkgPriceInput" name="package_price" placeholder="e.g. 499.00" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#16a34a;">
         </div>
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Description (Optional)</label>
-          <textarea name="description" rows="2" placeholder="e.g. Contains 5 kg Rice, 1 L Oil, 1 kg Sugar" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;"></textarea>
+          <textarea id="pkgDescInput" name="description" rows="2" placeholder="e.g. Contains 5 kg Rice, 1 L Oil, 1 kg Sugar" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;"></textarea>
         </div>
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Image URL (Optional)</label>
-          <input type="text" name="image_url" placeholder="https://..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <input type="text" id="pkgImageInput" name="image_url" placeholder="https://..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
         </div>
 
         <!-- Searchable Product Selection -->
@@ -46,7 +52,7 @@
                  data-name="{{ p.name|e }}"
                  data-sku="{{ p.sku|e }}"
                  data-price="{{ p.sell_price }}"
-                 onclick="addPkgProductRow(this)"
+                 onclick="addPkgProductRow('{{ p.id }}', '{{ p.name|e }}', '{{ p.sku|e }}', {{ p.sell_price }}, 1)"
                  style="padding:10px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; font-size:13px;"
                  onmouseover="this.style.background='#eff6ff'"
                  onmouseout="this.style.background='white'">
@@ -78,7 +84,7 @@
           </div>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="width:100%; padding:10px;">+ Save Package</button>
+        <button type="submit" id="pkgSubmitBtn" class="btn btn-primary" style="width:100%; padding:10px;">+ Save Package</button>
       </form>
     </div>
   </div>
@@ -114,7 +120,8 @@
               <td style="padding:10px; text-align:right; font-weight:bold; color:#16a34a; font-size:15px;">
                 TK {{ "%.2f"|format(pkg.package_price) }}
               </td>
-              <td style="padding:10px; text-align:right;">
+              <td style="padding:10px; text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-small" onclick='loadPkgForEdit({{ pkg|tojson }})' style="margin-right:4px;">✏️ Edit</button>
                 <form method="POST" action="{{ url_for('delete_package', package_id=pkg.id) }}" style="display:inline;" onsubmit="return confirm('Delete package {{ pkg.name }}?');">
                   <button class="btn btn-danger btn-small" type="submit">Delete</button>
                 </form>
@@ -130,8 +137,44 @@
   </div>
 </div>
 
+<!-- Confirmation & Price Check Pop-up Modal -->
+<div id="confirmPkgModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:480px; padding:24px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); position:relative;">
+    <h3 style="margin-top:0; color:#15803d; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      🎁 Confirm Combo Package Summary
+    </h3>
+    <p style="font-size:0.85rem; color:#475569; margin-bottom:14px;" id="confPkgNameLabel"></p>
+
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:16px; font-size:13px;">
+      <div style="font-weight:bold; margin-bottom:6px; color:#0f172a;">Included Products:</div>
+      <ul id="confPkgItemsList" style="margin:0; padding-left:18px; color:#334155;"></ul>
+
+      <div style="border-top:1px dashed #cbd5e1; margin-top:10px; padding-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div>
+          <span style="font-size:11px; color:#64748b; text-transform:uppercase; font-weight:bold;">Total Regular Price</span>
+          <div id="confRegularPrice" style="font-weight:700; color:#475569; text-decoration:line-through; font-size:15px;">TK 0.00</div>
+        </div>
+        <div>
+          <span style="font-size:11px; color:#16a34a; text-transform:uppercase; font-weight:bold;">Combo Special Price</span>
+          <div id="confComboPrice" style="font-weight:800; color:#16a34a; font-size:17px;">TK 0.00</div>
+        </div>
+      </div>
+      <div style="margin-top:8px; background:#dcfce7; color:#15803d; padding:6px 10px; border-radius:6px; font-weight:bold; text-align:center;" id="confSavingsLabel">
+        Customer Discount: TK 0.00 Saved!
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-outline" onclick="closeConfirmPkgModal()">Edit / Cancel</button>
+      <button type="button" class="btn" onclick="submitPkgFormConfirmed()" style="background:#15803d; color:#fff; border:none; padding:10px 18px; border-radius:6px; font-weight:bold; cursor:pointer;">
+        Confirm & Save Package
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
-let selectedPkgProductIds = new Set();
+let selectedPkgMap = new Map(); // id -> { name, sku, price, qty }
 
 function showPkgDropdown() {
   document.getElementById('pkgDropdown').style.display = 'block';
@@ -152,19 +195,15 @@ function filterPkgProducts() {
   });
 }
 
-function addPkgProductRow(el) {
-  const id = el.getAttribute('data-id');
-  const name = el.getAttribute('data-name');
-  const sku = el.getAttribute('data-sku');
-  const price = el.getAttribute('data-price');
-
-  if (selectedPkgProductIds.has(id)) {
+function addPkgProductRow(id, name, sku, price, qty = 1) {
+  id = String(id);
+  if (selectedPkgMap.has(id)) {
     alert("Product is already added to this package.");
     document.getElementById('pkgDropdown').style.display = 'none';
     return;
   }
 
-  selectedPkgProductIds.add(id);
+  selectedPkgMap.set(id, { id, name, sku, price: parseFloat(price), qty: parseInt(qty) });
   document.getElementById('emptyPkgRow')?.remove();
 
   const tbody = document.getElementById('selectedPkgBody');
@@ -174,11 +213,11 @@ function addPkgProductRow(el) {
   tr.innerHTML = `
     <td style="padding:6px 8px;">
       <div style="font-weight:600; color:#0f172a;">${name}</div>
-      <div style="font-size:11px; color:#64748b;">SKU: ${sku} | TK ${price}</div>
+      <div style="font-size:11px; color:#64748b;">SKU: ${sku} | TK ${parseFloat(price).toFixed(2)}</div>
       <input type="hidden" name="product_ids" value="${id}">
     </td>
     <td style="padding:6px 8px;">
-      <input type="number" name="qty_${id}" value="1" min="1" style="width:55px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; font-weight:bold;">
+      <input type="number" name="qty_${id}" value="${qty}" min="1" onchange="updatePkgItemQty('${id}', this.value)" style="width:55px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; font-weight:bold;">
     </td>
     <td style="padding:6px 8px; text-align:right;">
       <button type="button" onclick="removePkgProductRow('${id}')" style="background:#ef4444; color:white; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">✕</button>
@@ -190,8 +229,15 @@ function addPkgProductRow(el) {
   document.getElementById('pkgDropdown').style.display = 'none';
 }
 
+function updatePkgItemQty(id, qtyVal) {
+  if (selectedPkgMap.has(id)) {
+    selectedPkgMap.get(id).qty = Math.max(1, parseInt(qtyVal) || 1);
+  }
+}
+
 function removePkgProductRow(id) {
-  selectedPkgProductIds.delete(id);
+  id = String(id);
+  selectedPkgMap.delete(id);
   document.getElementById('pkgRow_' + id)?.remove();
   const tbody = document.getElementById('selectedPkgBody');
   if (tbody.children.length === 0) {
@@ -203,12 +249,101 @@ function removePkgProductRow(id) {
   }
 }
 
-function validatePackageForm() {
-  if (selectedPkgProductIds.size === 0) {
+function loadPkgForEdit(pkg) {
+  document.getElementById('pkgEditId').value = pkg.id;
+  document.getElementById('pkgForm').action = "/packages/" + pkg.id + "/edit";
+  document.getElementById('pkgFormHeading').innerText = "✏️ Edit Combo Package (" + pkg.name + ")";
+  document.getElementById('pkgSubmitBtn').innerText = "Update Package";
+  document.getElementById('cancelPkgEditBtn').style.display = "inline-block";
+
+  document.getElementById('pkgNameInput').value = pkg.name || '';
+  document.getElementById('pkgPriceInput').value = pkg.package_price || '';
+  document.getElementById('pkgDescInput').value = pkg.description || '';
+  document.getElementById('pkgImageInput').value = pkg.image_url || '';
+
+  // Clear current selected products table
+  selectedPkgMap.clear();
+  document.getElementById('selectedPkgBody').innerHTML = '';
+
+  if (pkg.items && pkg.items.length > 0) {
+    pkg.items.forEach(it => {
+      addPkgProductRow(it.product_id, it.product_name, it.sku || 'SKU', it.sell_price, it.quantity);
+    });
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetPkgForm() {
+  document.getElementById('pkgEditId').value = "";
+  document.getElementById('pkgForm').action = "{{ url_for('packages_page') }}";
+  document.getElementById('pkgFormHeading').innerText = "+ Create New Combo Package";
+  document.getElementById('pkgSubmitBtn').innerText = "+ Save Package";
+  document.getElementById('cancelPkgEditBtn').style.display = "none";
+
+  document.getElementById('pkgForm').reset();
+  selectedPkgMap.clear();
+  document.getElementById('selectedPkgBody').innerHTML = `
+    <tr id="emptyPkgRow">
+      <td colspan="3" style="text-align:center; padding:16px; color:#94a3b8;">No products added yet. Search above to add items.</td>
+    </tr>
+  `;
+}
+
+let isPkgFormConfirmed = false;
+
+function validateAndConfirmPackage(e) {
+  if (isPkgFormConfirmed) return true;
+
+  if (selectedPkgMap.size === 0) {
     alert("Please search and select at least 1 product for this package.");
+    e.preventDefault();
     return false;
   }
-  return true;
+
+  const comboPrice = parseFloat(document.getElementById('pkgPriceInput').value) || 0;
+  let totalRegularPrice = 0.0;
+  let itemsListHtml = "";
+
+  selectedPkgMap.forEach(item => {
+    // Read current qty from input DOM in case user typed directly
+    const qtyInput = document.querySelector(`input[name="qty_${item.id}"]`);
+    if (qtyInput) item.qty = Math.max(1, parseInt(qtyInput.value) || 1);
+
+    const itemTotal = item.price * item.qty;
+    totalRegularPrice += itemTotal;
+    itemsListHtml += `<li><strong>${item.name}</strong> × ${item.qty} (TK ${item.price.toFixed(2)} each = TK ${itemTotal.toFixed(2)})</li>`;
+  });
+
+  // Price validation: Combo price CANNOT be higher than total regular price
+  if (comboPrice > totalRegularPrice) {
+    alert(`⛔ ERROR: Combo Special Price (TK ${comboPrice.toFixed(2)}) CANNOT be higher than the regular total price of included products (TK ${totalRegularPrice.toFixed(2)}).\n\nPlease lower the combo price or add more items to offer a real discount.`);
+    e.preventDefault();
+    return false;
+  }
+
+  // Show confirmation modal
+  e.preventDefault();
+  const pkgName = document.getElementById('pkgNameInput').value.trim();
+  const savings = totalRegularPrice - comboPrice;
+
+  document.getElementById('confPkgNameLabel').innerHTML = 'Package Name: <strong>' + pkgName + '</strong>';
+  document.getElementById('confPkgItemsList').innerHTML = itemsListHtml;
+  document.getElementById('confRegularPrice').innerText = 'TK ' + totalRegularPrice.toFixed(2);
+  document.getElementById('confComboPrice').innerText = 'TK ' + comboPrice.toFixed(2);
+  document.getElementById('confSavingsLabel').innerText = 'Customer Discount: TK ' + savings.toFixed(2) + ' Saved!';
+  
+  document.getElementById('confirmPkgModal').style.display = 'flex';
+  return false;
+}
+
+function submitPkgFormConfirmed() {
+  isPkgFormConfirmed = true;
+  document.getElementById('confirmPkgModal').style.display = 'none';
+  document.getElementById('pkgForm').submit();
+}
+
+function closeConfirmPkgModal() {
+  document.getElementById('confirmPkgModal').style.display = 'none';
 }
 
 document.addEventListener('click', function(e) {

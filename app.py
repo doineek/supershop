@@ -3668,6 +3668,45 @@ def packages_page():
     return render_template("packages.html", packages=packages_list, products=all_products)
 
 
+@app.route("/packages/<int:package_id>/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_package(package_id):
+    conn = get_connection()
+    pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (package_id,)).fetchone()
+    if not pkg:
+        conn.close()
+        flash("Package not found.", "error")
+        return redirect(url_for("packages_page"))
+
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip()
+    package_price = float(request.form.get("package_price") or 0)
+    image_url = request.form.get("image_url", "").strip()
+    prod_ids = request.form.getlist("product_ids")
+
+    if name and package_price > 0 and prod_ids:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?
+            WHERE id = ?
+        """, (name, description, image_url, package_price, package_id))
+        
+        cur.execute("DELETE FROM package_items WHERE package_id = ?", (package_id,))
+        for pid in prod_ids:
+            item_qty = int(request.form.get(f"qty_{pid}") or 1)
+            cur.execute("""
+                INSERT INTO package_items (package_id, product_id, quantity)
+                VALUES (?, ?, ?)
+            """, (package_id, int(pid), item_qty))
+        conn.commit()
+        flash(f"Package '{name}' updated successfully.", "success")
+    else:
+        flash("Please enter package name, price, and select at least 1 product.", "error")
+    conn.close()
+    return redirect(url_for("packages_page"))
+
+
 @app.route("/packages/<int:package_id>/delete", methods=["POST"])
 @login_required
 @admin_required

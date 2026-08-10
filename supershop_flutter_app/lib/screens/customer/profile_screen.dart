@@ -86,6 +86,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (_userPhone.isNotEmpty) {
           await prefs.setString('saved_img_$_userPhone', base64String);
           await prefs.remove('saved_av_$_userPhone');
+          ApiService.httpPost('/api/customer/update-profile', body: jsonEncode({
+            'phone': _userPhone,
+            'name': _userName,
+            'profile_image': base64String,
+          }));
         }
 
         if (!mounted) return;

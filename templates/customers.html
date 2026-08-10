@@ -162,10 +162,13 @@
     <tr style="cursor:pointer;" title="Click to view Customer Profile" onclick="if(!event.target.closest('button') && !event.target.closest('a')) openCustomerProfileModal('{{ c.customer_mobile }}')">
       <td style="font-weight: 600;">
         <div style="display:flex; align-items:center; gap:10px;">
-          {% if c.profile_image %}
-            <img src="{{ c.profile_image }}" alt="Avatar" style="width:34px; height:34px; border-radius:50%; object-fit:cover; border:2px solid #8b5cf6;" onerror="this.style.display='none'">
+          {% if c.profile_image and c.profile_image.strip() %}
+            <img src="{{ c.profile_image }}" alt="Avatar" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #8b5cf6;" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';">
+            <div style="width:36px; height:36px; border-radius:50%; background:#f3e8ff; color:#6b21a8; display:none; align-items:center; justify-content:center; font-weight:700; font-size:14px; border:1px solid #cbd5e1;">
+              {{ c.customer_name[:1].upper() if c.customer_name else '👤' }}
+            </div>
           {% else %}
-            <div style="width:34px; height:34px; border-radius:50%; background:#f1f5f9; color:#6b21a8; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; border:1px solid #cbd5e1;">
+            <div style="width:36px; height:36px; border-radius:50%; background:#f3e8ff; color:#6b21a8; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; border:1px solid #cbd5e1;">
               {{ c.customer_name[:1].upper() if c.customer_name else '👤' }}
             </div>
           {% endif %}
