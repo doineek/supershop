@@ -123,7 +123,8 @@
           <td style="padding:8px; font-size:12px; color:#475569;">
             {{ v.scope_type|replace('_', ' ')|title }}
           </td>
-          <td style="padding:8px; text-align:right;">
+          <td style="padding:8px; text-align:right; white-space:nowrap;">
+            <button type="button" class="btn btn-outline btn-small" onclick='openEditVoucherModal({{ v|tojson }})' style="margin-right:4px;">✏️ Edit</button>
             <form method="POST" action="{{ url_for('delete_voucher', voucher_id=v.id) }}" style="display:inline;" onsubmit="return confirm('Delete voucher {{ v.code }}?');">
               <button class="btn btn-danger btn-small" type="submit">Delete</button>
             </form>
@@ -524,5 +525,159 @@ function resetOfferForm() {
   document.getElementById('formHeading').innerText = 'Add / Update Product Offer';
   toggleOfferTypeInputs();
 }
+
+function openEditVoucherModal(v) {
+  document.getElementById('editVoucherForm').action = "/vouchers/" + v.id + "/edit";
+  document.getElementById('evCode').value = v.code || '';
+  document.getElementById('evTargetType').value = v.target_type || 'product_discount';
+  document.getElementById('evDiscountType').value = v.discount_type || 'percentage';
+  document.getElementById('evDiscountValue').value = v.discount_value || '';
+  document.getElementById('evDiscountBase').value = v.discount_base || 'sell_price';
+  document.getElementById('evExpiryDate').value = v.expiry_date || '';
+  document.getElementById('evScopeType').value = v.scope_type || 'all';
+  document.getElementById('evActive').value = v.active != null ? String(v.active) : '1';
+
+  toggleEvBasePrice();
+  updateEvScopeOptions();
+
+  if (v.scope_id) {
+    setTimeout(() => {
+      document.getElementById('evScopeSelect').value = v.scope_id;
+    }, 50);
+  }
+
+  document.getElementById('editVoucherModal').style.display = 'flex';
+}
+
+function closeEditVoucherModal() {
+  document.getElementById('editVoucherModal').style.display = 'none';
+}
+
+function toggleEvBasePrice() {
+  const targetType = document.getElementById('evTargetType').value;
+  const group = document.getElementById('evBasePriceGroup');
+  if (targetType === 'delivery_discount') {
+    group.style.display = 'none';
+  } else {
+    group.style.display = 'block';
+  }
+}
+
+function updateEvScopeOptions() {
+  const scopeType = document.getElementById('evScopeType').value;
+  const container = document.getElementById('evScopeContainer');
+  const label = document.getElementById('evScopeLabel');
+  const select = document.getElementById('evScopeSelect');
+
+  if (scopeType === 'all') {
+    container.style.display = 'none';
+    select.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'block';
+  select.innerHTML = '';
+
+  if (scopeType === 'product') {
+    label.innerText = 'Select Product*';
+    select.innerHTML = productsData.map(p => `<option value="${p.id}">${p.name} (SKU: ${p.sku})</option>`).join('');
+  } else if (scopeType === 'category') {
+    label.innerText = 'Select Main Category*';
+    select.innerHTML = categoriesData.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  } else if (scopeType === 'sub_category') {
+    label.innerText = 'Select Sub-Category*';
+    select.innerHTML = subCategoriesData.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  } else if (scopeType === 'sub_sub_category') {
+    label.innerText = 'Select Sub-Sub-Category*';
+    select.innerHTML = subSubCategoriesData.map(ss => `<option value="${ss.id}">${ss.name}</option>`).join('');
+  }
+}
+</script>
+
+<!-- Edit Voucher Modal -->
+<div id="editVoucherModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:540px; padding:24px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); position:relative;">
+    <button type="button" onclick="closeEditVoucherModal()" style="position:absolute; top:16px; right:16px; background:#f1f5f9; border:none; width:32px; height:32px; border-radius:50%; font-weight:bold; cursor:pointer;">✕</button>
+
+    <h3 style="margin-top:0; color:#7c3aed; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      ✏️ Edit Customer Voucher
+    </h3>
+
+    <form method="POST" id="editVoucherForm" action="">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Voucher Code*</label>
+          <input type="text" name="code" id="evCode" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; text-transform:uppercase;">
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Coupon Category*</label>
+          <select name="target_type" id="evTargetType" onchange="toggleEvBasePrice()" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+            <option value="product_discount">🛍️ Product Discount Voucher</option>
+            <option value="delivery_discount">🚚 Delivery Charge Discount</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Discount Type</label>
+          <select name="discount_type" id="evDiscountType" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+            <option value="percentage">Percentage (%)</option>
+            <option value="flat">Flat Amount (TK)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Discount Value*</label>
+          <input type="number" step="0.1" name="discount_value" id="evDiscountValue" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        </div>
+
+        <div id="evBasePriceGroup">
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px; color:#2563eb;">Deduct Price From*</label>
+          <select name="discount_base" id="evDiscountBase" style="width:100%; padding:9px; border:1px solid #2563eb; border-radius:8px; font-weight:600; background:#f0f7ff;">
+            <option value="sell_price">Doineek Price (Selling Price)</option>
+            <option value="mrp">MRP (Regular Price)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Expiry Date (Optional)</label>
+          <input type="date" name="expiry_date" id="evExpiryDate" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        </div>
+
+        <div style="grid-column: span 2;">
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Applicable Scope*</label>
+          <select name="scope_type" id="evScopeType" onchange="updateEvScopeOptions()" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+            <option value="all">Entire Store (All Products)</option>
+            <option value="product">Specific Product</option>
+            <option value="category">Main Category</option>
+            <option value="sub_category">Sub Category</option>
+            <option value="sub_sub_category">Sub-Sub Category</option>
+          </select>
+        </div>
+
+        <div id="evScopeContainer" style="grid-column: span 2; display:none;">
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;" id="evScopeLabel">Select Target</label>
+          <select name="scope_id" id="evScopeSelect" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+          </select>
+        </div>
+
+        <div style="grid-column: span 2;">
+          <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Status*</label>
+          <select name="active" id="evActive" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+            <option value="1">Active</option>
+            <option value="0">Disabled / Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" class="btn btn-outline" onclick="closeEditVoucherModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#7c3aed; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-weight:bold; cursor:pointer;">
+          Update Voucher
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 </script>
 {% endblock %}

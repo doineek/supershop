@@ -1974,6 +1974,44 @@ def new_voucher():
         except Exception as e:
             flash(f"Could not create voucher: {e}", "error")
         conn.close()
+@app.route("/vouchers/<int:voucher_id>/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_voucher(voucher_id):
+    conn = get_connection()
+    v = conn.execute("SELECT * FROM vouchers WHERE id = ?", (voucher_id,)).fetchone()
+    if not v:
+        conn.close()
+        flash("Voucher not found.", "error")
+        return redirect(url_for("offers_page"))
+
+    code = request.form.get("code", "").strip().upper()
+    target_type = request.form.get("target_type", "product_discount").strip()
+    discount_type = request.form.get("discount_type", "percentage").strip()
+    discount_value = float(request.form.get("discount_value") or 0)
+    discount_base = request.form.get("discount_base", "sell_price").strip()
+    expiry_date = request.form.get("expiry_date", "").strip()
+    scope_type = request.form.get("scope_type", "all").strip()
+    scope_id = request.form.get("scope_id") or None
+    if scope_id:
+        scope_id = int(scope_id)
+    active = 1 if request.form.get("active") == "1" else 0
+
+    if code and discount_value > 0:
+        try:
+            conn.execute("""
+                UPDATE vouchers 
+                SET code = ?, target_type = ?, discount_type = ?, discount_value = ?, discount_base = ?, 
+                    expiry_date = ?, scope_type = ?, scope_id = ?, active = ?
+                WHERE id = ?
+            """, (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, active, voucher_id))
+            conn.commit()
+            flash(f"Voucher '{code}' updated successfully.", "success")
+        except Exception as e:
+            flash(f"Could not update voucher: {e}", "error")
+    else:
+        flash("Please provide a valid voucher code and discount value.", "error")
+    conn.close()
     return redirect(url_for("offers_page"))
 
 
