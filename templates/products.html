@@ -221,35 +221,105 @@
       <div style="display:flex; justify-content:flex-end; gap:8px;">
         <button type="button" onclick="closeEditCategoryModal()" class="btn btn-outline">Cancel</button>
         <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Interactive Emoji Picker Modal -->
+<div id="emojiPickerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:16px; padding:20px; width:90%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:16px; color:#0f172a;">😀 Select Category Emoji</h3>
+      <button type="button" onclick="closeEmojiPickerModal()" style="background:#f1f5f9; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold;">✕</button>
+    </div>
+    <div id="emojiGrid" style="display:grid; grid-template-columns:repeat(6, 1fr); gap:8px; max-height:260px; overflow-y:auto; padding:8px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0;">
+    </div>
+  </div>
+</div>
+
+<!-- Inventory Products Table -->
+<div class="table-responsive" style="margin-top:20px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="background:#f8fafc; text-align:left;">
+        <th style="padding:10px;">SKU</th>
+        <th style="padding:10px;">Name</th>
+        <th style="padding:10px;">Brand</th>
+        <th style="padding:10px;">Category</th>
+        <th style="padding:10px; text-align:right;">Cost</th>
+        <th style="padding:10px; text-align:right;">MRP</th>
+        <th style="padding:10px; text-align:right;">Sell price</th>
+        <th style="padding:10px; text-align:right;">VAT %</th>
+        <th style="padding:10px; text-align:right;">Stock</th>
+        <th style="padding:10px;">Expiry Date</th>
+        <th style="padding:10px;">Print Tag</th>
+        {% if session.role == 'admin' %}
+        <th style="padding:10px; text-align:right;">Actions</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in products %}
+      <tr class="{{ 'row-low' if p.stock_qty <= p.low_stock_threshold }}" style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:10px;">{{ p.sku }}</td>
+        <td style="padding:10px; font-weight:600; color:#0f172a;">{{ p.name }}</td>
+        <td style="padding:10px; color:#475569;">{{ p.brand or '—' }}</td>
+        <td style="padding:10px; color:#475569;">{{ p.category_name or '—' }}</td>
+        <td style="padding:10px; text-align:right;">TK {{ "%.2f"|format(p.cost_price) }}</td>
+        <td style="padding:10px; text-align:right;">{{ "TK %.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
+        <td style="padding:10px; text-align:right; font-weight:bold; color:#16a34a;">TK {{ "%.2f"|format(p.sell_price) }}</td>
+        <td style="padding:10px; text-align:right;">{{ "%.1f"|format(p.vat_pct) if p.vat_pct > 0 else '—' }}</td>
+        <td style="padding:10px; text-align:right; font-weight:bold;">{{ p.stock_qty }}</td>
+        <td style="padding:10px; white-space:nowrap; font-size:12px;">{{ p.expiry_date if p.expiry_date else '—' }}</td>
+        <td style="padding:10px; white-space:nowrap;">
+          <a class="btn btn-outline btn-small" href="{{ url_for('product_labels', product_id=p.id) }}" target="_blank">Print tags ({{ p.stock_qty }})</a>
+          {% if p.label_print_count > 0 %}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Printed {{ p.label_print_count }} time{{ 's' if p.label_print_count != 1 }}</div>
+          {% endif %}
+        </td>
+        {% if session.role == 'admin' %}
+        <td style="padding:10px; text-align:right; white-space:nowrap;">
+          <a class="btn btn-outline btn-small" href="{{ url_for('restock_product', product_id=p.id) }}" style="background:#0284c7; color:white; border:none; margin-right:4px;" title="Restock with SL +1">📦 Restock</a>
+          <a class="btn btn-outline btn-small" href="{{ url_for('edit_product', product_id=p.id) }}" style="margin-right:4px;">Edit</a>
+          <form method="POST" action="{{ url_for('return_product', product_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Return product {{ p.name }} to Returned Items / Date Expired section?');">
+            <button class="btn btn-warning btn-small" type="submit" style="background:#f59e0b; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer; margin-right:4px;">↩️ Return</button>
+          </form>
+          <form method="POST" action="{{ url_for('delete_product', product_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Delete {{ p.name }}?');">
+            <button class="btn btn-danger btn-small" type="submit">Delete</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="12" style="text-align:center; padding:30px; color:#94a3b8;">No products found in inventory.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+let activeEmojiTargetInputId = null;
+
+const emojiList = [
+  '🍎', '🍌', '🍊', '🍇', '🍉', '🥦', '🥬', '🌽', '🥩', '🍗', '🍞', '🧀',
+  '🥛', '🧃', '☕', '🍪', '🍫', '🍿', '🧼', '🧴', '💄', '🧻', '🧹', '🏠',
+  '📦', '⚡', '🎁', '🛍️', '📁', '🏷️', '📌', '🛒', '🍕', '🍔', '🍰', '🍨',
   '🍼', '👟', '👕', '🎒', '💻', '📱', '💊', '🌾', '🐟', '🍤', '🧂', '🍳'
 ];
-
-function filterSubCategoriesForSubSub() {
-  const mainCatId = document.getElementById('subsubMainCatSelect').value;
-  const subSelect = document.getElementById('subsubSubCatSelect');
-  const options = subSelect.querySelectorAll('option');
-  
-  options.forEach(opt => {
-    if (!opt.value) {
-      opt.style.display = 'block';
-    } else if (!mainCatId || opt.getAttribute('data-parent-cat') == mainCatId) {
-      opt.style.display = 'block';
-    } else {
-      opt.style.display = 'none';
-    }
-  });
-  subSelect.value = '';
-}
 
 function openEmojiPickerModal(inputId) {
   activeEmojiTargetInputId = inputId;
   const grid = document.getElementById('emojiGrid');
-  grid.innerHTML = emojiList.map(e => `
-    <button type="button" onclick="selectEmoji('${e}')" style="font-size:22px; padding:8px; border:1px solid #cbd5e1; background:white; border-radius:8px; cursor:pointer;">
-      ${e}
-    </button>
-  `).join('');
-  document.getElementById('emojiPickerModal').style.display = 'flex';
+  if (grid) {
+    grid.innerHTML = emojiList.map(e => `
+      <button type="button" onclick="selectEmoji('${e}')" style="font-size:22px; padding:8px; border:1px solid #cbd5e1; background:white; border-radius:8px; cursor:pointer;">
+        ${e}
+      </button>
+    `).join('');
+  }
+  const modal = document.getElementById('emojiPickerModal');
+  if (modal) modal.style.display = 'flex';
 }
 
 function selectEmoji(emoji) {
@@ -261,7 +331,8 @@ function selectEmoji(emoji) {
 }
 
 function closeEmojiPickerModal() {
-  document.getElementById('emojiPickerModal').style.display = 'none';
+  const modal = document.getElementById('emojiPickerModal');
+  if (modal) modal.style.display = 'none';
   activeEmojiTargetInputId = null;
 }
 
@@ -279,7 +350,9 @@ const subCategoriesData = [
 
 function toggleCategorySection() {
   const sec = document.getElementById('categoryManagerSection');
-  sec.style.display = (sec.style.display === 'none') ? 'block' : 'none';
+  if (sec) {
+    sec.style.display = (sec.style.display === 'none' || !sec.style.display) ? 'block' : 'none';
+  }
 }
 
 function switchCategoryTab(tab) {
@@ -299,6 +372,23 @@ function switchCategoryTab(tab) {
 
   document.getElementById('tabBrandBtn').style.borderBottomColor = (tab === 'brand') ? '#2563eb' : 'transparent';
   document.getElementById('tabBrandBtn').style.color = (tab === 'brand') ? '#2563eb' : '#64748b';
+}
+
+function filterSubCategoriesForSubSub() {
+  const mainCatId = document.getElementById('subsubMainCatSelect').value;
+  const subSelect = document.getElementById('subsubSubCatSelect');
+  const options = subSelect.querySelectorAll('option');
+  
+  options.forEach(opt => {
+    if (!opt.value) {
+      opt.style.display = 'block';
+    } else if (!mainCatId || opt.getAttribute('data-parent-cat') == mainCatId) {
+      opt.style.display = 'block';
+    } else {
+      opt.style.display = 'none';
+    }
+  });
+  subSelect.value = '';
 }
 
 function openEditCategoryModal(type, id, name, parentId, icon) {
@@ -342,7 +432,8 @@ function openEditCategoryModal(type, id, name, parentId, icon) {
 }
 
 function closeEditCategoryModal() {
-  document.getElementById('editCategoryModal').style.display = 'none';
+  const modal = document.getElementById('editCategoryModal');
+  if (modal) modal.style.display = 'none';
 }
 </script>
 {% endblock %}
