@@ -1744,6 +1744,7 @@ def settings_page():
         update_settings(conn, values)
         conn.commit()
         conn.close()
+        remote_control.push_full_backup()
         flash("Shop settings and policies updated successfully.", "success")
         return redirect(url_for("settings_page"))
     current_settings = get_all_settings(conn)

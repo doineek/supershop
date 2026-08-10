@@ -323,6 +323,21 @@ def push_full_backup():
             o_dict["items"] = [dict(i) for i in items]
             db.collection("online_orders").document(str(ord_row["order_number"])).set(o_dict)
 
+        # Push Users
+        for u_row in conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall():
+            db.collection("users").document(str(u_row["username"])).set(dict(u_row))
+
+        # Push Packages
+        for pkg_row in conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall():
+            p_dict = dict(pkg_row)
+            items = conn.execute("""
+                SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg_row["id"],)).fetchall()
+            p_dict["items"] = [dict(i) for i in items]
+            db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
+
         unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0").fetchall()
         conn.close()
 
@@ -498,6 +513,116 @@ def _on_users_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] Two-way users sync failed: {e}")
 
 
+def _on_packages_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `packages` collection in Firestore.
+    Syncs combo packages across local SQLite database and remote cloud server in real time!
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            try:
+                pkg_id = int(doc.id)
+            except Exception:
+                continue
+
+            if change.type.name in ("ADDED", "MODIFIED"):
+                name = data.get("name", "")
+                description = data.get("description", "")
+                image_url = data.get("image_url", "")
+                package_price = float(data.get("package_price") or 0)
+                is_active = int(data.get("is_active", 1))
+
+                if name and package_price > 0:
+                    existing = conn.execute("SELECT id FROM packages WHERE id = ?", (pkg_id,)).fetchone()
+                    if existing:
+                        conn.execute("""
+                            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?
+                            WHERE id = ?
+                        """, (name, description, image_url, package_price, is_active, pkg_id))
+                    else:
+                        conn.execute("""
+                            INSERT INTO packages (id, name, description, image_url, package_price, is_active, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (pkg_id, name, description, image_url, package_price, is_active, datetime.now().isoformat()))
+
+                    conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                    items = data.get("items", [])
+                    for item in items:
+                        pid = item.get("product_id")
+                        qty = item.get("quantity") or 1
+                        if pid:
+                            conn.execute("""
+                                INSERT INTO package_items (package_id, product_id, quantity)
+                                VALUES (?, ?, ?)
+                            """, (pkg_id, int(pid), int(qty)))
+            elif change.type.name == "REMOVED":
+                conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                conn.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
+        conn.commit()
+        conn.close()
+        print(f"[remote_control] [SYNC] Real-time combo packages synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way packages sync failed: {e}")
+
+
+def _on_categories_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `categories` collection in Firestore.
+    Syncs category updates in real time across servers.
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            try:
+                cat_id = int(doc.id)
+            except Exception:
+                continue
+
+            if change.type.name in ("ADDED", "MODIFIED"):
+                name = data.get("name", "")
+                if name:
+                    existing = conn.execute("SELECT id FROM categories WHERE id = ?", (cat_id,)).fetchone()
+                    if existing:
+                        conn.execute("UPDATE categories SET name = ? WHERE id = ?", (name, cat_id))
+                    else:
+                        conn.execute("INSERT INTO categories (id, name) VALUES (?, ?)", (cat_id, name))
+            elif change.type.name == "REMOVED":
+                conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+        conn.commit()
+        conn.close()
+        print(f"[remote_control] [SYNC] Real-time categories synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way categories sync failed: {e}")
+
+
+def _on_shop_settings_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `settings` collection in Firestore.
+    Syncs shop settings & policies across local & remote cloud servers.
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            key = doc.id
+            val = data.get("value", "")
+            if change.type.name in ("ADDED", "MODIFIED") and key:
+                conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
+            elif change.type.name == "REMOVED" and key:
+                conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+        conn.commit()
+        conn.close()
+        print(f"[remote_control] [SYNC] Real-time shop settings synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way shop settings sync failed: {e}")
+
+
 def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
@@ -513,11 +638,14 @@ def start():
                 push_full_backup()
                 time.sleep(300)
 
-        # Live listeners (Firebase Console -> Local App)
+        # Live listeners (Firebase Cloud -> All Servers & Apps)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
         db.collection("products").on_snapshot(_on_products_change)
         db.collection("online_orders").on_snapshot(_on_online_orders_change)
         db.collection("users").on_snapshot(_on_users_change)
+        db.collection("packages").on_snapshot(_on_packages_change)
+        db.collection("categories").on_snapshot(_on_categories_change)
+        db.collection("settings").on_snapshot(_on_shop_settings_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
         print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.")
