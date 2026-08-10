@@ -152,6 +152,10 @@
         <td>{{ loop.index }}</td>
         <td>
           <strong>{{ item.product_name }}</strong>
+          {% set off_badge = item.offer_title or (item.offer_value ~ ' OFF' if item.offer_value else '') %}
+          {% if off_badge %}
+            <br><small style="color: #2563eb; font-weight: bold;">🏷️ Offer: {{ off_badge }}</small>
+          {% endif %}
         </td>
         <td style="text-align: center;"><strong>{{ item.quantity }}</strong></td>
         <td style="text-align: right;">TK {{ "%.2f"|format(item.unit_price) }}</td>

@@ -570,36 +570,47 @@ def pos_lookup():
     if not code:
         return jsonify({"error": "No code given."}), 400
 
-    # Serials already sitting in the cashier's cart (from any product line) -
-    # never propose one of these again for this scan.
     exclude = [s for s in request.args.get("exclude", "").split(",") if s]
 
     conn = get_connection()
-    # Every physical tag's barcode encodes the product's SKU (shared across
-    # all units of that product), matching how the invoice barcode is coded
-    # on the print receipt - so a scan always resolves to a real product.
-    product = conn.execute("SELECT * FROM products WHERE sku = ?", (code,)).fetchone()
+    product = None
+    specific_unit_serial = None
+
+    # 1. Try matching physical tag's unique serial number (a_code) first (e.g. SN-000004)
+    unit_by_acode = conn.execute("SELECT * FROM product_units WHERE a_code = ? AND status = 'in_stock'", (code,)).fetchone()
+    if not unit_by_acode and code.upper().startswith("SN-"):
+        unit_by_acode = conn.execute("SELECT * FROM product_units WHERE UPPER(a_code) = ? AND status = 'in_stock'", (code.upper(),)).fetchone()
+    
+    if unit_by_acode:
+        product = conn.execute("SELECT * FROM products WHERE id = ?", (unit_by_acode["product_id"],)).fetchone()
+        specific_unit_serial = unit_by_acode["a_code"]
+
+    # 2. If not matched by serial tag, match by product SKU or name
+    if not product:
+        product = conn.execute("SELECT * FROM products WHERE sku = ? OR LOWER(name) = LOWER(?)", (code, code)).fetchone()
+
     if not product:
         conn.close()
-        return jsonify({"error": f'No product found for code "{code}".'}), 404
+        return jsonify({"error": f'No product found for tag or SKU "{code}".'}), 404
 
-    # Auto-suggest the next available in-stock unit's own serial (SN-xxxxxx)
-    # for this line, so the cashier can see - and the sale can record -
-    # exactly which physical unit is being sold, even though every tag of
-    # this product carries an identical barcode.
-    if exclude:
-        placeholders = ",".join("?" for _ in exclude)
-        unit = conn.execute(f"""
-            SELECT a_code FROM product_units
-            WHERE product_id = ? AND status = 'in_stock' AND a_code NOT IN ({placeholders})
-            ORDER BY sl_number LIMIT 1
-        """, (product["id"], *exclude)).fetchone()
-    else:
-        unit = conn.execute("""
-            SELECT a_code FROM product_units
-            WHERE product_id = ? AND status = 'in_stock'
-            ORDER BY sl_number LIMIT 1
-        """, (product["id"],)).fetchone()
+    # 3. If a specific unit serial was not matched, pick the next available in-stock unit serial
+    if not specific_unit_serial:
+        if exclude:
+            placeholders = ",".join("?" for _ in exclude)
+            unit = conn.execute(f"""
+                SELECT a_code FROM product_units
+                WHERE product_id = ? AND status = 'in_stock' AND a_code NOT IN ({placeholders})
+                ORDER BY sl_number LIMIT 1
+            """, (product["id"], *exclude)).fetchone()
+        else:
+            unit = conn.execute("""
+                SELECT a_code FROM product_units
+                WHERE product_id = ? AND status = 'in_stock'
+                ORDER BY sl_number LIMIT 1
+            """, (product["id"],)).fetchone()
+        if unit:
+            specific_unit_serial = unit["a_code"]
+
     conn.close()
 
     return jsonify({
@@ -614,7 +625,7 @@ def pos_lookup():
         "offer_type": product["offer_type"],
         "offer_value": product["offer_value"],
         "offer_title": product["offer_title"],
-        "unit_serial": unit["a_code"] if unit else None,
+        "unit_serial": specific_unit_serial,
     })
 
 
@@ -1599,7 +1610,11 @@ def sale_receipt_print(sale_id):
     items = []
     for r in raw_items:
         i_dict = dict(r)
-        pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (i_dict["product_id"],)).fetchone()
+        is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (i_dict["product_id"],)).fetchone()
+        pkg = None
+        if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
+            pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (i_dict["product_id"],)).fetchone()
+
         if pkg:
             p_items = conn.execute("""
                 SELECT pi.*, p.sku, p.name AS product_name
@@ -2623,11 +2638,15 @@ def online_orders():
             p_name = (it_dict.get("product_name") or "").strip()
             
             pkg = None
-            if p_id:
-                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (p_id,)).fetchone()
-            if not pkg and p_name:
-                clean_pname = p_name.replace("📦", "").split("(")[0].strip()
-                pkg = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0", (clean_pname, clean_pname)).fetchone()
+            is_combo_tag = p_name.startswith("📦") or it_dict.get("unit") == "Combo Package"
+            is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (p_id,)).fetchone() if p_id else None
+
+            if not is_regular_prod or is_combo_tag:
+                if p_id:
+                    pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (p_id,)).fetchone()
+                if not pkg and is_combo_tag:
+                    clean_pname = p_name.replace("📦", "").split("(")[0].strip()
+                    pkg = conn.execute("SELECT * FROM packages WHERE name = ?", (clean_pname,)).fetchone()
 
             if pkg and "(" not in p_name:
                 p_items = conn.execute("""
