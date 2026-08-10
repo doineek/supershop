@@ -3181,38 +3181,73 @@ def api_place_order():
     for item in cart_items:
         prod_id = item.get("product_id") or item.get("id") or item.get("prod_id")
         qty = int(item.get("quantity") or item.get("qty") or item.get("count") or 1)
-        
-        prod = None
+        p_name_raw = (item.get("product_name") or item.get("name") or item.get("title") or "").strip()
+        p_sku_raw = (item.get("sku") or "").strip()
+
+        # Check if item is a Combo Package first
+        pkg = None
         if prod_id is not None:
             try:
-                prod = conn.execute("SELECT * FROM products WHERE id = ?", (int(prod_id),)).fetchone()
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (int(prod_id),)).fetchone()
             except Exception:
-                prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+                pass
         
-        if not prod:
-            p_title = (item.get("product_name") or item.get("name") or item.get("title") or "").strip()
-            if p_title:
-                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (p_title,)).fetchone()
+        if not pkg and p_name_raw:
+            clean_pname = p_name_raw.replace("📦", "").strip()
+            pkg = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0", (clean_pname, clean_pname, clean_pname)).fetchone()
 
-        if prod:
-            p_id = prod["id"]
-            p_name = prod["name"]
-            unit_price = float(prod["sell_price"])
-            mrp_price = float(prod["mrp"])
-            offer_type = prod["offer_type"] or ""
-            offer_value = prod["offer_value"] or ""
-            offer_title = prod["offer_title"] or ""
-        else:
-            p_id = prod_id or 0
-            sku_val = (item.get("sku") or "").strip()
-            p_name = (item.get("product_name") or item.get("name") or item.get("title") or "Item").strip()
-            if sku_val and "(" in sku_val:
-                p_name = sku_val
-            unit_price = float(item.get("unit_price") or item.get("sell_price") or item.get("price") or 0.0)
+        if pkg:
+            p_id = pkg["id"]
+            unit_price = float(pkg["package_price"])
             mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
+
+            p_items = conn.execute("""
+                SELECT pi.*, p.sku, p.name AS product_name, p.sell_price, p.mrp
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg["id"],)).fetchall()
+
+            item_details = []
+            sl = 1
+            for pi in p_items:
+                item_details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                sl += 1
+
+            if item_details:
+                p_name = f"{pkg['name']} ({', '.join(item_details)})"
+            else:
+                p_name = f"{pkg['name']}"
+
             offer_type = ""
             offer_value = ""
             offer_title = ""
+        else:
+            prod = None
+            if prod_id is not None:
+                try:
+                    prod = conn.execute("SELECT * FROM products WHERE id = ?", (int(prod_id),)).fetchone()
+                except Exception:
+                    prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+            
+            if not prod and p_name_raw:
+                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
+
+            if prod:
+                p_id = prod["id"]
+                p_name = prod["name"]
+                unit_price = float(prod["sell_price"])
+                mrp_price = float(prod["mrp"])
+                offer_type = prod["offer_type"] or ""
+                offer_value = prod["offer_value"] or ""
+                offer_title = prod["offer_title"] or ""
+            else:
+                p_id = prod_id or 0
+                p_name = p_sku_raw if (p_sku_raw and "(" in p_sku_raw) else p_name_raw
+                unit_price = float(item.get("unit_price") or item.get("sell_price") or item.get("price") or 0.0)
+                mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
+                offer_type = ""
+                offer_value = ""
+                offer_title = ""
 
         paid_qty = qty
         actual_qty = qty

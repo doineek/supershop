@@ -734,7 +734,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       );
                                                     },
                                                     icon: const Icon(Icons.bolt, color: Colors.white),
-                                                    label: const Text("⚡ Order Combo Package Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                                    label: const Text("Order Combo Package Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                                                     style: ElevatedButton.styleFrom(
                                                       backgroundColor: Colors.green,
                                                       padding: const EdgeInsets.symmetric(vertical: 10),
