@@ -1932,7 +1932,7 @@ def offers_page():
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
-    vouchers = conn.execute("SELECT * FROM vouchers ORDER BY id DESC").fetchall()
+    vouchers = [dict(v) for v in conn.execute("SELECT * FROM vouchers ORDER BY id DESC").fetchall()]
     settings = get_all_settings(conn)
     conn.close()
     return render_template(
