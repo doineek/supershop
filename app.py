@@ -1593,6 +1593,7 @@ def sale_receipt_print(sale_id):
         FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
         WHERE s.id = ?
     """, (sale_id,)).fetchone()
+    
     if sale:
         conn.execute("UPDATE sales SET print_count = print_count + 1 WHERE id = ?", (sale_id,))
         conn.commit()
@@ -1601,6 +1602,21 @@ def sale_receipt_print(sale_id):
             FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
             WHERE s.id = ?
         """, (sale_id,)).fetchone()
+    else:
+        conn.close()
+        flash("Sale not found.", "error")
+        return redirect(url_for("sales_history"))
+
+    inv_num = str(sale["invoice_number"] or "")
+    online_items_map = {}
+    if inv_num.startswith("INV-ONLINE-"):
+        ord_num = inv_num.replace("INV-ONLINE-", "").strip()
+        ord_row = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (ord_num,)).fetchone()
+        if ord_row:
+            o_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+            for oi in o_items:
+                online_items_map[oi["product_id"]] = oi["product_name"]
+
     raw_items = conn.execute("""
         SELECT si.*, COALESCE(p.name, '') AS prod_name_tbl, COALESCE(p.sku, '') AS prod_sku, p.offer_type, p.offer_value, p.offer_title
         FROM sale_items si LEFT JOIN products p ON si.product_id = p.id
@@ -1610,35 +1626,38 @@ def sale_receipt_print(sale_id):
     items = []
     for r in raw_items:
         i_dict = dict(r)
-        is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (i_dict["product_id"],)).fetchone()
-        pkg = None
-        if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
-            pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (i_dict["product_id"],)).fetchone()
-
-        if pkg:
-            p_items = conn.execute("""
-                SELECT pi.*, p.sku, p.name AS product_name
-                FROM package_items pi JOIN products p ON pi.product_id = p.id
-                WHERE pi.package_id = ?
-            """, (pkg["id"],)).fetchall()
-            details = []
-            sl = 1
-            for pi in p_items:
-                details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
-                sl += 1
-            i_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
-            i_dict["sku"] = "COMBO"
+        pid = i_dict["product_id"]
+        
+        if pid in online_items_map and online_items_map[pid]:
+            i_dict["product_name"] = online_items_map[pid]
+            i_dict["sku"] = "ONLINE"
         else:
-            i_dict["product_name"] = i_dict["prod_name_tbl"] or "Item"
-            i_dict["sku"] = i_dict["prod_sku"] or ""
+            is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone()
+            pkg = None
+            if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (pid,)).fetchone()
+
+            if pkg:
+                p_items = conn.execute("""
+                    SELECT pi.*, p.sku, p.name AS product_name
+                    FROM package_items pi JOIN products p ON pi.product_id = p.id
+                    WHERE pi.package_id = ?
+                """, (pkg["id"],)).fetchall()
+                details = []
+                sl = 1
+                for pi in p_items:
+                    details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                    sl += 1
+                i_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
+                i_dict["sku"] = "COMBO"
+            else:
+                i_dict["product_name"] = i_dict["prod_name_tbl"] or "Item"
+                i_dict["sku"] = i_dict["prod_sku"] or ""
+
         items.append(i_dict)
 
     settings = get_all_settings(conn)
     conn.close()
-    
-    if not sale:
-        flash("Sale not found.", "error")
-        return redirect(url_for("sales_history"))
 
     total_words = number_to_words(int(round_to_whole(sale["rounded_total"] or sale["total_amount"])))
     invoice_code = str(sale["invoice_number"] or sale["id"])
@@ -2955,48 +2974,51 @@ def online_order_invoice(order_id):
         flash("Order not found.", "error")
         return redirect(url_for("online_orders"))
 
-    order_dict = dict(order)
-    raw_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+    inv_num = f"INV-ONLINE-{order['order_number']}"
+    sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
     
-    items = []
-    for item in raw_items:
-        it_dict = dict(item)
-        p_id = it_dict.get("product_id")
-        p_name = (it_dict.get("product_name") or "").strip()
+    if not sale:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_name, customer_mobile,
+                                total_amount, rounded_total, vat_amount, saved_amount, cash_amount,
+                                card_amount, change_amount, created_at, channel)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Online')
+        """, (
+            inv_num,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            session.get("user_id", 1),
+            order["customer_name"],
+            order["customer_phone"],
+            order["subtotal"],
+            order["total_amount"],
+            0,
+            0,
+            order["total_amount"],
+            0,
+            0,
+            datetime.now().isoformat()
+        ))
+        sale_id = cur.lastrowid
         
-        pkg = None
-        is_combo = p_name.startswith("📦") or it_dict.get("unit") == "Combo Package"
-        if p_id:
-            pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (p_id,)).fetchone()
-        if not pkg and is_combo:
-            clean_name = p_name.replace("📦", "").split("(")[0].strip()
-            pkg = conn.execute("SELECT * FROM packages WHERE name = ?", (clean_name,)).fetchone()
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+        for item in items:
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            """, (
+                sale_id,
+                item["product_id"],
+                item["quantity"],
+                item["unit_price"],
+                item["mrp_price"]
+            ))
+        conn.commit()
+    else:
+        sale_id = sale["id"]
 
-        if pkg and "(" not in p_name:
-            p_items = conn.execute("""
-                SELECT pi.*, p.sku, p.name AS product_name
-                FROM package_items pi JOIN products p ON pi.product_id = p.id
-                WHERE pi.package_id = ?
-            """, (pkg["id"],)).fetchall()
-            details = []
-            sl = 1
-            for pi in p_items:
-                details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
-                sl += 1
-            if details:
-                it_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
-
-        items.append(it_dict)
-
-    settings = get_all_settings(conn)
     conn.close()
-
-    return render_template(
-        "online_invoice.html",
-        order=order_dict,
-        items=items,
-        shop=settings
-    )
+    return redirect(url_for("sale_receipt_print", sale_id=sale_id))
 
 
 @app.route("/api/online_orders/customer_search")
