@@ -253,13 +253,14 @@ def new_product():
         offer_type = request.form.get("offer_type", "").strip()
         offer_value = request.form.get("offer_value", "").strip()
         offer_base = request.form.get("offer_base", "mrp").strip()
+        expiry_date = request.form.get("expiry_date", "").strip()
 
         try:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO products (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base)
+                "INSERT INTO products (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date)
             )
             new_product_id = cur.lastrowid
             create_product_units(conn, new_product_id, stock_qty)
@@ -335,12 +336,14 @@ def edit_product(product_id):
         offer_value = request.form.get("offer_value", "").strip()
         offer_base = request.form.get("offer_base", "mrp").strip()
 
+        expiry_date = request.form.get("expiry_date", "").strip()
+
         w_conn = get_connection()
         w_conn.execute("""
             UPDATE products SET sku=?, name=?, brand=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
                                  vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
                                  description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
-                                 offer_title=?, offer_type=?, offer_value=?, offer_base=?
+                                 offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
             WHERE id=?
         """, (
             request.form["sku"].strip(),
@@ -366,6 +369,7 @@ def edit_product(product_id):
             offer_type,
             offer_value,
             offer_base,
+            expiry_date,
             product_id
         ))
         if new_stock_qty > old_stock_qty:
@@ -395,6 +399,95 @@ def delete_product(product_id):
         remote_control.delete_product_from_cloud(product["sku"])
     flash("Product deleted.", "success")
     return redirect(url_for("products"))
+
+
+@app.route("/products/<int:product_id>/restock", methods=["GET"])
+@login_required
+@admin_required
+def restock_product(product_id):
+    conn = get_connection()
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
+    orig = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    conn.close()
+
+    if not orig:
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
+    # Convert to dict and increment SL Number by 1
+    p_dict = dict(orig)
+    new_sl = (p_dict.get("sl_number") or 1) + 1
+    p_dict["id"] = None
+    p_dict["sl_number"] = new_sl
+    # Append suffix to SKU for new batch
+    base_sku = p_dict["sku"].split("-R")[0]
+    p_dict["sku"] = f"{base_sku}-R{new_sl}"
+    p_dict["stock_qty"] = 10
+
+    flash(f"Restocking product: SL Number incremented to {new_sl}. You can modify price/stock/expiry and save.", "info")
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=p_dict)
+
+
+@app.route("/products/<int:product_id>/return", methods=["POST"])
+@login_required
+def return_product(product_id):
+    conn = get_connection()
+    product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if not product:
+        conn.close()
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
+    ret_qty = int(request.form.get("quantity") or product["stock_qty"] or 1)
+    reason = request.form.get("reason", "Returned by Cashier / Manager").strip()
+    today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn.execute("""
+        INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (product["id"], product["name"], ret_qty, reason, product["expiry_date"] or '', today_str))
+
+    # Reduce product stock by returned quantity
+    new_stock = max(0, product["stock_qty"] - ret_qty)
+    conn.execute("UPDATE products SET stock_qty = ? WHERE id = ?", (new_stock, product["id"]))
+    conn.commit()
+    conn.close()
+
+    flash(f"Product '{product['name']}' ({ret_qty} units) moved to Returned Items / Date Expired section.", "success")
+    return redirect(url_for("products"))
+
+
+@app.route("/returned_items")
+@login_required
+def returned_items():
+    conn = get_connection()
+    today_date = datetime.now().strftime("%Y-%m-%d")
+
+    # Auto-sync expired items from products table if any expired products exist
+    expired_prods = conn.execute("""
+        SELECT * FROM products 
+        WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
+    """, (today_date,)).fetchall()
+
+    for ep in expired_prods:
+        # Check if already logged for this product with 'Expired' reason
+        already_logged = conn.execute(
+            "SELECT id FROM returned_items WHERE product_id = ? AND reason LIKE '%Expired%'", (ep["id"],)
+        ).fetchone()
+        if not already_logged:
+            conn.execute("""
+                INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (ep["id"], ep["name"], ep["stock_qty"], f"Auto-Sync: Date Expired ({ep['expiry_date']})", ep["expiry_date"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+
+    conn.commit()
+
+    rows = conn.execute("SELECT * FROM returned_items ORDER BY date_returned DESC").fetchall()
+    conn.close()
+    return render_template("returned_items.html", items=rows)
 
 
 @app.route("/products/<int:product_id>/labels")
@@ -636,6 +729,16 @@ def checkout():
 
     invoice_number = generate_invoice_number()
     invoice_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
+        existing_cust = cur.execute("SELECT id FROM customer_users WHERE phone = ?", (customer_mobile,)).fetchone()
+        if not existing_cust:
+            pass_hash = generate_password_hash("123456")
+            name_to_use = customer_name if customer_name else f"Customer {customer_mobile[-4:]}"
+            cur.execute("""
+                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, created_at)
+                VALUES (?, ?, '', ?, '123456', ?)
+            """, (customer_mobile, name_to_use, pass_hash, datetime.now().isoformat()))
 
     cur.execute("""
         INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile,
@@ -1752,6 +1855,9 @@ def api_categories_tree():
 @app.route("/offers", methods=["GET"])
 @login_required
 @admin_required
+@app.route("/offers", methods=["GET"])
+@login_required
+@admin_required
 def offers_page():
     conn = get_connection()
     all_products = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
@@ -1762,9 +1868,146 @@ def offers_page():
         WHERE p.is_offer = 1 OR p.is_promotion = 1 OR p.offer_type = 'bogo'
         ORDER BY p.id DESC
     """).fetchall()
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    vouchers = conn.execute("SELECT * FROM vouchers ORDER BY id DESC").fetchall()
     settings = get_all_settings(conn)
     conn.close()
-    return render_template("offers.html", all_products=all_products, offer_products=offer_products, settings=settings)
+    return render_template(
+        "offers.html",
+        all_products=all_products,
+        offer_products=offer_products,
+        categories=categories,
+        sub_categories=sub_categories,
+        sub_sub_categories=sub_sub_categories,
+        vouchers=vouchers,
+        settings=settings
+    )
+
+
+@app.route("/vouchers/new", methods=["POST"])
+@login_required
+@admin_required
+def new_voucher():
+    code = request.form.get("code", "").strip().upper()
+    discount_type = request.form.get("discount_type", "percentage").strip()
+    discount_value = float(request.form.get("discount_value") or 0)
+    scope_type = request.form.get("scope_type", "all").strip()
+    scope_id = request.form.get("scope_id") or None
+    if scope_id:
+        scope_id = int(scope_id)
+
+    if code and discount_value > 0:
+        conn = get_connection()
+        try:
+            conn.execute("""
+                INSERT INTO vouchers (code, discount_type, discount_value, scope_type, scope_id, active, created_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
+            """, (code, discount_type, discount_value, scope_type, scope_id, datetime.now().isoformat()))
+            conn.commit()
+            flash(f"Voucher '{code}' created successfully.", "success")
+        except Exception as e:
+            flash(f"Could not create voucher: {e}", "error")
+        conn.close()
+    return redirect(url_for("offers_page"))
+
+
+@app.route("/vouchers/<int:voucher_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_voucher(voucher_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM vouchers WHERE id = ?", (voucher_id,))
+    conn.commit()
+    conn.close()
+    flash("Voucher deleted successfully.", "success")
+    return redirect(url_for("offers_page"))
+
+
+@app.route("/api/vouchers/apply", methods=["POST"])
+def api_apply_voucher():
+    data = request.get_json() or {}
+    code = (data.get("code") or "").strip().upper()
+    cart_items = data.get("cart_items") or []
+
+    if not code:
+        return jsonify({"success": False, "message": "Please enter a voucher code."}), 400
+
+    if not cart_items:
+        return jsonify({"success": False, "message": "Cart is empty."}), 400
+
+    conn = get_connection()
+    v = conn.execute("SELECT * FROM vouchers WHERE code = ? AND active = 1", (code,)).fetchone()
+    if not v:
+        conn.close()
+        return jsonify({"success": False, "message": f"Voucher '{code}' is invalid or expired."}), 400
+
+    scope_type = v["scope_type"]
+    scope_id = v["scope_id"]
+    discount_type = v["discount_type"]
+    discount_value = v["discount_value"]
+
+    total_eligible_price = 0.0
+
+    for item in cart_items:
+        p_id = item.get("product_id")
+        qty = int(item.get("quantity") or 1)
+        price = float(item.get("price") or 0)
+
+        p = conn.execute("SELECT * FROM products WHERE id = ?", (p_id,)).fetchone()
+        if not p:
+            continue
+
+        is_eligible = False
+        target_name = "Selected Scope"
+
+        if scope_type == "all":
+            is_eligible = True
+        elif scope_type == "product" and scope_id:
+            if p["id"] == scope_id:
+                is_eligible = True
+            target_name = f"Product '{p['name']}'"
+        elif scope_type == "category" and scope_id:
+            if p["category_id"] == scope_id:
+                is_eligible = True
+            cat = conn.execute("SELECT name FROM categories WHERE id = ?", (scope_id,)).fetchone()
+            if cat: target_name = f"Category '{cat['name']}'"
+        elif scope_type == "sub_category" and scope_id:
+            if p["sub_category_id"] == scope_id:
+                is_eligible = True
+            scat = conn.execute("SELECT name FROM sub_categories WHERE id = ?", (scope_id,)).fetchone()
+            if scat: target_name = f"Sub-Category '{scat['name']}'"
+        elif scope_type == "sub_sub_category" and scope_id:
+            if p["sub_sub_category_id"] == scope_id:
+                is_eligible = True
+            sscat = conn.execute("SELECT name FROM sub_sub_categories WHERE id = ?", (scope_id,)).fetchone()
+            if sscat: target_name = f"Sub-Sub-Category '{sscat['name']}'"
+
+        if not is_eligible:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": f"Voucher '{code}' is ONLY valid for {target_name}. Product '{p['name']}' in your cart is not eligible for this voucher."
+            }), 400
+
+        total_eligible_price += price * qty
+
+    conn.close()
+
+    if discount_type == "flat":
+        discount_amount = min(total_eligible_price, discount_value)
+    else:
+        discount_amount = total_eligible_price * (discount_value / 100.0)
+
+    discount_amount = round(discount_amount, 2)
+
+    return jsonify({
+        "success": True,
+        "code": code,
+        "discount_amount": discount_amount,
+        "message": f"Voucher '{code}' applied! Saved TK {discount_amount:.2f}"
+    })
 
 
 @app.route("/offers/save", methods=["POST"])
@@ -1922,6 +2165,43 @@ def change_user_password(user_id):
     conn.commit()
     conn.close()
     flash("Password updated successfully.", "success")
+    return redirect(url_for("users"))
+
+
+@app.route("/users/<int:user_id>/edit", methods=["POST"])
+@login_required
+@admin_required
+def edit_user(user_id):
+    username = request.form.get("username", "").strip()
+    role = request.form.get("role", "").strip()
+    new_password = request.form.get("password", "").strip()
+
+    conn = get_connection()
+    if username and role in ['admin', 'cashier', 'delivery']:
+        if new_password:
+            conn.execute("UPDATE users SET username = ?, role = ?, password_hash = ? WHERE id = ?",
+                         (username, role, generate_password_hash(new_password), user_id))
+        else:
+            conn.execute("UPDATE users SET username = ?, role = ? WHERE id = ?", (username, role, user_id))
+        conn.commit()
+        flash(f"Staff user '{username}' updated successfully.", "success")
+    conn.close()
+    return redirect(url_for("users"))
+
+
+@app.route("/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_user(user_id):
+    if user_id == session.get("user_id"):
+        flash("You cannot delete your own active admin account.", "error")
+        return redirect(url_for("users"))
+
+    conn = get_connection()
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    flash("Staff account deleted successfully.", "success")
     return redirect(url_for("users"))
 
 
@@ -2525,18 +2805,29 @@ def verify_online_order_otp(order_id):
 @admin_required
 def delivery_areas():
     conn = get_connection()
+    # Auto-cleanup existing duplicates
+    conn.execute("DELETE FROM delivery_areas WHERE id NOT IN (SELECT MIN(id) FROM delivery_areas GROUP BY LOWER(district), LOWER(area))")
+    conn.commit()
+
     if request.method == "POST":
         country = request.form.get("country", "Bangladesh").strip()
         district = request.form.get("district", "").strip()
         area = request.form.get("area", "").strip()
         if district and area:
-            conn.execute(
-                "INSERT INTO delivery_areas (country, district, area, is_active, created_at) VALUES (?, ?, ?, 1, ?)",
-                (country, district, area, datetime.now().isoformat())
-            )
+            existing = conn.execute(
+                "SELECT id FROM delivery_areas WHERE LOWER(district) = LOWER(?) AND LOWER(area) = LOWER(?)",
+                (district, area)
+            ).fetchone()
+            if existing:
+                conn.execute("UPDATE delivery_areas SET is_active = 1 WHERE id = ?", (existing["id"],))
+            else:
+                conn.execute(
+                    "INSERT INTO delivery_areas (country, district, area, is_active, created_at) VALUES (?, ?, ?, 1, ?)",
+                    (country, district, area, datetime.now().isoformat())
+                )
             conn.commit()
             remote_control.push_delivery_areas_to_cloud()
-            flash(f"Delivery area '{area}, {district}' added successfully.", "success")
+            flash(f"Delivery area '{area}, {district}' updated successfully.", "success")
     
     areas = conn.execute("SELECT * FROM delivery_areas ORDER BY district, area").fetchall()
     areas_list = [dict(a) for a in areas]
@@ -3205,6 +3496,89 @@ def api_auth_login():
             "email": cust["email"]
         }
     })
+
+
+# ===========================================================================
+# Product Packages & Combo Bundles Section (Admin & API)
+# ===========================================================================
+
+@app.route("/packages", methods=["GET", "POST"])
+@login_required
+@admin_required
+def packages_page():
+    conn = get_connection()
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        description = request.form.get("description", "").strip()
+        package_price = float(request.form.get("package_price") or 0)
+        image_url = request.form.get("image_url", "").strip()
+        prod_ids = request.form.getlist("product_ids")
+
+        if name and package_price > 0 and prod_ids:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO packages (name, description, image_url, package_price, is_active, created_at)
+                VALUES (?, ?, ?, ?, 1, ?)
+            """, (name, description, image_url, package_price, datetime.now().isoformat()))
+            pkg_id = cur.lastrowid
+
+            for pid in prod_ids:
+                cur.execute("""
+                    INSERT INTO package_items (package_id, product_id, quantity)
+                    VALUES (?, ?, 1)
+                """, (pkg_id, int(pid)))
+            conn.commit()
+            flash(f"Package '{name}' created successfully.", "success")
+        else:
+            flash("Please enter package name, price, and select at least 1 product.", "error")
+
+    all_products = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
+    pkg_rows = conn.execute("SELECT * FROM packages ORDER BY id DESC").fetchall()
+    
+    packages_list = []
+    for pkg in pkg_rows:
+        p_dict = dict(pkg)
+        items = conn.execute("""
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp
+            FROM package_items pi JOIN products p ON pi.product_id = p.id
+            WHERE pi.package_id = ?
+        """, (pkg["id"],)).fetchall()
+        p_dict["items"] = [dict(i) for i in items]
+        packages_list.append(p_dict)
+
+    conn.close()
+    return render_template("packages.html", packages=packages_list, products=all_products)
+
+
+@app.route("/packages/<int:package_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_package(package_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM package_items WHERE package_id = ?", (package_id,))
+    conn.execute("DELETE FROM packages WHERE id = ?", (package_id,))
+    conn.commit()
+    conn.close()
+    flash("Product package deleted successfully.", "success")
+    return redirect(url_for("packages_page"))
+
+
+@app.route("/api/packages", methods=["GET"])
+def api_packages():
+    conn = get_connection()
+    pkg_rows = conn.execute("SELECT * FROM packages WHERE is_active = 1 ORDER BY id DESC").fetchall()
+    packages_list = []
+    for pkg in pkg_rows:
+        p_dict = dict(pkg)
+        items = conn.execute("""
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url
+            FROM package_items pi JOIN products p ON pi.product_id = p.id
+            WHERE pi.package_id = ?
+        """, (pkg["id"],)).fetchall()
+        p_dict["items"] = [dict(i) for i in items]
+        packages_list.append(p_dict)
+    conn.close()
+    return jsonify(packages_list)
 
 
 # ===========================================================================

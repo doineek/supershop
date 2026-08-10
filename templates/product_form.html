@@ -105,8 +105,12 @@
       <input type="number" name="low_stock_threshold" required value="{{ product.low_stock_threshold if product else 5 }}">
     </div>
     <div class="field">
-      <label>SL Number (Constant tag number for this product)</label>
+      <label>SL Number (Tag number for this product batch)</label>
       <input type="number" name="sl_number" required value="{{ product.sl_number if product else 1 }}" placeholder="e.g. 1, 101, 500">
+    </div>
+    <div class="field">
+      <label style="color:#ef4444; font-weight:bold;">Expiry Date (Optional - Leave blank if none)</label>
+      <input type="date" name="expiry_date" value="{{ product.expiry_date if product and product.expiry_date else '' }}">
     </div>
   </div>
 

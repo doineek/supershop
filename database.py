@@ -202,6 +202,46 @@ def init_db():
         name TEXT UNIQUE NOT NULL,
         logo TEXT NOT NULL DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS vouchers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE NOT NULL,
+        discount_type TEXT NOT NULL DEFAULT 'percentage',
+        discount_value REAL NOT NULL DEFAULT 0,
+        scope_type TEXT NOT NULL DEFAULT 'all',
+        scope_id INTEGER DEFAULT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS returned_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER,
+        item_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        reason TEXT NOT NULL DEFAULT '',
+        expiry_date TEXT NOT NULL DEFAULT '',
+        date_returned TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS packages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        package_price REAL NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS package_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (package_id) REFERENCES packages(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
     """)
 
     migrations = [
@@ -220,6 +260,7 @@ def init_db():
         "ALTER TABLE products ADD COLUMN is_flash_sale INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN is_offer INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN offer_title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN expiry_date TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE sales ADD COLUMN rounded_total REAL NOT NULL DEFAULT 0",
         "ALTER TABLE sales ADD COLUMN saved_amount REAL NOT NULL DEFAULT 0",
         "ALTER TABLE sales ADD COLUMN cash_amount REAL NOT NULL DEFAULT 0",

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Returned Items & Date Expired{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div>
+    <h1>🚫 Returned Items & Date Expired Products</h1>
+    <p class="subtitle">Log of items returned by customers or auto-synced due to passed expiration date.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr style="background:#f8fafc;">
+          <th>ID</th>
+          <th>Item Name</th>
+          <th>Quantity</th>
+          <th>Reason / Status</th>
+          <th>Expiry Date</th>
+          <th>Date Returned / Logged</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>#{{ item.id }}</td>
+          <td><strong>{{ item.item_name }}</strong></td>
+          <td><span class="badge" style="background:#ef4444; color:white; font-weight:bold;">{{ item.quantity }} units</span></td>
+          <td>
+            {% if 'Expired' in item.reason %}
+            <span class="badge" style="background:#dc2626; color:white;">⏰ {{ item.reason }}</span>
+            {% else %}
+            <span class="badge" style="background:#f59e0b; color:white;">↩️ {{ item.reason }}</span>
+            {% endif %}
+          </td>
+          <td>{{ item.expiry_date if item.expiry_date else '—' }}</td>
+          <td>{{ item.date_returned[:16] if item.date_returned else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center; color:#94a3b8; padding:30px;">
+            No returned or date-expired products found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

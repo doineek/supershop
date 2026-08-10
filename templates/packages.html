@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Product Packages & Combo Deals{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div>
+    <h1>🎁 Product Packages & Combo Bundles</h1>
+    <p class="subtitle">Group multiple items together into special combo packages at a discounted price.</p>
+  </div>
+</div>
+
+<div class="responsive-split-layout">
+  <!-- Create New Package Form -->
+  <div style="flex:1;">
+    <div class="card">
+      <h3 style="margin-top:0; color:#15803d; font-size:16px;">+ Create New Combo Package</h3>
+      <form method="POST" action="{{ url_for('packages_page') }}">
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Package Name*</label>
+          <input type="text" name="name" placeholder="e.g. Weekly Family Grocery Bundle" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Combo Special Price (TK)*</label>
+          <input type="number" step="0.01" name="package_price" placeholder="e.g. 499.00" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#16a34a;">
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Description (Optional)</label>
+          <textarea name="description" rows="2" placeholder="e.g. Contains 5 kg Rice, 1 L Oil, 1 kg Sugar" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;"></textarea>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Image URL (Optional)</label>
+          <input type="text" name="image_url" placeholder="https://..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block; font-weight:600; margin-bottom:4px;">Select Included Products (Hold Ctrl to select multiple)*</label>
+          <select name="product_ids" multiple required style="width:100%; height:160px; padding:8px; border:1px solid #cbd5e1; border-radius:8px;">
+            {% for p in products %}
+            <option value="{{ p.id }}">{{ p.name }} (Sell: TK {{ p.sell_price }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; padding:10px;">+ Save Package</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Existing Packages List -->
+  <div style="flex:1.5;">
+    <div class="card">
+      <h3 style="margin-top:0; color:#0f172a; font-size:16px;">Active Combo Packages</h3>
+      <div class="table-responsive">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8fafc; text-align:left;">
+              <th style="padding:10px;">Package</th>
+              <th style="padding:10px;">Included Items</th>
+              <th style="padding:10px; text-align:right;">Combo Price</th>
+              <th style="padding:10px; text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pkg in packages %}
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:10px;">
+                <div style="font-weight:bold; color:#0f172a;">📦 {{ pkg.name }}</div>
+                <div style="font-size:12px; color:#64748b;">{{ pkg.description }}</div>
+              </td>
+              <td style="padding:10px; font-size:12px;">
+                <ul style="margin:0; padding-left:16px;">
+                  {% for item in pkg.items %}
+                  <li>{{ item.product_name }} (TK {{ item.sell_price }})</li>
+                  {% endfor %}
+                </ul>
+              </td>
+              <td style="padding:10px; text-align:right; font-weight:bold; color:#16a34a; font-size:15px;">
+                TK {{ "%.2f"|format(pkg.package_price) }}
+              </td>
+              <td style="padding:10px; text-align:right;">
+                <form method="POST" action="{{ url_for('delete_package', package_id=pkg.id) }}" style="display:inline;" onsubmit="return confirm('Delete package {{ pkg.name }}?');">
+                  <button class="btn btn-danger btn-small" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="text-align:center; padding:30px; color:#94a3b8;">No combo packages created yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

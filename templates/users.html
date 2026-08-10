@@ -7,17 +7,25 @@
 <div class="responsive-split-layout">
   <div class="table-responsive">
     <table>
-      <tr><th>Username</th><th>Role</th><th>Created</th><th>Change Password</th></tr>
+      <tr><th>Username</th><th>Role</th><th>Created</th><th>Change Password</th><th>Actions</th></tr>
       {% for u in users %}
       <tr>
         <td><strong>{{ u.username }}</strong></td>
         <td><span class="badge badge-role">{{ u.role }}</span></td>
-        <td>{{ u.created_at[:10] }}</td>
+        <td>{{ u.created_at[:10] if u.created_at else '—' }}</td>
         <td>
           <form method="POST" action="{{ url_for('change_user_password', user_id=u.id) }}" style="display:flex; gap:6px;">
             <input type="password" name="new_password" placeholder="New Password" required style="padding:4px 8px; font-size:12px; width:110px;">
             <button class="btn btn-outline btn-small" type="submit">Update</button>
           </form>
+        </td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-outline btn-small" onclick="openEditStaffModal('{{ u.id }}', '{{ u.username }}', '{{ u.role }}')">Edit</button>
+          {% if u.id != session.user_id %}
+          <form method="POST" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Delete staff user {{ u.username }}?');">
+            <button class="btn btn-danger btn-small" type="submit" style="background:#dc2626; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer;">Delete</button>
+          </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -39,9 +47,51 @@
       <select name="role">
         <option value="cashier">Cashier</option>
         <option value="admin">Admin</option>
+        <option value="delivery">Delivery Rider</option>
       </select>
     </div>
     <button class="btn btn-primary" type="submit">Create account</button>
   </form>
 </div>
+
+<!-- Edit Staff Modal -->
+<div id="editStaffModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:12px; padding:24px; width:90%; max-width:400px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+    <h3 style="margin-top:0; color:#0f172a;">Edit Staff Account</h3>
+    <form id="editStaffForm" method="POST">
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Username*</label>
+        <input type="text" name="username" id="editStaffUsername" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Role*</label>
+        <select name="role" id="editStaffRole" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <option value="cashier">Cashier</option>
+          <option value="admin">Admin</option>
+          <option value="delivery">Delivery Rider</option>
+        </select>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">New Password (leave blank to keep current)</label>
+        <input type="password" name="password" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;" placeholder="Optional">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" onclick="closeEditStaffModal()" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditStaffModal(id, username, role) {
+  document.getElementById('editStaffForm').action = '/users/' + id + '/edit';
+  document.getElementById('editStaffUsername').value = username;
+  document.getElementById('editStaffRole').value = role;
+  document.getElementById('editStaffModal').style.display = 'flex';
+}
+function closeEditStaffModal() {
+  document.getElementById('editStaffModal').style.display = 'none';
+}
+</script>
 {% endblock %}

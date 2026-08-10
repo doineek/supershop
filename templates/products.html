@@ -221,68 +221,6 @@
       <div style="display:flex; justify-content:flex-end; gap:8px;">
         <button type="button" onclick="closeEditCategoryModal()" class="btn btn-outline">Cancel</button>
         <button type="submit" class="btn btn-primary">Save Changes</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Interactive Emoji Picker Modal -->
-<div id="emojiPickerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-  <div style="background:white; border-radius:16px; padding:20px; width:90%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <h3 style="margin:0; font-size:16px; color:#0f172a;">😀 Select Category Emoji</h3>
-      <button type="button" onclick="closeEmojiPickerModal()" style="background:#f1f5f9; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold;">✕</button>
-    </div>
-    <div id="emojiGrid" style="display:grid; grid-template-columns:repeat(6, 1fr); gap:8px; max-height:260px; overflow-y:auto; padding:8px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0;">
-    </div>
-  </div>
-</div>
-
-<!-- Inventory Products Table -->
-<table>
-  <tr>
-    <th>SKU</th><th>Name</th><th>Brand</th><th>Category</th>
-    <th class="num">Cost</th><th class="num">MRP</th><th class="num">Sell price</th>
-    <th class="num">VAT %</th><th class="num">Stock</th><th></th>
-    {% if session.role == 'admin' %}<th></th>{% endif %}
-  </tr>
-  {% for p in products %}
-  <tr class="{{ 'row-low' if p.stock_qty <= p.low_stock_threshold }}">
-    <td>{{ p.sku }}</td>
-    <td>{{ p.name }}</td>
-    <td>{{ p.brand or '—' }}</td>
-    <td>{{ p.category_name or '—' }}</td>
-    <td class="num">TK {{ "%.2f"|format(p.cost_price) }}</td>
-    <td class="num">{{ "TK %.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
-    <td class="num">TK {{ "%.2f"|format(p.sell_price) }}</td>
-    <td class="num">{{ "%.1f"|format(p.vat_pct) if p.vat_pct > 0 else '—' }}</td>
-    <td class="num">{{ p.stock_qty }}</td>
-    <td>
-      <a class="btn btn-outline btn-small" href="{{ url_for('product_labels', product_id=p.id) }}" target="_blank">Print tags ({{ p.tag_count }})</a>
-      {% if p.label_print_count > 0 %}
-        <div style="font-size:11px; color:var(--ink-soft); margin-top:4px;">Printed {{ p.label_print_count }} time{{ 's' if p.label_print_count != 1 }}</div>
-      {% endif %}
-    </td>
-    {% if session.role == 'admin' %}
-    <td style="white-space:nowrap">
-      <a class="btn btn-outline btn-small" href="{{ url_for('edit_product', product_id=p.id) }}">Edit</a>
-      <form method="POST" action="{{ url_for('delete_product', product_id=p.id) }}" style="display:inline"
-            onsubmit="return confirm('Delete {{ p.name }}?');">
-        <button class="btn btn-danger btn-small" type="submit">Delete</button>
-      </form>
-    </td>
-    {% endif %}
-  </tr>
-  {% endfor %}
-</table>
-
-<script>
-let activeEmojiTargetInputId = null;
-
-const emojiList = [
-  '🍎', '🍌', '🍊', '🍇', '🍉', '🥦', '🥬', '🌽', '🥩', '🍗', '🍞', '🧀',
-  '🥛', '🧃', '☕', '🍪', '🍫', '🍿', '🧼', '🧴', '💄', '🧻', '🧹', '🏠',
-  '📦', '⚡', '🎁', '🛍️', '📁', '🏷️', '📌', '🛒', '🍕', '🍔', '🍰', '🍨',
   '🍼', '👟', '👕', '🎒', '💻', '📱', '💊', '🌾', '🐟', '🍤', '🧂', '🍳'
 ];
 

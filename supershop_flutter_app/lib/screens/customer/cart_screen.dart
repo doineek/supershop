@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,80 @@ class _CartScreenState extends State<CartScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _voucherController = TextEditingController();
+
+  double _voucherDiscount = 0.0;
+  String _appliedVoucherCode = '';
+  bool _isVerifyingVoucher = false;
+
+  void _applyVoucher() async {
+    String code = _voucherController.text.trim().toUpperCase();
+    if (code.isEmpty) return;
+
+    final cartProv = Provider.of<CartProvider>(context, listen: false);
+    List cartItems = cartProv.items.map((item) => {
+      'product_id': item.product.id,
+      'quantity': item.quantity,
+      'price': item.product.sellPrice,
+    }).toList();
+
+    setState(() {
+      _isVerifyingVoucher = true;
+    });
+
+    var res = await ApiService.httpPost('/api/vouchers/apply', body: jsonEncode({
+      'code': code,
+      'cart_items': cartItems,
+    }));
+
+    if (!mounted) return;
+    setState(() {
+      _isVerifyingVoucher = false;
+    });
+
+    if (res != null && res.statusCode == 200) {
+      var data = jsonDecode(res.body);
+      if (data['success'] == true) {
+        setState(() {
+          _voucherDiscount = (data['discount_amount'] as num).toDouble();
+          _appliedVoucherCode = code;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['message'] ?? "Voucher applied successfully!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else {
+      String errMsg = "Voucher is not valid for items in your cart.";
+      if (res != null) {
+        try {
+          var errData = jsonDecode(res.body);
+          if (errData['message'] != null) errMsg = errData['message'];
+        } catch (_) {}
+      }
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red),
+              SizedBox(width: 8),
+              Text("Voucher Cannot Be Applied"),
+            ],
+          ),
+          content: Text(errMsg),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -453,6 +528,62 @@ class _CartScreenState extends State<CartScreen> {
 
                   const SizedBox(height: 16),
 
+                  // Voucher / Coupon Field
+                  Card(
+                    color: Colors.purple.shade50,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.purple.shade200)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.confirmation_number, color: Colors.purple),
+                              SizedBox(width: 6),
+                              Text("Apply Voucher / Coupon Code", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _voucherController,
+                                  textCapitalization: TextCapitalization.characters,
+                                  decoration: const InputDecoration(
+                                    hintText: "Enter Voucher (e.g. SAVE50)",
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                    fillColor: Colors.white,
+                                    filled: true,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: _isVerifyingVoucher ? null : _applyVoucher,
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                                child: _isVerifyingVoucher
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                    : const Text("Apply", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          if (_appliedVoucherCode.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              "✓ Voucher '$_appliedVoucherCode' Applied (-TK ${_voucherDiscount.toStringAsFixed(2)})",
+                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
                   // Summary
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -461,6 +592,16 @@ class _CartScreenState extends State<CartScreen> {
                       Text('TK ${cartProv.subtotal.toStringAsFixed(2)}'),
                     ],
                   ),
+                  if (_voucherDiscount > 0) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Voucher Discount:", style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                        Text('-TK ${_voucherDiscount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -475,7 +616,7 @@ class _CartScreenState extends State<CartScreen> {
                     children: [
                       Text(loc.translate('total'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                       Text(
-                        'TK ${cartProv.grandTotal.toStringAsFixed(2)}',
+                        'TK ${((cartProv.subtotal - _voucherDiscount) + cartProv.deliveryCharge).clamp(0, double.infinity).toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green),
                       ),
                     ],

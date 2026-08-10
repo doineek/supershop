@@ -48,9 +48,15 @@
     <a href="{{ url_for('online_orders') }}" class="sidebar-item {{ 'active' if request.path == '/online_orders' }}">
       <span class="sidebar-icon">📱</span><span>Online Orders</span>
     </a>
+    <a href="{{ url_for('returned_items') }}" class="sidebar-item {{ 'active' if request.path == '/returned_items' }}">
+      <span class="sidebar-icon">🚫</span><span>Returned / Expired</span>
+    </a>
     {% if session.role == 'admin' %}
+    <a href="{{ url_for('packages_page') }}" class="sidebar-item {{ 'active' if request.path == '/packages' }}">
+      <span class="sidebar-icon">🎁</span><span>Product Packages</span>
+    </a>
     <a href="{{ url_for('offers_page') }}" class="sidebar-item {{ 'active' if request.path == '/offers' }}">
-      <span class="sidebar-icon">🎁</span><span>Offers & Banner</span>
+      <span class="sidebar-icon">🏷️</span><span>Offers & Banner</span>
     </a>
     <a href="{{ url_for('delivery_areas') }}" class="sidebar-item {{ 'active' if request.path == '/delivery_areas' }}">
       <span class="sidebar-icon">📍</span><span>Delivery Areas</span>

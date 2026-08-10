@@ -19,7 +19,132 @@
   </form>
 </div>
 
-<!-- Add / Edit Offer Form -->
+<!-- Voucher Management Section -->
+<div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
+  <h3 style="margin-top:0; color:#7c3aed; font-size:16px;">🎟️ Customer Discount Vouchers / Coupon Codes</h3>
+  
+  <form method="POST" action="{{ url_for('new_voucher') }}" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px; align-items:end;">
+    <div>
+      <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Voucher Code*</label>
+      <input type="text" name="code" placeholder="e.g. SAVE50" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; text-transform:uppercase;">
+    </div>
+    <div>
+      <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Discount Type</label>
+      <select name="discount_type" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+        <option value="percentage">Percentage (%)</option>
+        <option value="flat">Flat Amount (TK)</option>
+      </select>
+    </div>
+    <div>
+      <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Discount Value*</label>
+      <input type="number" step="0.1" name="discount_value" placeholder="e.g. 50 or 10" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+    </div>
+    <div>
+      <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Applicable Scope*</label>
+      <select name="scope_type" id="voucherScopeType" onchange="updateVoucherScopeOptions()" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+        <option value="all">Entire Store (All Products)</option>
+        <option value="product">Specific Product</option>
+        <option value="category">Main Category</option>
+        <option value="sub_category">Sub Category</option>
+        <option value="sub_sub_category">Sub-Sub Category</option>
+      </select>
+    </div>
+    <div id="voucherScopeContainer" style="display:none;">
+      <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;" id="voucherScopeLabel">Select Target</label>
+      <select name="scope_id" id="voucherScopeSelect" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px;">
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary" style="background:#7c3aed; color:white; width:100%; padding:9px;">+ Create Voucher</button>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f8fafc; text-align:left;">
+          <th style="padding:8px;">Code</th>
+          <th style="padding:8px;">Discount</th>
+          <th style="padding:8px;">Applicable Scope</th>
+          <th style="padding:8px;">Status</th>
+          <th style="padding:8px; text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vouchers %}
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:8px; font-weight:bold; color:#7c3aed;">🎟️ {{ v.code }}</td>
+          <td style="padding:8px;">{{ v.discount_value }}{{ '%' if v.discount_type == 'percentage' else ' TK' }}</td>
+          <td style="padding:8px; font-size:12px; color:#475569;">
+            {{ v.scope_type|replace('_', ' ')|title }}
+          </td>
+          <td style="padding:8px;"><span class="badge" style="background:#16a34a; color:white;">Active</span></td>
+          <td style="padding:8px; text-align:right;">
+            <form method="POST" action="{{ url_for('delete_voucher', voucher_id=v.id) }}" style="display:inline;" onsubmit="return confirm('Delete voucher {{ v.code }}?');">
+              <button class="btn btn-danger btn-small" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align:center; padding:16px; color:#94a3b8;">No vouchers created yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const voucherProductsData = [
+  {% for p in all_products %}
+  { id: '{{ p.id }}', name: '{{ p.name|e }}' },
+  {% endfor %}
+];
+const voucherCategoriesData = [
+  {% for c in categories %}
+  { id: '{{ c.id }}', name: '{{ c.name|e }}' },
+  {% endfor %}
+];
+const voucherSubCategoriesData = [
+  {% for s in sub_categories %}
+  { id: '{{ s.id }}', name: '{{ s.name|e }}' },
+  {% endfor %}
+];
+const voucherSubSubCategoriesData = [
+  {% for ss in sub_sub_categories %}
+  { id: '{{ ss.id }}', name: '{{ ss.name|e }}' },
+  {% endfor %}
+];
+
+function updateVoucherScopeOptions() {
+  const type = document.getElementById('voucherScopeType').value;
+  const container = document.getElementById('voucherScopeContainer');
+  const select = document.getElementById('voucherScopeSelect');
+  const label = document.getElementById('voucherScopeLabel');
+
+  if (type === 'all') {
+    container.style.display = 'none';
+    select.innerHTML = '';
+    return;
+  }
+  container.style.display = 'block';
+
+  let list = [];
+  if (type === 'product') {
+    label.innerText = 'Select Specific Product*';
+    list = voucherProductsData;
+  } else if (type === 'category') {
+    label.innerText = 'Select Main Category*';
+    list = voucherCategoriesData;
+  } else if (type === 'sub_category') {
+    label.innerText = 'Select Sub Category*';
+    list = voucherSubCategoriesData;
+  } else if (type === 'sub_sub_category') {
+    label.innerText = 'Select Sub-Sub Category*';
+    list = voucherSubSubCategoriesData;
+  }
+  select.innerHTML = list.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
+}
+</script>
 <div id="offerFormContainer" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
   <h3 id="formHeading" style="margin-top:0; color:#2563eb; font-size:16px;">Add / Update Product Offer</h3>
   <form method="POST" action="{{ url_for('save_product_offer') }}" id="offerForm">
