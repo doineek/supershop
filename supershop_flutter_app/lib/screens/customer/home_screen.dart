@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../localization/app_localizations.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
@@ -90,11 +91,20 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  String _facebookUrl = "";
+  String _youtubeUrl = "";
+  String _xUrl = "";
+  String _instagramUrl = "";
+
   void _loadShopName() async {
     var settings = await ApiService.fetchShopSettings();
     if (!mounted) return;
     setState(() {
       _shopName = settings['shop_name'] ?? "DOINEEK Supershop";
+      _facebookUrl = (settings['facebook_url'] ?? '').toString();
+      _youtubeUrl = (settings['youtube_url'] ?? '').toString();
+      _xUrl = (settings['x_url'] ?? '').toString();
+      _instagramUrl = (settings['instagram_url'] ?? '').toString();
     });
   }
 
@@ -113,10 +123,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    String phoneImg = userPhone.isNotEmpty ? (prefs.getString('saved_img_$userPhone') ?? '') : '';
+    String phoneAv = userPhone.isNotEmpty ? (prefs.getString('saved_av_$userPhone') ?? '') : '';
+
     if (!mounted) return;
     setState(() {
-      _userAvatar = prefs.getString('user_avatar') ?? '👤';
-      _userImageBase64 = prefs.getString('user_image_base64') ?? '';
+      _userAvatar = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
+      _userImageBase64 = prefs.getString('user_image_base64') ?? phoneImg;
     });
   }
 
@@ -135,6 +148,51 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     return null;
+  }
+
+  Widget _buildProfileTabIcon() {
+    if (_userImageBase64.isNotEmpty) {
+      try {
+        String cleanB64 = _userImageBase64.contains(',') ? _userImageBase64.split(',').last : _userImageBase64;
+        return CircleAvatar(
+          radius: 12,
+          backgroundImage: MemoryImage(base64Decode(cleanB64)),
+        );
+      } catch (_) {}
+    }
+    if (_userAvatar.isNotEmpty && _userAvatar != '👤') {
+      return Text(_userAvatar, style: const TextStyle(fontSize: 16));
+    }
+    return const Icon(Icons.person);
+  }
+
+  Widget _buildSocialIcon(IconData icon, Color color, String url, String name) {
+    return InkWell(
+      onTap: () async {
+        if (url.trim().isNotEmpty) {
+          final Uri uri = Uri.parse(url.trim());
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Could not open $name link: $url")),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("$name link is not configured yet in Admin Settings")),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+    );
   }
 
   List<Product> _filterProducts(List<Product> allProducts) {
@@ -264,7 +322,11 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _bottomNavIndex == 1
                   ? _buildCategoryDirectoryView()
-                  : Column(
+                  : _bottomNavIndex == 2
+                      ? const CartScreen()
+                      : _bottomNavIndex == 3
+                          ? const ProfileScreen()
+                          : Column(
                       children: [
                         // Persistent Top Search Bar
                         Container(
@@ -827,6 +889,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   ],
                                                 ),
                                                 const SizedBox(height: 16),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    const Text("Follow us on: ", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+                                                    const SizedBox(width: 8),
+                                                    _buildSocialIcon(Icons.facebook, Colors.blue.shade800, _facebookUrl, "Facebook"),
+                                                    const SizedBox(width: 10),
+                                                    _buildSocialIcon(Icons.play_circle_fill, Colors.red, _youtubeUrl, "YouTube"),
+                                                    const SizedBox(width: 10),
+                                                    _buildSocialIcon(Icons.close, Colors.black, _xUrl, "X"),
+                                                    const SizedBox(width: 10),
+                                                    _buildSocialIcon(Icons.camera_alt, Colors.pink, _instagramUrl, "Instagram"),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 12),
                                                 const Text("© 2026 DOINEEK Supershop. All Rights Reserved.", style: TextStyle(fontSize: 11, color: Colors.grey)),
                                               ],
                                             ),
@@ -861,14 +938,11 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _bottomNavIndex = index;
           });
+          _loadUserProfile();
           if (index == 1) {
             setState(() {
               _selectedTab = 'all';
             });
-          } else if (index == 2) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen()));
-          } else if (index == 3) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
           }
         },
         items: [
@@ -882,7 +956,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             label: "Cart",
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          BottomNavigationBarItem(
+            icon: _buildProfileTabIcon(),
+            label: "Profile",
+          ),
         ],
       ),
     );

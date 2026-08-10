@@ -32,8 +32,26 @@
       <input type="number" step="1" name="delivery_charge" value="{{ settings.delivery_charge or 60 }}" required>
     </div>
     <div class="field">
-      <label>Promotion Banner Auto-Slide Interval (seconds -     /   )</label>
+      <label>Promotion Banner Auto-Slide Interval (seconds)</label>
       <input type="number" step="1" min="1" max="60" name="promo_interval_sec" value="{{ settings.promo_interval_sec or 2 }}" required>
+    </div>
+
+    <h2 style="margin-top:24px; margin-bottom:12px; color:#2563eb; border-top:1px solid #e2e8f0; padding-top:16px;">🌐 Mobile App Footer Social Media Links (Follow us on)</h2>
+    <div class="field">
+      <label>Facebook Link (Icon: 📘)</label>
+      <input type="text" name="facebook_url" value="{{ settings.facebook_url or '' }}" placeholder="https://facebook.com/yourpage">
+    </div>
+    <div class="field">
+      <label>YouTube Link (Icon: ▶️)</label>
+      <input type="text" name="youtube_url" value="{{ settings.youtube_url or '' }}" placeholder="https://youtube.com/@yourchannel">
+    </div>
+    <div class="field">
+      <label>X / Twitter Link (Icon: 𝕏)</label>
+      <input type="text" name="x_url" value="{{ settings.x_url or '' }}" placeholder="https://x.com/yourhandle">
+    </div>
+    <div class="field">
+      <label>Instagram Link (Icon: 📸)</label>
+      <input type="text" name="instagram_url" value="{{ settings.instagram_url or '' }}" placeholder="https://instagram.com/yourprofile">
     </div>
 
     <h2 style="margin-top:24px; margin-bottom:12px; color:#15803d; border-top:1px solid #e2e8f0; padding-top:16px;">📜 CartUp Store Policies & Info (     )</h2>

@@ -41,13 +41,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final prefs = await SharedPreferences.getInstance();
     var settings = await ApiService.fetchShopSettings();
 
+    String userPhone = prefs.getString('user_phone') ?? '';
+    String phoneImg = userPhone.isNotEmpty ? (prefs.getString('saved_img_$userPhone') ?? '') : '';
+    String phoneAv = userPhone.isNotEmpty ? (prefs.getString('saved_av_$userPhone') ?? '') : '';
+
+    String imgB64 = prefs.getString('user_image_base64') ?? phoneImg;
+    String av = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
+
     if (!mounted) return;
     setState(() {
       _userName = prefs.getString('user_name') ?? 'Customer User';
-      _userPhone = prefs.getString('user_phone') ?? '';
+      _userPhone = userPhone;
       _userEmail = prefs.getString('user_email') ?? '';
-      _userAvatar = prefs.getString('user_avatar') ?? '👤';
-      _userImageBase64 = prefs.getString('user_image_base64') ?? '';
+      _userAvatar = av;
+      _userImageBase64 = imgB64;
       _supportPhone = (settings['customer_support_phone'] ?? settings['shop_phone'] ?? '').toString();
       if (_supportPhone.isEmpty) {
         _supportPhone = '+880-1700-000000';
@@ -76,6 +83,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_image_base64', base64String);
         await prefs.setString('user_avatar', '');
+        if (_userPhone.isNotEmpty) {
+          await prefs.setString('saved_img_$_userPhone', base64String);
+          await prefs.remove('saved_av_$_userPhone');
+        }
 
         if (!mounted) return;
         setState(() {
@@ -159,6 +170,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setString('user_avatar', av);
                       await prefs.setString('user_image_base64', '');
+                      if (_userPhone.isNotEmpty) {
+                        await prefs.setString('saved_av_$_userPhone', av);
+                        await prefs.remove('saved_img_$_userPhone');
+                      }
 
                       setState(() {
                         _userAvatar = av;
@@ -454,7 +469,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    String savedImage = prefs.getString('user_image_base64') ?? '';
+    String savedAvatar = prefs.getString('user_avatar') ?? '';
+
+    if (_userPhone.isNotEmpty) {
+      if (savedImage.isNotEmpty) await prefs.setString('saved_img_$_userPhone', savedImage);
+      if (savedAvatar.isNotEmpty) await prefs.setString('saved_av_$_userPhone', savedAvatar);
+    }
+
+    await prefs.remove('is_logged_in');
+    await prefs.remove('auth_token');
+    await prefs.remove('user_name');
+    await prefs.remove('user_phone');
+    await prefs.remove('user_email');
+    await prefs.remove('customer_id');
 
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(

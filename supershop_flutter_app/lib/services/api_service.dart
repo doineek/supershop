@@ -83,7 +83,7 @@ class ApiService {
     return null;
   }
 
-  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 10)}) async {
+  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 6)}) async {
     for (String serverUrl in candidateUrls) {
       try {
         final res = await http.post(
@@ -92,7 +92,7 @@ class ApiService {
           body: body,
         ).timeout(timeout);
 
-        if (res.statusCode == 200 || res.statusCode == 201) {
+        if (res.statusCode >= 200 && res.statusCode < 500) {
           _activeUrl = serverUrl;
           return res;
         }
