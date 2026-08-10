@@ -282,9 +282,7 @@
         <td style="padding:10px; text-align:right; white-space:nowrap;">
           <a class="btn btn-outline btn-small" href="{{ url_for('restock_product', product_id=p.id) }}" style="background:#0284c7; color:white; border:none; margin-right:4px;" title="Restock with SL +1">📦 Restock</a>
           <a class="btn btn-outline btn-small" href="{{ url_for('edit_product', product_id=p.id) }}" style="margin-right:4px;">Edit</a>
-          <form method="POST" action="{{ url_for('return_product', product_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Return product {{ p.name }} to Returned Items / Date Expired section?');">
-            <button class="btn btn-warning btn-small" type="submit" style="background:#f59e0b; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer; margin-right:4px;">↩️ Return</button>
-          </form>
+          <button type="button" class="btn btn-warning btn-small" style="background:#f59e0b; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer; margin-right:4px;" onclick="openReturnModal({{ p.id }}, '{{ p.name|e }}', {{ p.stock_qty }})">↩️ Return</button>
           <form method="POST" action="{{ url_for('delete_product', product_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Delete {{ p.name }}?');">
             <button class="btn btn-danger btn-small" type="submit">Delete</button>
           </form>
@@ -435,5 +433,56 @@ function closeEditCategoryModal() {
   const modal = document.getElementById('editCategoryModal');
   if (modal) modal.style.display = 'none';
 }
+
+let currentReturnMaxStock = 1;
+
+function openReturnModal(productId, productName, stockQty) {
+  currentReturnMaxStock = stockQty > 0 ? stockQty : 1;
+  document.getElementById('returnProductForm').action = "/products/" + productId + "/return";
+  document.getElementById('returnProductNameLabel').innerHTML = 'Product: <strong>' + productName + '</strong>';
+  document.getElementById('returnQtyInput').max = currentReturnMaxStock;
+  document.getElementById('returnQtyInput').value = currentReturnMaxStock;
+  document.getElementById('returnMaxStockLabel').innerText = 'Available Stock in Inventory: ' + stockQty + ' units';
+  document.getElementById('returnItemModal').style.display = 'flex';
+}
+
+function setReturnAllQty() {
+  document.getElementById('returnQtyInput').value = currentReturnMaxStock;
+}
+
+function closeReturnModal() {
+  document.getElementById('returnItemModal').style.display = 'none';
+}
 </script>
+
+<!-- Return Item Modal -->
+<div id="returnItemModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:90%; max-width:440px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
+    <h3 style="margin-top:0; color:#d97706; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      ↩️ Return Product / Move to Expired
+    </h3>
+    <p style="font-size:0.85rem; color:#475569; margin-bottom:14px;" id="returnProductNameLabel"></p>
+
+    <form method="POST" id="returnProductForm" action="">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Return Quantity (ফেরতকৃত সংখ্যা)*</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="number" name="quantity" id="returnQtyInput" min="1" required style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; font-size:15px; color:#d97706;">
+          <button type="button" onclick="setReturnAllQty()" class="btn btn-outline" style="font-weight:bold; font-size:12px; padding:8px 12px; border-color:#d97706; color:#d97706;">Return All</button>
+        </div>
+        <div style="font-size:11px; color:#64748b; margin-top:4px;" id="returnMaxStockLabel">Available Stock: 0</div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Return Reason (কারণ - Optional)</label>
+        <input type="text" name="reason" placeholder="e.g. Customer Returned / Date Expired / Unsold" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeReturnModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#f59e0b; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:bold; cursor:pointer;">Confirm Return</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
