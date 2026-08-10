@@ -936,6 +936,18 @@ def customers_api_profile():
     conn = get_connection()
     user = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
     
+    cust_name = ""
+    if user and user["name"]:
+        cust_name = user["name"]
+    else:
+        o = conn.execute("SELECT customer_name FROM online_orders WHERE customer_phone = ? AND customer_name != '' ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
+        if o and o["customer_name"]:
+            cust_name = o["customer_name"]
+        else:
+            s = conn.execute("SELECT customer_name FROM sales WHERE customer_mobile = ? AND customer_name != '' ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
+            if s and s["customer_name"]:
+                cust_name = s["customer_name"]
+
     online_stats = conn.execute("""
         SELECT COUNT(*) AS count, SUM(total_amount) AS total
         FROM online_orders WHERE customer_phone = ?
@@ -965,7 +977,7 @@ def customers_api_profile():
 
     return jsonify({
         "success": True,
-        "name": user["name"] if user else "Customer User",
+        "name": cust_name or f"Customer {phone}",
         "phone": phone,
         "email": user["email"] if user else "",
         "profile_image": profile_image,
