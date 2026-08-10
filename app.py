@@ -3972,6 +3972,163 @@ def api_packages():
 
 
 # ===========================================================================
+# 🚨 System Reset & 2FA Email OTP Verification
+# ===========================================================================
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+RESET_SENDER_EMAIL = "doineek.supershop@gmail.com"
+RESET_SENDER_PASS = "Bangladesh@2"
+RESET_RECIPIENT_EMAIL = "najmul.djd@gmail.com"
+
+def send_reset_otp_email(otp_code):
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"CRITICAL: System Reset Confirmation OTP [{otp_code}]"
+        msg["From"] = f"DOINEEK Supershop Security <{RESET_SENDER_EMAIL}>"
+        msg["To"] = RESET_RECIPIENT_EMAIL
+
+        text_content = f"DOINEEK Supershop - System Reset OTP: {otp_code}\n\nWarning: Entering this OTP will permanently delete selected system records."
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 2px solid #dc2626; border-radius: 12px; background: #fff5f5;">
+          <h2 style="color: #dc2626; margin-top: 0;">🚨 CRITICAL SYSTEM RESET OTP</h2>
+          <p style="font-size: 15px; color: #1e293b;">A request has been initiated to reset system data for DOINEEK Supershop.</p>
+          <div style="background: #dc2626; color: white; padding: 18px; border-radius: 8px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">
+            {otp_code}
+          </div>
+          <p style="color: #991b1b; font-weight: bold; font-size: 14px;">⚠️ WARNING: Authorizing this OTP will permanently wipe selected database categories (Inventory, Sales, Customers, Orders, Reports, Staff, etc.).</p>
+          <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Sent from connected account {RESET_SENDER_EMAIL} to {RESET_RECIPIENT_EMAIL}. If you did not request this, please ignore this email.</p>
+        </div>
+        """
+        msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(RESET_SENDER_EMAIL, RESET_SENDER_PASS)
+        server.sendmail(RESET_SENDER_EMAIL, RESET_RECIPIENT_EMAIL, msg.as_string())
+        server.quit()
+        return True, "OTP email sent successfully."
+    except Exception as e:
+        print(f"[send_reset_otp_email] Error sending email: {e}")
+        return False, str(e)
+
+
+@app.route("/admin/system-reset/send-otp", methods=["POST"])
+@login_required
+@admin_required
+def admin_reset_send_otp():
+    data = request.json or {}
+    categories = data.get("categories") or []
+    
+    if not categories:
+        return jsonify({"success": False, "message": "Please select at least one data category to reset."}), 400
+
+    import random, time
+    otp = f"{random.randint(100000, 999999)}"
+    
+    session["reset_otp"] = otp
+    session["reset_categories"] = categories
+    session["reset_otp_time"] = time.time()
+
+    ok, msg = send_reset_otp_email(otp)
+    if ok:
+        return jsonify({"success": True, "message": f"Verification OTP has been sent to {RESET_RECIPIENT_EMAIL}."})
+    else:
+        return jsonify({"success": False, "message": f"Could not send OTP email: {msg}"}), 500
+
+
+@app.route("/admin/system-reset/confirm", methods=["POST"])
+@login_required
+@admin_required
+def admin_reset_confirm():
+    data = request.json or {}
+    entered_otp = (data.get("otp") or "").strip()
+    
+    saved_otp = session.get("reset_otp")
+    categories = session.get("reset_categories") or data.get("categories") or []
+    saved_time = session.get("reset_otp_time") or 0
+    import time
+
+    if not saved_otp or not entered_otp or entered_otp != saved_otp:
+        return jsonify({"success": False, "message": "Invalid OTP. Please check your email and try again."}), 400
+
+    if (time.time() - saved_time) > 600:
+        session.pop("reset_otp", None)
+        return jsonify({"success": False, "message": "OTP has expired. Please request a new OTP."}), 400
+
+    conn = get_connection()
+    cur = conn.cursor()
+    wiped_items = []
+
+    try:
+        if "inventory" in categories:
+            cur.execute("DELETE FROM product_units")
+            cur.execute("DELETE FROM products")
+            wiped_items.append("Inventory & Products")
+
+        if "sales_log" in categories:
+            cur.execute("DELETE FROM sale_items")
+            cur.execute("DELETE FROM sales")
+            wiped_items.append("Sales Log")
+
+        if "customers" in categories:
+            cur.execute("DELETE FROM customers")
+            wiped_items.append("Customers")
+
+        if "online_orders" in categories:
+            cur.execute("DELETE FROM online_order_items")
+            cur.execute("DELETE FROM online_orders")
+            wiped_items.append("Online Orders")
+
+        if "returned_expired" in categories:
+            cur.execute("DELETE FROM returned_items")
+            wiped_items.append("Returned / Expired Items")
+
+        if "packages" in categories:
+            cur.execute("DELETE FROM package_items")
+            cur.execute("DELETE FROM packages")
+            wiped_items.append("Product Packages & Combos")
+
+        if "offers_promotions" in categories:
+            cur.execute("DELETE FROM vouchers")
+            cur.execute("UPDATE products SET is_offer = 0, is_promotion = 0, offer_type = NULL, offer_value = NULL, offer_title = NULL")
+            wiped_items.append("Offers, Banner Promotions & Vouchers")
+
+        if "delivery_areas" in categories:
+            cur.execute("DELETE FROM delivery_areas")
+            wiped_items.append("Delivery Areas")
+
+        if "riders_staff" in categories:
+            cur.execute("DELETE FROM users WHERE role != 'admin' AND id != ?", (session.get("user_id", 0),))
+            wiped_items.append("Riders & Staff Users")
+
+        if "reports" in categories:
+            cur.execute("DELETE FROM ledger_entries")
+            wiped_items.append("Reports & Ledger Entries")
+
+        conn.commit()
+        conn.close()
+
+        # Push clean database to Cloud Firestore
+        remote_control.push_all_to_cloud()
+        
+        session.pop("reset_otp", None)
+        session.pop("reset_categories", None)
+
+        return jsonify({
+            "success": True,
+            "message": f"System Reset Complete! Successfully wiped: {', '.join(wiped_items)}."
+        })
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        return jsonify({"success": False, "message": f"Error during system reset: {e}"}), 500
+
+
+# ===========================================================================
 # Application Entry Point & Automatic Real-Time Firebase Listener
 # ===========================================================================
 

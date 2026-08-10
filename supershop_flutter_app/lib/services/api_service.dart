@@ -435,4 +435,28 @@ class ApiService {
     } catch (_) {}
     return [];
   }
+
+  static Future<Map<String, dynamic>> sendResetOtp(List<String> categories) async {
+    try {
+      final res = await httpPost('/admin/system-reset/send-otp', body: jsonEncode({
+        'categories': categories,
+      }));
+      if (res != null) return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'Network error'};
+  }
+
+  static Future<Map<String, dynamic>> confirmSystemReset(String otp) async {
+    try {
+      final res = await httpPost('/admin/system-reset/confirm', body: jsonEncode({
+        'otp': otp,
+      }));
+      if (res != null) return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'Network error'};
+  }
 }

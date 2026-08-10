@@ -359,6 +359,196 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _showSystemResetDialog() {
+    final Map<String, String> categories = {
+      'inventory': '📦 Inventory & Products',
+      'sales_log': '💳 Sales Log & Receipts',
+      'customers': '👥 Customers & Address Book',
+      'online_orders': '🛍️ Online Orders',
+      'returned_expired': '↩️ Returned / Expired Items',
+      'packages': '🎁 Product Packages',
+      'offers_promotions': '🏷️ Offers & Banners',
+      'delivery_areas': '📍 Delivery Areas',
+      'riders_staff': '🛵 Riders & Staff Users',
+      'reports': '📊 Reports & Ledger Entries',
+    };
+
+    Set<String> selected = Set.from(categories.keys);
+    String otpInput = '';
+    bool otpSent = false;
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                SizedBox(width: 8),
+                Text('System Reset & Wipe', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: 380,
+                child: !otpSent
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Select data categories to permanently delete (tick mark one by one):',
+                            style: TextStyle(fontSize: 12.5, color: Colors.black87),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  setDialogState(() {
+                                    if (selected.length == categories.length) {
+                                      selected.clear();
+                                    } else {
+                                      selected = Set.from(categories.keys);
+                                    }
+                                  });
+                                },
+                                icon: Icon(
+                                  selected.length == categories.length ? Icons.deselect : Icons.select_all,
+                                  size: 18,
+                                  color: Colors.red,
+                                ),
+                                label: Text(
+                                  selected.length == categories.length ? 'Deselect All' : 'Select All',
+                                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ),
+                              Text('${selected.length}/${categories.length} Selected', style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const Divider(height: 1),
+                          ...categories.entries.map((e) {
+                            return CheckboxListTile(
+                              dense: true,
+                              activeColor: Colors.red,
+                              title: Text(e.value, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                              value: selected.contains(e.key),
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  if (val == true) {
+                                    selected.add(e.key);
+                                  } else {
+                                    selected.remove(e.key);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: const Text(
+                              '📧 6-digit confirmation OTP has been sent from doineek.supershop@gmail.com to najmul.djd@gmail.com.',
+                              style: TextStyle(fontSize: 12, color: Colors.red),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text('Enter 6-Digit Email OTP:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            maxLength: 6,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 6),
+                            decoration: const InputDecoration(
+                              hintText: '123456',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (val) => otpInput = val.trim(),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(dialogCtx),
+                child: const Text('Cancel'),
+              ),
+              if (!otpSent)
+                ElevatedButton.icon(
+                  onPressed: (selected.isEmpty || isSubmitting)
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          var res = await ApiService.sendResetOtp(selected.toList());
+                          setDialogState(() => isSubmitting = false);
+                          if (res['success'] == true) {
+                            setDialogState(() => otpSent = true);
+                          } else {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(res['message'] ?? 'Failed to send OTP email.'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        },
+                  icon: isSubmitting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.email, color: Colors.white, size: 18),
+                  label: const Text('Send OTP to Email', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: (otpInput.length != 6 || isSubmitting)
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          var res = await ApiService.confirmSystemReset(otpInput);
+                          setDialogState(() => isSubmitting = false);
+                          if (res['success'] == true) {
+                            if (mounted) {
+                              Navigator.pop(dialogCtx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(res['message'] ?? 'System reset complete.'), backgroundColor: Colors.green),
+                              );
+                            }
+                          } else {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(res['message'] ?? 'Invalid OTP.'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        },
+                  icon: isSubmitting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.delete_forever, color: Colors.white, size: 18),
+                  label: const Text('Confirm & Wipe', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showChangePasswordDialog() {
     final TextEditingController oldPassCtrl = TextEditingController();
     final TextEditingController newPassCtrl = TextEditingController();
@@ -710,6 +900,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           title: const Text('Customer Support', style: TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text(_supportPhone.isNotEmpty ? 'Helpline: $_supportPhone' : 'Help & Helpline'),
                           onTap: _showCustomerSupportDialog,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.restart_alt, color: Colors.red),
+                          title: const Text('System Reset & Data Wipe', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.red)),
+                          subtitle: const Text('Selective database wipe with OTP email confirmation', style: TextStyle(fontSize: 12, color: Colors.red)),
+                          onTap: _showSystemResetDialog,
                         ),
                       ],
                     ),
