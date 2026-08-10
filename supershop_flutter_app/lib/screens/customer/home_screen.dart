@@ -48,6 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
     {"title": "💳 Cash On Delivery Guaranteed", "subtitle": "Pay safely upon receiving products!", "color": "0xFF006064"},
   ];
 
+  List<dynamic> _packagesList = [];
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +57,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadShopName();
     _loadUserProfile();
     _loadPromotions();
+    _loadPackages();
+  }
+
+  void _loadPackages() async {
+    var pkgs = await ApiService.getPackages();
+    if (!mounted) return;
+    setState(() {
+      _packagesList = pkgs;
+    });
   }
 
   void _loadPromotions() async {
@@ -619,13 +630,75 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
-                        // Real-time Products Grid (Max 20 Products Limit)
+                        // Real-time Products / Packages Grid
                         Expanded(
-                          child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
-                              ? const Center(child: CircularProgressIndicator())
-                              : filteredProducts.isEmpty
-                                  ? const Center(child: Text("No products found"))
-                                  : CustomScrollView(
+                          child: _selectedTab == 'packages'
+                              ? (_packagesList.isEmpty
+                                  ? Container(
+                                      padding: const EdgeInsets.all(32),
+                                      alignment: Alignment.center,
+                                      child: const Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.card_giftcard, size: 64, color: Colors.purple),
+                                          SizedBox(height: 12),
+                                          Text(
+                                            "🎁 Currently no combo package available.",
+                                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      padding: const EdgeInsets.all(12),
+                                      itemCount: _packagesList.length,
+                                      itemBuilder: (context, index) {
+                                        final pkg = _packagesList[index];
+                                        final name = pkg['name'] ?? 'Combo Bundle';
+                                        final desc = pkg['description'] ?? '';
+                                        final price = double.tryParse(pkg['package_price']?.toString() ?? '0') ?? 0.0;
+                                        final items = pkg['items'] as List<dynamic>? ?? [];
+
+                                        return Card(
+                                          margin: const EdgeInsets.only(bottom: 12),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.green.shade200)),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(14),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text("📦 $name", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple)),
+                                                    ),
+                                                    Text("TK ${price.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.green)),
+                                                  ],
+                                                ),
+                                                if (desc.isNotEmpty) ...[
+                                                  const SizedBox(height: 4),
+                                                  Text(desc, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                                ],
+                                                const Divider(height: 16),
+                                                const Text("Included Items:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87)),
+                                                const SizedBox(height: 4),
+                                                ...items.map((it) => Padding(
+                                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                                  child: Text("• ${it['product_name']} × ${it['quantity']}", style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                                                )),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ))
+                              : snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
+                                  ? const Center(child: CircularProgressIndicator())
+                                  : filteredProducts.isEmpty
+                                      ? const Center(child: Text("No products found"))
+                                      : CustomScrollView(
                                       slivers: [
                                         SliverPadding(
                                           padding: const EdgeInsets.all(10),

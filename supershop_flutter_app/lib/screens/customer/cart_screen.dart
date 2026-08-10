@@ -31,6 +31,7 @@ class _CartScreenState extends State<CartScreen> {
   String _appliedVoucherCode = '';
   String _appliedVoucherType = '';
   bool _isVerifyingVoucher = false;
+  bool _isVoucherExpanded = false;
 
   void _applyVoucher() async {
     String code = _voucherController.text.trim().toUpperCase();
@@ -551,7 +552,7 @@ class _CartScreenState extends State<CartScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Voucher / Coupon Field
+                  // Expandable Voucher / Coupon Field
                   Card(
                     color: Colors.purple.shade50,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.purple.shade200)),
@@ -560,47 +561,66 @@ class _CartScreenState extends State<CartScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.confirmation_number, color: Colors.purple),
-                              SizedBox(width: 6),
-                              Text("Apply Voucher / Coupon Code", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
-                            ],
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                _isVoucherExpanded = !_isVoucherExpanded;
+                              });
+                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.confirmation_number, color: Colors.purple),
+                                    SizedBox(width: 6),
+                                    Text("Have a Voucher / Coupon Code?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+                                  ],
+                                ),
+                                Icon(
+                                  _isVoucherExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                  color: Colors.purple,
+                                  size: 24,
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _voucherController,
-                                  textCapitalization: TextCapitalization.characters,
-                                  decoration: const InputDecoration(
-                                    hintText: "Enter Voucher (e.g. SAVE50)",
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                    fillColor: Colors.white,
-                                    filled: true,
+                          if (_isVoucherExpanded || _appliedVoucherCode.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _voucherController,
+                                    textCapitalization: TextCapitalization.characters,
+                                    decoration: const InputDecoration(
+                                      hintText: "Enter Voucher (e.g. SAVE50)",
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                      fillColor: Colors.white,
+                                      filled: true,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                onPressed: _isVerifyingVoucher ? null : _applyVoucher,
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
-                                child: _isVerifyingVoucher
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                    : const Text("Apply", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: _isVerifyingVoucher ? null : _applyVoucher,
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                                  child: _isVerifyingVoucher
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Text("Apply", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            if (_appliedVoucherCode.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                _appliedVoucherType == 'delivery_discount'
+                                    ? "✓ Delivery Voucher '$_appliedVoucherCode' Applied (-TK ${_deliveryVoucherDiscount.toStringAsFixed(2)})"
+                                    : "✓ Voucher '$_appliedVoucherCode' Applied (-TK ${_productVoucherDiscount.toStringAsFixed(2)})",
+                                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
                               ),
                             ],
-                          ),
-                          if (_appliedVoucherCode.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              _appliedVoucherType == 'delivery_discount'
-                                  ? "✓ Delivery Voucher '$_appliedVoucherCode' Applied (-TK ${_deliveryVoucherDiscount.toStringAsFixed(2)})"
-                                  : "✓ Voucher '$_appliedVoucherCode' Applied (-TK ${_productVoucherDiscount.toStringAsFixed(2)})",
-                              style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
                           ],
                         ],
                       ),
