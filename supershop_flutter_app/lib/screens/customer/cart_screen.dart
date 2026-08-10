@@ -25,8 +25,10 @@ class _CartScreenState extends State<CartScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _voucherController = TextEditingController();
 
-  double _voucherDiscount = 0.0;
+  double _productVoucherDiscount = 0.0;
+  double _deliveryVoucherDiscount = 0.0;
   String _appliedVoucherCode = '';
+  String _appliedVoucherType = '';
   bool _isVerifyingVoucher = false;
 
   void _applyVoucher() async {
@@ -47,6 +49,7 @@ class _CartScreenState extends State<CartScreen> {
     var res = await ApiService.httpPost('/api/vouchers/apply', body: jsonEncode({
       'code': code,
       'cart_items': cartItems,
+      'delivery_charge': cartProv.deliveryCharge,
     }));
 
     if (!mounted) return;
@@ -57,9 +60,18 @@ class _CartScreenState extends State<CartScreen> {
     if (res != null && res.statusCode == 200) {
       var data = jsonDecode(res.body);
       if (data['success'] == true) {
+        double amt = (data['discount_amount'] as num).toDouble();
+        String type = data['target_type'] ?? 'product_discount';
         setState(() {
-          _voucherDiscount = (data['discount_amount'] as num).toDouble();
           _appliedVoucherCode = code;
+          _appliedVoucherType = type;
+          if (type == 'delivery_discount') {
+            _deliveryVoucherDiscount = amt;
+            _productVoucherDiscount = 0.0;
+          } else {
+            _productVoucherDiscount = amt;
+            _deliveryVoucherDiscount = 0.0;
+          }
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -573,7 +585,9 @@ class _CartScreenState extends State<CartScreen> {
                           if (_appliedVoucherCode.isNotEmpty) ...[
                             const SizedBox(height: 6),
                             Text(
-                              "✓ Voucher '$_appliedVoucherCode' Applied (-TK ${_voucherDiscount.toStringAsFixed(2)})",
+                              _appliedVoucherType == 'delivery_discount'
+                                  ? "✓ Delivery Voucher '$_appliedVoucherCode' Applied (-TK ${_deliveryVoucherDiscount.toStringAsFixed(2)})"
+                                  : "✓ Voucher '$_appliedVoucherCode' Applied (-TK ${_productVoucherDiscount.toStringAsFixed(2)})",
                               style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                           ],
@@ -592,13 +606,13 @@ class _CartScreenState extends State<CartScreen> {
                       Text('TK ${cartProv.subtotal.toStringAsFixed(2)}'),
                     ],
                   ),
-                  if (_voucherDiscount > 0) ...[
+                  if (_productVoucherDiscount > 0) ...[
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text("Voucher Discount:", style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
-                        Text('-TK ${_voucherDiscount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                        Text('-TK ${_productVoucherDiscount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ],
@@ -607,16 +621,34 @@ class _CartScreenState extends State<CartScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(loc.translate('delivery_charge')),
-                      Text('TK ${cartProv.deliveryCharge.toStringAsFixed(2)}'),
+                      Text(
+                        _deliveryVoucherDiscount > 0
+                            ? 'TK ${(cartProv.deliveryCharge - _deliveryVoucherDiscount).clamp(0, double.infinity).toStringAsFixed(2)} (Discounted)'
+                            : 'TK ${cartProv.deliveryCharge.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: _deliveryVoucherDiscount > 0 ? Colors.green : Colors.black,
+                          fontWeight: _deliveryVoucherDiscount > 0 ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
                     ],
                   ),
+                  if (_deliveryVoucherDiscount > 0) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Delivery Discount:", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                        Text('-TK ${_deliveryVoucherDiscount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ],
                   const Divider(),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(loc.translate('total'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                       Text(
-                        'TK ${((cartProv.subtotal - _voucherDiscount) + cartProv.deliveryCharge).clamp(0, double.infinity).toStringAsFixed(2)}',
+                        'TK ${(((cartProv.subtotal - _productVoucherDiscount)) + (cartProv.deliveryCharge - _deliveryVoucherDiscount)).clamp(0, double.infinity).toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green),
                       ),
                     ],

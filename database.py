@@ -208,6 +208,9 @@ def init_db():
         code TEXT UNIQUE NOT NULL,
         discount_type TEXT NOT NULL DEFAULT 'percentage',
         discount_value REAL NOT NULL DEFAULT 0,
+        discount_base TEXT NOT NULL DEFAULT 'sell_price',
+        target_type TEXT NOT NULL DEFAULT 'product_discount',
+        expiry_date TEXT NOT NULL DEFAULT '',
         scope_type TEXT NOT NULL DEFAULT 'all',
         scope_id INTEGER DEFAULT NULL,
         active INTEGER NOT NULL DEFAULT 1,
@@ -295,6 +298,9 @@ def init_db():
         "ALTER TABLE online_orders ADD COLUMN assigned_rider_id INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE online_orders ADD COLUMN assigned_rider_name TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE online_orders ADD COLUMN assigned_rider_phone TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE vouchers ADD COLUMN discount_base TEXT NOT NULL DEFAULT 'sell_price'",
+        "ALTER TABLE vouchers ADD COLUMN target_type TEXT NOT NULL DEFAULT 'product_discount'",
+        "ALTER TABLE vouchers ADD COLUMN expiry_date TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''",
     ]
     for statement in migrations:

@@ -1887,8 +1887,11 @@ def offers_page():
 @admin_required
 def new_voucher():
     code = request.form.get("code", "").strip().upper()
+    target_type = request.form.get("target_type", "product_discount").strip()
     discount_type = request.form.get("discount_type", "percentage").strip()
     discount_value = float(request.form.get("discount_value") or 0)
+    discount_base = request.form.get("discount_base", "sell_price").strip()
+    expiry_date = request.form.get("expiry_date", "").strip()
     scope_type = request.form.get("scope_type", "all").strip()
     scope_id = request.form.get("scope_id") or None
     if scope_id:
@@ -1898,9 +1901,9 @@ def new_voucher():
         conn = get_connection()
         try:
             conn.execute("""
-                INSERT INTO vouchers (code, discount_type, discount_value, scope_type, scope_id, active, created_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?)
-            """, (code, discount_type, discount_value, scope_type, scope_id, datetime.now().isoformat()))
+                INSERT INTO vouchers (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """, (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, datetime.now().isoformat()))
             conn.commit()
             flash(f"Voucher '{code}' created successfully.", "success")
         except Exception as e:
@@ -1926,6 +1929,7 @@ def api_apply_voucher():
     data = request.get_json() or {}
     code = (data.get("code") or "").strip().upper()
     cart_items = data.get("cart_items") or []
+    delivery_charge = float(data.get("delivery_charge") or 60.0)
 
     if not code:
         return jsonify({"success": False, "message": "Please enter a voucher code."}), 400
@@ -1939,6 +1943,14 @@ def api_apply_voucher():
         conn.close()
         return jsonify({"success": False, "message": f"Voucher '{code}' is invalid or expired."}), 400
 
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    v_exp = v["expiry_date"] if "expiry_date" in v.keys() else ""
+    if v_exp and v_exp < today_date:
+        conn.close()
+        return jsonify({"success": False, "message": f"Voucher '{code}' expired on {v_exp}."}), 400
+
+    target_type = v["target_type"] if "target_type" in v.keys() else "product_discount"
+    discount_base = v["discount_base"] if "discount_base" in v.keys() else "sell_price"
     scope_type = v["scope_type"]
     scope_id = v["scope_id"]
     discount_type = v["discount_type"]
@@ -1949,7 +1961,7 @@ def api_apply_voucher():
     for item in cart_items:
         p_id = item.get("product_id")
         qty = int(item.get("quantity") or 1)
-        price = float(item.get("price") or 0)
+        sell_price = float(item.get("price") or 0)
 
         p = conn.execute("SELECT * FROM products WHERE id = ?", (p_id,)).fetchone()
         if not p:
@@ -1987,23 +1999,43 @@ def api_apply_voucher():
                 "message": f"Voucher '{code}' is ONLY valid for {target_name}. Product '{p['name']}' in your cart is not eligible for this voucher."
             }), 400
 
-        total_eligible_price += price * qty
+        # Base price calculation (MRP vs Doineek Price)
+        if discount_base == "mrp" and p["mrp"] > 0:
+            item_base_price = p["mrp"]
+        else:
+            item_base_price = sell_price
+
+        total_eligible_price += item_base_price * qty
 
     conn.close()
 
-    if discount_type == "flat":
-        discount_amount = min(total_eligible_price, discount_value)
+    if target_type == "delivery_discount":
+        if discount_type == "flat":
+            discount_amount = min(delivery_charge, discount_value)
+        else:
+            discount_amount = delivery_charge * (discount_value / 100.0)
+        discount_amount = round(discount_amount, 2)
+        return jsonify({
+            "success": True,
+            "target_type": "delivery_discount",
+            "code": code,
+            "discount_amount": discount_amount,
+            "message": f"Delivery Voucher '{code}' applied! Saved TK {discount_amount:.2f} on delivery charge."
+        })
     else:
-        discount_amount = total_eligible_price * (discount_value / 100.0)
-
-    discount_amount = round(discount_amount, 2)
-
-    return jsonify({
-        "success": True,
-        "code": code,
-        "discount_amount": discount_amount,
-        "message": f"Voucher '{code}' applied! Saved TK {discount_amount:.2f}"
-    })
+        if discount_type == "flat":
+            discount_amount = min(total_eligible_price, discount_value)
+        else:
+            discount_amount = total_eligible_price * (discount_value / 100.0)
+        discount_amount = round(discount_amount, 2)
+        return jsonify({
+            "success": True,
+            "target_type": "product_discount",
+            "code": code,
+            "discount_amount": discount_amount,
+            "discount_base": discount_base,
+            "message": f"Voucher '{code}' ({'MRP' if discount_base == 'mrp' else 'Doineek Price'}) applied! Saved TK {discount_amount:.2f}"
+        })
 
 
 @app.route("/offers/save", methods=["POST"])
