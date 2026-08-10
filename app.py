@@ -1727,6 +1727,7 @@ def settings_page():
             "vat_reg_no": request.form.get("vat_reg_no", "").strip(),
             "delivery_charge": request.form.get("delivery_charge", "60").strip(),
             "promo_interval_sec": request.form.get("promo_interval_sec", "2").strip(),
+            "smtp_app_password": request.form.get("smtp_app_password", "").strip(),
             "facebook_url": request.form.get("facebook_url", "").strip(),
             "youtube_url": request.form.get("youtube_url", "").strip(),
             "x_url": request.form.get("x_url", "").strip(),
@@ -3984,8 +3985,13 @@ RESET_SENDER_PASS = os.environ.get("SMTP_APP_PASSWORD") or os.environ.get("SMTP_
 RESET_RECIPIENT_EMAIL = "najmul.djd@gmail.com"
 
 def send_reset_otp_email(otp_code):
+    conn = get_connection()
+    shop_settings = get_all_settings(conn)
+    conn.close()
+
+    custom_pass = (shop_settings.get("smtp_app_password") or "").strip()
     sender = RESET_SENDER_EMAIL.strip()
-    password = RESET_SENDER_PASS.replace(" ", "").strip()
+    password = (custom_pass or RESET_SENDER_PASS).replace(" ", "").strip()
 
     print(f"\n=======================================================")
     print(f"🚨 SYSTEM RESET OTP GENERATED FOR {RESET_RECIPIENT_EMAIL}: [{otp_code}]")
