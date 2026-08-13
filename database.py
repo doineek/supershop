@@ -48,6 +48,7 @@ def init_db():
         sku TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         brand TEXT NOT NULL DEFAULT '',
+        unit TEXT NOT NULL DEFAULT '',
         category_id INTEGER,
         cost_price REAL NOT NULL DEFAULT 0,
         mrp REAL NOT NULL DEFAULT 0,
@@ -255,6 +256,7 @@ def init_db():
     """)
 
     migrations = [
+        "ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE categories ADD COLUMN parent_id INTEGER DEFAULT NULL",
         "ALTER TABLE categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE sub_categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''",

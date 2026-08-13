@@ -304,11 +304,22 @@ def new_product():
 
         try:
             cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO products (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date)
-            )
+            try:
+                cur.execute(
+                    "INSERT INTO products (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date)
+                )
+            except sqlite3.OperationalError as op_err:
+                if "no such column: unit" in str(op_err):
+                    conn.execute("ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT ''")
+                    cur.execute(
+                        "INSERT INTO products (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date)
+                    )
+                else:
+                    raise op_err
             new_product_id = cur.lastrowid
             create_product_units(conn, new_product_id, stock_qty)
             conn.commit()
@@ -380,40 +391,81 @@ def edit_product(product_id):
         expiry_date = request.form.get("expiry_date", "").strip()
 
         try:
-            conn.execute("""
-                UPDATE products SET sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
-                                     vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
-                                     description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
-                                     offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
-                WHERE id=?
-            """, (
-                sku_clean,
-                request.form["name"].strip(),
-                brand,
-                unit,
-                request.form.get("category_id") or None,
-                request.form.get("sub_category_id") or None,
-                request.form.get("sub_sub_category_id") or None,
-                float(request.form["cost_price"] or 0),
-                float(request.form["mrp"] or 0),
-                float(request.form["sell_price"] or 0),
-                float(request.form["vat_pct"] or 0),
-                new_stock_qty,
-                int(request.form["low_stock_threshold"] or 5),
-                int(request.form.get("sl_number") or 1),
-                description,
-                image_url,
-                is_trending,
-                is_flash_sale,
-                is_offer,
-                is_promotion,
-                offer_title,
-                offer_type,
-                offer_value,
-                offer_base,
-                expiry_date,
-                product_id
-            ))
+            try:
+                conn.execute("""
+                    UPDATE products SET sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
+                                         vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
+                                         description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
+                                         offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                    WHERE id=?
+                """, (
+                    sku_clean,
+                    request.form["name"].strip(),
+                    brand,
+                    unit,
+                    request.form.get("category_id") or None,
+                    request.form.get("sub_category_id") or None,
+                    request.form.get("sub_sub_category_id") or None,
+                    float(request.form["cost_price"] or 0),
+                    float(request.form["mrp"] or 0),
+                    float(request.form["sell_price"] or 0),
+                    float(request.form["vat_pct"] or 0),
+                    new_stock_qty,
+                    int(request.form["low_stock_threshold"] or 5),
+                    int(request.form.get("sl_number") or 1),
+                    description,
+                    image_url,
+                    is_trending,
+                    is_flash_sale,
+                    is_offer,
+                    is_promotion,
+                    offer_title,
+                    offer_type,
+                    offer_value,
+                    offer_base,
+                    expiry_date,
+                    product_id
+                ))
+            except sqlite3.OperationalError as op_err:
+                if "no such column: unit" in str(op_err):
+                    conn.execute("ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT ''")
+                    conn.execute("""
+                        UPDATE products SET sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
+                                             vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
+                                             description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
+                                             offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                        WHERE id=?
+                    """, (
+                        sku_clean,
+                        request.form["name"].strip(),
+                        brand,
+                        unit,
+                        request.form.get("category_id") or None,
+                        request.form.get("sub_category_id") or None,
+                        request.form.get("sub_sub_category_id") or None,
+                        float(request.form["cost_price"] or 0),
+                        float(request.form["mrp"] or 0),
+                        float(request.form["sell_price"] or 0),
+                        float(request.form["vat_pct"] or 0),
+                        new_stock_qty,
+                        int(request.form["low_stock_threshold"] or 5),
+                        int(request.form.get("sl_number") or 1),
+                        description,
+                        image_url,
+                        is_trending,
+                        is_flash_sale,
+                        is_offer,
+                        is_promotion,
+                        offer_title,
+                        offer_type,
+                        offer_value,
+                        offer_base,
+                        expiry_date,
+                        product_id
+                    ))
+                else:
+                    raise op_err
+
             if new_stock_qty > old_stock_qty:
                 added = new_stock_qty - old_stock_qty
                 create_product_units(conn, product_id, added)
