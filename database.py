@@ -501,7 +501,7 @@ def generate_invoice_number():
 
 
 def create_product_units(conn, product_id, quantity):
-    """Generates unique incrementing product serials (a_code) for each physical item."""
+    """Generates unique incrementing product serials (a_code) for each physical item in bulk."""
     if quantity <= 0:
         return []
 
@@ -511,23 +511,25 @@ def create_product_units(conn, product_id, quantity):
         (product_id,)
     ).fetchone()
     next_sl = row["m"] + 1
+
+    max_id_row = cur.execute("SELECT COALESCE(MAX(id), 0) AS m FROM product_units").fetchone()
+    start_id = max_id_row["m"] + 1
     now = datetime.now().isoformat()
 
+    bulk_rows = []
     created_ids = []
-    for i in range(quantity):
-        cur.execute(
-            "INSERT INTO product_units (product_id, a_code, sl_number, status, created_at) "
-            "VALUES (?, 'PENDING', ?, 'in_stock', ?)",
-            (product_id, next_sl + i, now)
-        )
-        new_id = cur.lastrowid
-        # "SN-" prefix + zero-padded id: visually and structurally distinct
-        # from typical SKU formats (e.g. "SKU-A", "SKU200"), so a serial can
-        # never be mistaken for - or accidentally collide with - a SKU.
-        a_code = f"SN-{new_id:06d}"
-        cur.execute("UPDATE product_units SET a_code = ? WHERE id = ?", (a_code, new_id))
-        created_ids.append(new_id)
 
+    for i in range(quantity):
+        curr_id = start_id + i
+        sl_num = next_sl + i
+        a_code = f"SN-{curr_id:06d}"
+        bulk_rows.append((curr_id, product_id, a_code, sl_num, 'in_stock', now))
+        created_ids.append(curr_id)
+
+    cur.executemany(
+        "INSERT INTO product_units (id, product_id, a_code, sl_number, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        bulk_rows
+    )
     return created_ids
 
 

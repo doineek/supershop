@@ -251,6 +251,7 @@ def new_product():
         sku = request.form["sku"].strip()
         name = request.form["name"].strip()
         brand = request.form.get("brand", "").strip()
+        unit = request.form.get("unit", "").strip()
         category_id = request.form.get("category_id") or None
         sub_category_id = request.form.get("sub_category_id") or None
         sub_sub_category_id = request.form.get("sub_sub_category_id") or None
@@ -304,9 +305,9 @@ def new_product():
         try:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO products (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (sku, name, brand, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date)
+                "INSERT INTO products (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id, cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold, sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date)
             )
             new_product_id = cur.lastrowid
             create_product_units(conn, new_product_id, stock_qty)
