@@ -341,17 +341,16 @@ def edit_product(product_id):
     if request.method == "POST":
         new_stock_qty = int(request.form["stock_qty"] or 0)
         old_stock_qty = product["stock_qty"]
+        sku_clean = request.form["sku"].strip()
         brand = request.form.get("brand", "").strip()
+        unit = request.form.get("unit", "").strip()
         description = request.form.get("description", "").strip()
         image_url = request.form.get("image_url", "").strip()
         
         # Auto-insert brand into brands table if new
         if brand:
             try:
-                b_conn = get_connection()
-                b_conn.execute("INSERT OR IGNORE INTO brands (name) VALUES (?)", (brand,))
-                b_conn.commit()
-                b_conn.close()
+                conn.execute("INSERT OR IGNORE INTO brands (name) VALUES (?)", (brand,))
             except Exception:
                 pass
 
@@ -382,53 +381,58 @@ def edit_product(product_id):
         offer_type = request.form.get("offer_type", "").strip()
         offer_value = request.form.get("offer_value", "").strip()
         offer_base = request.form.get("offer_base", "mrp").strip()
-
         expiry_date = request.form.get("expiry_date", "").strip()
 
-        w_conn = get_connection()
-        w_conn.execute("""
-            UPDATE products SET sku=?, name=?, brand=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
-                                 vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
-                                 description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
-                                 offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
-            WHERE id=?
-        """, (
-            request.form["sku"].strip(),
-            request.form["name"].strip(),
-            brand,
-            request.form.get("category_id") or None,
-            request.form.get("sub_category_id") or None,
-            request.form.get("sub_sub_category_id") or None,
-            float(request.form["cost_price"] or 0),
-            float(request.form["mrp"] or 0),
-            float(request.form["sell_price"] or 0),
-            float(request.form["vat_pct"] or 0),
-            new_stock_qty,
-            int(request.form["low_stock_threshold"] or 5),
-            int(request.form.get("sl_number") or 1),
-            description,
-            image_url,
-            is_trending,
-            is_flash_sale,
-            is_offer,
-            is_promotion,
-            offer_title,
-            offer_type,
-            offer_value,
-            offer_base,
-            expiry_date,
-            product_id
-        ))
-        if new_stock_qty > old_stock_qty:
-            added = new_stock_qty - old_stock_qty
-            create_product_units(w_conn, product_id, added)
-            flash(f"Product updated. {added} new printable tag(s) created for the restock.", "success")
-        else:
-            flash("Product updated.", "success")
-        w_conn.commit()
-        w_conn.close()
-        remote_control.push_product_to_cloud(product_id)
-        return redirect(url_for("products"))
+        try:
+            conn.execute("""
+                UPDATE products SET sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
+                                     vat_pct=?, stock_qty=?, low_stock_threshold=?, sl_number=?,
+                                     description=?, image_url=?, is_trending=?, is_flash_sale=?, is_offer=?, is_promotion=?,
+                                     offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                WHERE id=?
+            """, (
+                sku_clean,
+                request.form["name"].strip(),
+                brand,
+                unit,
+                request.form.get("category_id") or None,
+                request.form.get("sub_category_id") or None,
+                request.form.get("sub_sub_category_id") or None,
+                float(request.form["cost_price"] or 0),
+                float(request.form["mrp"] or 0),
+                float(request.form["sell_price"] or 0),
+                float(request.form["vat_pct"] or 0),
+                new_stock_qty,
+                int(request.form["low_stock_threshold"] or 5),
+                int(request.form.get("sl_number") or 1),
+                description,
+                image_url,
+                is_trending,
+                is_flash_sale,
+                is_offer,
+                is_promotion,
+                offer_title,
+                offer_type,
+                offer_value,
+                offer_base,
+                expiry_date,
+                product_id
+            ))
+            if new_stock_qty > old_stock_qty:
+                added = new_stock_qty - old_stock_qty
+                create_product_units(conn, product_id, added)
+                flash(f"Product updated. {added} new printable tag(s) created for the restock.", "success")
+            else:
+                flash("Product updated.", "success")
+            conn.commit()
+            conn.close()
+            remote_control.push_product_to_cloud(product_id)
+            return redirect(url_for("products"))
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            flash(f"Could not update product: {e}", "error")
+            return redirect(url_for("products"))
 
     return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=product)
 
