@@ -13,7 +13,14 @@ from datetime import datetime, date, timedelta
 from functools import wraps
 import os
 import re
+import sys
 import sqlite3
+
+# Fix Windows console encoding for Bengali/Unicode characters
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 from database import (
     get_connection, init_db, round_to_whole, create_product_units,
