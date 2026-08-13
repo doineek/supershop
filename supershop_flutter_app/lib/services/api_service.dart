@@ -16,7 +16,17 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       String saved = prefs.getString('server_url') ?? '';
       if (saved.isNotEmpty) {
-        _customUrl = saved.trim();
+        try {
+          Uri u = Uri.parse(saved);
+          if ((u.host.contains('localhost') || u.host.contains('127.0.0.1')) && u.port != 5000) {
+            await prefs.remove('server_url');
+            _customUrl = "";
+          } else {
+            _customUrl = saved.trim();
+          }
+        } catch (_) {
+          _customUrl = saved.trim();
+        }
       }
     } catch (_) {}
   }
@@ -30,39 +40,62 @@ class ApiService {
     } catch (_) {}
   }
 
+  static bool _isValidJsonResponse(http.Response res) {
+    if (res.statusCode < 200 || res.statusCode >= 300) return false;
+    String bodyTrim = res.body.trim();
+    if (bodyTrim.startsWith('<')) return false;
+    return bodyTrim.startsWith('{') || bodyTrim.startsWith('[');
+  }
+
   /// Candidate server URLs in priority order for global & local connectivity
   static List<String> get candidateUrls {
     List<String> list = [];
     if (_customUrl.isNotEmpty) {
       list.add(_customUrl);
     }
+
+    if (_activeUrl.isNotEmpty) {
+      try {
+        Uri u = Uri.parse(_activeUrl);
+        if ((u.host.contains('localhost') || u.host.contains('127.0.0.1')) && u.port != 5000) {
+          _activeUrl = "";
+        }
+      } catch (_) {}
+    }
+
     if (_activeUrl.isNotEmpty && !list.contains(_activeUrl)) {
       list.add(_activeUrl);
     }
-    if (kIsWeb) {
-      String host = Uri.base.host.isNotEmpty ? Uri.base.host : "127.0.0.1";
-      String webUrl = "http://$host:5000";
-      if (!list.contains(webUrl)) list.add(webUrl);
-    }
-    // 1. Global 24/7 Online Production Server (accessible from anywhere on 4G, 5G, Wi-Fi)
-    const String cloudUrl = "https://supershop-mj0g.onrender.com";
-    if (!list.contains(cloudUrl)) list.add(cloudUrl);
 
-    // 2. Direct Local Wi-Fi network IPs of PC (fallback when on same Wi-Fi)
+    if (kIsWeb) {
+      try {
+        String origin = Uri.base.origin;
+        if (origin.isNotEmpty && origin != 'null' && !origin.startsWith('file://')) {
+          Uri uri = Uri.parse(origin);
+          if (uri.port == 5000) {
+            if (!list.contains(origin)) list.add(origin);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 1. Direct Local Wi-Fi & PC Servers (highest priority for local development & POS)
     final localIps = [
+      "http://127.0.0.1:5000",
+      "http://10.0.2.2:5000",
       "http://192.168.0.102:5000",
       "http://192.168.0.100:5000",
       "http://192.168.0.101:5000",
-      "http://192.168.0.103:5000",
-      "http://192.168.1.102:5000",
-      "http://192.168.1.100:5000",
-      "http://127.0.0.1:5000",
-      "http://10.0.2.2:5000"
     ];
 
     for (var ip in localIps) {
       if (!list.contains(ip)) list.add(ip);
     }
+
+    // 2. Global 24/7 Online Production Server (fallback for remote mobile access)
+    const String cloudUrl = "https://supershop-mj0g.onrender.com";
+    if (!list.contains(cloudUrl)) list.add(cloudUrl);
+
     return list;
   }
 
@@ -74,16 +107,24 @@ class ApiService {
     for (String serverUrl in candidateUrls) {
       try {
         final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
-        if (res.statusCode == 200) {
+        if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
           return res;
+        } else {
+          if (_activeUrl == serverUrl) {
+            _activeUrl = "";
+          }
         }
-      } catch (_) {}
+      } catch (_) {
+        if (_activeUrl == serverUrl) {
+          _activeUrl = "";
+        }
+      }
     }
     return null;
   }
 
-  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 6)}) async {
+  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 5)}) async {
     for (String serverUrl in candidateUrls) {
       try {
         final res = await http.post(
@@ -92,11 +133,19 @@ class ApiService {
           body: body,
         ).timeout(timeout);
 
-        if (res.statusCode >= 200 && res.statusCode < 500) {
+        if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
           return res;
+        } else {
+          if (_activeUrl == serverUrl) {
+            _activeUrl = "";
+          }
         }
-      } catch (_) {}
+      } catch (_) {
+        if (_activeUrl == serverUrl) {
+          _activeUrl = "";
+        }
+      }
     }
     return null;
   }

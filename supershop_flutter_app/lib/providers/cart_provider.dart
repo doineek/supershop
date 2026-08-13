@@ -28,25 +28,46 @@ class CartItem {
 
   int get paidQuantity {
     if (!isBuyOffer) return quantity;
-    int buyQty = 2;
+
+    String val = product.offerValue.trim();
+    String title = product.offerTitle.trim();
+    String name = product.name.trim();
+
+    int buyQty = 1;
     int freeQty = 1;
+    bool found = false;
 
-    String val = product.offerValue;
-    String title = product.offerTitle;
+    RegExp reg = RegExp(r'buy\s*(\d+)\s*get\s*(\d+)', caseSensitive: false);
+    for (String str in [val, title, name]) {
+      if (str.isNotEmpty) {
+        Match? match = reg.firstMatch(str);
+        if (match != null) {
+          int? b = int.tryParse(match.group(1)!);
+          int? f = int.tryParse(match.group(2)!);
+          if (b != null && f != null && b > 0 && f > 0) {
+            buyQty = b;
+            freeQty = f;
+            found = true;
+            break;
+          }
+        }
+      }
+    }
 
-    if (val.contains(',')) {
+    if (!found && val.contains(',')) {
       var parts = val.split(',').map((e) => int.tryParse(e.trim()) ?? 0).toList();
       if (parts.length >= 2 && parts[0] > 0 && parts[1] > 0) {
         buyQty = parts[0];
         freeQty = parts[1];
+        found = true;
       }
-    } else {
-      RegExp reg = RegExp(r'buy\s*(\d+)\s*get\s*(\d+)', caseSensitive: false);
-      Match? match = reg.firstMatch(title.isEmpty ? val : title);
-      if (match == null) match = reg.firstMatch(product.name);
-      if (match != null) {
-        buyQty = int.tryParse(match.group(1)!) ?? 2;
-        freeQty = int.tryParse(match.group(2)!) ?? 1;
+    }
+
+    if (!found && RegExp(r'^\d+$').hasMatch(val)) {
+      int? d = int.tryParse(val);
+      if (d != null && d > 0) {
+        buyQty = d;
+        freeQty = 1;
       }
     }
 

@@ -162,25 +162,49 @@ allTiles.forEach(btn => {
   }));
 });
 
+function parseBogoQuantitiesJS(offerValue, offerTitle, name) {
+  const v = (offerValue || "").trim();
+  const t = (offerTitle || "").trim();
+  const n = (name || "").trim();
+
+  const reg = /buy\s*(\d+)\s*get\s*(\d+)/i;
+  for (const str of [v, t, n]) {
+    if (str) {
+      const match = str.match(reg);
+      if (match) {
+        const b = parseInt(match[1], 10);
+        const f = parseInt(match[2], 10);
+        if (b > 0 && f > 0) return { buyQty: b, freeQty: f };
+      }
+    }
+  }
+
+  if (v && v.includes(",")) {
+    const parts = v.split(",").map(p => parseInt(p.trim(), 10));
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[0] > 0 && parts[1] > 0) {
+      return { buyQty: parts[0], freeQty: parts[1] };
+    }
+  }
+
+  if (v && /^\d+$/.test(v)) {
+    const d = parseInt(v, 10);
+    if (d > 0) return { buyQty: d, freeQty: 1 };
+  }
+
+  return { buyQty: 1, freeQty: 1 };
+}
+
 function getBuyXGetYStats(item) {
-  const offerType = item.offer_type || "";
-  const offerTitle = item.offer_title || "";
-  const offerValue = item.offer_value || "";
-  const isOffer = offerType === "buy_x_get_y" || offerTitle.toLowerCase().includes("buy");
+  const offerType = (item.offer_type || "").toLowerCase();
+  const offerTitle = (item.offer_title || "").toLowerCase();
+  const offerValue = (item.offer_value || "").toLowerCase();
+  const isOffer = offerType === "buy_x_get_y" || offerType === "bogo" || offerType === "buy_x_get_x" || offerTitle.includes("buy") || offerValue.includes("buy");
 
   if (!isOffer) {
     return { isOffer: false, buyQty: 0, freeQty: 0, paidQty: item.quantity, freeQtyTotal: 0 };
   }
 
-  let buyQty = 2, freeQty = 1;
-  if (offerValue && offerValue.includes(",")) {
-    const parts = offerValue.split(",").map(n => parseInt(n.trim(), 10));
-    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      buyQty = parts[0];
-      freeQty = parts[1];
-    }
-  }
-
+  const { buyQty, freeQty } = parseBogoQuantitiesJS(item.offer_value, item.offer_title, item.name);
   const totalSet = buyQty + freeQty;
   const sets = Math.floor(item.quantity / totalSet);
   const remainder = item.quantity % totalSet;

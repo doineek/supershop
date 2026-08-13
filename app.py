@@ -39,6 +39,47 @@ def handle_cors_options():
         return response
 
 
+def parse_bogo_quantities(offer_value, offer_title, product_name=""):
+    """
+    Parses buy_qty and free_qty for Buy X Get Y / BOGO offers.
+    Supports formats like:
+      - "Buy 4 Get 1 Free", "Buy 4 Get 1"
+      - "4,1"
+      - "4"
+    """
+    offer_val_str = (offer_value or "").strip()
+    offer_title_str = (offer_title or "").strip()
+    prod_name_str = (product_name or "").strip()
+
+    bogo_pattern = re.compile(r"buy\s*(\d+)\s*get\s*(\d+)", re.IGNORECASE)
+    for text in (offer_val_str, offer_title_str, prod_name_str):
+        if text:
+            match = bogo_pattern.search(text)
+            if match:
+                try:
+                    b_qty = int(match.group(1))
+                    f_qty = int(match.group(2))
+                    if b_qty > 0 and f_qty > 0:
+                        return b_qty, f_qty
+                except Exception:
+                    pass
+
+    if offer_val_str and "," in offer_val_str:
+        try:
+            parts = [int(p.strip()) for p in offer_val_str.split(",") if p.strip().isdigit()]
+            if len(parts) >= 2 and parts[0] > 0 and parts[1] > 0:
+                return parts[0], parts[1]
+        except Exception:
+            pass
+
+    if offer_val_str and offer_val_str.isdigit():
+        val_digit = int(offer_val_str)
+        if val_digit > 0:
+            return val_digit, 1
+
+    return 1, 1
+
+
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -178,10 +219,15 @@ def products():
     conn = get_connection()
     open_cat = request.args.get("open_cat", "0") == "1"
     rows = conn.execute("""
-        SELECT p.*, c.name AS category_name,
+        SELECT p.*,
+               c.name AS category_name,
+               sc.name AS sub_category_name,
+               ssc.name AS sub_sub_category_name,
                (SELECT COUNT(*) FROM product_units u WHERE u.product_id = p.id AND u.status = 'in_stock') AS tag_count
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+        LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
         ORDER BY p.name
     """).fetchall()
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
@@ -396,7 +442,9 @@ def delete_product(product_id):
     conn.commit()
     conn.close()
     if product:
-        remote_control.delete_product_from_cloud(product["sku"])
+        remote_control.delete_product_from_cloud(product["sku"], product_id=product_id)
+    else:
+        remote_control.delete_product_from_cloud(None, product_id=product_id)
     flash("Product deleted.", "success")
     return redirect(url_for("products"))
 
@@ -454,6 +502,7 @@ def return_product(product_id):
     conn.execute("UPDATE products SET stock_qty = ? WHERE id = ?", (new_stock, product["id"]))
     conn.commit()
     conn.close()
+    remote_control.push_product_to_cloud(product["id"])
 
     flash(f"Product '{product['name']}' ({ret_qty} units) moved to Returned Items / Date Expired section.", "success")
     return redirect(url_for("products"))
@@ -692,19 +741,12 @@ def checkout():
         offer_value = product["offer_value"] or ""
         offer_title = product["offer_title"] or ""
         paid_qty = quantity
-        if offer_type == 'buy_x_get_y' or ('buy' in offer_title.lower()):
-            buy_qty, free_qty = 2, 1
-            if offer_value and ',' in offer_value:
-                try:
-                    parts = [int(p.strip()) for p in offer_value.split(',')]
-                    if len(parts) >= 2:
-                        buy_qty, free_qty = parts[0], parts[1]
-                except Exception:
-                    pass
+        if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in offer_value.lower()):
+            buy_qty, free_qty = parse_bogo_quantities(offer_value, offer_title, product["name"])
             total_set = buy_qty + free_qty
             sets = quantity // total_set
             remainder = quantity % total_set
-            paid_qty = sets * buy_qty + min(remainder, buy_qty)
+            paid_qty = (sets * buy_qty) + min(remainder, buy_qty)
 
         line_subtotal = product["sell_price"] * paid_qty
         vat_rate = product["vat_pct"] / 100.0 if product["vat_pct"] else 0
@@ -1888,6 +1930,7 @@ def add_brand():
             conn.execute("INSERT INTO brands (name) VALUES (?)", (name,))
             conn.commit()
             conn.close()
+            remote_control.push_brands_to_cloud()
             flash(f'Brand "{name}" added.', "success")
         except Exception as e:
             flash(f"Could not add brand: {e}", "error")
@@ -1905,6 +1948,7 @@ def edit_brand(brand_id):
             conn.execute("UPDATE brands SET name = ? WHERE id = ?", (name, brand_id))
             conn.commit()
             conn.close()
+            remote_control.push_brands_to_cloud()
             flash(f'Brand updated to "{name}".', "success")
         except Exception as e:
             flash(f"Could not update brand: {e}", "error")
@@ -1919,6 +1963,7 @@ def delete_brand(brand_id):
     conn.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
     conn.commit()
     conn.close()
+    remote_control.push_brands_to_cloud()
     flash("Brand deleted.", "info")
     return redirect(url_for("products"))
 
@@ -2033,6 +2078,10 @@ def new_voucher():
         except Exception as e:
             flash(f"Could not create voucher: {e}", "error")
         conn.close()
+    else:
+        flash("Please provide a valid voucher code and discount value.", "error")
+
+    return redirect(url_for("offers_page"))
 @app.route("/vouchers/<int:voucher_id>/edit", methods=["POST"])
 @login_required
 @admin_required
@@ -2134,11 +2183,11 @@ def api_apply_voucher():
                 has_combo_package = True
                 break
 
-    if has_combo_package and scope_type in ("product", "category", "sub_category", "sub_sub_category"):
+    if has_combo_package:
         conn.close()
         return jsonify({
             "success": False,
-            "message": f"ভাউচার/কুপন '{code}' কম্বো প্যাকেজের পণ্যে প্রযোজ্য নয়। (Voucher '{code}' cannot be applied when a Combo Package is in the cart.)"
+            "message": f"কম্বো প্যাকেজ অর্ডারে কুপন/ভাউচার '{code}' প্রযোজ্য নয়। (Voucher '{code}' cannot be applied when a Combo Package is in the cart.)"
         }), 400
 
     total_eligible_price = 0.0
@@ -3262,6 +3311,7 @@ def api_place_order():
             conn.commit()
         except Exception:
             pass
+    conn.commit()
 
     import random
     otp = f"{random.randint(1000, 9999)}"
@@ -3346,16 +3396,8 @@ def api_place_order():
         paid_qty = qty
         actual_qty = qty
 
-        if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in p_name.lower()):
-            buy_qty, free_qty_set = 2, 1
-            if offer_value and ',' in offer_value:
-                try:
-                    parts = [int(p.strip()) for p in offer_value.split(',')]
-                    if len(parts) >= 2 and parts[0] > 0 and parts[1] > 0:
-                        buy_qty, free_qty_set = parts[0], parts[1]
-                except Exception:
-                    pass
-            
+        if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in offer_value.lower()) or ('buy' in p_name.lower()):
+            buy_qty, free_qty_set = parse_bogo_quantities(offer_value, offer_title, p_name)
             total_set = buy_qty + free_qty_set
             sets = qty // total_set
             remainder = qty % total_set
@@ -3401,16 +3443,24 @@ def api_place_order():
     order_id = cur.lastrowid
 
     for item in processed_items:
+        raw_pid = item["product_id"]
+        valid_pid = raw_pid
+        chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+        if not chk_p:
+            first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+            valid_pid = first_p["id"] if first_p else 1
+
         cur.execute("""
             INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (order_id, item["product_id"], item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
+        """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
 
-        cur.execute(
-            "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
-            (item["quantity"], item["product_id"])
-        )
-        remote_control.push_product_to_cloud(item["product_id"])
+        if chk_p:
+            cur.execute(
+                "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                (item["quantity"], valid_pid)
+            )
+            remote_control.push_product_to_cloud(valid_pid)
 
     cur.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
     conn.commit()
@@ -4107,6 +4157,14 @@ def admin_reset_confirm():
     wiped_items = []
 
     try:
+        # 1. Create automatic point-in-time snapshot before reset
+        try:
+            from database import create_system_snapshot
+            snap_lbl = f"Pre-Reset Backup ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+            create_system_snapshot(conn, label=snap_lbl)
+        except Exception as _snap_err:
+            print(f"[admin_reset_confirm] Automatic pre-reset snapshot notice: {_snap_err}")
+
         def safe_del(tbl, clause="", p=()):
             try:
                 q = f"DELETE FROM {tbl}"
@@ -4168,24 +4226,81 @@ def admin_reset_confirm():
         conn.commit()
         conn.close()
 
-        # Push clean database to Cloud Firestore safely
+        # 2. Wipe Cloud Firestore collections so deleted data does not auto-restore!
         try:
-            if hasattr(remote_control, "push_all_to_cloud"):
-                remote_control.push_all_to_cloud()
+            if hasattr(remote_control, "wipe_cloud_collections"):
+                remote_control.wipe_cloud_collections(categories)
         except Exception as _rc_err:
-            print(f"[admin_reset_confirm] Cloud push notice: {_rc_err}")
+            print(f"[admin_reset_confirm] Cloud wipe notice: {_rc_err}")
         
         session.pop("reset_otp", None)
         session.pop("reset_categories", None)
 
         return jsonify({
             "success": True,
-            "message": f"System Reset Complete! Successfully wiped: {', '.join(wiped_items)}."
+            "message": f"System Reset Complete! Pre-reset snapshot saved. Successfully wiped: {', '.join(wiped_items)}."
         })
     except Exception as e:
         conn.rollback()
         conn.close()
         return jsonify({"success": False, "message": f"Error during system reset: {e}"}), 500
+
+
+@app.route("/admin/system-restore", methods=["POST"])
+@login_required
+@admin_required
+def admin_system_restore():
+    data = request.json or {}
+    target = data.get("snapshot_id") or data.get("datetime")
+    if not target:
+        return jsonify({"success": False, "message": "Please select a valid snapshot or Datetime to restore."}), 400
+
+    from database import restore_system_snapshot
+    ok, msg = restore_system_snapshot(target)
+    if ok:
+        try:
+            remote_control.push_full_backup()
+        except Exception:
+            pass
+        return jsonify({"success": True, "message": msg})
+    else:
+        return jsonify({"success": False, "message": msg}), 400
+
+
+@app.route("/admin/create-snapshot", methods=["POST"])
+@login_required
+@admin_required
+def admin_create_snapshot():
+    data = request.json or {}
+    lbl = data.get("label") or f"Manual Snapshot ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+    from database import create_system_snapshot
+    snap_id, snap_time = create_system_snapshot(label=lbl)
+    return jsonify({
+        "success": True,
+        "message": f"System Snapshot #{snap_id} created successfully at {snap_time}!",
+        "snapshot_id": snap_id,
+        "snapshot_time": snap_time
+    })
+
+
+@app.route("/admin/force-cloud-sync", methods=["POST"])
+@login_required
+@admin_required
+def admin_force_cloud_sync():
+    try:
+        remote_control.push_full_backup()
+        return jsonify({"success": True, "message": "Instant Live Cloud Sync completed! All local data pushed to https://supershop-mj0g.onrender.com/."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Cloud Sync Error: {e}"}), 500
+
+
+@app.route("/api/snapshots", methods=["GET"])
+@login_required
+def api_list_snapshots():
+    conn = get_connection()
+    rows = conn.execute("SELECT id, snapshot_time, label, created_at FROM system_snapshots ORDER BY id DESC").fetchall()
+    conn.close()
+    return jsonify({"success": True, "snapshots": [dict(r) for r in rows]})
 
 
 # ===========================================================================
@@ -4196,6 +4311,7 @@ try:
     init_db()
     remote_control.start()
     remote_control.push_categories_to_cloud()
+    remote_control.push_brands_to_cloud()
 except Exception as _rc_err:
     print(f"[app.py] Automatic Firebase listener initialization: {_rc_err}")
 

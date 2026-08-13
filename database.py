@@ -217,6 +217,14 @@ def init_db():
         created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS system_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_time TEXT NOT NULL,
+        label TEXT NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS returned_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER,
@@ -254,6 +262,7 @@ def init_db():
         "ALTER TABLE sub_sub_categories ADD COLUMN icon TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE products ADD COLUMN sub_category_id INTEGER DEFAULT NULL",
         "ALTER TABLE products ADD COLUMN sub_sub_category_id INTEGER DEFAULT NULL",
+        "ALTER TABLE products ADD COLUMN brand TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE products ADD COLUMN is_promotion INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN mrp REAL NOT NULL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN sl_number INTEGER NOT NULL DEFAULT 1",
@@ -362,6 +371,70 @@ def init_db():
             ("Bangladesh", "Tangail", "College Para", now_iso)
         )
 
+    # Seed default taxonomy (categories, sub-categories, sub-sub-categories) if empty
+    cur.execute("SELECT COUNT(*) AS c FROM categories")
+    if cur.fetchone()["c"] == 0:
+        default_cats = [
+            ("Groceries & Pets", "🛒"),
+            ("Electronics & Appliances", "⚡"),
+            ("Health & Beauty", "💄"),
+            ("Fashion & Apparel", "👔"),
+            ("Home & Lifestyle", "🏠"),
+            ("Toys, Games & Stationery", "🎮"),
+            ("Automotive & Hardware", "🛠️"),
+        ]
+        for name, icon in default_cats:
+            cur.execute("INSERT OR IGNORE INTO categories (name, icon) VALUES (?, ?)", (name, icon))
+
+    cur.execute("SELECT COUNT(*) AS c FROM sub_categories")
+    if cur.fetchone()["c"] == 0:
+        cat_map = {row["name"]: row["id"] for row in cur.execute("SELECT id, name FROM categories").fetchall()}
+        default_subs = [
+            ("Dairy & Bakery", "🍞", "Groceries & Pets"),
+            ("Beverages", "🧃", "Groceries & Pets"),
+            ("Snacks & Branded Foods", "🍿", "Groceries & Pets"),
+            ("Rice, Atta & Cooking Oils", "🌾", "Groceries & Pets"),
+            ("Fruits & Vegetables", "🍎", "Groceries & Pets"),
+            ("Personal Care & Household", "🧼", "Groceries & Pets"),
+            ("Mobile & Accessories", "📱", "Electronics & Appliances"),
+            ("Home & Kitchen Appliances", "🔌", "Electronics & Appliances"),
+            ("Computer & IT Accessories", "💻", "Electronics & Appliances"),
+            ("Skin & Body Care", "🧴", "Health & Beauty"),
+            ("Hair Care & Grooming", "✂️", "Health & Beauty"),
+            ("Hygiene & Tissue", "🧻", "Health & Beauty"),
+            ("Men's Clothing", "👔", "Fashion & Apparel"),
+            ("Women's Clothing", "👗", "Fashion & Apparel"),
+            ("Kids & Baby Wear", "👶", "Fashion & Apparel"),
+            ("Cleaning Supplies", "🧹", "Home & Lifestyle"),
+            ("Kitchen & Dining", "🍽️", "Home & Lifestyle"),
+        ]
+        for s_name, s_icon, c_name in default_subs:
+            if c_name in cat_map:
+                cur.execute("INSERT OR IGNORE INTO sub_categories (category_id, name, icon) VALUES (?, ?, ?)", (cat_map[c_name], s_name, s_icon))
+
+    cur.execute("SELECT COUNT(*) AS c FROM sub_sub_categories")
+    if cur.fetchone()["c"] == 0:
+        sub_map = {row["name"]: row["id"] for row in cur.execute("SELECT id, name FROM sub_categories").fetchall()}
+        default_subsubs = [
+            ("Milk & Cream", "🥛", "Dairy & Bakery"),
+            ("Bread & Buns", "🍞", "Dairy & Bakery"),
+            ("Butter & Cheese", "🧀", "Dairy & Bakery"),
+            ("Tea & Coffee", "☕", "Beverages"),
+            ("Soft Drinks & Juices", "🧃", "Beverages"),
+            ("Biscuits & Cookies", "🍪", "Snacks & Branded Foods"),
+            ("Chips & Chanachur", "🍿", "Snacks & Branded Foods"),
+            ("Chocolates & Candy", "🍫", "Snacks & Branded Foods"),
+            ("Smartphones", "📱", "Mobile & Accessories"),
+            ("Chargers & Cables", "⚡", "Mobile & Accessories"),
+            ("Earphones & Headphones", "🎧", "Mobile & Accessories"),
+            ("Soaps & Body Wash", "🧼", "Skin & Body Care"),
+            ("Shampoo & Conditioner", "🧴", "Hair Care & Grooming"),
+            ("Facial Tissue & Wipes", "🧻", "Hygiene & Tissue"),
+        ]
+        for ss_name, ss_icon, s_name in default_subsubs:
+            if s_name in sub_map:
+                cur.execute("INSERT OR IGNORE INTO sub_sub_categories (sub_category_id, name, icon) VALUES (?, ?, ?)", (sub_map[s_name], ss_name, ss_icon))
+
     # Seed default shop settings (only if not already present) so the Settings
     # page and every receipt/label always has a value to fall back on.
     default_settings = {
@@ -456,3 +529,121 @@ def create_product_units(conn, product_id, quantity):
         created_ids.append(new_id)
 
     return created_ids
+
+
+def create_system_snapshot(conn=None, label="Automated System Backup"):
+    """Captures full JSON snapshot of system state for point-in-time restore."""
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+
+    try:
+        data = {
+            "products": [dict(r) for r in conn.execute("SELECT * FROM products").fetchall()],
+            "categories": [dict(r) for r in conn.execute("SELECT * FROM categories").fetchall()],
+            "sub_categories": [dict(r) for r in conn.execute("SELECT * FROM sub_categories").fetchall()],
+            "sub_sub_categories": [dict(r) for r in conn.execute("SELECT * FROM sub_sub_categories").fetchall()],
+            "brands": [dict(r) for r in conn.execute("SELECT * FROM brands").fetchall()],
+            "packages": [dict(r) for r in conn.execute("SELECT * FROM packages").fetchall()],
+            "package_items": [dict(r) for r in conn.execute("SELECT * FROM package_items").fetchall()],
+            "sales": [dict(r) for r in conn.execute("SELECT * FROM sales").fetchall()],
+            "sale_items": [dict(r) for r in conn.execute("SELECT * FROM sale_items").fetchall()],
+            "online_orders": [dict(r) for r in conn.execute("SELECT * FROM online_orders").fetchall()],
+            "online_order_items": [dict(r) for r in conn.execute("SELECT * FROM online_order_items").fetchall()],
+            "vouchers": [dict(r) for r in conn.execute("SELECT * FROM vouchers").fetchall()],
+            "settings": [dict(r) for r in conn.execute("SELECT * FROM settings").fetchall()],
+            "delivery_areas": [dict(r) for r in conn.execute("SELECT * FROM delivery_areas").fetchall()],
+        }
+
+        now_str = datetime.now().isoformat()
+        import json
+        snap_json = json.dumps(data)
+
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS system_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_time TEXT NOT NULL,
+                label TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        cur.execute(
+            "INSERT INTO system_snapshots (snapshot_time, label, snapshot_json, created_at) VALUES (?, ?, ?, ?)",
+            (now_str, label, snap_json, now_str)
+        )
+        conn.commit()
+        snap_id = cur.lastrowid
+        return snap_id, now_str
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def restore_system_snapshot(snapshot_id_or_time, conn=None):
+    """Restores SQLite database state to a specific snapshot ID or closest Datetime."""
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+
+    try:
+        import json
+        row = None
+        if isinstance(snapshot_id_or_time, int) or (isinstance(snapshot_id_or_time, str) and str(snapshot_id_or_time).isdigit()):
+            row = conn.execute("SELECT * FROM system_snapshots WHERE id = ?", (int(snapshot_id_or_time),)).fetchone()
+        
+        if not row and isinstance(snapshot_id_or_time, str):
+            # Find closest snapshot created on or before target datetime string
+            row = conn.execute(
+                "SELECT * FROM system_snapshots WHERE snapshot_time <= ? ORDER BY snapshot_time DESC LIMIT 1",
+                (snapshot_id_or_time,)
+            ).fetchone()
+            if not row:
+                row = conn.execute("SELECT * FROM system_snapshots ORDER BY snapshot_time ASC LIMIT 1").fetchone()
+
+        if not row:
+            return False, "No matching system snapshot found for the selected datetime."
+
+        snap_data = json.loads(row["snapshot_json"])
+        snap_time = row["snapshot_time"]
+
+        conn.execute("PRAGMA foreign_keys = OFF;")
+        cur = conn.cursor()
+
+        tables_to_clear = [
+            "package_items", "packages", "sale_items", "sales",
+            "online_order_items", "online_orders", "product_units",
+            "products", "sub_sub_categories", "sub_categories",
+            "categories", "brands", "vouchers", "delivery_areas", "settings"
+        ]
+
+        for tbl in tables_to_clear:
+            try:
+                cur.execute(f"DELETE FROM {tbl}")
+            except Exception:
+                pass
+
+        def _bulk_insert(table_name, row_list):
+            if not row_list:
+                return
+            cols = list(row_list[0].keys())
+            placeholders = ", ".join(["?"] * len(cols))
+            col_names = ", ".join(cols)
+            sql = f"INSERT INTO {table_name} ({col_names}) VALUES ({placeholders})"
+            for r in row_list:
+                vals = [r[c] for c in cols]
+                cur.execute(sql, vals)
+
+        for key in ["categories", "sub_categories", "sub_sub_categories", "brands", "products", "packages", "package_items", "sales", "sale_items", "online_orders", "online_order_items", "vouchers", "settings", "delivery_areas"]:
+            if key in snap_data:
+                _bulk_insert(key, snap_data[key])
+
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return True, f"System successfully restored to snapshot from {snap_time}!"
+    finally:
+        if close_conn:
+            conn.close()

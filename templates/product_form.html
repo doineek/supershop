@@ -179,62 +179,6 @@
       </label>
     </div>
 
-    <!-- Enhanced Advance Offer Section -->
-    <div style="background: #fff; border: 1px solid #cbd5e1; padding: 14px; border-radius: 8px; margin-top: 14px;">
-      <h4 style="margin: 0 0 10px 0; color: #0284c7;">🎯 Advance Offer Settings</h4>
-      
-      <div class="field-row">
-        <div class="field">
-          <label>Offer Type</label>
-          <select name="offer_type" id="offerTypeSelect" onchange="toggleOfferInputs()">
-            <option value="" {{ 'selected' if not product or not product.offer_type }}>Standard</option>
-            <option value="percentage" {{ 'selected' if product and product.offer_type == 'percentage' or product.offer_type == 'pct' }}>Percentage Discount (%)</option>
-            <option value="buy_x_get_y" {{ 'selected' if product and product.offer_type == 'buy_x_get_y' or product.offer_type == 'bogo' }}>Buy X Get Y (BOGO)</option>
-          </select>
-        </div>
-
-        <!-- Dynamic Offer Value Input Container -->
-        <div class="field" id="pctOfferBox" style="display:none;">
-          <label>Percentage Off % (0 - 100%)</label>
-          <input type="number" step="0.1" min="0" max="100" id="offerPctInput" placeholder="e.g. 20 for 20% OFF" value="{{ product.offer_value if product and product.offer_type in ['percentage', 'pct'] else '' }}" oninput="onOfferPctChange()">
-        </div>
-
-        <div class="field" id="buyGetOfferBox" style="display:none;">
-          <label>Buy X Get Y Value</label>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <span>Buy</span>
-            <select id="buyXSelect" onchange="onBuyGetChange()" style="padding:6px; border-radius:4px; border:1px solid #cbd5e1;">
-              {% for i in range(1, 11) %}
-              <option value="{{ i }}">{{ i }}</option>
-              {% endfor %}
-            </select>
-            <span>Get</span>
-            <select id="getYSelect" onchange="onBuyGetChange()" style="padding:6px; border-radius:4px; border:1px solid #cbd5e1;">
-              {% for j in range(1, 11) %}
-              <option value="{{ j }}">{{ j }} Free</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <input type="hidden" name="offer_value" id="hiddenOfferValue" value="{{ product.offer_value if product else '' }}">
-      </div>
-
-      <!-- Discount Price Base Selector (MRP vs Cost Price) -->
-      <div class="field" id="offerBaseBox" style="margin-top:10px; display:none;">
-        <label style="font-weight:bold; color:#0369a1;">Discount Price Base</label>
-        <select name="offer_base" id="offerBaseSelect" onchange="onOfferPctChange()">
-          <option value="mrp" {{ 'selected' if not product or product.offer_base == 'mrp' }}>From Regular Retail Price (MRP)</option>
-          <option value="cost_price" {{ 'selected' if product and product.offer_base == 'cost_price' }}>From Wholesale Cost Price</option>
-        </select>
-        <span style="font-size: 0.75rem; color: #64748b;">(Choose whether discount percentage is calculated from MRP or Cost Price)</span>
-      </div>
-
-      <div class="field" style="margin-top:10px;">
-        <label>Offer Badge Title (e.g. 20% OFF, Buy 2 Get 1 Free, Eid Special)</label>
-        <input type="text" name="offer_title" id="offerTitleInput" placeholder="Special Discount Title" value="{{ product.offer_title if product else '' }}">
-      </div>
-    </div>
   </div>
 
   <div class="actions" style="margin-top: 16px;">
@@ -313,49 +257,8 @@ function autoCalculateDoineekPrice() {
   }
 }
 
-function toggleOfferInputs() {
-  const type = document.getElementById('offerTypeSelect').value;
-  const pctBox = document.getElementById('pctOfferBox');
-  const buyGetBox = document.getElementById('buyGetOfferBox');
-  const baseBox = document.getElementById('offerBaseBox');
-
-  pctBox.style.display = 'none';
-  buyGetBox.style.display = 'none';
-  baseBox.style.display = 'none';
-
-  if (type === 'percentage' || type === 'pct') {
-    pctBox.style.display = 'block';
-    baseBox.style.display = 'block';
-    onOfferPctChange();
-  } else if (type === 'buy_x_get_y' || type === 'bogo') {
-    buyGetBox.style.display = 'block';
-    onBuyGetChange();
-  } else {
-    document.getElementById('hiddenOfferValue').value = '';
-  }
-}
-
-function onOfferPctChange() {
-  const pct = parseFloat(document.getElementById('offerPctInput').value) || 0;
-  document.getElementById('hiddenOfferValue').value = pct.toString();
-  if (pct > 0 && !document.getElementById('offerTitleInput').value.trim()) {
-    document.getElementById('offerTitleInput').value = pct + '% OFF Special';
-  }
-}
-
-function onBuyGetChange() {
-  const x = document.getElementById('buyXSelect').value;
-  const y = document.getElementById('getYSelect').value;
-  const val = `Buy ${x} Get ${y} Free`;
-  document.getElementById('hiddenOfferValue').value = val;
-  if (!document.getElementById('offerTitleInput').value.trim()) {
-    document.getElementById('offerTitleInput').value = val;
-  }
-}
-
 document.addEventListener('DOMContentLoaded', function() {
   updateCategorySubOptions();
-  toggleOfferInputs();
 });
 </script>
 {% endblock %}

@@ -32,6 +32,17 @@ _db = None
 _state_lock = threading.Lock()
 
 
+B64_FIREBASE_CRED = "eyJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsICJwcm9qZWN0X2lkIjogImRvaW5lZWstcG9zLWU0MDIzIiwgInByaXZhdGVfa2V5X2lkIjogImFjZmFiMjMyNWZhZTM3MDk5ODc2NGU2YmZjYTY3ZWFmNmIyNDAxOWUiLCAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tXG5NSUlFdmdJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLZ3dnZ1NrQWdFQUFvSUJBUURRMzMwbXprY3pWU2JoXG5OVzJ4Nm4zQnBCVGtyRlNLRzFBZy9XL2lqcU9vM3B0MlIwSXQ0SGZPdmVHYTBDZ1NXTERTUlBpK2NiVTFVUDhTXG5rVkdlZTg3YlVPU2Zqa0IwU2VLZVlJUWxnREs2dkEySTlLTm5yOXRvT20xdG9tVjJZN2xSaEgwd3hVNk8yaHJEXG4zU2lhc0F0emRtZ3BMMHZIa0xkalRlUXhDVXlyaXVzK0UwZFIrNzUweTdldWY4ZWFrcmRML3lKdnBTNHZzSDA1XG5tQkRnTUc3RWtkbml5VFoxdFVhRTJGSWxaZVN5V3NBZ2gwTzROOHBjc01HdENvZzFKTGl1cnl5dVZCUXQwSjNSXG42K0d3aS9zTGtwNzR5VWNDWjFwdU82Y1ZJVmpneW4zeG1OdkZOYmEwUi9QNnVHRzVpa0NYMW9taUVvUEI2eVNzXG4yS3NxN01mTEFnTUJBQUVDZ2dFQUVqU3VBNWc1UVRLQk1yZGx6MUNCYU81MHI4Q01RZGx0bTQwdzdRNFh4UndFXG54WmpOSGozbTAzWUkyR1gxQ0RHdUtvc1R6MWhqNkxqSVNEQmR3b2hIYmRCWU44YStFWG9iTHZONkJvd1h0VFVNXG45NklJZ3RJampWWFh2SldmYmJsSzFETWpJbGJLL25mbzhLZUhQQ3h2WXhTd0J0NzJKazAraVlEOE55dE9BU21iXG5SY0FQQkIydVFabUl3MUs5RmhhRnlXVXcwUGN2aWx0MlY3TVJHQ2JIeVNwS2U3cDNIU2JnbjFsOS9Ib0xMMnRrXG5nNTEweXR6WmlWQ1hFUlhZd0tUNHd2RkFkM3hpVHBjSWNPMHhjc0kwSnBQWSt6clVYYmFZSXNFaGZtcUlzNGFJXG5DSG5LU09GR05kRjV1bzJJRUpVMEUvZE1OODgxOHpFa0tydzQ2NUFHaVFLQmdRRDBpMXRXYmwrLzJKWElnSVUvXG5JRzc1ZUxjdk5zaWFaUFhVTWdNU2JaZDE2Z2kySDQvM3E3elJNK25ldldvaDJMakc5ekx6a3NYRWNHSjdKckZpXG5BU2NOQnltQ1lNZTRVREgwNmxqNkgyYUdXUEpZYjBpeWtxeUE4eXZQTlhrYVE1VytvNFdDdGVwejlneHgwQlErXG5EdU5qUUlvQjRJVDhrN1JhQUNmTFZPeUh2d0tCZ1FEYXFGbnhvTkY0OFlTL2lFbjFGbHA3Unp2MXdUQ1Jnd29aXG45UHJ4YlM0MXV1LzkzT2UwRXFWOFFKazk2YnpFRlk0RGU4a3orUmdpdDQxdTI3SUdkMzdBRkQ1VXNBT2krVXptXG5lNDR5ZEoxVGNJMnVtRVVaSUF6Ty9rVG9qT0hQNDBIRGRTSHdSRFgwVjQ5SjRKUmxldkQ5U1dlQU9PZ2NUczQ4XG5ocVBrczFpaTlRS0JnUUNFbDJMSXRFTzZNMmJUTmN3SmRENTNpVnBaZ1N5M2VmSklRVzJrK2tMYkxpL1cvN29CXG5vZDVZMS9zQVNGZFpUcmF4T3Fzbm9mY1ZFWkowRDRDeUVNbnBxRzU3UUpwSmQwSCs5Mm1UQkorRVRJbnFKVHlYXG5oaXQrSjFzam1HeTNMdG5zYWFFa1JCcUJFWEdoN0I1dG40anU4YmxpVnlnRUF0b1F5bkRKTUp5bTVRS0JnRmxGXG5wTHMvSW1iVGpKUTZTNSt4eWExTlR4Q3VHR3RBYWU1aEU5ZGY4UjdrdkxrVDZOR2ZUMHNrZ0t4RGN0dEh4WnhzXG5mS0Fva2c4U2k3NzRHWDRFYVk1NGRWNVVJcGYyV3N3N0k3bzczRVBGejBLNlRuUE1udzRmeC9oK0ZHK3c1QmV1XG5DZll6a3llNFcvc1lvdDJ2elJaTVV1S0oyVkk5Wm54VnFESm1lc2pGQW9HQkFNdjJnazJHOEZrQlo5bVBuRitMXG5FZWlLMi81YTdYdXlwTEdEb1Bvcmx0NnZuYlBkV0xsaVZEZDRsQ3QxL3VoVXNDK1V3QUhWV1Frdk04SnBKOUFJXG5KVEJwZGtid1kzci8wd2sxdXQvMURPN1h4T1ZNVzJiRnhHRjd1ZU5TZ0E4blFBZDJMK0NuY2l5R1I3bVZhb2V2XG50R3o3MzJrNnowRmpZUWdCcnpWRlpBMUNcbi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS1cbiIsICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAiY2xpZW50X2lkIjogIjExMjQyOTg5NDMxNTI5MTA0MDE1MiIsICJhdXRoX3VyaSI6ICJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20vby9vYXV0aDIvYXV0aCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsICJjbGllbnRfeDUwOV9jZXJ0X3VybCI6ICJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAidW5pdmVyc2VfZG9tYWluIjogImdvb2dsZWFwaXMuY29tIn0="
+
+def _get_fallback_cred():
+    try:
+        import base64, json
+        raw = base64.b64decode(B64_FIREBASE_CRED.encode()).decode()
+        return credentials.Certificate(json.loads(raw))
+    except Exception:
+        return None
+
+
 def _init_firebase():
     global _db
     if _db is not None:
@@ -59,7 +70,10 @@ def _init_firebase():
                     print(f"[remote_control] Failed to parse FIREBASE_CREDENTIALS env var: {e}")
 
         if not cred:
-            print(f"[remote_control] [ALERT] Neither {CRED_FILE} nor FIREBASE_CREDENTIALS env var found.")
+            cred = _get_fallback_cred()
+
+        if not cred:
+            print(f"[remote_control] [ALERT] Firebase credentials not available.")
             return None
 
         try:
@@ -140,17 +154,67 @@ def _worker_push_categories():
             return
         conn = get_connection()
         cats = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+        sub_cats = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+        sub_sub_cats = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
         conn.close()
+
+        active_cat_ids = {str(c["id"]) for c in cats}
+        try:
+            cloud_docs = db.collection("categories").stream()
+            for doc in cloud_docs:
+                if doc.id not in active_cat_ids:
+                    db.collection("categories").document(doc.id).delete()
+        except Exception:
+            pass
+
         for c in cats:
             c_dict = dict(c)
-            db.collection("categories").document(str(c_dict["id"])).set(c_dict)
-        print(f"[remote_control] [OK] {len(cats)} Categories pushed to Firebase.")
+            c_id = c["id"]
+            cat_subs = [dict(s) for s in sub_cats if s["category_id"] == c_id]
+            for s in cat_subs:
+                s_id = s["id"]
+                s["sub_sub_categories"] = [dict(ss) for ss in sub_sub_cats if ss["sub_category_id"] == s_id]
+            c_dict["sub_categories"] = cat_subs
+            db.collection("categories").document(str(c_id)).set(c_dict)
+
+        print(f"[remote_control] [OK] {len(cats)} Categories (with subcategories) pushed to Firebase.")
     except Exception as e:
         print(f"[remote_control] push categories failed: {e}")
 
 def push_categories_to_cloud():
     """Upload categories to Firestore in background."""
     threading.Thread(target=_worker_push_categories, daemon=True).start()
+
+
+def _worker_push_brands():
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
+        conn.close()
+
+        active_brand_ids = {str(b["id"]) for b in brands}
+        try:
+            cloud_docs = db.collection("brands").stream()
+            for doc in cloud_docs:
+                if doc.id not in active_brand_ids:
+                    db.collection("brands").document(doc.id).delete()
+        except Exception:
+            pass
+
+        for b in brands:
+            b_dict = dict(b)
+            db.collection("brands").document(str(b["id"])).set(b_dict)
+
+        print(f"[remote_control] [OK] {len(brands)} Brands pushed to Firebase.")
+    except Exception as e:
+        print(f"[remote_control] push brands failed: {e}")
+
+def push_brands_to_cloud():
+    """Upload brands to Firestore in background."""
+    threading.Thread(target=_worker_push_brands, daemon=True).start()
 
 
 def _worker_push_users():
@@ -174,14 +238,17 @@ def push_users_to_cloud():
     threading.Thread(target=_worker_push_users, daemon=True).start()
 
 
-def delete_product_from_cloud(sku):
+def delete_product_from_cloud(sku, product_id=None):
     """Mirror local product deletion into Firestore."""
     def _worker():
         try:
             db = _init_firebase()
             if not db:
                 return
-            db.collection("products").document(str(sku)).delete()
+            if sku:
+                db.collection("products").document(str(sku)).delete()
+            if product_id:
+                db.collection("products").document(str(product_id)).delete()
         except Exception as e:
             print(f"[remote_control] product delete failed: {e}")
     threading.Thread(target=_worker, daemon=True).start()
@@ -281,6 +348,7 @@ def push_all_to_cloud():
     try:
         push_full_backup()
         push_categories_to_cloud()
+        push_brands_to_cloud()
         if 'push_packages_to_cloud' in globals():
             push_packages_to_cloud()
         push_delivery_areas_to_cloud()
@@ -296,50 +364,68 @@ def push_full_backup():
             return
         conn = get_connection()
 
-        # Push Categories
-        for cat_row in conn.execute("SELECT * FROM categories").fetchall():
-            db.collection("categories").document(str(cat_row["id"])).set(dict(cat_row))
+        # Push Categories & Subcategories
+        push_categories_to_cloud()
 
-        # Push Products with Category Name
-        for row in conn.execute("""
-            SELECT p.*, c.name AS category_name
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-        """).fetchall():
-            r_dict = dict(row)
-            doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
-            db.collection("products").document(doc_id).set(r_dict)
+        # Push Brands
+        push_brands_to_cloud()
 
-        for row in conn.execute("SELECT * FROM settings").fetchall():
-            db.collection("settings").document(row["key"]).set({"value": row["value"]})
+        # Clean up deleted products from Firestore & push current products
+        active_skus_and_ids = set()
+        try:
+            for r in conn.execute("SELECT id, sku FROM products").fetchall():
+                if r["sku"]:
+                    active_skus_and_ids.add(str(r["sku"]))
+                active_skus_and_ids.add(str(r["id"]))
 
-        areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
-        db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
+            try:
+                cloud_docs = db.collection("products").stream()
+                for doc in cloud_docs:
+                    if doc.id not in active_skus_and_ids:
+                        db.collection("products").document(doc.id).delete()
+            except Exception:
+                pass
 
-        orders = conn.execute("SELECT * FROM online_orders").fetchall()
-        for ord_row in orders:
-            items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
-            o_dict = dict(ord_row)
-            o_dict["items"] = [dict(i) for i in items]
-            db.collection("online_orders").document(str(ord_row["order_number"])).set(o_dict)
+            for row in conn.execute("""
+                SELECT p.*, c.name AS category_name
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+            """).fetchall():
+                r_dict = dict(row)
+                doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
+                db.collection("products").document(doc_id).set(r_dict)
 
-        # Push Users
-        for u_row in conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall():
-            db.collection("users").document(str(u_row["username"])).set(dict(u_row))
+            for row in conn.execute("SELECT * FROM settings").fetchall():
+                db.collection("settings").document(row["key"]).set({"value": row["value"]})
 
-        # Push Packages
-        for pkg_row in conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall():
-            p_dict = dict(pkg_row)
-            items = conn.execute("""
-                SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
-                FROM package_items pi JOIN products p ON pi.product_id = p.id
-                WHERE pi.package_id = ?
-            """, (pkg_row["id"],)).fetchall()
-            p_dict["items"] = [dict(i) for i in items]
-            db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
+            areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
+            db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
 
-        unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0").fetchall()
-        conn.close()
+            orders = conn.execute("SELECT * FROM online_orders").fetchall()
+            for ord_row in orders:
+                items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+                o_dict = dict(ord_row)
+                o_dict["items"] = [dict(i) for i in items]
+                db.collection("online_orders").document(str(ord_row["order_number"])).set(o_dict)
+
+            # Push Users
+            for u_row in conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall():
+                db.collection("users").document(str(u_row["username"])).set(dict(u_row))
+
+            # Push Packages
+            for pkg_row in conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall():
+                p_dict = dict(pkg_row)
+                items = conn.execute("""
+                    SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
+                    FROM package_items pi JOIN products p ON pi.product_id = p.id
+                    WHERE pi.package_id = ?
+                """, (pkg_row["id"],)).fetchall()
+                p_dict["items"] = [dict(i) for i in items]
+                db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
+
+            unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0").fetchall()
+        finally:
+            conn.close()
 
         for row in unsynced:
             push_sale_to_cloud(row["id"])
@@ -349,6 +435,43 @@ def push_full_backup():
         print(f"[remote_control] full backup failed: {e}")
 
 
+def wipe_cloud_collections(categories):
+    """Deletes documents from specified Firestore collections when system reset occurs."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+
+            coll_map = {
+                "inventory": ["products"],
+                "sales_log": ["sales"],
+                "online_orders": ["online_orders"],
+                "packages": ["packages"],
+                "offers_promotions": ["vouchers"],
+                "customers": ["customer_users"],
+                "all": ["products", "sales", "online_orders", "packages", "vouchers", "customer_users", "categories", "brands"]
+            }
+
+            target_colls = set()
+            for cat in categories:
+                if cat in coll_map:
+                    target_colls.update(coll_map[cat])
+
+            for coll_name in target_colls:
+                try:
+                    docs = db.collection(coll_name).stream()
+                    for doc in docs:
+                        db.collection(coll_name).document(doc.id).delete()
+                    print(f"[remote_control] [WIPE] Cloud collection '{coll_name}' cleared on reset.")
+                except Exception as c_err:
+                    print(f"[remote_control] Cloud wipe error on '{coll_name}': {c_err}")
+        except Exception as e:
+            print(f"[remote_control] wipe_cloud_collections error: {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 # ---------------------------------------------------------------------------
 # 2) TWO-WAY SYNC (Firebase Console -> Local SQLite Database)
 # ---------------------------------------------------------------------------
@@ -356,38 +479,83 @@ def push_full_backup():
 def _on_products_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `products` collection in Firestore.
-    If the shop owner modifies product price, stock, or name in Firebase Console,
-    it updates the local SQLite database automatically in real time!
+    Syncs product creation, updates, and deletions in real time across servers.
     """
     try:
         conn = get_connection()
         for change in changes:
             doc = change.document
             data = doc.to_dict() or {}
-            sku = doc.id
+            doc_id = doc.id
+            sku = data.get("sku") or doc_id
+            prod_id = data.get("id")
+
             if change.type.name in ("ADDED", "MODIFIED"):
                 name = data.get("name")
-                sell_price = data.get("sell_price")
-                mrp = data.get("mrp")
-                stock_qty = data.get("stock_qty")
+                if not name:
+                    continue
+
+                brand = data.get("brand", "")
+                category_id = data.get("category_id")
+                sub_category_id = data.get("sub_category_id")
+                sub_sub_category_id = data.get("sub_sub_category_id")
+                cost_price = float(data.get("cost_price") or 0)
+                mrp = float(data.get("mrp") or 0)
+                sell_price = float(data.get("sell_price") or 0)
+                vat_pct = float(data.get("vat_pct") or 0)
+                stock_qty = int(data.get("stock_qty") or 0)
+                low_stock_threshold = int(data.get("low_stock_threshold") or 5)
+                sl_number = int(data.get("sl_number") or 1)
                 description = data.get("description", "")
                 image_url = data.get("image_url", "")
-                is_trending = data.get("is_trending", 0)
-                is_flash_sale = data.get("is_flash_sale", 0)
-                is_offer = data.get("is_offer", 0)
+                is_trending = int(data.get("is_trending") or 0)
+                is_flash_sale = int(data.get("is_flash_sale") or 0)
+                is_offer = int(data.get("is_offer") or 0)
+                is_promotion = int(data.get("is_promotion") or 0)
                 offer_title = data.get("offer_title", "")
+                offer_type = data.get("offer_type", "")
+                offer_value = data.get("offer_value", "")
+                offer_base = data.get("offer_base", "mrp")
+                expiry_date = data.get("expiry_date", "")
 
-                if name and sell_price is not None:
+                existing = None
+                if sku:
+                    existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
+                if not existing and prod_id:
+                    existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+
+                if existing:
                     conn.execute("""
-                        UPDATE products SET name=?, sell_price=?, mrp=?, stock_qty=?,
-                                             description=?, image_url=?, is_trending=?,
-                                             is_flash_sale=?, is_offer=?, offer_title=?
-                        WHERE sku=?
-                    """, (name, float(sell_price), float(mrp or 0), int(stock_qty or 0),
-                          description, image_url, int(is_trending or 0),
-                          int(is_flash_sale or 0), int(is_offer or 0), offer_title, sku))
+                        UPDATE products SET
+                            sku=?, name=?, brand=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                            cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                            sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
+                            is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                        WHERE id=?
+                    """, (
+                        sku, name, brand, category_id, sub_category_id, sub_sub_category_id,
+                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                        sl_number, description, image_url, is_trending, is_flash_sale,
+                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
+                        existing["id"]
+                    ))
+                else:
+                    conn.execute("""
+                        INSERT INTO products (
+                            sku, name, brand, category_id, sub_category_id, sub_sub_category_id,
+                            cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                            sl_number, description, image_url, is_trending, is_flash_sale,
+                            is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        sku, name, brand, category_id, sub_category_id, sub_sub_category_id,
+                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                        sl_number, description, image_url, is_trending, is_flash_sale,
+                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                    ))
+
             elif change.type.name == "REMOVED":
-                conn.execute("DELETE FROM products WHERE sku=?", (sku,))
+                conn.execute("DELETE FROM products WHERE sku=? OR id=?", (sku, prod_id or sku))
         conn.commit()
         conn.close()
         print(f"[remote_control] [SYNC] Two-Way Product Sync updated local SQLite DB from Firebase Console.")
@@ -459,12 +627,19 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                     new_order_id = cur.lastrowid
                     items = data.get("items", [])
                     for item in items:
+                        raw_pid = item.get("product_id") or 0
+                        valid_pid = raw_pid
+                        chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+                        if not chk_p:
+                            first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+                            valid_pid = first_p["id"] if first_p else 1
+
                         cur.execute("""
                             INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         """, (
                             new_order_id,
-                            item.get("product_id", 0),
+                            valid_pid,
                             item.get("product_name", ""),
                             float(item.get("unit_price") or 0.0),
                             float(item.get("mrp_price") or 0.0),
@@ -571,7 +746,7 @@ def _on_packages_change(doc_snapshots, changes, read_time):
 def _on_categories_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `categories` collection in Firestore.
-    Syncs category updates in real time across servers.
+    Syncs category, subcategory, and sub-subcategory updates in real time across servers.
     """
     try:
         conn = get_connection()
@@ -585,19 +760,104 @@ def _on_categories_change(doc_snapshots, changes, read_time):
 
             if change.type.name in ("ADDED", "MODIFIED"):
                 name = data.get("name", "")
+                parent_id = data.get("parent_id")
+                icon = data.get("icon", "")
                 if name:
                     existing = conn.execute("SELECT id FROM categories WHERE id = ?", (cat_id,)).fetchone()
                     if existing:
-                        conn.execute("UPDATE categories SET name = ? WHERE id = ?", (name, cat_id))
+                        conn.execute("UPDATE categories SET name = ?, parent_id = ?, icon = ? WHERE id = ?", (name, parent_id, icon, cat_id))
                     else:
-                        conn.execute("INSERT INTO categories (id, name) VALUES (?, ?)", (cat_id, name))
+                        conn.execute("INSERT INTO categories (id, name, parent_id, icon) VALUES (?, ?, ?, ?)", (cat_id, name, parent_id, icon))
+
+                    if "sub_categories" in data and isinstance(data["sub_categories"], list):
+                        subs = data["sub_categories"]
+                        current_sub_ids = [s.get("id") for s in subs if isinstance(s, dict) and s.get("id")]
+                        if current_sub_ids:
+                            placeholders = ','.join(['?'] * len(current_sub_ids))
+                            conn.execute(f"DELETE FROM sub_categories WHERE category_id = ? AND id NOT IN ({placeholders})", [cat_id] + current_sub_ids)
+                        else:
+                            conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
+
+                        for s in subs:
+                            if not isinstance(s, dict):
+                                continue
+                            s_id = s.get("id")
+                            s_name = s.get("name", "")
+                            s_icon = s.get("icon", "")
+                            if s_id and s_name:
+                                existing_sub = conn.execute("SELECT id FROM sub_categories WHERE id = ?", (s_id,)).fetchone()
+                                if existing_sub:
+                                    conn.execute("UPDATE sub_categories SET category_id = ?, name = ?, icon = ? WHERE id = ?", (cat_id, s_name, s_icon, s_id))
+                                else:
+                                    conn.execute("INSERT INTO sub_categories (id, category_id, name, icon) VALUES (?, ?, ?, ?)", (s_id, cat_id, s_name, s_icon))
+
+                                if "sub_sub_categories" in s and isinstance(s["sub_sub_categories"], list):
+                                    subsubs = s["sub_sub_categories"]
+                                    current_ssub_ids = [ss.get("id") for ss in subsubs if isinstance(ss, dict) and ss.get("id")]
+                                    if current_ssub_ids:
+                                        placeholders_ss = ','.join(['?'] * len(current_ssub_ids))
+                                        conn.execute(f"DELETE FROM sub_sub_categories WHERE sub_category_id = ? AND id NOT IN ({placeholders_ss})", [s_id] + current_ssub_ids)
+                                    else:
+                                        conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (s_id,))
+
+                                    for ss in subsubs:
+                                        if not isinstance(ss, dict):
+                                            continue
+                                        ss_id = ss.get("id")
+                                        ss_name = ss.get("name", "")
+                                        ss_icon = ss.get("icon", "")
+                                        if ss_id and ss_name:
+                                            existing_ssub = conn.execute("SELECT id FROM sub_sub_categories WHERE id = ?", (ss_id,)).fetchone()
+                                            if existing_ssub:
+                                                conn.execute("UPDATE sub_sub_categories SET sub_category_id = ?, name = ?, icon = ? WHERE id = ?", (s_id, ss_name, ss_icon, ss_id))
+                                            else:
+                                                conn.execute("INSERT INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss_id, s_id, ss_name, ss_icon))
+
             elif change.type.name == "REMOVED":
+                subs = conn.execute("SELECT id FROM sub_categories WHERE category_id = ?", (cat_id,)).fetchall()
+                for sub in subs:
+                    conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (sub["id"],))
+                conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
                 conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+
         conn.commit()
         conn.close()
         print(f"[remote_control] [SYNC] Real-time categories synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way categories sync failed: {e}")
+
+
+def _on_brands_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `brands` collection in Firestore.
+    Syncs brand updates in real time across servers.
+    """
+    try:
+        conn = get_connection()
+        for change in changes:
+            doc = change.document
+            data = doc.to_dict() or {}
+            try:
+                brand_id = int(doc.id)
+            except Exception:
+                continue
+
+            if change.type.name in ("ADDED", "MODIFIED"):
+                name = data.get("name", "")
+                logo = data.get("logo", "")
+                if name:
+                    existing = conn.execute("SELECT id FROM brands WHERE id = ?", (brand_id,)).fetchone()
+                    if existing:
+                        conn.execute("UPDATE brands SET name = ?, logo = ? WHERE id = ?", (name, logo, brand_id))
+                    else:
+                        conn.execute("INSERT INTO brands (id, name, logo) VALUES (?, ?, ?)", (brand_id, name, logo))
+            elif change.type.name == "REMOVED":
+                conn.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
+        conn.commit()
+        conn.close()
+        print(f"[remote_control] [SYNC] Real-time brands synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way brands sync failed: {e}")
 
 
 def _on_shop_settings_change(doc_snapshots, changes, read_time):
@@ -623,6 +883,148 @@ def _on_shop_settings_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] Two-way shop settings sync failed: {e}")
 
 
+def pull_all_from_cloud():
+    """Initial startup pull: Reads all categories, brands, products, packages, settings from Cloud Firestore into local SQLite."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+
+            conn = get_connection()
+            # 1. Pull Categories
+            cat_docs = db.collection("categories").stream()
+            for doc in cat_docs:
+                data = doc.to_dict() or {}
+                cat_id = data.get("id")
+                name = data.get("name", "")
+                icon = data.get("icon", "")
+                if cat_id and name:
+                    conn.execute("INSERT OR REPLACE INTO categories (id, name, icon) VALUES (?, ?, ?)", (cat_id, name, icon))
+                    subs = data.get("sub_categories", [])
+                    for s in subs:
+                        if isinstance(s, dict) and s.get("id") and s.get("name"):
+                            conn.execute("INSERT OR REPLACE INTO sub_categories (id, category_id, name, icon) VALUES (?, ?, ?, ?)", (s["id"], cat_id, s["name"], s.get("icon", "")))
+                            ssubs = s.get("sub_sub_categories", [])
+                            for ss in ssubs:
+                                if isinstance(ss, dict) and ss.get("id") and ss.get("name"):
+                                    conn.execute("INSERT OR REPLACE INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss["id"], s["id"], ss["name"], ss.get("icon", "")))
+
+            # 2. Pull Brands
+            brand_docs = db.collection("brands").stream()
+            for doc in brand_docs:
+                data = doc.to_dict() or {}
+                try:
+                    brand_id = int(doc.id)
+                    name = data.get("name", "")
+                    logo = data.get("logo", "")
+                    if name:
+                        conn.execute("INSERT OR REPLACE INTO brands (id, name, logo) VALUES (?, ?, ?)", (brand_id, name, logo))
+                except Exception:
+                    pass
+
+            # 3. Pull Products
+            prod_docs = db.collection("products").stream()
+            for doc in prod_docs:
+                data = doc.to_dict() or {}
+                doc_id = doc.id
+                sku = data.get("sku") or doc_id
+                prod_id = data.get("id")
+                name = data.get("name")
+                if not name:
+                    continue
+
+                brand = data.get("brand", "")
+                unit = data.get("unit", "")
+                category_id = data.get("category_id")
+                sub_category_id = data.get("sub_category_id")
+                sub_sub_category_id = data.get("sub_sub_category_id")
+                cost_price = float(data.get("cost_price") or 0)
+                mrp = float(data.get("mrp") or 0)
+                sell_price = float(data.get("sell_price") or 0)
+                vat_pct = float(data.get("vat_pct") or 0)
+                stock_qty = int(data.get("stock_qty") or 0)
+                low_stock_threshold = int(data.get("low_stock_threshold") or 5)
+                sl_number = int(data.get("sl_number") or 1)
+                description = data.get("description", "")
+                image_url = data.get("image_url", "")
+                is_trending = int(data.get("is_trending") or 0)
+                is_flash_sale = int(data.get("is_flash_sale") or 0)
+                is_offer = int(data.get("is_offer") or 0)
+                is_promotion = int(data.get("is_promotion") or 0)
+                offer_title = data.get("offer_title", "")
+                offer_type = data.get("offer_type", "")
+                offer_value = data.get("offer_value", "")
+                offer_base = data.get("offer_base", "mrp")
+                expiry_date = data.get("expiry_date", "")
+
+                existing = None
+                if sku:
+                    existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
+                if not existing and prod_id:
+                    existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+
+                if existing:
+                    conn.execute("""
+                        UPDATE products SET
+                            sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                            cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                            sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
+                            is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                        WHERE id=?
+                    """, (
+                        sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                        sl_number, description, image_url, is_trending, is_flash_sale,
+                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
+                        existing["id"]
+                    ))
+                else:
+                    conn.execute("""
+                        INSERT INTO products (
+                            sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                            cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                            sl_number, description, image_url, is_trending, is_flash_sale,
+                            is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                        sl_number, description, image_url, is_trending, is_flash_sale,
+                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                    ))
+
+            # 4. Pull Packages
+            pkg_docs = db.collection("packages").stream()
+            for doc in pkg_docs:
+                data = doc.to_dict() or {}
+                pkg_id = data.get("id")
+                name = data.get("name", "")
+                title = data.get("package_title") or name
+                price = float(data.get("price") or data.get("package_price") or 0)
+                desc = data.get("description", "")
+                img = data.get("image_url", "")
+                if pkg_id and title:
+                    conn.execute("INSERT OR REPLACE INTO packages (id, package_title, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, title, price, desc, img, datetime.now().isoformat()))
+
+            # 5. Pull Settings
+            setting_docs = db.collection("settings").stream()
+            for doc in setting_docs:
+                data = doc.to_dict() or {}
+                key = doc.id
+                val = data.get("value", "")
+                if key:
+                    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
+
+            conn.commit()
+            conn.close()
+            print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages & settings synced to local SQLite DB.")
+        except Exception as e:
+            print(f"[remote_control] pull_all_from_cloud error: {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
@@ -638,6 +1040,9 @@ def start():
                 push_full_backup()
                 time.sleep(300)
 
+        # Initial pull from Cloud Firestore on startup
+        pull_all_from_cloud()
+
         # Live listeners (Firebase Cloud -> All Servers & Apps)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
         db.collection("products").on_snapshot(_on_products_change)
@@ -645,6 +1050,7 @@ def start():
         db.collection("users").on_snapshot(_on_users_change)
         db.collection("packages").on_snapshot(_on_packages_change)
         db.collection("categories").on_snapshot(_on_categories_change)
+        db.collection("brands").on_snapshot(_on_brands_change)
         db.collection("settings").on_snapshot(_on_shop_settings_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()

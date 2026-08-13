@@ -114,6 +114,44 @@
   </button>
 </div>
 
+<!-- Point-in-Time Restore & Time Machine Card -->
+<div class="card" style="max-width:520px; margin-top:30px; border:2px solid #2563eb; background:#eff6ff; padding:20px; border-radius:12px;">
+  <h3 style="color:#1d4ed8; margin-top:0; display:flex; align-items:center; gap:8px; font-size:16px;">
+    ⏰ Datetime Point-in-Time Restore (কালানুক্রমিক ডাটা রিস্টোর)
+  </h3>
+  <p style="font-size:13px; color:#1e40af; margin-bottom:16px; line-height:1.4;">
+    আপনার ইচ্ছানুযায়ী অতীতের কোনো তারিখ ও সময় (Date & Time) নির্বাচন করে সেই মুহূর্তের ডাটাবেজ স্টেট রিস্টোর ও রিকভার করুন।
+  </p>
+
+  <div style="margin-bottom:12px;">
+    <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:6px; color:#0f172a;">
+      ১. অতীতের ব্যাকআপ স্ন্যাপশট থেকে নির্বাচন করুন:
+    </label>
+    <select id="snapshotSelect" style="width:100%; padding:10px; border:1px solid #93c5fd; border-radius:8px; font-size:13px; background:white;">
+      <option value="">-- ব্যাকআপ স্ন্যাপশট লোড হচ্ছে... --</option>
+    </select>
+  </div>
+
+  <div style="margin-bottom:16px;">
+    <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:6px; color:#0f172a;">
+      ২. অথবা নির্দিষ্ট তারিখ ও সময় লিখুন (Custom Date & Time):
+    </label>
+    <input type="datetime-local" id="restoreDatetimeInput" style="width:100%; padding:10px; border:1px solid #93c5fd; border-radius:8px; font-size:13px; background:white;">
+  </div>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <button type="button" class="btn" onclick="performSystemRestore()" id="btnSystemRestore" style="background:#2563eb; color:white; font-weight:bold; padding:10px 18px; border-radius:8px; border:none; cursor:pointer; font-size:13.5px; display:inline-flex; align-items:center; gap:6px;">
+      🔄 RESTORE TO SELECTED DATETIME
+    </button>
+    <button type="button" class="btn btn-outline" onclick="createManualSnapshot()" id="btnCreateSnapshot" style="padding:10px 14px; font-size:13px; border-color:#2563eb; color:#1d4ed8;">
+      📸 Create Manual Snapshot Now
+    </button>
+    <button type="button" class="btn" onclick="triggerForceCloudSync()" id="btnForceSync" style="background:#16a34a; color:white; font-weight:bold; padding:10px 16px; border-radius:8px; border:none; cursor:pointer; font-size:13px; display:inline-flex; align-items:center; gap:6px;">
+      ⚡ Force Live Cloud Sync Now
+    </button>
+  </div>
+</div>
+
 <!-- System Reset & 2FA Modal -->
 <div id="systemResetModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.75); z-index:9999; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
   <div class="modal-card card" style="width:100%; max-width:540px; background:white; border-radius:12px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.3); border:2px solid #ef4444;">
@@ -302,5 +340,124 @@ async function confirmSystemReset() {
     alert("Error performing system reset.");
   }
 }
+
+async function loadSnapshotList() {
+  try {
+    const res = await fetch('/api/snapshots');
+    const data = await res.json();
+    const select = document.getElementById('snapshotSelect');
+    if (data.success && data.snapshots.length > 0) {
+      select.innerHTML = '<option value="">-- পূর্বের স্ন্যাপশট থেকে নির্বাচন করুন --</option>';
+      data.snapshots.forEach(s => {
+        const timeFormatted = new Date(s.snapshot_time).toLocaleString();
+        select.innerHTML += `<option value="${s.id}">${timeFormatted} - ${s.label}</option>`;
+      });
+    } else {
+      select.innerHTML = '<option value="">(কোনো স্ন্যাপশট পাওয়া যায়নি - Create Snapshot-এ ক্লিক করুন)</option>';
+    }
+  } catch (err) {
+    console.error('Failed to load snapshots:', err);
+  }
+}
+
+async function createManualSnapshot() {
+  const label = prompt("পয়েন্ট-ইন-টাইম ব্যাকআপের জন্য বিবরণ/লেবেল লিখুন:", "Manual System Backup");
+  if (label === null) return;
+
+  const btn = document.getElementById('btnCreateSnapshot');
+  btn.disabled = true;
+  btn.innerText = "Creating Snapshot...";
+
+  try {
+    const res = await fetch('/admin/create-snapshot', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ label: label })
+    });
+    const data = await res.json();
+    btn.disabled = false;
+    btn.innerText = "📸 Create Manual Snapshot Now";
+
+    if (data.success) {
+      alert(data.message);
+      loadSnapshotList();
+    } else {
+      alert(data.message || "Could not create snapshot.");
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerText = "📸 Create Manual Snapshot Now";
+    alert("Network error: Could not create snapshot.");
+  }
+}
+
+async function performSystemRestore() {
+  const selectedSnapId = document.getElementById('snapshotSelect').value;
+  const customDatetime = document.getElementById('restoreDatetimeInput').value;
+
+  if (!selectedSnapId && !customDatetime) {
+    alert("অনুগ্রহ করে অতীতের একটি ব্যাকআপ স্ন্যাপশট অথবা নির্দিষ্ট Date & Time নির্বাচন করুন।");
+    return;
+  }
+
+  const targetDesc = selectedSnapId ? "স্ন্যাপশট #" + selectedSnapId : customDatetime;
+  if (!confirm(`আপনি কি নিশ্চিত যে সিস্টেম ডাটাবেজ ${targetDesc} সময়ের অবস্থায় রিস্টোর করতে চান?`)) {
+    return;
+  }
+
+  const btn = document.getElementById('btnSystemRestore');
+  btn.disabled = true;
+  btn.innerText = "Restoring Data...";
+
+  try {
+    const res = await fetch('/admin/system-restore', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        snapshot_id: selectedSnapId,
+        datetime: customDatetime
+      })
+    });
+    const data = await res.json();
+    btn.disabled = false;
+    btn.innerText = "🔄 RESTORE TO SELECTED DATETIME";
+
+    if (data.success) {
+      alert(data.message);
+      window.location.reload();
+    } else {
+      alert(data.message || "Failed to restore system.");
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerText = "🔄 RESTORE TO SELECTED DATETIME";
+    alert("Network error: Restore failed.");
+  }
+}
+
+async function triggerForceCloudSync() {
+  const btn = document.getElementById('btnForceSync');
+  btn.disabled = true;
+  btn.innerText = "Syncing with Cloud...";
+
+  try {
+    const res = await fetch('/admin/force-cloud-sync', { method: 'POST' });
+    const data = await res.json();
+    btn.disabled = false;
+    btn.innerText = "⚡ Force Live Cloud Sync Now";
+
+    if (data.success) {
+      alert("✅ " + data.message);
+    } else {
+      alert("⚠️ " + (data.message || "Sync failed."));
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerText = "⚡ Force Live Cloud Sync Now";
+    alert("Network error: Could not sync with cloud.");
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadSnapshotList);
 </script>
 {% endblock %}

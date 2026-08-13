@@ -265,7 +265,14 @@
         <td style="padding:10px;">{{ p.sku }}</td>
         <td style="padding:10px; font-weight:600; color:#0f172a;">{{ p.name }}</td>
         <td style="padding:10px; color:#475569;">{{ p.brand or '—' }}</td>
-        <td style="padding:10px; color:#475569;">{{ p.category_name or '—' }}</td>
+        <td style="padding:10px; color:#475569;">
+          <div style="font-weight:600; color:#0f172a;">{{ p.category_name or '—' }}</div>
+          {% if p.sub_category_name %}
+          <div style="font-size:12px; color:#0284c7; margin-top:2px;">
+            ↳ {{ p.sub_category_name }}{% if p.sub_sub_category_name %} <span style="color:#64748b;">➔</span> {{ p.sub_sub_category_name }}{% endif %}
+          </div>
+          {% endif %}
+        </td>
         <td style="padding:10px; text-align:right;">TK {{ "%.2f"|format(p.cost_price) }}</td>
         <td style="padding:10px; text-align:right;">{{ "TK %.2f"|format(p.mrp) if p.mrp > 0 else '—' }}</td>
         <td style="padding:10px; text-align:right; font-weight:bold; color:#16a34a;">TK {{ "%.2f"|format(p.sell_price) }}</td>

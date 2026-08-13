@@ -2,6 +2,8 @@ firebase_credentials.json
 __pycache__/
 *.pyc
 *.db
+*.db-wal
+*.db-shm
 .env
 .idea/
 .vscode/

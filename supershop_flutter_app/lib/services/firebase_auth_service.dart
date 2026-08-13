@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../firebase_options.dart';
 import 'api_service.dart';
 
 class FirebaseAuthService {
@@ -10,7 +11,9 @@ class FirebaseAuthService {
     if (_initialized) return;
     try {
       if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
       }
       _initialized = true;
     } catch (e) {

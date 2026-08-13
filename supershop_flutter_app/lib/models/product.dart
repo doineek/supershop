@@ -5,6 +5,7 @@ class Product {
   final String sku;
   final String name;
   final String brand;
+  final String unit;
   final int? categoryId;
   final String categoryName;
   final double mrp;
@@ -30,6 +31,7 @@ class Product {
     required this.sku,
     required this.name,
     this.brand = '',
+    this.unit = '',
     this.categoryId,
     this.categoryName = '',
     this.subCategoryId,
@@ -81,6 +83,17 @@ class Product {
     return sellPrice;
   }
 
+  bool get isComboPackage {
+    String u = unit.toLowerCase();
+    String n = name.toLowerCase();
+    String c = categoryName.toLowerCase();
+    String d = description.toLowerCase();
+    return u.contains('combo') || u.contains('package') ||
+           n.contains('📦') || n.contains('combo') || n.contains('package') ||
+           c.contains('combo') || c.contains('package') ||
+           d.contains('combo') || d.contains('package');
+  }
+
   factory Product.fromJson(Map<String, dynamic> json) {
     String img = (json['image_url'] ?? '').toString().trim();
 
@@ -89,6 +102,7 @@ class Product {
       sku: json['sku'] ?? '',
       name: json['name'] ?? '',
       brand: json['brand'] ?? '',
+      unit: (json['unit'] ?? json['unit_name'] ?? '').toString(),
       categoryId: json['category_id'],
       categoryName: json['category_name'] ?? '',
       subCategoryId: json['sub_category_id'],

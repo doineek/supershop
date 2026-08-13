@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'localization/app_localizations.dart';
 import 'providers/cart_provider.dart';
 import 'providers/locale_provider.dart';
@@ -14,7 +16,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     }
   } catch (e) {
     debugPrint("Firebase initializeApp note: $e");
@@ -60,34 +64,40 @@ class SupershopApp extends StatelessWidget {
               primarySwatch: Colors.purple,
               primaryColor: const Color(0xFFA855F7),
               useMaterial3: true,
-              scaffoldBackgroundColor: const Color(0xFF0F0716),
+              scaffoldBackgroundColor: const Color(0xFF121215), // Soothing Slate Black
               appBarTheme: const AppBarTheme(
-                backgroundColor: Color(0xFF2E1065),
-                foregroundColor: Colors.white,
-                elevation: 1,
-                titleTextStyle: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                backgroundColor: Color(0xFF1C1C21),
+                foregroundColor: Color(0xFFF4F4F5),
+                elevation: 0,
+                titleTextStyle: TextStyle(color: Color(0xFFF4F4F5), fontSize: 18, fontWeight: FontWeight.bold),
               ),
               cardTheme: CardThemeData(
-                color: const Color(0xFF1E1033),
-                elevation: 3,
+                color: const Color(0xFF1E1E24), // Soothing Slate Container
+                elevation: 1,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Color(0xFF4C1D95), width: 1.2),
+                  side: const BorderSide(color: Color(0xFF2E2E36), width: 1.0),
                 ),
               ),
               dialogTheme: DialogThemeData(
-                backgroundColor: const Color(0xFF1E1033),
+                backgroundColor: const Color(0xFF1E1E24),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: const BorderSide(color: Color(0xFF6B21A8), width: 1.5),
+                  side: const BorderSide(color: Color(0xFF3F3F46), width: 1.0),
                 ),
               ),
+              bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                backgroundColor: Color(0xFF1C1C21),
+                selectedItemColor: Color(0xFFA855F7),
+                unselectedItemColor: Color(0xFF71717A),
+              ),
+              dividerColor: const Color(0xFF27272A),
               textTheme: const TextTheme(
-                bodyLarge: TextStyle(color: Color(0xFFF3E8FF), fontSize: 16),
-                bodyMedium: TextStyle(color: Color(0xFFE9D5FF), fontSize: 14),
-                titleLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                titleMedium: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                labelLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                bodyLarge: TextStyle(color: Color(0xFFF4F4F5), fontSize: 16),
+                bodyMedium: TextStyle(color: Color(0xFFA1A1AA), fontSize: 14),
+                titleLarge: TextStyle(color: Color(0xFFFAFAFA), fontWeight: FontWeight.bold),
+                titleMedium: TextStyle(color: Color(0xFFF4F4F5), fontWeight: FontWeight.w600),
+                labelLarge: TextStyle(color: Color(0xFFFAFAFA), fontWeight: FontWeight.bold),
               ),
             ),
             locale: localeProv.locale,

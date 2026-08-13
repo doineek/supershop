@@ -7,6 +7,7 @@ import '../../localization/app_localizations.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/location_selector_dialog.dart';
+import 'home_screen.dart';
 import 'my_orders_screen.dart';
 import '../auth/login_screen.dart';
 
@@ -38,8 +39,40 @@ class _CartScreenState extends State<CartScreen> {
     if (code.isEmpty) return;
 
     final cartProv = Provider.of<CartProvider>(context, listen: false);
+
+    // Instant check: Coupons are not applicable to Combo Package items
+    bool hasComboPackage = cartProv.items.any((item) => item.product.isComboPackage);
+
+    if (hasComboPackage) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.orange, size: 28),
+              SizedBox(width: 8),
+              Text("Coupon Not Applicable"),
+            ],
+          ),
+          content: const Text(
+            "কম্বো প্যাকেজে কুপন/ভাউচার প্রযোজ্য নয়।\n(Coupons or Vouchers cannot be applied to Combo Package orders.)"
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     List cartItems = cartProv.items.map((item) => {
       'product_id': item.product.id,
+      'product_name': item.product.name,
+      'unit': item.product.unit,
       'quantity': item.quantity,
       'price': item.product.sellPrice,
     }).toList();
@@ -48,11 +81,15 @@ class _CartScreenState extends State<CartScreen> {
       _isVerifyingVoucher = true;
     });
 
-    var res = await ApiService.httpPost('/api/vouchers/apply', body: jsonEncode({
-      'code': code,
-      'cart_items': cartItems,
-      'delivery_charge': cartProv.deliveryCharge,
-    }));
+    var res = await ApiService.httpPost(
+      '/api/vouchers/apply',
+      body: jsonEncode({
+        'code': code,
+        'cart_items': cartItems,
+        'delivery_charge': cartProv.deliveryCharge,
+      }),
+      timeout: const Duration(seconds: 3),
+    );
 
     if (!mounted) return;
     setState(() {
@@ -62,7 +99,31 @@ class _CartScreenState extends State<CartScreen> {
     if (res != null && res.statusCode == 200) {
       var data = jsonDecode(res.body);
       if (data['success'] == true) {
-        double amt = (data['discount_amount'] as num).toDouble();
+        double amt = ((data['discount_amount'] ?? 0) as num).toDouble();
+        if (amt <= 0) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text("Coupon Not Applicable"),
+                ],
+              ),
+              content: Text(data['message'] ?? "কুপন/ভাউচার '$code' আপনার কার্টের পণ্যের জন্য প্রযোজ্য নয়। (Voucher '$code' is not valid for items in your cart.)"),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("OK"),
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+
         String type = data['target_type'] ?? 'product_discount';
         setState(() {
           _appliedVoucherCode = code;
@@ -184,19 +245,37 @@ class _CartScreenState extends State<CartScreen> {
         ? _phoneController.text.trim()
         : savedPhone;
 
+    custPhone = custPhone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (custPhone.startsWith('+88')) {
+      custPhone = custPhone.substring(3);
+    } else if (custPhone.startsWith('88') && custPhone.length == 13) {
+      custPhone = custPhone.substring(2);
+    }
+
     if (custPhone.isEmpty || custPhone.length != 11 || !custPhone.startsWith('01')) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Mobile number must start with '01' and be exactly 11 digits (e.g. 01700000000)."),
+        SnackBar(
+          content: Text("Mobile number must start with '01' and be exactly 11 digits (e.g. 01700000000). Current: '$custPhone'"),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    String address = _addressController.text.trim().isNotEmpty
-        ? _addressController.text.trim()
-        : (cartProv.addressDetails.isNotEmpty ? cartProv.addressDetails : "Delivery Location: ${cartProv.selectedArea}, ${cartProv.selectedDistrict}");
+    String detailAddress = _addressController.text.trim();
+    if (detailAddress.isEmpty && cartProv.addressDetails.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("House/Road Number & Detailed Address cannot be blank. Please enter your address details."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    String address = detailAddress.isNotEmpty
+        ? detailAddress
+        : cartProv.addressDetails;
 
     setState(() {
       _isSubmitting = true;
@@ -370,6 +449,20 @@ class _CartScreenState extends State<CartScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: "Back to All Products",
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+              );
+            }
+          },
+        ),
         title: Text(loc.translate('cart')),
         backgroundColor: Colors.green,
       ),
@@ -494,7 +587,8 @@ class _CartScreenState extends State<CartScreen> {
                           TextField(
                             controller: _addressController,
                             decoration: const InputDecoration(
-                              labelText: 'House/Road Number & Detailed Address',
+                              labelText: 'House/Road Number & Detailed Address *',
+                              hintText: 'e.g. House 12, Road 5, Block B',
                               border: OutlineInputBorder(),
                               isDense: true,
                             ),

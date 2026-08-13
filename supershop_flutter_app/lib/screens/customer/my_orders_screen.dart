@@ -6,6 +6,7 @@ import '../../localization/app_localizations.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
 import '../auth/login_screen.dart';
+import 'home_screen.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({Key? key}) : super(key: key);
@@ -147,6 +148,21 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: "Back to All Products",
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+                (route) => false,
+              );
+            }
+          },
+        ),
         title: Text(loc.translate('my_orders')),
         backgroundColor: Colors.green,
       ),
