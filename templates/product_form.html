@@ -90,6 +90,18 @@
 
   <div class="field-row" style="margin-top:10px;">
     <div class="field">
+      <label>Unit (পণ্য পরিমাপের একক)</label>
+      <select name="unit" style="width:100%; padding:10px 14px; border:1px solid var(--line); border-radius:8px; font-size:14px;">
+        <option value="Pcs" {{ 'selected' if not product or product.unit == 'Pcs' }}>Pcs (পিস)</option>
+        <option value="Kg" {{ 'selected' if product and product.unit == 'Kg' }}>Kg (কেজি)</option>
+        <option value="Gram" {{ 'selected' if product and product.unit == 'Gram' }}>Gram (গ্রাম)</option>
+        <option value="Litre" {{ 'selected' if product and product.unit == 'Litre' }}>Litre (লিটার)</option>
+        <option value="Box" {{ 'selected' if product and product.unit == 'Box' }}>Box (বক্স)</option>
+        <option value="Packet" {{ 'selected' if product and product.unit == 'Packet' }}>Packet (প্যাকেট)</option>
+        <option value="Combo Package" {{ 'selected' if product and product.unit == 'Combo Package' }}>Combo Package (কম্বো প্যাকেজ)</option>
+      </select>
+    </div>
+    <div class="field">
       <label>VAT % (0 = no VAT, e.g. 5, 7.5, 15)</label>
       <input type="number" step="0.01" name="vat_pct" min="0" max="100" value="{{ product.vat_pct if product else 0 }}">
     </div>

@@ -79,7 +79,11 @@ class ApiService {
       } catch (_) {}
     }
 
-    // 1. Direct Local Wi-Fi & PC Servers (highest priority for local development & POS)
+    // 1. Global 24/7 Online Production Server (Fastest and always online for mobile app & web)
+    const String cloudUrl = "https://supershop-mj0g.onrender.com";
+    if (!list.contains(cloudUrl)) list.add(cloudUrl);
+
+    // 2. Direct Local Wi-Fi & PC Servers
     final localIps = [
       "http://127.0.0.1:5000",
       "http://10.0.2.2:5000",
@@ -92,10 +96,6 @@ class ApiService {
       if (!list.contains(ip)) list.add(ip);
     }
 
-    // 2. Global 24/7 Online Production Server (fallback for remote mobile access)
-    const String cloudUrl = "https://supershop-mj0g.onrender.com";
-    if (!list.contains(cloudUrl)) list.add(cloudUrl);
-
     return list;
   }
 
@@ -104,9 +104,11 @@ class ApiService {
   }
 
   static Future<http.Response?> httpGet(String path, {Duration timeout = const Duration(seconds: 4)}) async {
-    for (String serverUrl in candidateUrls) {
+    List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
+    for (String serverUrl in urlsToTry) {
       try {
-        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
+        final currentTimeout = _activeUrl.isNotEmpty ? timeout : const Duration(milliseconds: 1500);
+        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(currentTimeout);
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
           return res;
@@ -121,17 +123,32 @@ class ApiService {
         }
       }
     }
+
+    // Fallback pass if _activeUrl was stale
+    if (_activeUrl.isEmpty && urlsToTry.length == 1) {
+      for (String serverUrl in candidateUrls) {
+        try {
+          final res = await http.get(Uri.parse('$serverUrl$path')).timeout(const Duration(milliseconds: 1500));
+          if (_isValidJsonResponse(res)) {
+            _activeUrl = serverUrl;
+            return res;
+          }
+        } catch (_) {}
+      }
+    }
     return null;
   }
 
   static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 5)}) async {
-    for (String serverUrl in candidateUrls) {
+    List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
+    for (String serverUrl in urlsToTry) {
       try {
+        final currentTimeout = _activeUrl.isNotEmpty ? timeout : const Duration(milliseconds: 2000);
         final res = await http.post(
           Uri.parse('$serverUrl$path'),
           headers: headers ?? {'Content-Type': 'application/json'},
           body: body,
-        ).timeout(timeout);
+        ).timeout(currentTimeout);
 
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
