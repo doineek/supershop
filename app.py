@@ -17,7 +17,7 @@ import sqlite3
 
 from database import (
     get_connection, init_db, round_to_whole, create_product_units,
-    generate_invoice_number, get_all_settings, update_settings
+    generate_invoice_number, get_all_settings, update_settings, execute_with_retry
 )
 from barcode_utils import generate_barcode_svg
 import remote_control
@@ -303,7 +303,7 @@ def new_product():
         offer_base = request.form.get("offer_base", "mrp").strip()
         expiry_date = request.form.get("expiry_date", "").strip()
 
-        try:
+        def _do_insert():
             cur = conn.cursor()
             try:
                 cur.execute(
@@ -324,11 +324,19 @@ def new_product():
             new_product_id = cur.lastrowid
             create_product_units(conn, new_product_id, stock_qty)
             conn.commit()
+            return new_product_id
+
+        try:
+            new_product_id = execute_with_retry(_do_insert)
             conn.close()
             remote_control.push_product_to_cloud(new_product_id)
             flash(f'Product "{name}" added with {stock_qty} printable tag(s).', "success")
             return redirect(url_for("products"))
         except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
             flash(f"Could not save product: {e}", "error")
     conn.close()
     return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=None)
@@ -391,7 +399,7 @@ def edit_product(product_id):
         offer_base = request.form.get("offer_base", "mrp").strip()
         expiry_date = request.form.get("expiry_date", "").strip()
 
-        try:
+        def _do_update():
             try:
                 conn.execute("""
                     UPDATE products SET sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?, cost_price=?, mrp=?, sell_price=?,
@@ -470,11 +478,15 @@ def edit_product(product_id):
             if new_stock_qty > old_stock_qty:
                 added = new_stock_qty - old_stock_qty
                 create_product_units(conn, product_id, added)
-                flash(f"Product updated. {added} new printable tag(s) created for the restock.", "success")
+            conn.commit()
+
+        try:
+            execute_with_retry(_do_update)
+            conn.close()
+            if new_stock_qty > old_stock_qty:
+                flash(f"Product updated. {new_stock_qty - old_stock_qty} new printable tag(s) created for the restock.", "success")
             else:
                 flash("Product updated.", "success")
-            conn.commit()
-            conn.close()
             remote_control.push_product_to_cloud(product_id)
             return redirect(url_for("products"))
         except Exception as e:

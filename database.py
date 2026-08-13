@@ -10,15 +10,34 @@ from datetime import datetime
 import math
 import random
 
+import time
+
 DB_NAME = "supershop.db"
 
 
 def get_connection():
     conn = sqlite3.connect(DB_NAME, timeout=60.0)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 60000")
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 60000")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except Exception:
+        pass
     return conn
+
+
+def execute_with_retry(fn, max_retries=5, delay=0.2):
+    """Executes a callable DB transaction with automatic exponential retry if database is locked."""
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() and attempt < max_retries - 1:
+                time.sleep(delay * (1.5 ** attempt))
+            else:
+                raise
 
 
 def init_db():

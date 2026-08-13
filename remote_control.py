@@ -32,7 +32,7 @@ _db = None
 _state_lock = threading.Lock()
 
 
-B64_FIREBASE_CRED = "eyJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsICJwcm9qZWN0X2lkIjogImRvaW5lZWstcG9zLWU0MDIzIiwgInByaXZhdGVfa2V5X2lkIjogImFjZmFiMjMyNWZhZTM3MDk5ODc2NGU2YmZjYTY3ZWFmNmIyNDAxOWUiLCAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tXG5NSUlFdmdJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLZ3dnZ1NrQWdFQUFvSUJBUURRMzMwbXprY3pWU2JoXG5OVzJ4Nm4zQnBCVGtyRlNLRzFBZy9XL2lqcU9vM3B0MlIwSXQ0SGZPdmVHYTBDZ1NXTERTUlBpK2NiVTFVUDhTXG5rVkdlZTg3YlVPU2Zqa0IwU2VLZVlJUWxnREs2dkEySTlLTm5yOXRvT20xdG9tVjJZN2xSaEgwd3hVNk8yaHJEXG4zU2lhc0F0emRtZ3BMMHZIa0xkalRlUXhDVXlyaXVzK0UwZFIrNzUweTdldWY4ZWFrcmRML3lKdnBTNHZzSDA1XG5tQkRnTUc3RWtkbml5VFoxdFVhRTJGSWxaZVN5V3NBZ2gwTzROOHBjc01HdENvZzFKTGl1cnl5dVZCUXQwSjNSXG42K0d3aS9zTGtwNzR5VWNDWjFwdU82Y1ZJVmpneW4zeG1OdkZOYmEwUi9QNnVHRzVpa0NYMW9taUVvUEI2eVNzXG4yS3NxN01mTEFnTUJBQUVDZ2dFQUVqU3VBNWc1UVRLQk1yZGx6MUNCYU81MHI4Q01RZGx0bTQwdzdRNFh4UndFXG54WmpOSGozbTAzWUkyR1gxQ0RHdUtvc1R6MWhqNkxqSVNEQmR3b2hIYmRCWU44YStFWG9iTHZONkJvd1h0VFVNXG45NklJZ3RJampWWFh2SldmYmJsSzFETWpJbGJLL25mbzhLZUhQQ3h2WXhTd0J0NzJKazAraVlEOE55dE9BU21iXG5SY0FQQkIydVFabUl3MUs5RmhhRnlXVXcwUGN2aWx0MlY3TVJHQ2JIeVNwS2U3cDNIU2JnbjFsOS9Ib0xMMnRrXG5nNTEweXR6WmlWQ1hFUlhZd0tUNHd2RkFkM3hpVHBjSWNPMHhjc0kwSnBQWSt6clVYYmFZSXNFaGZtcUlzNGFJXG5DSG5LU09GR05kRjV1bzJJRUpVMEUvZE1OODgxOHpFa0tydzQ2NUFHaVFLQmdRRDBpMXRXYmwrLzJKWElnSVUvXG5JRzc1ZUxjdk5zaWFaUFhVTWdNU2JaZDE2Z2kySDQvM3E3elJNK25ldldvaDJMakc5ekx6a3NYRWNHSjdKckZpXG5BU2NOQnltQ1lNZTRVREgwNmxqNkgyYUdXUEpZYjBpeWtxeUE4eXZQTlhrYVE1VytvNFdDdGVwejlneHgwQlErXG5EdU5qUUlvQjRJVDhrN1JhQUNmTFZPeUh2d0tCZ1FEYXFGbnhvTkY0OFlTL2lFbjFGbHA3Unp2MXdUQ1Jnd29aXG45UHJ4YlM0MXV1LzkzT2UwRXFWOFFKazk2YnpFRlk0RGU4a3orUmdpdDQxdTI3SUdkMzdBRkQ1VXNBT2krVXptXG5lNDR5ZEoxVGNJMnVtRVVaSUF6Ty9rVG9qT0hQNDBIRGRTSHdSRFgwVjQ5SjRKUmxldkQ5U1dlQU9PZ2NUczQ4XG5ocVBrczFpaTlRS0JnUUNFbDJMSXRFTzZNMmJUTmN3SmRENTNpVnBaZ1N5M2VmSklRVzJrK2tMYkxpL1cvN29CXG5vZDVZMS9zQVNGZFpUcmF4T3Fzbm9mY1ZFWkowRDRDeUVNbnBxRzU3UUpwSmQwSCs5Mm1UQkorRVRJbnFKVHlYXG5oaXQrSjFzam1HeTNMdG5zYWFFa1JCcUJFWEdoN0I1dG40anU4YmxpVnlnRUF0b1F5bkRKTUp5bTVRS0JnRmxGXG5wTHMvSW1iVGpKUTZTNSt4eWExTlR4Q3VHR3RBYWU1aEU5ZGY4UjdrdkxrVDZOR2ZUMHNrZ0t4RGN0dEh4WnhzXG5mS0Fva2c4U2k3NzRHWDRFYVk1NGRWNVVJcGYyV3N3N0k3bzczRVBGejBLNlRuUE1udzRmeC9oK0ZHK3c1QmV1XG5DZll6a3llNFcvc1lvdDJ2elJaTVV1S0oyVkk5Wm54VnFESm1lc2pGQW9HQkFNdjJnazJHOEZrQlo5bVBuRitMXG5FZWlLMi81YTdYdXlwTEdEb1Bvcmx0NnZuYlBkV0xsaVZEZDRsQ3QxL3VoVXNDK1V3QUhWV1Frdk04SnBKOUFJXG5KVEJwZGtid1kzci8wd2sxdXQvMURPN1h4T1ZNVzJiRnhHRjd1ZU5TZ0E4blFBZDJMK0NuY2l5R1I3bVZhb2V2XG50R3o3MzJrNnowRmpZUWdCcnpWRlpBMUNcbi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS1cbiIsICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAiY2xpZW50X2lkIjogIjExMjQyOTg5NDMxNTI5MTA0MDE1MiIsICJhdXRoX3VyaSI6ICJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20vby9vYXV0aDIvYXV0aCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsICJjbGllbnRfeDUwOV9jZXJ0X3VybCI6ICJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAidW5pdmVyc2VfZG9tYWluIjogImdvb2dsZWFwaXMuY29tIn0="
+B64_FIREBASE_CRED = "eyJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsICJwcm9qZWN0X2lkIjogImRvaW5lZWstcG9zLWU0MDIzIiwgInByaXZhdGVfa2V5X2lkIjogImRvaW5lZWstcG9zLWU0MDIzIiwgInByaXZhdGVfa2V5IjogIi0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZnSUJBREFOR2txaGtpRzl3MEJBUUVGQUFTQ0JLZ3dnZ1NrQWdFQUFvSUJBUURRMzMwbXprY3pWU2JoXG5OVzJ4Nm4zQnBCVGtyRlNLRzFBZy9XL2lqcU9vM3B0MlIwSXQ0SGZPdmVHYTBDZ1NXTERTUlBpK2NiVTFVUDhTXG5rVkdlZTg3YlVPU2Zqa0IwU2VLZVlJUWxnREs2dkEySTlLTm5yOXRvT20xdG9tVjJZN2xSaEgwd3hVNk8yaHJEXG4zU2lhc0F0emRtZ3BMMHZIa0xkalRlUXhDVXlyaXVzK0UwZFIrNzUweTdldWY4ZWFrcmRML3lKdnBTNHZzSDA1XG5tQkRnTUc3RWtkbml5VFoxdFVhRTJGSWxaZVN5V3NBZ2gwTzROOHBjc01HdENvZzFKTGl1cnl5dVZCUXQwSjNSXG42K0d3aS9zTGtwNzR5VWNDWjFwdU82Y1ZJVmpneW4zeG1OdkZOYmEwUi9QNnVHRzVpa0NYMW9taUVvUEI2eVNzXG4yS3NxN01mTEFnTUJBQUVDZ2dFQUVqU3VBNWc1UVRLQk1yZGx6MUNCYU81MHI4Q01RZGx0bTQwdzdRNFh4UndFXG54WmpOSGozbTAzWUkyR1gxQ0RHdUtvc1R6MWhqNkxqSVNEQmR3b2hIYmRCWU44YStFWG9iTHZONkJvd1h0VFVNXG45NklJZ3RJampWWFh2SldmYmJsSzFETWpJbGJLL25mbzhLZUhQQ3h2WXhTd0J0NzJKazAraVlEOE55dE9BU21iXG5SY0FQQkIydVFabUl3MUs5RmhhRnlXVXcwUGN2aWx0MlY3TVJHQ2JIeVNwS2U3cDNIU2JnbjFsOS9Ib0xMMnRrXG5nNTEweXR6WmlWQ1hFUlhZd0tUNHd2RkFkM3hpVHBjSWNPMHhjc0kwSnBQWSt6clVYYmFZSXNFaGZtcUlzNGFJXG5DSG5LU09GR05kRjV1bzJJRUpVMEUvZE1OODgxOHpFa0tydzQ2NUFHaVFLQmdRRDBpMXRXYmwrLzJKWElnSVUvXG5JRzc1ZUxjdk5zaWFaUFhVTWdNU2JaZDE2Z2kySDQvM3E3elJNK25ldldvaDJMakc5ekx6a3NYRWNHSjdKckZpXG5BU2NOQnltQ1lNZTRVREgwNmxqNkgyYUdXUEpZYjBpeWtxeUE4eXZQTlhrYVE1VytvNFdDdGVwejlneHgwQlErXG5EdU5qUUlvQjRJVDhrN1JhQUNmTFZPeUh2d0tCZ1FEYXFGbnhvTkY0OFlTL2lFbjFGbHA3Unp2MXdUQ1Jnd29aXG45UHJ4YlM0MXV1LzkzT2UwRXFWOFFKazk2YnpFRlk0RGU4a3orUmdpdDQxdTI3SUdkMzdBRkQ1VXNBT2krVXptXG5lNDR5ZEoxVGNJMnVtRVVaSUF6Ty9rVG9qT0hQNDBIRGRTSHdSRFgwVjQ5SjRKUmxldkQ5U1dlQU9PZ2NUczQ4XG5ocVBrczFpaTlRS0JnUUNFbDJMSXRFTzZNMmJUTmN3SmRENTNpVnBaZ1N5M2VmSklRVzJrK2tMYkxpL1cvN29CXG5vZDVZMS9zQVNGZFpUcmF4T3Fzbm9mY1ZFWkowRDRDeUVNbnBxRzU3UUpwSmQwSCs5Mm1UQkorRVRJbnFKVHlYXG5oaXQrSjFzam1HeTNMdG5zYWFFa1JCcUJFWEdoN0I1dG40anU4YmxpVnlnRUF0b1F5bkRKTUp5bTVRS0JnRmxGXG5wTHMvSW1iVGpKUTZTNSt4eWExTlR4Q3VHR3RBYWU1aEU5ZGY4UjdrdkxrVDZOR2ZUMHNrZ0t4RGN0dEh4WnhzXG5mS0Fva2c4U2k3NzRHWDRFYVk1NGRWNVVJcGYyV3N3N0k3bzczRVBGejBLNlRuUE1udzRmeC9oK0ZHK3c1QmV1XG5DZll6a3llNFcvc1lvdDJ2elJaTVV1S0oyVkk5Wm54VnFESm1lc2pGQW9HQkFNdjJnazJHOEZrQlo5bVBuRitMXG5FZWlLMi81YTdYdXlwTEdEb1Bvcmx0NnZuYlBkV0xsaVZEZDRsQ3QxL3VoVXNDK1V3QUhWV1Frdk04SnBKOUFJXG5KVEJwZGtid1kzci8wd2sxdXQvMURPN1h4T1ZNVzJiRnhHRjd1ZU5TZ0E4blFBZDJMK0NuY2l5R1I3bVZhb2V2XG50R3o3MzJrNnowRmpZUWdCcnpWRlpBMUNcbi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS1cbiIsICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAiY2xpZW50X2lkIjogIjExMjQyOTg5NDMxNTI5MTA0MDE1MiIsICJhdXRoX3VyaSI6ICJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20vby9vYXV0aDIvYXV0aCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsICJjbGllbnRfeDUwOV9jZXJ0X3VybCI6ICJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAidW5pdmVyc2VfZG9tYWluIjogImdvb2dsZWFwaXMuY29tIn0="
 
 def _get_fallback_cred():
     try:
@@ -481,83 +481,89 @@ def _on_products_change(doc_snapshots, changes, read_time):
     Live listener watching `products` collection in Firestore.
     Syncs product creation, updates, and deletions in real time across servers.
     """
-    try:
+    def _do_sync():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            doc_id = doc.id
-            sku = data.get("sku") or doc_id
-            prod_id = data.get("id")
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                doc_id = doc.id
+                sku = data.get("sku") or doc_id
+                prod_id = data.get("id")
 
-            if change.type.name in ("ADDED", "MODIFIED"):
-                name = data.get("name")
-                if not name:
-                    continue
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    name = data.get("name")
+                    if not name:
+                        continue
 
-                brand = data.get("brand", "")
-                category_id = data.get("category_id")
-                sub_category_id = data.get("sub_category_id")
-                sub_sub_category_id = data.get("sub_sub_category_id")
-                cost_price = float(data.get("cost_price") or 0)
-                mrp = float(data.get("mrp") or 0)
-                sell_price = float(data.get("sell_price") or 0)
-                vat_pct = float(data.get("vat_pct") or 0)
-                stock_qty = int(data.get("stock_qty") or 0)
-                low_stock_threshold = int(data.get("low_stock_threshold") or 5)
-                sl_number = int(data.get("sl_number") or 1)
-                description = data.get("description", "")
-                image_url = data.get("image_url", "")
-                is_trending = int(data.get("is_trending") or 0)
-                is_flash_sale = int(data.get("is_flash_sale") or 0)
-                is_offer = int(data.get("is_offer") or 0)
-                is_promotion = int(data.get("is_promotion") or 0)
-                offer_title = data.get("offer_title", "")
-                offer_type = data.get("offer_type", "")
-                offer_value = data.get("offer_value", "")
-                offer_base = data.get("offer_base", "mrp")
-                expiry_date = data.get("expiry_date", "")
+                    brand = data.get("brand", "")
+                    unit = data.get("unit", "")
+                    category_id = data.get("category_id")
+                    sub_category_id = data.get("sub_category_id")
+                    sub_sub_category_id = data.get("sub_sub_category_id")
+                    cost_price = float(data.get("cost_price") or 0)
+                    mrp = float(data.get("mrp") or 0)
+                    sell_price = float(data.get("sell_price") or 0)
+                    vat_pct = float(data.get("vat_pct") or 0)
+                    stock_qty = int(data.get("stock_qty") or 0)
+                    low_stock_threshold = int(data.get("low_stock_threshold") or 5)
+                    sl_number = int(data.get("sl_number") or 1)
+                    description = data.get("description", "")
+                    image_url = data.get("image_url", "")
+                    is_trending = int(data.get("is_trending") or 0)
+                    is_flash_sale = int(data.get("is_flash_sale") or 0)
+                    is_offer = int(data.get("is_offer") or 0)
+                    is_promotion = int(data.get("is_promotion") or 0)
+                    offer_title = data.get("offer_title", "")
+                    offer_type = data.get("offer_type", "")
+                    offer_value = data.get("offer_value", "")
+                    offer_base = data.get("offer_base", "mrp")
+                    expiry_date = data.get("expiry_date", "")
 
-                existing = None
-                if sku:
-                    existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
-                if not existing and prod_id:
-                    existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+                    existing = None
+                    if sku:
+                        existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
+                    if not existing and prod_id:
+                        existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
 
-                if existing:
-                    conn.execute("""
-                        UPDATE products SET
-                            sku=?, name=?, brand=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
-                            cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
-                            sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
-                            is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
-                        WHERE id=?
-                    """, (
-                        sku, name, brand, category_id, sub_category_id, sub_sub_category_id,
-                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
-                        sl_number, description, image_url, is_trending, is_flash_sale,
-                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
-                        existing["id"]
-                    ))
-                else:
-                    conn.execute("""
-                        INSERT INTO products (
-                            sku, name, brand, category_id, sub_category_id, sub_sub_category_id,
+                    if existing:
+                        conn.execute("""
+                            UPDATE products SET
+                                sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                                cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                                sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
+                                is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                            WHERE id=?
+                        """, (
+                            sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                            cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                            sl_number, description, image_url, is_trending, is_flash_sale,
+                            is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
+                            existing["id"]
+                        ))
+                    else:
+                        conn.execute("""
+                            INSERT INTO products (
+                                sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                                cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                                sl_number, description, image_url, is_trending, is_flash_sale,
+                                is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
                             cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
                             sl_number, description, image_url, is_trending, is_flash_sale,
                             is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        sku, name, brand, category_id, sub_category_id, sub_sub_category_id,
-                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
-                        sl_number, description, image_url, is_trending, is_flash_sale,
-                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
-                    ))
+                        ))
 
-            elif change.type.name == "REMOVED":
-                conn.execute("DELETE FROM products WHERE sku=? OR id=?", (sku, prod_id or sku))
-        conn.commit()
-        conn.close()
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM products WHERE sku=? OR id=?", (sku, prod_id or sku))
+            conn.commit()
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(_do_sync)
         print(f"[remote_control] [SYNC] Two-Way Product Sync updated local SQLite DB from Firebase Console.")
     except Exception as e:
         print(f"[remote_control] Two-way product sync failed: {e}")
