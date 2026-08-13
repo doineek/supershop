@@ -914,138 +914,144 @@ def pull_all_from_cloud():
             if not db:
                 return
 
-            conn = get_connection()
-            # 1. Pull Categories
-            cat_docs = db.collection("categories").stream()
-            for doc in cat_docs:
-                data = doc.to_dict() or {}
-                cat_id = data.get("id")
-                name = data.get("name", "")
-                icon = data.get("icon", "")
-                if cat_id and name:
-                    conn.execute("INSERT OR REPLACE INTO categories (id, name, icon) VALUES (?, ?, ?)", (cat_id, name, icon))
-                    subs = data.get("sub_categories", [])
-                    for s in subs:
-                        if isinstance(s, dict) and s.get("id") and s.get("name"):
-                            conn.execute("INSERT OR REPLACE INTO sub_categories (id, category_id, name, icon) VALUES (?, ?, ?, ?)", (s["id"], cat_id, s["name"], s.get("icon", "")))
-                            ssubs = s.get("sub_sub_categories", [])
-                            for ss in ssubs:
-                                if isinstance(ss, dict) and ss.get("id") and ss.get("name"):
-                                    conn.execute("INSERT OR REPLACE INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss["id"], s["id"], ss["name"], ss.get("icon", "")))
+            # Fetch all data from Firestore FIRST (no lock needed for reads)
+            cat_docs   = list(db.collection("categories").stream())
+            brand_docs = list(db.collection("brands").stream())
+            prod_docs  = list(db.collection("products").stream())
+            pkg_docs   = list(db.collection("packages").stream())
+            setting_docs = list(db.collection("settings").stream())
 
-            # 2. Pull Brands
-            brand_docs = db.collection("brands").stream()
-            for doc in brand_docs:
-                data = doc.to_dict() or {}
+            # Now write everything in ONE locked transaction
+            def _do_write():
+                conn = get_connection()
                 try:
-                    brand_id = int(doc.id)
-                    name = data.get("name", "")
-                    logo = data.get("logo", "")
-                    if name:
-                        conn.execute("INSERT OR REPLACE INTO brands (id, name, logo) VALUES (?, ?, ?)", (brand_id, name, logo))
-                except Exception:
-                    pass
+                    # 1. Pull Categories
+                    for doc in cat_docs:
+                        data = doc.to_dict() or {}
+                        cat_id = data.get("id")
+                        name = data.get("name", "")
+                        icon = data.get("icon", "")
+                        if cat_id and name:
+                            conn.execute("INSERT OR REPLACE INTO categories (id, name, icon) VALUES (?, ?, ?)", (cat_id, name, icon))
+                            subs = data.get("sub_categories", [])
+                            for s in subs:
+                                if isinstance(s, dict) and s.get("id") and s.get("name"):
+                                    conn.execute("INSERT OR REPLACE INTO sub_categories (id, category_id, name, icon) VALUES (?, ?, ?, ?)", (s["id"], cat_id, s["name"], s.get("icon", "")))
+                                    ssubs = s.get("sub_sub_categories", [])
+                                    for ss in ssubs:
+                                        if isinstance(ss, dict) and ss.get("id") and ss.get("name"):
+                                            conn.execute("INSERT OR REPLACE INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss["id"], s["id"], ss["name"], ss.get("icon", "")))
 
-            # 3. Pull Products
-            prod_docs = db.collection("products").stream()
-            for doc in prod_docs:
-                data = doc.to_dict() or {}
-                doc_id = doc.id
-                sku = data.get("sku") or doc_id
-                prod_id = data.get("id")
-                name = data.get("name")
-                if not name:
-                    continue
+                    # 2. Pull Brands
+                    for doc in brand_docs:
+                        data = doc.to_dict() or {}
+                        try:
+                            brand_id = int(doc.id)
+                            name = data.get("name", "")
+                            logo = data.get("logo", "")
+                            if name:
+                                conn.execute("INSERT OR REPLACE INTO brands (id, name, logo) VALUES (?, ?, ?)", (brand_id, name, logo))
+                        except Exception:
+                            pass
 
-                brand = data.get("brand", "")
-                unit = data.get("unit", "")
-                category_id = data.get("category_id")
-                sub_category_id = data.get("sub_category_id")
-                sub_sub_category_id = data.get("sub_sub_category_id")
-                cost_price = float(data.get("cost_price") or 0)
-                mrp = float(data.get("mrp") or 0)
-                sell_price = float(data.get("sell_price") or 0)
-                vat_pct = float(data.get("vat_pct") or 0)
-                stock_qty = int(data.get("stock_qty") or 0)
-                low_stock_threshold = int(data.get("low_stock_threshold") or 5)
-                sl_number = int(data.get("sl_number") or 1)
-                description = data.get("description", "")
-                image_url = data.get("image_url", "")
-                is_trending = int(data.get("is_trending") or 0)
-                is_flash_sale = int(data.get("is_flash_sale") or 0)
-                is_offer = int(data.get("is_offer") or 0)
-                is_promotion = int(data.get("is_promotion") or 0)
-                offer_title = data.get("offer_title", "")
-                offer_type = data.get("offer_type", "")
-                offer_value = data.get("offer_value", "")
-                offer_base = data.get("offer_base", "mrp")
-                expiry_date = data.get("expiry_date", "")
+                    # 3. Pull Products
+                    for doc in prod_docs:
+                        data = doc.to_dict() or {}
+                        doc_id = doc.id
+                        sku = data.get("sku") or doc_id
+                        prod_id = data.get("id")
+                        name = data.get("name")
+                        if not name:
+                            continue
+                        brand = data.get("brand", "")
+                        unit = data.get("unit", "")
+                        category_id = data.get("category_id")
+                        sub_category_id = data.get("sub_category_id")
+                        sub_sub_category_id = data.get("sub_sub_category_id")
+                        cost_price = float(data.get("cost_price") or 0)
+                        mrp = float(data.get("mrp") or 0)
+                        sell_price = float(data.get("sell_price") or 0)
+                        vat_pct = float(data.get("vat_pct") or 0)
+                        stock_qty = int(data.get("stock_qty") or 0)
+                        low_stock_threshold = int(data.get("low_stock_threshold") or 5)
+                        sl_number = int(data.get("sl_number") or 1)
+                        description = data.get("description", "")
+                        image_url = data.get("image_url", "")
+                        is_trending = int(data.get("is_trending") or 0)
+                        is_flash_sale = int(data.get("is_flash_sale") or 0)
+                        is_offer = int(data.get("is_offer") or 0)
+                        is_promotion = int(data.get("is_promotion") or 0)
+                        offer_title = data.get("offer_title", "")
+                        offer_type = data.get("offer_type", "")
+                        offer_value = data.get("offer_value", "")
+                        offer_base = data.get("offer_base", "mrp")
+                        expiry_date = data.get("expiry_date", "")
+                        existing = None
+                        if sku:
+                            existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
+                        if not existing and prod_id:
+                            existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+                        if existing:
+                            conn.execute("""
+                                UPDATE products SET
+                                    sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                                    cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                                    sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
+                                    is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                                WHERE id=?
+                            """, (
+                                sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                                cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                                sl_number, description, image_url, is_trending, is_flash_sale,
+                                is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
+                                existing["id"]
+                            ))
+                        else:
+                            conn.execute("""
+                                INSERT INTO products (
+                                    sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                                    cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                                    sl_number, description, image_url, is_trending, is_flash_sale,
+                                    is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                                cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                                sl_number, description, image_url, is_trending, is_flash_sale,
+                                is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                            ))
 
-                existing = None
-                if sku:
-                    existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
-                if not existing and prod_id:
-                    existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+                    # 4. Pull Packages
+                    for doc in pkg_docs:
+                        data = doc.to_dict() or {}
+                        pkg_id = data.get("id")
+                        name = data.get("name", "")
+                        title = data.get("package_title") or name
+                        price = float(data.get("price") or data.get("package_price") or 0)
+                        desc = data.get("description", "")
+                        img = data.get("image_url", "")
+                        if pkg_id and title:
+                            conn.execute("INSERT OR REPLACE INTO packages (id, package_title, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, title, price, desc, img, datetime.now().isoformat()))
 
-                if existing:
-                    conn.execute("""
-                        UPDATE products SET
-                            sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
-                            cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
-                            sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
-                            is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
-                        WHERE id=?
-                    """, (
-                        sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
-                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
-                        sl_number, description, image_url, is_trending, is_flash_sale,
-                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
-                        existing["id"]
-                    ))
-                else:
-                    conn.execute("""
-                        INSERT INTO products (
-                            sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
-                            cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
-                            sl_number, description, image_url, is_trending, is_flash_sale,
-                            is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
-                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
-                        sl_number, description, image_url, is_trending, is_flash_sale,
-                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
-                    ))
+                    # 5. Pull Settings
+                    for doc in setting_docs:
+                        data = doc.to_dict() or {}
+                        key = doc.id
+                        val = data.get("value", "")
+                        if key:
+                            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
 
-            # 4. Pull Packages
-            pkg_docs = db.collection("packages").stream()
-            for doc in pkg_docs:
-                data = doc.to_dict() or {}
-                pkg_id = data.get("id")
-                name = data.get("name", "")
-                title = data.get("package_title") or name
-                price = float(data.get("price") or data.get("package_price") or 0)
-                desc = data.get("description", "")
-                img = data.get("image_url", "")
-                if pkg_id and title:
-                    conn.execute("INSERT OR REPLACE INTO packages (id, package_title, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, title, price, desc, img, datetime.now().isoformat()))
+                    conn.commit()
+                    print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages & settings synced to local SQLite DB.")
+                finally:
+                    conn.close()
 
-            # 5. Pull Settings
-            setting_docs = db.collection("settings").stream()
-            for doc in setting_docs:
-                data = doc.to_dict() or {}
-                key = doc.id
-                val = data.get("value", "")
-                if key:
-                    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
-
-            conn.commit()
-            conn.close()
-            print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages & settings synced to local SQLite DB.")
+            execute_with_retry(_do_write)
         except Exception as e:
             print(f"[remote_control] pull_all_from_cloud error: {e}")
 
     threading.Thread(target=_worker, daemon=True).start()
+
 
 
 def start():
