@@ -327,14 +327,10 @@ def new_product():
 @admin_required
 def edit_product(product_id):
     conn = get_connection()
-    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
-    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
-    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
-    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
-    conn.close()
 
     if not product:
+        conn.close()
         flash("Product not found.", "error")
         return redirect(url_for("products"))
 
@@ -429,11 +425,19 @@ def edit_product(product_id):
             remote_control.push_product_to_cloud(product_id)
             return redirect(url_for("products"))
         except Exception as e:
-            conn.rollback()
-            conn.close()
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
             flash(f"Could not update product: {e}", "error")
             return redirect(url_for("products"))
 
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
+    conn.close()
     return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=product)
 
 
