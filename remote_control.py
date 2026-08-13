@@ -17,7 +17,7 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-from database import get_connection
+from database import get_connection, execute_with_retry, _db_write_lock
 
 CRED_FILE = "firebase_credentials.json"
 
@@ -594,72 +594,74 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
     If a customer places an order on mobile app / website cloud server,
     it syncs into local SQLite database automatically in real time!
     """
-    try:
+    def _do():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            order_number = doc.id
-            if change.type.name in ("ADDED", "MODIFIED"):
-                existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
-                if not existing:
-                    cur = conn.cursor()
-                    cur.execute("""
-                        INSERT INTO online_orders (
-                            order_number, customer_name, customer_phone, customer_email,
-                            country, district, area, address_details, payment_method,
-                            payment_status, subtotal, delivery_charge, total_amount,
-                            order_status, delivery_otp, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        order_number,
-                        data.get("customer_name", ""),
-                        data.get("customer_phone", ""),
-                        data.get("customer_email", ""),
-                        data.get("country", "Bangladesh"),
-                        data.get("district", ""),
-                        data.get("area", ""),
-                        data.get("address_details", ""),
-                        data.get("payment_method", "cod"),
-                        data.get("payment_status", "pending"),
-                        float(data.get("subtotal") or 0.0),
-                        float(data.get("delivery_charge") or 60.0),
-                        float(data.get("total_amount") or 0.0),
-                        data.get("order_status", "new"),
-                        data.get("delivery_otp", ""),
-                        data.get("created_at", datetime.now().isoformat()),
-                        data.get("updated_at", datetime.now().isoformat())
-                    ))
-                    new_order_id = cur.lastrowid
-                    items = data.get("items", [])
-                    for item in items:
-                        raw_pid = item.get("product_id") or 0
-                        valid_pid = raw_pid
-                        chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-                        if not chk_p:
-                            first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
-                            valid_pid = first_p["id"] if first_p else 1
-
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                order_number = doc.id
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+                    if not existing:
+                        cur = conn.cursor()
                         cur.execute("""
-                            INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO online_orders (
+                                order_number, customer_name, customer_phone, customer_email,
+                                country, district, area, address_details, payment_method,
+                                payment_status, subtotal, delivery_charge, total_amount,
+                                order_status, delivery_otp, created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            new_order_id,
-                            valid_pid,
-                            item.get("product_name", ""),
-                            float(item.get("unit_price") or 0.0),
-                            float(item.get("mrp_price") or 0.0),
-                            int(item.get("quantity") or 1),
-                            float(item.get("total_price") or 0.0)
+                            order_number,
+                            data.get("customer_name", ""),
+                            data.get("customer_phone", ""),
+                            data.get("customer_email", ""),
+                            data.get("country", "Bangladesh"),
+                            data.get("district", ""),
+                            data.get("area", ""),
+                            data.get("address_details", ""),
+                            data.get("payment_method", "cod"),
+                            data.get("payment_status", "pending"),
+                            float(data.get("subtotal") or 0.0),
+                            float(data.get("delivery_charge") or 60.0),
+                            float(data.get("total_amount") or 0.0),
+                            data.get("order_status", "new"),
+                            data.get("delivery_otp", ""),
+                            data.get("created_at", datetime.now().isoformat()),
+                            data.get("updated_at", datetime.now().isoformat())
                         ))
-                    print(f"[remote_control] [SYNC] Real-time online order #{order_number} synced from Firebase to local SQLite DB.")
-                else:
-                    conn.execute(
-                        "UPDATE online_orders SET order_status = ?, payment_status = ?, updated_at = ? WHERE order_number = ?",
-                        (data.get("order_status", "new"), data.get("payment_status", "pending"), datetime.now().isoformat(), order_number)
-                    )
-        conn.commit()
-        conn.close()
+                        new_order_id = cur.lastrowid
+                        items = data.get("items", [])
+                        for item in items:
+                            raw_pid = item.get("product_id") or 0
+                            valid_pid = raw_pid
+                            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+                            if not chk_p:
+                                first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+                                valid_pid = first_p["id"] if first_p else 1
+                            cur.execute("""
+                                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                new_order_id, valid_pid,
+                                item.get("product_name", ""),
+                                float(item.get("unit_price") or 0.0),
+                                float(item.get("mrp_price") or 0.0),
+                                int(item.get("quantity") or 1),
+                                float(item.get("total_price") or 0.0)
+                            ))
+                        print(f"[remote_control] [SYNC] Real-time online order #{order_number} synced from Firebase to local SQLite DB.")
+                    else:
+                        conn.execute(
+                            "UPDATE online_orders SET order_status = ?, payment_status = ?, updated_at = ? WHERE order_number = ?",
+                            (data.get("order_status", "new"), data.get("payment_status", "pending"), datetime.now().isoformat(), order_number)
+                        )
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
     except Exception as e:
         print(f"[remote_control] online orders sync failed: {e}")
 
@@ -669,26 +671,30 @@ def _on_users_change(doc_snapshots, changes, read_time):
     Live listener watching `users` collection in Firestore.
     Syncs admin & staff user account credentials and password hashes in real time across local & cloud servers!
     """
-    try:
+    def _do():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            username = doc.id
-            if change.type.name in ("ADDED", "MODIFIED"):
-                password_hash = data.get("password_hash")
-                role = data.get("role", "admin")
-                created_at = data.get("created_at", datetime.now().isoformat())
-                if username and password_hash:
-                    existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
-                    if existing:
-                        conn.execute("UPDATE users SET password_hash = ?, role = ? WHERE username = ?", (password_hash, role, username))
-                    else:
-                        conn.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)", (username, password_hash, role, created_at))
-            elif change.type.name == "REMOVED":
-                conn.execute("DELETE FROM users WHERE username = ?", (username,))
-        conn.commit()
-        conn.close()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                username = doc.id
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    password_hash = data.get("password_hash")
+                    role = data.get("role", "admin")
+                    created_at = data.get("created_at", datetime.now().isoformat())
+                    if username and password_hash:
+                        existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+                        if existing:
+                            conn.execute("UPDATE users SET password_hash = ?, role = ? WHERE username = ?", (password_hash, role, username))
+                        else:
+                            conn.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)", (username, password_hash, role, created_at))
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM users WHERE username = ?", (username,))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
         print(f"[remote_control] [SYNC] Real-time user accounts & passwords synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way users sync failed: {e}")
@@ -699,51 +705,52 @@ def _on_packages_change(doc_snapshots, changes, read_time):
     Live listener watching `packages` collection in Firestore.
     Syncs combo packages across local SQLite database and remote cloud server in real time!
     """
-    try:
+    def _do():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            try:
-                pkg_id = int(doc.id)
-            except Exception:
-                continue
-
-            if change.type.name in ("ADDED", "MODIFIED"):
-                name = data.get("name", "")
-                description = data.get("description", "")
-                image_url = data.get("image_url", "")
-                package_price = float(data.get("package_price") or 0)
-                is_active = int(data.get("is_active", 1))
-
-                if name and package_price > 0:
-                    existing = conn.execute("SELECT id FROM packages WHERE id = ?", (pkg_id,)).fetchone()
-                    if existing:
-                        conn.execute("""
-                            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?
-                            WHERE id = ?
-                        """, (name, description, image_url, package_price, is_active, pkg_id))
-                    else:
-                        conn.execute("""
-                            INSERT INTO packages (id, name, description, image_url, package_price, is_active, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (pkg_id, name, description, image_url, package_price, is_active, datetime.now().isoformat()))
-
-                    conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
-                    items = data.get("items", [])
-                    for item in items:
-                        pid = item.get("product_id")
-                        qty = item.get("quantity") or 1
-                        if pid:
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                try:
+                    pkg_id = int(doc.id)
+                except Exception:
+                    continue
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    name = data.get("name", "")
+                    description = data.get("description", "")
+                    image_url = data.get("image_url", "")
+                    package_price = float(data.get("package_price") or 0)
+                    is_active = int(data.get("is_active", 1))
+                    if name and package_price > 0:
+                        existing = conn.execute("SELECT id FROM packages WHERE id = ?", (pkg_id,)).fetchone()
+                        if existing:
                             conn.execute("""
-                                INSERT INTO package_items (package_id, product_id, quantity)
-                                VALUES (?, ?, ?)
-                            """, (pkg_id, int(pid), int(qty)))
-            elif change.type.name == "REMOVED":
-                conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
-                conn.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
-        conn.commit()
-        conn.close()
+                                UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?
+                                WHERE id = ?
+                            """, (name, description, image_url, package_price, is_active, pkg_id))
+                        else:
+                            conn.execute("""
+                                INSERT INTO packages (id, name, description, image_url, package_price, is_active, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (pkg_id, name, description, image_url, package_price, is_active, datetime.now().isoformat()))
+                        conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                        items = data.get("items", [])
+                        for item in items:
+                            pid = item.get("product_id")
+                            qty = item.get("quantity") or 1
+                            if pid:
+                                conn.execute("""
+                                    INSERT INTO package_items (package_id, product_id, quantity)
+                                    VALUES (?, ?, ?)
+                                """, (pkg_id, int(pid), int(qty)))
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                    conn.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
         print(f"[remote_control] [SYNC] Real-time combo packages synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way packages sync failed: {e}")
@@ -754,80 +761,83 @@ def _on_categories_change(doc_snapshots, changes, read_time):
     Live listener watching `categories` collection in Firestore.
     Syncs category, subcategory, and sub-subcategory updates in real time across servers.
     """
-    try:
+    def _do():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            try:
-                cat_id = int(doc.id)
-            except Exception:
-                continue
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                try:
+                    cat_id = int(doc.id)
+                except Exception:
+                    continue
 
-            if change.type.name in ("ADDED", "MODIFIED"):
-                name = data.get("name", "")
-                parent_id = data.get("parent_id")
-                icon = data.get("icon", "")
-                if name:
-                    existing = conn.execute("SELECT id FROM categories WHERE id = ?", (cat_id,)).fetchone()
-                    if existing:
-                        conn.execute("UPDATE categories SET name = ?, parent_id = ?, icon = ? WHERE id = ?", (name, parent_id, icon, cat_id))
-                    else:
-                        conn.execute("INSERT INTO categories (id, name, parent_id, icon) VALUES (?, ?, ?, ?)", (cat_id, name, parent_id, icon))
-
-                    if "sub_categories" in data and isinstance(data["sub_categories"], list):
-                        subs = data["sub_categories"]
-                        current_sub_ids = [s.get("id") for s in subs if isinstance(s, dict) and s.get("id")]
-                        if current_sub_ids:
-                            placeholders = ','.join(['?'] * len(current_sub_ids))
-                            conn.execute(f"DELETE FROM sub_categories WHERE category_id = ? AND id NOT IN ({placeholders})", [cat_id] + current_sub_ids)
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    name = data.get("name", "")
+                    parent_id = data.get("parent_id")
+                    icon = data.get("icon", "")
+                    if name:
+                        existing = conn.execute("SELECT id FROM categories WHERE id = ?", (cat_id,)).fetchone()
+                        if existing:
+                            conn.execute("UPDATE categories SET name = ?, parent_id = ?, icon = ? WHERE id = ?", (name, parent_id, icon, cat_id))
                         else:
-                            conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
+                            conn.execute("INSERT INTO categories (id, name, parent_id, icon) VALUES (?, ?, ?, ?)", (cat_id, name, parent_id, icon))
 
-                        for s in subs:
-                            if not isinstance(s, dict):
-                                continue
-                            s_id = s.get("id")
-                            s_name = s.get("name", "")
-                            s_icon = s.get("icon", "")
-                            if s_id and s_name:
-                                existing_sub = conn.execute("SELECT id FROM sub_categories WHERE id = ?", (s_id,)).fetchone()
-                                if existing_sub:
-                                    conn.execute("UPDATE sub_categories SET category_id = ?, name = ?, icon = ? WHERE id = ?", (cat_id, s_name, s_icon, s_id))
-                                else:
-                                    conn.execute("INSERT INTO sub_categories (id, category_id, name, icon) VALUES (?, ?, ?, ?)", (s_id, cat_id, s_name, s_icon))
+                        if "sub_categories" in data and isinstance(data["sub_categories"], list):
+                            subs = data["sub_categories"]
+                            current_sub_ids = [s.get("id") for s in subs if isinstance(s, dict) and s.get("id")]
+                            if current_sub_ids:
+                                placeholders = ','.join(['?'] * len(current_sub_ids))
+                                conn.execute(f"DELETE FROM sub_categories WHERE category_id = ? AND id NOT IN ({placeholders})", [cat_id] + current_sub_ids)
+                            else:
+                                conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
 
-                                if "sub_sub_categories" in s and isinstance(s["sub_sub_categories"], list):
-                                    subsubs = s["sub_sub_categories"]
-                                    current_ssub_ids = [ss.get("id") for ss in subsubs if isinstance(ss, dict) and ss.get("id")]
-                                    if current_ssub_ids:
-                                        placeholders_ss = ','.join(['?'] * len(current_ssub_ids))
-                                        conn.execute(f"DELETE FROM sub_sub_categories WHERE sub_category_id = ? AND id NOT IN ({placeholders_ss})", [s_id] + current_ssub_ids)
+                            for s in subs:
+                                if not isinstance(s, dict):
+                                    continue
+                                s_id = s.get("id")
+                                s_name = s.get("name", "")
+                                s_icon = s.get("icon", "")
+                                if s_id and s_name:
+                                    existing_sub = conn.execute("SELECT id FROM sub_categories WHERE id = ?", (s_id,)).fetchone()
+                                    if existing_sub:
+                                        conn.execute("UPDATE sub_categories SET category_id = ?, name = ?, icon = ? WHERE id = ?", (cat_id, s_name, s_icon, s_id))
                                     else:
-                                        conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (s_id,))
+                                        conn.execute("INSERT INTO sub_categories (id, category_id, name, icon) VALUES (?, ?, ?, ?)", (s_id, cat_id, s_name, s_icon))
 
-                                    for ss in subsubs:
-                                        if not isinstance(ss, dict):
-                                            continue
-                                        ss_id = ss.get("id")
-                                        ss_name = ss.get("name", "")
-                                        ss_icon = ss.get("icon", "")
-                                        if ss_id and ss_name:
-                                            existing_ssub = conn.execute("SELECT id FROM sub_sub_categories WHERE id = ?", (ss_id,)).fetchone()
-                                            if existing_ssub:
-                                                conn.execute("UPDATE sub_sub_categories SET sub_category_id = ?, name = ?, icon = ? WHERE id = ?", (s_id, ss_name, ss_icon, ss_id))
-                                            else:
-                                                conn.execute("INSERT INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss_id, s_id, ss_name, ss_icon))
+                                    if "sub_sub_categories" in s and isinstance(s["sub_sub_categories"], list):
+                                        subsubs = s["sub_sub_categories"]
+                                        current_ssub_ids = [ss.get("id") for ss in subsubs if isinstance(ss, dict) and ss.get("id")]
+                                        if current_ssub_ids:
+                                            placeholders_ss = ','.join(['?'] * len(current_ssub_ids))
+                                            conn.execute(f"DELETE FROM sub_sub_categories WHERE sub_category_id = ? AND id NOT IN ({placeholders_ss})", [s_id] + current_ssub_ids)
+                                        else:
+                                            conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (s_id,))
+                                        for ss in subsubs:
+                                            if not isinstance(ss, dict):
+                                                continue
+                                            ss_id = ss.get("id")
+                                            ss_name = ss.get("name", "")
+                                            ss_icon = ss.get("icon", "")
+                                            if ss_id and ss_name:
+                                                existing_ssub = conn.execute("SELECT id FROM sub_sub_categories WHERE id = ?", (ss_id,)).fetchone()
+                                                if existing_ssub:
+                                                    conn.execute("UPDATE sub_sub_categories SET sub_category_id = ?, name = ?, icon = ? WHERE id = ?", (s_id, ss_name, ss_icon, ss_id))
+                                                else:
+                                                    conn.execute("INSERT INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss_id, s_id, ss_name, ss_icon))
 
-            elif change.type.name == "REMOVED":
-                subs = conn.execute("SELECT id FROM sub_categories WHERE category_id = ?", (cat_id,)).fetchall()
-                for sub in subs:
-                    conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (sub["id"],))
-                conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
-                conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+                elif change.type.name == "REMOVED":
+                    subs = conn.execute("SELECT id FROM sub_categories WHERE category_id = ?", (cat_id,)).fetchall()
+                    for sub in subs:
+                        conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (sub["id"],))
+                    conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
+                    conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
         print(f"[remote_control] [SYNC] Real-time categories synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way categories sync failed: {e}")
@@ -838,29 +848,32 @@ def _on_brands_change(doc_snapshots, changes, read_time):
     Live listener watching `brands` collection in Firestore.
     Syncs brand updates in real time across servers.
     """
-    try:
+    def _do():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            try:
-                brand_id = int(doc.id)
-            except Exception:
-                continue
-
-            if change.type.name in ("ADDED", "MODIFIED"):
-                name = data.get("name", "")
-                logo = data.get("logo", "")
-                if name:
-                    existing = conn.execute("SELECT id FROM brands WHERE id = ?", (brand_id,)).fetchone()
-                    if existing:
-                        conn.execute("UPDATE brands SET name = ?, logo = ? WHERE id = ?", (name, logo, brand_id))
-                    else:
-                        conn.execute("INSERT INTO brands (id, name, logo) VALUES (?, ?, ?)", (brand_id, name, logo))
-            elif change.type.name == "REMOVED":
-                conn.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
-        conn.commit()
-        conn.close()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                try:
+                    brand_id = int(doc.id)
+                except Exception:
+                    continue
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    name = data.get("name", "")
+                    logo = data.get("logo", "")
+                    if name:
+                        existing = conn.execute("SELECT id FROM brands WHERE id = ?", (brand_id,)).fetchone()
+                        if existing:
+                            conn.execute("UPDATE brands SET name = ?, logo = ? WHERE id = ?", (name, logo, brand_id))
+                        else:
+                            conn.execute("INSERT INTO brands (id, name, logo) VALUES (?, ?, ?)", (brand_id, name, logo))
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
         print(f"[remote_control] [SYNC] Real-time brands synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way brands sync failed: {e}")
@@ -871,19 +884,23 @@ def _on_shop_settings_change(doc_snapshots, changes, read_time):
     Live listener watching `settings` collection in Firestore.
     Syncs shop settings & policies across local & remote cloud servers.
     """
-    try:
+    def _do():
         conn = get_connection()
-        for change in changes:
-            doc = change.document
-            data = doc.to_dict() or {}
-            key = doc.id
-            val = data.get("value", "")
-            if change.type.name in ("ADDED", "MODIFIED") and key:
-                conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
-            elif change.type.name == "REMOVED" and key:
-                conn.execute("DELETE FROM settings WHERE key = ?", (key,))
-        conn.commit()
-        conn.close()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                key = doc.id
+                val = data.get("value", "")
+                if change.type.name in ("ADDED", "MODIFIED") and key:
+                    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
+                elif change.type.name == "REMOVED" and key:
+                    conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
         print(f"[remote_control] [SYNC] Real-time shop settings synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way shop settings sync failed: {e}")

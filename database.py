@@ -9,18 +9,22 @@ import sqlite3
 from datetime import datetime
 import math
 import random
-
 import time
+import threading
 
 DB_NAME = "supershop.db"
 
+# Global write lock: ensures only ONE thread writes to SQLite at a time.
+# All DB write operations MUST acquire this lock before executing.
+_db_write_lock = threading.Lock()
+
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME, timeout=60.0)
+    conn = sqlite3.connect(DB_NAME, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA busy_timeout = 60000")
+        conn.execute("PRAGMA busy_timeout = 30000")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
     except Exception:
@@ -28,16 +32,26 @@ def get_connection():
     return conn
 
 
-def execute_with_retry(fn, max_retries=5, delay=0.2):
-    """Executes a callable DB transaction with automatic exponential retry if database is locked."""
-    for attempt in range(max_retries):
-        try:
-            return fn()
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower() and attempt < max_retries - 1:
-                time.sleep(delay * (1.5 ** attempt))
-            else:
-                raise
+def execute_with_retry(fn, max_retries=8, delay=0.1):
+    """
+    Acquires the global write lock and executes fn().
+    If another thread is writing, this blocks (up to 60s) instead of crashing.
+    Falls back to exponential retry on SQLite lock errors.
+    """
+    acquired = _db_write_lock.acquire(timeout=60.0)
+    if not acquired:
+        raise sqlite3.OperationalError("Could not acquire DB write lock within 60 seconds")
+    try:
+        for attempt in range(max_retries):
+            try:
+                return fn()
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    time.sleep(delay * (2 ** attempt))
+                else:
+                    raise
+    finally:
+        _db_write_lock.release()
 
 
 def init_db():
