@@ -13,6 +13,7 @@ from datetime import datetime, date, timedelta
 from functools import wraps
 import os
 import re
+import sqlite3
 
 from database import (
     get_connection, init_db, round_to_whole, create_product_units,
