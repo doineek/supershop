@@ -3848,14 +3848,18 @@ def api_place_order():
 
     # 4. Also insert into sales table so it appears in Sales Log immediately
     inv_num = f"INV-ONLINE-{order_number}"
+    chk_user = cur.execute("SELECT id FROM users LIMIT 1").fetchone()
+    valid_cashier_id = chk_user["id"] if chk_user else 1
+
     cur.execute("""
         INSERT INTO sales (
             invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
             total_amount, rounded_total, vat_amount, saved_amount, cash_amount, card_amount, change_amount, created_at, is_synced
-        ) VALUES (?, ?, 1, ?, ?, ?, 'Online', ?, ?, 0, 0, ?, 0, 0, ?, 0)
+        ) VALUES (?, ?, ?, ?, ?, ?, 'Online', ?, ?, 0, 0, ?, 0, 0, ?, 0)
     """, (
         inv_num,
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        valid_cashier_id,
         customer_name,
         customer_name,
         clean_phone,
@@ -3868,13 +3872,21 @@ def api_place_order():
 
     for item in processed_items:
         raw_pid = item["product_id"]
-        valid_pid = raw_pid if conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() else 1
-        cur.execute("""
-            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-            VALUES (?, ?, ?, ?, ?, 0, 0, 0)
-        """, (
-            sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
-        ))
+        chk_prod = cur.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+        if not chk_prod:
+            first_prod = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
+            valid_pid = first_prod["id"] if first_prod else None
+        else:
+            valid_pid = raw_pid
+
+        if valid_pid:
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            """, (
+                sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
+            ))
+
 
     conn.commit()
     conn.close()
