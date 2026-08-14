@@ -4167,6 +4167,7 @@ def api_auth_register():
     )
     conn.commit()
     conn.close()
+    remote_control.push_customer_user_to_cloud(phone)
 
     return jsonify({"success": True, "message": "Registration successful! You can now log in."})
 
@@ -4197,6 +4198,7 @@ def api_auth_change_password():
     )
     conn.commit()
     conn.close()
+    remote_control.push_customer_user_to_cloud(phone)
     return jsonify({"success": True, "message": "Password updated successfully!"})
 
 
@@ -4221,7 +4223,9 @@ def api_auth_forgot_password_reset():
     )
     conn.commit()
     conn.close()
+    remote_control.push_customer_user_to_cloud(phone)
     return jsonify({"success": True, "message": "Password reset successfully! You can now log in with your new password."})
+
 
 
 @app.route("/api/auth/login", methods=["POST"])
