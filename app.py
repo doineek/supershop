@@ -16,11 +16,12 @@ import re
 import sys
 import sqlite3
 
-# Fix Windows console encoding for Bengali/Unicode characters
+# Fix Windows console encoding for Bengali/Unicode characters with real-time line buffering
 if sys.platform == "win32":
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+
 
 from database import (
     get_connection, init_db, round_to_whole, create_product_units,
@@ -4740,10 +4741,9 @@ def api_list_snapshots():
 try:
     init_db()
     remote_control.start()
-    remote_control.push_categories_to_cloud()
-    remote_control.push_brands_to_cloud()
 except Exception as _rc_err:
-    print(f"[app.py] Automatic Firebase listener initialization: {_rc_err}")
+    print(f"[app.py] Automatic Firebase listener initialization: {_rc_err}", flush=True)
+
 
 
 # ===========================================================================

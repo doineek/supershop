@@ -404,10 +404,6 @@ def push_full_backup():
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
             """).fetchall()
-            active_skus = set()
-            for r in products:
-                if r["sku"]: active_skus.add(str(r["sku"]))
-                active_skus.add(str(r["id"]))
 
             settings_rows = conn.execute("SELECT * FROM settings").fetchall()
             areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
@@ -430,20 +426,12 @@ def push_full_backup():
         finally:
             conn.close()  # Close BEFORE any Firebase writes or thread spawns
 
-        # Clean up deleted products from Firestore
-        try:
-            cloud_docs = db.collection("products").stream()
-            for doc in cloud_docs:
-                if doc.id not in active_skus:
-                    db.collection("products").document(doc.id).delete()
-        except Exception:
-            pass
-
         # Push products
         for row in products:
             r_dict = dict(row)
             doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
             db.collection("products").document(doc_id).set(r_dict)
+
 
         # Push settings
         for row in settings_rows:
@@ -1197,9 +1185,10 @@ def _on_sales_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] Two-way sales sync failed: {e}")
 
 
-def pull_all_from_cloud():
+def pull_all_from_cloud(blocking=False):
     """Initial startup pull: Reads all categories, brands, products, packages, settings, customer_users, and sales from Cloud Firestore into local SQLite."""
     def _worker():
+
         try:
             db = _init_firebase()
             if not db:
@@ -1464,9 +1453,12 @@ def pull_all_from_cloud():
 
             execute_with_retry(_do_write)
         except Exception as e:
-            print(f"[remote_control] pull_all_from_cloud error: {e}")
+            print(f"[remote_control] pull_all_from_cloud error: {e}", flush=True)
 
-    threading.Thread(target=_worker, daemon=True).start()
+    if blocking:
+        _worker()
+    else:
+        threading.Thread(target=_worker, daemon=True).start()
 
 
 
@@ -1474,19 +1466,19 @@ def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
     if not db:
-        print("[remote_control] [ALERT] Firebase not initialized. (Add firebase_credentials.json to enable live sync)")
+        print("[remote_control] [ALERT] Firebase not initialized. (Add firebase_credentials.json to enable live sync)", flush=True)
         return
 
     try:
         _ensure_remote_doc(db)
 
+        # Initial pull from Cloud Firestore on startup (blocking so local DB is populated before listeners/safety net)
+        pull_all_from_cloud(blocking=True)
+
         def _safety_net_loop():
             while True:
-                push_full_backup()
                 time.sleep(300)
-
-        # Initial pull from Cloud Firestore on startup
-        pull_all_from_cloud()
+                push_full_backup()
 
         # Live listeners (Firebase Cloud -> All Servers & Apps)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
@@ -1501,9 +1493,10 @@ def start():
         db.collection("settings").on_snapshot(_on_shop_settings_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
-        print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.")
+        print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.", flush=True)
     except Exception as e:
-        print(f"[remote_control] start error: {e}")
+        print(f"[remote_control] start error: {e}", flush=True)
+
 
 
 
