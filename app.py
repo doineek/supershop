@@ -4396,5 +4396,52 @@ try:
 except Exception as _rc_err:
     print(f"[app.py] Automatic Firebase listener initialization: {_rc_err}")
 
+
+# ===========================================================================
+# Sync Status & Force Push API
+# ===========================================================================
+
+@app.route("/api/sync/status")
+def api_sync_status():
+    """Returns Firebase connection and product count on local vs Firebase."""
+    try:
+        db = remote_control._init_firebase()
+        firebase_ok = db is not None
+        conn = get_connection()
+        local_products = conn.execute("SELECT COUNT(*) as c FROM products").fetchone()["c"]
+        local_categories = conn.execute("SELECT COUNT(*) as c FROM categories").fetchone()["c"]
+        conn.close()
+        firebase_products = 0
+        if firebase_ok:
+            try:
+                firebase_products = len(list(db.collection("products").stream()))
+            except Exception:
+                pass
+        return jsonify({
+            "firebase_connected": firebase_ok,
+            "local_products": local_products,
+            "local_categories": local_categories,
+            "firebase_products": firebase_products,
+            "status": "ok"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/sync/force-push", methods=["POST"])
+def api_force_push():
+    """Force-pushes ALL local data to Firebase immediately. Admin only."""
+    if not session.get("user_id"):
+        return jsonify({"success": False, "message": "Not authenticated"}), 401
+    try:
+        remote_control.push_full_backup()
+        remote_control.push_categories_to_cloud()
+        remote_control.push_brands_to_cloud()
+        return jsonify({"success": True, "message": "Full sync pushed to Firebase. Render will update within 10 seconds."})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
+    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

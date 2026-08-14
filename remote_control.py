@@ -357,82 +357,96 @@ def push_all_to_cloud():
 
 
 def push_full_backup():
-    """Full periodic sync safety net."""
+    """Full periodic sync safety net - pushes ALL local data to Firebase."""
     try:
         db = _init_firebase()
         if not db:
             return
+
+        # Read ALL data from local SQLite FIRST, then close connection
         conn = get_connection()
-
-        # Push Categories & Subcategories
-        push_categories_to_cloud()
-
-        # Push Brands
-        push_brands_to_cloud()
-
-        # Clean up deleted products from Firestore & push current products
-        active_skus_and_ids = set()
         try:
-            for r in conn.execute("SELECT id, sku FROM products").fetchall():
-                if r["sku"]:
-                    active_skus_and_ids.add(str(r["sku"]))
-                active_skus_and_ids.add(str(r["id"]))
-
-            try:
-                cloud_docs = db.collection("products").stream()
-                for doc in cloud_docs:
-                    if doc.id not in active_skus_and_ids:
-                        db.collection("products").document(doc.id).delete()
-            except Exception:
-                pass
-
-            for row in conn.execute("""
+            products = conn.execute("""
                 SELECT p.*, c.name AS category_name
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
-            """).fetchall():
-                r_dict = dict(row)
-                doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
-                db.collection("products").document(doc_id).set(r_dict)
+            """).fetchall()
+            active_skus = set()
+            for r in products:
+                if r["sku"]: active_skus.add(str(r["sku"]))
+                active_skus.add(str(r["id"]))
 
-            for row in conn.execute("SELECT * FROM settings").fetchall():
-                db.collection("settings").document(row["key"]).set({"value": row["value"]})
-
+            settings_rows = conn.execute("SELECT * FROM settings").fetchall()
             areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
-            db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
-
             orders = conn.execute("SELECT * FROM online_orders").fetchall()
+            order_items_map = {}
             for ord_row in orders:
                 items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
-                o_dict = dict(ord_row)
-                o_dict["items"] = [dict(i) for i in items]
-                db.collection("online_orders").document(str(ord_row["order_number"])).set(o_dict)
-
-            # Push Users
-            for u_row in conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall():
-                db.collection("users").document(str(u_row["username"])).set(dict(u_row))
-
-            # Push Packages
-            for pkg_row in conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall():
-                p_dict = dict(pkg_row)
+                order_items_map[ord_row["id"]] = [dict(i) for i in items]
+            users = conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall()
+            packages = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
+            pkg_items_map = {}
+            for pkg_row in packages:
                 items = conn.execute("""
                     SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
                     FROM package_items pi JOIN products p ON pi.product_id = p.id
                     WHERE pi.package_id = ?
                 """, (pkg_row["id"],)).fetchall()
-                p_dict["items"] = [dict(i) for i in items]
-                db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
-
+                pkg_items_map[pkg_row["id"]] = [dict(i) for i in items]
             unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0").fetchall()
         finally:
-            conn.close()
+            conn.close()  # Close BEFORE any Firebase writes or thread spawns
 
+        # Clean up deleted products from Firestore
+        try:
+            cloud_docs = db.collection("products").stream()
+            for doc in cloud_docs:
+                if doc.id not in active_skus:
+                    db.collection("products").document(doc.id).delete()
+        except Exception:
+            pass
+
+        # Push products
+        for row in products:
+            r_dict = dict(row)
+            doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
+            db.collection("products").document(doc_id).set(r_dict)
+
+        # Push settings
+        for row in settings_rows:
+            db.collection("settings").document(row["key"]).set({"value": row["value"]})
+
+        # Push delivery areas
+        db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
+
+        # Push online orders
+        for ord_row in orders:
+            o_dict = dict(ord_row)
+            o_dict["items"] = order_items_map.get(ord_row["id"], [])
+            db.collection("online_orders").document(str(ord_row["order_number"])).set(o_dict)
+
+        # Push users
+        for u_row in users:
+            db.collection("users").document(str(u_row["username"])).set(dict(u_row))
+
+        # Push packages
+        for pkg_row in packages:
+            p_dict = dict(pkg_row)
+            p_dict["items"] = pkg_items_map.get(pkg_row["id"], [])
+            db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
+
+        # Now spawn child pushes (connection is already closed)
+        push_categories_to_cloud()
+        push_brands_to_cloud()
+
+        # Push unsynced sales
         for row in unsynced:
             push_sale_to_cloud(row["id"])
 
         print("[remote_control] [OK] full backup cycle complete.")
     except Exception as e:
         print(f"[remote_control] full backup failed: {e}")
+
 
 
 def wipe_cloud_collections(categories):
