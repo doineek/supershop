@@ -221,37 +221,59 @@ def dashboard():
 # Products & Inventory
 # ===========================================================================
 
+def sync_expired_products():
+    """
+    Auto-detects expired products (expiry_date <= today), logs them into returned_items,
+    sets active stock to 0, and pushes updates to Cloud Firestore.
+    """
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    conn = get_connection()
+    try:
+        expired_prods = conn.execute("""
+            SELECT * FROM products
+            WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
+        """, (today_date,)).fetchall()
+
+        if expired_prods:
+            for ep in expired_prods:
+                already = conn.execute(
+                    "SELECT id FROM returned_items WHERE product_id = ? AND reason LIKE '%Expired%'", (ep["id"],)
+                ).fetchone()
+                if not already:
+                    conn.execute("""
+                        INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        ep["id"], ep["name"], ep["stock_qty"],
+                        f"Date Expired ({ep['expiry_date']})",
+                        ep["expiry_date"],
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ))
+                # Set active stock in products table to 0 so it's not sellable
+                conn.execute("UPDATE products SET stock_qty = 0 WHERE id = ?", (ep["id"],))
+            conn.commit()
+
+            # Push each affected product to Firebase Cloud in background
+            for ep in expired_prods:
+                try:
+                    remote_control.push_product_to_cloud(ep["id"])
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[sync_expired_products] Error: {e}")
+    finally:
+        conn.close()
+
+
 @app.route("/products")
 @login_required
 def products():
+    sync_expired_products()
     conn = get_connection()
     open_cat = request.args.get("open_cat", "0") == "1"
     today_date = datetime.now().strftime("%Y-%m-%d")
 
-    # Auto-move expired products to returned_items (only if not already logged)
-    expired_prods = conn.execute("""
-        SELECT * FROM products
-        WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date < ? AND stock_qty > 0
-    """, (today_date,)).fetchall()
-
-    for ep in expired_prods:
-        already = conn.execute(
-            "SELECT id FROM returned_items WHERE product_id = ? AND reason LIKE '%Expired%'", (ep["id"],)
-        ).fetchone()
-        if not already:
-            conn.execute("""
-                INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                ep["id"], ep["name"], ep["stock_qty"],
-                f"Auto: Date Expired ({ep['expiry_date']})",
-                ep["expiry_date"],
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ))
-    if expired_prods:
-        conn.commit()
-
-    # Active (non-expired) products only
+    # Active (non-expired) products only - expired products are hidden from Inventory
     rows = conn.execute("""
         SELECT p.*,
                c.name AS category_name,
@@ -262,11 +284,12 @@ def products():
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
         LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
-        WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?)
+        WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date > ?)
         ORDER BY p.name
     """, (today_date,)).fetchall()
 
-    expired_count = len(expired_prods)
+    expired_row = conn.execute("SELECT COUNT(*) as c FROM returned_items WHERE reason LIKE '%Expired%'").fetchone()
+    expired_count = expired_row["c"] if expired_row else 0
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
@@ -275,6 +298,7 @@ def products():
     return render_template("products.html", products=rows, categories=categories,
                            sub_categories=sub_categories, sub_sub_categories=sub_sub_categories,
                            brands=brands, open_cat=open_cat, expired_count=expired_count)
+
 
 
 @app.route("/products/new", methods=["GET", "POST"])
@@ -623,28 +647,8 @@ def return_product(product_id):
 @app.route("/returned_items")
 @login_required
 def returned_items():
+    sync_expired_products()
     conn = get_connection()
-    today_date = datetime.now().strftime("%Y-%m-%d")
-
-    # Auto-sync expired items from products table if any expired products exist
-    expired_prods = conn.execute("""
-        SELECT * FROM products 
-        WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
-    """, (today_date,)).fetchall()
-
-    for ep in expired_prods:
-        # Check if already logged for this product with 'Expired' reason
-        already_logged = conn.execute(
-            "SELECT id FROM returned_items WHERE product_id = ? AND reason LIKE '%Expired%'", (ep["id"],)
-        ).fetchone()
-        if not already_logged:
-            conn.execute("""
-                INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (ep["id"], ep["name"], ep["stock_qty"], f"Auto-Sync: Date Expired ({ep['expiry_date']})", ep["expiry_date"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-
-    conn.commit()
-
     rows = conn.execute("SELECT * FROM returned_items ORDER BY date_returned DESC").fetchall()
     conn.close()
     return render_template("returned_items.html", items=rows)
@@ -704,6 +708,32 @@ def product_labels(product_id):
     return render_template("product_labels.html", product=product, tags=tags, autoprint=autoprint)
 
 
+@app.route("/products/<int:product_id>/labels/print-all")
+@login_required
+def print_all_labels(product_id):
+    conn = get_connection()
+    product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if not product:
+        conn.close()
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
+    units = conn.execute(
+        "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' ORDER BY sl_number",
+        (product_id,)
+    ).fetchall()
+
+    if units:
+        conn.execute(
+            "UPDATE products SET label_print_count = label_print_count + 1 WHERE id = ?",
+            (product_id,)
+        )
+        conn.commit()
+
+    conn.close()
+    return render_template("labels_print.html", product=product, units=units)
+
+
 @app.route("/categories/new", methods=["POST"])
 @login_required
 @admin_required
@@ -754,6 +784,12 @@ def pos_lookup():
         conn.close()
         return jsonify({"error": f'No product found for tag or SKU "{code}".'}), 404
 
+    # Check if expired
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    if product["expiry_date"] and product["expiry_date"] <= today_date:
+        conn.close()
+        return jsonify({"error": f'Product "{product["name"]}" expired on {product["expiry_date"]} and has been moved to Returned/Expired section.'}), 400
+
     # 3. If a specific unit serial was not matched, pick the next available in-stock unit serial
     if not specific_unit_serial:
         if exclude:
@@ -793,10 +829,14 @@ def pos_lookup():
 @app.route("/pos")
 @login_required
 def pos():
+    sync_expired_products()
+    today_date = datetime.now().strftime("%Y-%m-%d")
     conn = get_connection()
-    all_products = conn.execute(
-        "SELECT * FROM products WHERE stock_qty > 0 ORDER BY name"
-    ).fetchall()
+    all_products = conn.execute("""
+        SELECT * FROM products 
+        WHERE stock_qty > 0 AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date > ?)
+        ORDER BY name
+    """, (today_date,)).fetchall()
     conn.close()
     return render_template("pos.html", products=all_products)
 
