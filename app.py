@@ -1027,7 +1027,10 @@ def checkout():
     cash_amount = float(data.get("cash_amount") or 0)
     card_amount = float(data.get("card_amount") or 0)
     customer_name = data.get("customer_name", "").strip()
-    customer_mobile = re.sub(r"\D", "", data.get("customer_mobile", "") or "")
+    raw_mobile = re.sub(r"\D", "", data.get("customer_mobile", "") or "")
+    if raw_mobile.startswith("8801") and len(raw_mobile) == 13:
+        raw_mobile = raw_mobile[2:]
+    customer_mobile = raw_mobile
 
     if not items:
         return jsonify({"error": "Cart is empty."}), 400
@@ -1113,22 +1116,24 @@ def checkout():
     invoice_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
-        existing_cust = cur.execute("SELECT id FROM customer_users WHERE phone = ?", (customer_mobile,)).fetchone()
+        existing_cust = cur.execute("SELECT id, name FROM customer_users WHERE phone = ?", (customer_mobile,)).fetchone()
         if not existing_cust:
             pass_hash = generate_password_hash("123456")
-            name_to_use = customer_name if customer_name else f"Customer {customer_mobile[-4:]}"
+            name_to_use = customer_name.strip() if customer_name and customer_name.strip() else f"Customer {customer_mobile[-4:]}"
             cur.execute("""
-                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, created_at)
-                VALUES (?, ?, '', ?, '123456', ?)
+                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                VALUES (?, ?, '', ?, '123456', 1, ?)
             """, (customer_mobile, name_to_use, pass_hash, datetime.now().isoformat()))
+        elif customer_name and customer_name.strip() and (not existing_cust["name"] or existing_cust["name"].startswith("Customer ")):
+            cur.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (customer_name.strip(), customer_mobile))
 
     cur.execute("""
-        INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile,
+        INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
                             total_amount, rounded_total, vat_amount, saved_amount,
                             cash_amount, card_amount, change_amount, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'Offline', ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        invoice_number, invoice_date, session["user_id"], customer_name, customer_name, customer_mobile,
+        invoice_number, invoice_date, session.get("user_id", 1), customer_name, customer_name, customer_mobile,
         sub_total, rounded_total, total_vat, saved_amount,
         cash_amount, card_amount, change_amount, datetime.now().isoformat()
     ))
@@ -1169,11 +1174,14 @@ def checkout():
     conn.commit()
     conn.close()
 
-    # Real-time backup: push this invoice and updated product stocks to Firebase immediately
+    # Real-time backup: push this invoice, customer user, and updated product stocks to Firebase immediately
     remote_control.push_sale_to_cloud(sale_id)
+    if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
+        remote_control.push_customer_user_to_cloud(customer_mobile)
     for item in items:
         if item.get("product_id"):
             remote_control.push_product_to_cloud(item["product_id"])
+
 
     return jsonify({
         "success": True,
@@ -1675,6 +1683,7 @@ def create_customer_admin():
     )
     conn.commit()
     conn.close()
+    remote_control.push_customer_user_to_cloud(phone)
 
     flash(f"Customer '{name}' ({phone}) created successfully! They can now log in to the Mobile App using this Mobile Number and Password.", "success")
     return redirect(url_for("customers_page"))
@@ -1732,6 +1741,8 @@ def edit_customer_admin():
 
     conn.commit()
     conn.close()
+    remote_control.push_customer_user_to_cloud(new_phone)
+
 
     flash(f"Customer '{name}' ({new_phone}) updated successfully!", "success")
     return redirect(url_for("customers_page"))

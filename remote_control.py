@@ -108,10 +108,22 @@ def _worker_push_sale(sale_id):
             sale_dict = dict(sale)
             sale_dict.pop("is_synced", None)
             sale_dict["items"] = [dict(i) for i in items]
-            db.collection("sales").document(str(sale_id)).set(sale_dict)
+            doc_id = str(sale_dict.get("invoice_number")) if sale_dict.get("invoice_number") else str(sale_id)
+            db.collection("sales").document(doc_id).set(sale_dict)
             conn.execute("UPDATE sales SET is_synced = 1 WHERE id = ?", (sale_id,))
             conn.commit()
-            print(f"[remote_control] [OK] Sale #{sale_id} pushed to Firebase.")
+            print(f"[remote_control] [OK] Sale #{sale_id} (Invoice: {doc_id}) pushed to Firebase.")
+
+            # If customer_mobile exists, also push customer to customer_users collection in Firebase
+            c_phone = sale_dict.get("customer_mobile")
+            if c_phone:
+                digits = "".join(ch for ch in str(c_phone) if ch.isdigit())
+                if digits.startswith("8801") and len(digits) == 13:
+                    digits = digits[2:]
+                if digits:
+                    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (digits,)).fetchone()
+                    if cust:
+                        db.collection("customer_users").document(digits).set(dict(cust))
         conn.close()
     except Exception as e:
         print(f"[remote_control] sale #{sale_id} push failed: {e}")
@@ -121,7 +133,28 @@ def push_sale_to_cloud(sale_id):
     threading.Thread(target=_worker_push_sale, args=(sale_id,), daemon=True).start()
 
 
+def _worker_push_customer_user(phone):
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        user = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+        conn.close()
+        if user:
+            u_dict = dict(user)
+            db.collection("customer_users").document(str(phone)).set(u_dict)
+            print(f"[remote_control] [OK] Customer User {phone} pushed to Firebase.")
+    except Exception as e:
+        print(f"[remote_control] customer {phone} push failed: {e}")
+
+def push_customer_user_to_cloud(phone):
+    """Uploads a customer user to Firebase Firestore in background."""
+    threading.Thread(target=_worker_push_customer_user, args=(phone,), daemon=True).start()
+
+
 def _worker_push_product(product_id):
+
     try:
         db = _init_firebase()
         if not db:
@@ -429,6 +462,18 @@ def push_full_backup():
         for u_row in users:
             db.collection("users").document(str(u_row["username"])).set(dict(u_row))
 
+        # Push customer users
+        try:
+            cust_conn = get_connection()
+            cust_users = cust_conn.execute("SELECT * FROM customer_users").fetchall()
+            cust_conn.close()
+            for c_row in cust_users:
+                c_dict = dict(c_row)
+                if c_dict.get("phone"):
+                    db.collection("customer_users").document(str(c_dict["phone"])).set(c_dict)
+        except Exception:
+            pass
+
         # Push packages
         for pkg_row in packages:
             p_dict = dict(pkg_row)
@@ -444,6 +489,7 @@ def push_full_backup():
             push_sale_to_cloud(row["id"])
 
         print("[remote_control] [OK] full backup cycle complete.")
+
     except Exception as e:
         print(f"[remote_control] full backup failed: {e}")
 
@@ -920,6 +966,70 @@ def _on_shop_settings_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] Two-way shop settings sync failed: {e}")
 
 
+def _on_customer_users_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `customer_users` collection in Firestore.
+    Syncs newly registered customers and customers created at POS checkout across servers in real time!
+    """
+    def _do():
+        conn = get_connection()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                phone = data.get("phone") or doc.id
+                if not phone:
+                    continue
+
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    existing = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+                    name = data.get("name", "")
+                    email = data.get("email", "")
+                    password_hash = data.get("password_hash", "")
+                    plain_password = data.get("plain_password", "123456")
+                    is_verified = int(data.get("is_verified") or 1)
+                    is_blocked = int(data.get("is_blocked") or 0)
+                    blocked_until = data.get("blocked_until", "")
+                    block_reason = data.get("block_reason", "")
+                    created_at = data.get("created_at") or datetime.now().isoformat()
+
+                    if existing:
+                        conn.execute("""
+                            UPDATE customer_users SET
+                                name = COALESCE(NULLIF(?, ''), name),
+                                email = COALESCE(NULLIF(?, ''), email),
+                                password_hash = COALESCE(NULLIF(?, ''), password_hash),
+                                plain_password = COALESCE(NULLIF(?, ''), plain_password),
+                                is_verified = ?,
+                                is_blocked = ?,
+                                blocked_until = ?,
+                                block_reason = ?
+                            WHERE phone = ?
+                        """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, phone))
+                    else:
+                        conn.execute("""
+                            INSERT INTO customer_users (
+                                phone, name, email, password_hash, plain_password,
+                                is_verified, is_blocked, blocked_until, block_reason, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
+                            is_verified, is_blocked, blocked_until, block_reason, created_at
+                        ))
+                    conn.commit()
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM customer_users WHERE phone = ?", (phone,))
+                    conn.commit()
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(_do)
+        print(f"[remote_control] [SYNC] Real-time customer users synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way customer users sync failed: {e}")
+
+
 def _on_sales_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `sales` collection in Firestore.
@@ -951,17 +1061,24 @@ def _on_sales_change(doc_snapshots, changes, read_time):
                             first_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
                             cashier_id = first_user["id"] if first_user else 1
 
+                        customer_name = str(data.get("customer_name") or data.get("customer_id") or "")
+                        customer_mobile = str(data.get("customer_mobile") or "")
+                        channel = str(data.get("channel") or "Offline")
+
                         cur.execute("""
                             INSERT INTO sales (
-                                invoice_number, invoice_date, cashier_id, customer_id,
+                                invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
                                 total_amount, rounded_total, vat_amount, saved_amount,
                                 cash_amount, card_amount, change_amount, created_at, is_synced
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                         """, (
                             invoice_number,
                             data.get("invoice_date", ""),
                             cashier_id,
-                            str(data.get("customer_id") or ""),
+                            customer_name,
+                            customer_name,
+                            customer_mobile,
+                            channel,
                             float(data.get("total_amount") or 0.0),
                             float(data.get("rounded_total") or 0.0),
                             float(data.get("vat_amount") or 0.0),
@@ -993,6 +1110,22 @@ def _on_sales_change(doc_snapshots, changes, read_time):
                                 float(it.get("cost_price") or 0.0),
                                 str(it.get("unit_serials") or ""),
                             ))
+
+                        # Auto-create or ensure customer in customer_users table
+                        digits = "".join(ch for ch in customer_mobile if ch.isdigit())
+                        if digits.startswith("8801") and len(digits) == 13:
+                            digits = digits[2:]
+                        if digits and len(digits) == 11 and digits.startswith("01"):
+                            chk_cust = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (digits,)).fetchone()
+                            if not chk_cust:
+                                from werkzeug.security import generate_password_hash
+                                pass_hash = generate_password_hash("123456")
+                                name_to_use = customer_name.strip() if customer_name and customer_name.strip() else f"Customer {digits[-4:]}"
+                                cur.execute("""
+                                    INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                                    VALUES (?, ?, '', ?, '123456', 1, ?)
+                                """, (digits, name_to_use, pass_hash, datetime.now().isoformat()))
+
                         conn.commit()
                         print(f"[remote_control] [SYNC] Real-time sale #{invoice_number} synced into local SQLite sales log.")
                 elif change.type.name == "REMOVED":
@@ -1008,7 +1141,7 @@ def _on_sales_change(doc_snapshots, changes, read_time):
 
 
 def pull_all_from_cloud():
-    """Initial startup pull: Reads all categories, brands, products, packages, settings, and sales from Cloud Firestore into local SQLite."""
+    """Initial startup pull: Reads all categories, brands, products, packages, settings, customer_users, and sales from Cloud Firestore into local SQLite."""
     def _worker():
         try:
             db = _init_firebase()
@@ -1021,6 +1154,10 @@ def pull_all_from_cloud():
             prod_docs  = list(db.collection("products").stream())
             pkg_docs   = list(db.collection("packages").stream())
             setting_docs = list(db.collection("settings").stream())
+            try:
+                cust_docs = list(db.collection("customer_users").stream())
+            except Exception:
+                cust_docs = []
             try:
                 sales_docs = list(db.collection("sales").limit(100).stream())
             except Exception:
@@ -1146,7 +1283,46 @@ def pull_all_from_cloud():
                         if key:
                             conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
 
-                    # 6. Pull Sales
+                    # 6. Pull Customer Users
+                    for doc in cust_docs:
+                        data = doc.to_dict() or {}
+                        phone = data.get("phone") or doc.id
+                        if phone:
+                            existing = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+                            name = data.get("name", "")
+                            email = data.get("email", "")
+                            password_hash = data.get("password_hash", "")
+                            plain_password = data.get("plain_password", "123456")
+                            is_verified = int(data.get("is_verified") or 1)
+                            is_blocked = int(data.get("is_blocked") or 0)
+                            blocked_until = data.get("blocked_until", "")
+                            block_reason = data.get("block_reason", "")
+                            created_at = data.get("created_at") or datetime.now().isoformat()
+                            if existing:
+                                conn.execute("""
+                                    UPDATE customer_users SET
+                                        name = COALESCE(NULLIF(?, ''), name),
+                                        email = COALESCE(NULLIF(?, ''), email),
+                                        password_hash = COALESCE(NULLIF(?, ''), password_hash),
+                                        plain_password = COALESCE(NULLIF(?, ''), plain_password),
+                                        is_verified = ?,
+                                        is_blocked = ?,
+                                        blocked_until = ?,
+                                        block_reason = ?
+                                    WHERE phone = ?
+                                """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, phone))
+                            else:
+                                conn.execute("""
+                                    INSERT INTO customer_users (
+                                        phone, name, email, password_hash, plain_password,
+                                        is_verified, is_blocked, blocked_until, block_reason, created_at
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
+                                    is_verified, is_blocked, blocked_until, block_reason, created_at
+                                ))
+
+                    # 7. Pull Sales
                     for doc in sales_docs:
                         data = doc.to_dict() or {}
                         invoice_number = data.get("invoice_number") or doc.id
@@ -1160,18 +1336,24 @@ def pull_all_from_cloud():
                             if not chk_user:
                                 first_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
                                 cashier_id = first_user["id"] if first_user else 1
+                            customer_name = str(data.get("customer_name") or data.get("customer_id") or "")
+                            customer_mobile = str(data.get("customer_mobile") or "")
+                            channel = str(data.get("channel") or "Offline")
                             cur = conn.cursor()
                             cur.execute("""
                                 INSERT INTO sales (
-                                    invoice_number, invoice_date, cashier_id, customer_id,
+                                    invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
                                     total_amount, rounded_total, vat_amount, saved_amount,
                                     cash_amount, card_amount, change_amount, created_at, is_synced
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                             """, (
                                 invoice_number,
                                 data.get("invoice_date", ""),
                                 cashier_id,
-                                str(data.get("customer_id") or ""),
+                                customer_name,
+                                customer_name,
+                                customer_mobile,
+                                channel,
                                 float(data.get("total_amount") or 0.0),
                                 float(data.get("rounded_total") or 0.0),
                                 float(data.get("vat_amount") or 0.0),
@@ -1203,8 +1385,23 @@ def pull_all_from_cloud():
                                     str(it.get("unit_serials") or ""),
                                 ))
 
+                            # Ensure customer is recorded
+                            digits = "".join(ch for ch in customer_mobile if ch.isdigit())
+                            if digits.startswith("8801") and len(digits) == 13:
+                                digits = digits[2:]
+                            if digits and len(digits) == 11 and digits.startswith("01"):
+                                chk_cust = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (digits,)).fetchone()
+                                if not chk_cust:
+                                    from werkzeug.security import generate_password_hash
+                                    pass_hash = generate_password_hash("123456")
+                                    name_to_use = customer_name.strip() if customer_name and customer_name.strip() else f"Customer {digits[-4:]}"
+                                    cur.execute("""
+                                        INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                                        VALUES (?, ?, '', ?, '123456', 1, ?)
+                                    """, (digits, name_to_use, pass_hash, datetime.now().isoformat()))
+
                     conn.commit()
-                    print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages, settings & sales synced to local SQLite DB.")
+                    print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages, settings, customers & sales synced to local SQLite DB.")
                 finally:
                     conn.close()
 
@@ -1238,6 +1435,7 @@ def start():
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
         db.collection("products").on_snapshot(_on_products_change)
         db.collection("sales").on_snapshot(_on_sales_change)
+        db.collection("customer_users").on_snapshot(_on_customer_users_change)
         db.collection("online_orders").on_snapshot(_on_online_orders_change)
         db.collection("users").on_snapshot(_on_users_change)
         db.collection("packages").on_snapshot(_on_packages_change)
@@ -1249,6 +1447,7 @@ def start():
         print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.")
     except Exception as e:
         print(f"[remote_control] start error: {e}")
+
 
 
 
