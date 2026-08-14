@@ -19,6 +19,9 @@
           <th>Reason / Status</th>
           <th>Expiry Date</th>
           <th>Date Returned / Logged</th>
+          {% if session.role == 'admin' %}
+          <th style="text-align:right;">Action</th>
+          {% endif %}
         </tr>
       </thead>
       <tbody>
@@ -36,15 +39,23 @@
           </td>
           <td>{{ item.expiry_date if item.expiry_date else '—' }}</td>
           <td>{{ item.date_returned[:16] if item.date_returned else '—' }}</td>
+          {% if session.role == 'admin' %}
+          <td style="text-align:right;">
+            <a href="{{ url_for('restock_from_returned', return_id=item.id) }}" class="btn btn-small" style="background:#2563eb; color:white; font-weight:600; font-size:12px; padding:6px 12px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+              🔄 Restock to Inventory
+            </a>
+          </td>
+          {% endif %}
         </tr>
         {% else %}
         <tr>
-          <td colspan="6" style="text-align:center; color:#94a3b8; padding:30px;">
+          <td colspan="7" style="text-align:center; color:#94a3b8; padding:30px;">
             No returned or date-expired products found.
           </td>
         </tr>
         {% endfor %}
       </tbody>
+
     </table>
   </div>
 </div>

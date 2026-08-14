@@ -654,6 +654,184 @@ def returned_items():
     return render_template("returned_items.html", items=rows)
 
 
+@app.route("/returned_items/<int:return_id>/restock", methods=["GET", "POST"])
+@login_required
+@admin_required
+def restock_from_returned(return_id):
+    conn = get_connection()
+    ret_item = conn.execute("SELECT * FROM returned_items WHERE id = ?", (return_id,)).fetchone()
+    if not ret_item:
+        conn.close()
+        flash("Returned record not found.", "error")
+        return redirect(url_for("returned_items"))
+
+    # Try to find original product by product_id or by name
+    product = None
+    if ret_item["product_id"]:
+        product = conn.execute("SELECT * FROM products WHERE id = ?", (ret_item["product_id"],)).fetchone()
+    if not product:
+        product = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (ret_item["item_name"],)).fetchone()
+
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+    brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
+
+    if request.method == "POST":
+        sku_clean = request.form["sku"].strip()
+        name = request.form["name"].strip()
+        brand = request.form.get("brand", "").strip()
+        unit = request.form.get("unit", "").strip()
+        category_id = request.form.get("category_id") or None
+        sub_category_id = request.form.get("sub_category_id") or None
+        sub_sub_category_id = request.form.get("sub_sub_category_id") or None
+        cost_price = float(request.form.get("cost_price") or 0)
+        mrp = float(request.form.get("mrp") or 0)
+        sell_price = float(request.form.get("sell_price") or 0)
+        vat_pct = float(request.form.get("vat_pct") or 0)
+        stock_qty = int(request.form.get("stock_qty") or 0)
+        low_stock_threshold = int(request.form.get("low_stock_threshold") or 5)
+        sl_number = int(request.form.get("sl_number") or 1)
+        description = request.form.get("description", "").strip()
+        image_url = request.form.get("image_url", "").strip()
+        expiry_date = request.form.get("expiry_date", "").strip()
+        is_trending = 1 if request.form.get("is_trending") == "on" else 0
+        is_flash_sale = 1 if request.form.get("is_flash_sale") == "on" else 0
+        is_offer = 1 if request.form.get("is_offer") == "on" else 0
+        is_promotion = 1 if request.form.get("is_promotion") == "on" else 0
+        offer_title = request.form.get("offer_title", "").strip()
+        offer_type = request.form.get("offer_type", "").strip()
+        offer_value = request.form.get("offer_value", "").strip()
+        offer_base = request.form.get("offer_base", "mrp").strip()
+
+        # Multi-file upload handling
+        files = request.files.getlist("product_image_files") or request.files.getlist("product_image_file")
+        uploaded_urls = []
+        import random
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(f"{sku_clean}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
+                uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
+        if uploaded_urls:
+            image_url = ", ".join(uploaded_urls) + (", " + image_url if image_url else "")
+        elif not image_url and product:
+            image_url = product["image_url"]
+
+        target_product_id = product["id"] if product else None
+
+        def _do_restock():
+            nonlocal target_product_id
+            if target_product_id:
+                # Update existing product in products table
+                conn.execute("""
+                    UPDATE products SET
+                        sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                        cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                        sl_number=?, description=?, image_url=?, is_trending=?, is_flash_sale=?,
+                        is_offer=?, is_promotion=?, offer_title=?, offer_type=?, offer_value=?, offer_base=?, expiry_date=?
+                    WHERE id=?
+                """, (
+                    sku_clean, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                    cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                    sl_number, description, image_url, is_trending, is_flash_sale,
+                    is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date,
+                    target_product_id
+                ))
+            else:
+                # Insert new product into products table
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO products (
+                        sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                        cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                        sl_number, description, image_url, is_trending, is_flash_sale,
+                        is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    sku_clean, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                    cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                    sl_number, description, image_url, is_trending, is_flash_sale,
+                    is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
+                ))
+                target_product_id = cur.lastrowid
+
+            if stock_qty > 0:
+                create_product_units(conn, target_product_id, stock_qty)
+            conn.commit()
+
+        try:
+            execute_with_retry(_do_restock)
+            conn.close()
+            remote_control.push_product_to_cloud(target_product_id)
+            flash(f"Product '{name}' successfully restocked with {stock_qty} unit(s) and is now live in Inventory!", "success")
+            return redirect(url_for("products"))
+        except Exception as e:
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+            flash(f"Could not restock product: {e}", "error")
+            return redirect(url_for("returned_items"))
+
+    # GET request: Prepare prefilled product dict
+    if product:
+        p_dict = dict(product)
+        # Default restock quantity to returned quantity if available
+        if ret_item["quantity"] and ret_item["quantity"] > 0:
+            p_dict["stock_qty"] = ret_item["quantity"]
+        else:
+            p_dict["stock_qty"] = 10
+        # If the product was expired, clear expiry_date so user is prompted to set a fresh one
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if p_dict.get("expiry_date") and p_dict["expiry_date"] <= today_str:
+            p_dict["expiry_date"] = ""
+    else:
+        # Construct fallback dictionary from returned_items record
+        p_dict = {
+            "id": None,
+            "sku": f"RESTOCK-{ret_item['id']}",
+            "name": ret_item["item_name"],
+            "brand": "",
+            "unit": "pcs",
+            "category_id": None,
+            "sub_category_id": None,
+            "sub_sub_category_id": None,
+            "cost_price": 0.0,
+            "mrp": 0.0,
+            "sell_price": 0.0,
+            "vat_pct": 0.0,
+            "stock_qty": ret_item["quantity"] or 10,
+            "low_stock_threshold": 5,
+            "sl_number": 1,
+            "description": f"Restocked from returned record #{ret_item['id']}",
+            "image_url": "",
+            "expiry_date": "",
+            "is_trending": 0,
+            "is_flash_sale": 0,
+            "is_offer": 0,
+            "is_promotion": 0,
+            "offer_title": "",
+            "offer_type": "",
+            "offer_value": "",
+            "offer_base": "mrp"
+        }
+
+    conn.close()
+    return render_template(
+        "product_form.html",
+        categories=categories,
+        sub_categories=sub_categories,
+        sub_sub_categories=sub_sub_categories,
+        brands=brands,
+        product=p_dict,
+        form_title=f"🔄 Restock '{ret_item['item_name']}' to Inventory"
+    )
+
+
+
 @app.route("/products/<int:product_id>/labels")
 @login_required
 def product_labels(product_id):

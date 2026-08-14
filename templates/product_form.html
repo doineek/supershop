@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit Product" if product else "Add Product" }}{% endblock %}
+{% block title %}{{ form_title if form_title else ("Edit Product" if product and product.id else "Add Product") }}{% endblock %}
 
 {% block content %}
 <div class="toolbar">
   <div>
-    <h1>{{ "Edit Product" if product else "Add Product" }}</h1>
-    <p class="subtitle">Fill in product details and stock quantity.</p>
+    <h1>{{ form_title if form_title else ("Edit Product" if product and product.id else "Add Product") }}</h1>
+    <p class="subtitle">Fill in product details, set new expiry date, and update stock quantity.</p>
   </div>
   <a href="{{ url_for('products') }}" class="btn btn-outline">Back to products</a>
 </div>
+
 
 <form method="POST" enctype="multipart/form-data" class="card form-card">
   <div class="field-row">

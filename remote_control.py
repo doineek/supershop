@@ -920,8 +920,95 @@ def _on_shop_settings_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] Two-way shop settings sync failed: {e}")
 
 
+def _on_sales_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `sales` collection in Firestore.
+    Syncs completed sales/checkout invoices from Render Cloud Server or other terminals
+    into the local SQLite database in real time!
+    """
+    def _do():
+        conn = get_connection()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                doc_id = doc.id
+                invoice_number = data.get("invoice_number") or doc_id
+
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    # Check if sale already exists in SQLite
+                    existing = conn.execute(
+                        "SELECT id FROM sales WHERE invoice_number = ? OR (id = ? AND ? > 0)",
+                        (invoice_number, data.get("id") or 0, data.get("id") or 0)
+                    ).fetchone()
+
+                    if not existing:
+                        cur = conn.cursor()
+                        # Ensure cashier exists or fallback to first user
+                        cashier_id = int(data.get("cashier_id") or 1)
+                        chk_user = conn.execute("SELECT id FROM users WHERE id = ?", (cashier_id,)).fetchone()
+                        if not chk_user:
+                            first_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+                            cashier_id = first_user["id"] if first_user else 1
+
+                        cur.execute("""
+                            INSERT INTO sales (
+                                invoice_number, invoice_date, cashier_id, customer_id,
+                                total_amount, rounded_total, vat_amount, saved_amount,
+                                cash_amount, card_amount, change_amount, created_at, is_synced
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """, (
+                            invoice_number,
+                            data.get("invoice_date", ""),
+                            cashier_id,
+                            str(data.get("customer_id") or ""),
+                            float(data.get("total_amount") or 0.0),
+                            float(data.get("rounded_total") or 0.0),
+                            float(data.get("vat_amount") or 0.0),
+                            float(data.get("saved_amount") or 0.0),
+                            float(data.get("cash_amount") or 0.0),
+                            float(data.get("card_amount") or 0.0),
+                            float(data.get("change_amount") or 0.0),
+                            data.get("created_at") or datetime.now().isoformat(),
+                        ))
+                        new_sale_id = cur.lastrowid
+                        items = data.get("items", [])
+                        for it in items:
+                            raw_pid = int(it.get("product_id") or 0)
+                            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+                            valid_pid = raw_pid if chk_p else 1
+                            cur.execute("""
+                                INSERT INTO sale_items (
+                                    sale_id, product_id, quantity, unit_price, mrp_price,
+                                    vat_pct, vat_amount, cost_price, unit_serials
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                new_sale_id,
+                                valid_pid,
+                                int(it.get("quantity") or 1),
+                                float(it.get("unit_price") or 0.0),
+                                float(it.get("mrp_price") or 0.0),
+                                float(it.get("vat_pct") or 0.0),
+                                float(it.get("vat_amount") or 0.0),
+                                float(it.get("cost_price") or 0.0),
+                                str(it.get("unit_serials") or ""),
+                            ))
+                        conn.commit()
+                        print(f"[remote_control] [SYNC] Real-time sale #{invoice_number} synced into local SQLite sales log.")
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM sales WHERE invoice_number = ?", (invoice_number,))
+                    conn.commit()
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(_do)
+    except Exception as e:
+        print(f"[remote_control] Two-way sales sync failed: {e}")
+
+
 def pull_all_from_cloud():
-    """Initial startup pull: Reads all categories, brands, products, packages, settings from Cloud Firestore into local SQLite."""
+    """Initial startup pull: Reads all categories, brands, products, packages, settings, and sales from Cloud Firestore into local SQLite."""
     def _worker():
         try:
             db = _init_firebase()
@@ -934,6 +1021,10 @@ def pull_all_from_cloud():
             prod_docs  = list(db.collection("products").stream())
             pkg_docs   = list(db.collection("packages").stream())
             setting_docs = list(db.collection("settings").stream())
+            try:
+                sales_docs = list(db.collection("sales").limit(100).stream())
+            except Exception:
+                sales_docs = []
 
             # Now write everything in ONE locked transaction
             def _do_write():
@@ -1055,8 +1146,65 @@ def pull_all_from_cloud():
                         if key:
                             conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, val))
 
+                    # 6. Pull Sales
+                    for doc in sales_docs:
+                        data = doc.to_dict() or {}
+                        invoice_number = data.get("invoice_number") or doc.id
+                        existing = conn.execute(
+                            "SELECT id FROM sales WHERE invoice_number = ? OR (id = ? AND ? > 0)",
+                            (invoice_number, data.get("id") or 0, data.get("id") or 0)
+                        ).fetchone()
+                        if not existing:
+                            cashier_id = int(data.get("cashier_id") or 1)
+                            chk_user = conn.execute("SELECT id FROM users WHERE id = ?", (cashier_id,)).fetchone()
+                            if not chk_user:
+                                first_user = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+                                cashier_id = first_user["id"] if first_user else 1
+                            cur = conn.cursor()
+                            cur.execute("""
+                                INSERT INTO sales (
+                                    invoice_number, invoice_date, cashier_id, customer_id,
+                                    total_amount, rounded_total, vat_amount, saved_amount,
+                                    cash_amount, card_amount, change_amount, created_at, is_synced
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            """, (
+                                invoice_number,
+                                data.get("invoice_date", ""),
+                                cashier_id,
+                                str(data.get("customer_id") or ""),
+                                float(data.get("total_amount") or 0.0),
+                                float(data.get("rounded_total") or 0.0),
+                                float(data.get("vat_amount") or 0.0),
+                                float(data.get("saved_amount") or 0.0),
+                                float(data.get("cash_amount") or 0.0),
+                                float(data.get("card_amount") or 0.0),
+                                float(data.get("change_amount") or 0.0),
+                                data.get("created_at") or datetime.now().isoformat(),
+                            ))
+                            new_sale_id = cur.lastrowid
+                            for it in (data.get("items") or []):
+                                raw_pid = int(it.get("product_id") or 0)
+                                chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+                                valid_pid = raw_pid if chk_p else 1
+                                cur.execute("""
+                                    INSERT INTO sale_items (
+                                        sale_id, product_id, quantity, unit_price, mrp_price,
+                                        vat_pct, vat_amount, cost_price, unit_serials
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    new_sale_id,
+                                    valid_pid,
+                                    int(it.get("quantity") or 1),
+                                    float(it.get("unit_price") or 0.0),
+                                    float(it.get("mrp_price") or 0.0),
+                                    float(it.get("vat_pct") or 0.0),
+                                    float(it.get("vat_amount") or 0.0),
+                                    float(it.get("cost_price") or 0.0),
+                                    str(it.get("unit_serials") or ""),
+                                ))
+
                     conn.commit()
-                    print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages & settings synced to local SQLite DB.")
+                    print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages, settings & sales synced to local SQLite DB.")
                 finally:
                     conn.close()
 
@@ -1089,6 +1237,7 @@ def start():
         # Live listeners (Firebase Cloud -> All Servers & Apps)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
         db.collection("products").on_snapshot(_on_products_change)
+        db.collection("sales").on_snapshot(_on_sales_change)
         db.collection("online_orders").on_snapshot(_on_online_orders_change)
         db.collection("users").on_snapshot(_on_users_change)
         db.collection("packages").on_snapshot(_on_packages_change)
@@ -1100,6 +1249,7 @@ def start():
         print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.")
     except Exception as e:
         print(f"[remote_control] start error: {e}")
+
 
 
 def is_maintenance_mode():
