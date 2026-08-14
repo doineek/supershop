@@ -1312,14 +1312,17 @@ def pull_all_from_cloud(blocking=False):
                     # 4. Pull Packages
                     for doc in pkg_docs:
                         data = doc.to_dict() or {}
-                        pkg_id = data.get("id")
-                        name = data.get("name", "")
-                        title = data.get("package_title") or name
-                        price = float(data.get("price") or data.get("package_price") or 0)
+                        try:
+                            pkg_id = int(data.get("id") or doc.id)
+                        except Exception:
+                            continue
+                        name = data.get("name") or data.get("package_title") or ""
+                        price = float(data.get("package_price") or data.get("price") or 0)
                         desc = data.get("description", "")
                         img = data.get("image_url", "")
-                        if pkg_id and title:
-                            conn.execute("INSERT OR REPLACE INTO packages (id, package_title, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, title, price, desc, img, datetime.now().isoformat()))
+                        if pkg_id and name:
+                            conn.execute("INSERT OR REPLACE INTO packages (id, name, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, name, price, desc, img, datetime.now().isoformat()))
+
 
                     # 5. Pull Settings
                     for doc in setting_docs:
