@@ -1210,7 +1210,7 @@ def sales_history():
     rows = conn.execute("""
         SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
         FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
-        ORDER BY s.created_at DESC
+        ORDER BY s.id DESC
     """).fetchall()
     conn.close()
     return render_template("sales_history.html", sales=rows)
@@ -1571,7 +1571,7 @@ def customers_page():
             "block_reason": block_reason,
         })
 
-    customer_directory.sort(key=lambda x: x["last_visit"], reverse=True)
+    customer_directory.sort(key=lambda x: (x["last_visit"], reg_user_dict.get(x["customer_mobile"], {}).get("id", 0)), reverse=True)
     conn.close()
 
     matched_total_spent = sum(o["total_amount"] for o in matched_orders)
