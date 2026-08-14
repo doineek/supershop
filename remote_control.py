@@ -778,10 +778,16 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
     def _do():
         conn = get_connection()
         try:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+            default_pid = first_p["id"] if first_p else 1
             for change in changes:
                 doc = change.document
                 data = doc.to_dict() or {}
-                order_number = doc.id
+                order_number = data.get("order_number") or doc.id
+                if not order_number:
+                    continue
+
                 c_name = data.get("customer_name", "")
                 c_phone = data.get("customer_phone", "")
                 c_email = data.get("customer_email", "")
@@ -805,28 +811,32 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
 
                 if change.type.name in ("ADDED", "MODIFIED"):
                     existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+                    c_phone = data.get("customer_phone", "")
+                    c_name = data.get("customer_name", "")
+
                     if not existing:
                         cur = conn.cursor()
                         cur.execute("""
                             INSERT INTO online_orders (
-                                order_number, customer_name, customer_phone, customer_email,
-                                country, district, area, address_details, payment_method,
-                                payment_status, subtotal, delivery_charge, total_amount,
-                                order_status, delivery_otp, is_stock_deducted,
-                                assigned_rider_id, assigned_rider_name, assigned_rider_phone,
+                                order_number, customer_id, customer_name, customer_phone, customer_email,
+                                shipping_address, delivery_area_id, delivery_zone,
+                                payment_method, payment_status, payment_trx_id, payment_phone,
+                                subtotal, delivery_charge, total_amount, order_status,
+                                delivery_otp, is_stock_deducted, assigned_rider_id, assigned_rider_name, assigned_rider_phone,
                                 created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_number,
-                            c_name,
-                            c_phone,
-                            c_email,
-                            data.get("country", "Bangladesh"),
-                            data.get("district", ""),
-                            data.get("area", ""),
-                            data.get("address_details", ""),
-                            data.get("payment_method", "cod"),
+                            int(data.get("customer_id") or 0),
+                            c_name, c_phone,
+                            data.get("customer_email", ""),
+                            data.get("shipping_address", ""),
+                            int(data.get("delivery_area_id") or 0),
+                            data.get("delivery_zone", ""),
+                            data.get("payment_method", "cash_on_delivery"),
                             data.get("payment_status", "pending"),
+                            data.get("payment_trx_id", ""),
+                            data.get("payment_phone", ""),
                             float(data.get("subtotal") or 0.0),
                             float(data.get("delivery_charge") or 60.0),
                             float(data.get("total_amount") or 0.0),
@@ -843,11 +853,13 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                         items = data.get("items", [])
                         for item in items:
                             raw_pid = item.get("product_id") or 0
-                            valid_pid = raw_pid
-                            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-                            if not chk_p:
-                                first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
-                                valid_pid = first_p["id"] if first_p else 1
+                            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() if raw_pid else None
+                            if not chk_p and item.get("sku"):
+                                chk_p = conn.execute("SELECT id FROM products WHERE sku = ?", (item.get("sku"),)).fetchone()
+                            if not chk_p and item.get("product_name"):
+                                chk_p = conn.execute("SELECT id FROM products WHERE name = ?", (item.get("product_name"),)).fetchone()
+                            valid_pid = chk_p["id"] if chk_p else default_pid
+
                             cur.execute("""
                                 INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
                                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -872,7 +884,7 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             """, (
                                 inv_num,
                                 data.get("created_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                                c_name,
+                                int(data.get("customer_id") or 0),
                                 c_name,
                                 c_phone,
                                 float(data.get("subtotal") or 0.0),
@@ -883,7 +895,13 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             new_sale_id = cur.lastrowid
                             for item in items:
                                 raw_pid = item.get("product_id") or 0
-                                valid_pid = raw_pid if conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() else 1
+                                chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() if raw_pid else None
+                                if not chk_p and item.get("sku"):
+                                    chk_p = conn.execute("SELECT id FROM products WHERE sku = ?", (item.get("sku"),)).fetchone()
+                                if not chk_p and item.get("product_name"):
+                                    chk_p = conn.execute("SELECT id FROM products WHERE name = ?", (item.get("product_name"),)).fetchone()
+                                valid_pid = chk_p["id"] if chk_p else default_pid
+
                                 cur.execute("""
                                     INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
                                     VALUES (?, ?, ?, ?, ?, 0, 0, 0)
@@ -1232,6 +1250,10 @@ def _on_sales_change(doc_snapshots, changes, read_time):
     def _do():
         conn = get_connection()
         try:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+            default_pid = first_p["id"] if first_p else 1
+
             for change in changes:
                 doc = change.document
                 data = doc.to_dict() or {}
@@ -1283,8 +1305,13 @@ def _on_sales_change(doc_snapshots, changes, read_time):
                         items = data.get("items", [])
                         for it in items:
                             raw_pid = int(it.get("product_id") or 0)
-                            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-                            valid_pid = raw_pid if chk_p else 1
+                            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() if raw_pid else None
+                            if not chk_p and it.get("sku"):
+                                chk_p = conn.execute("SELECT id FROM products WHERE sku = ?", (it.get("sku"),)).fetchone()
+                            if not chk_p and it.get("product_name"):
+                                chk_p = conn.execute("SELECT id FROM products WHERE name = ?", (it.get("product_name"),)).fetchone()
+                            valid_pid = chk_p["id"] if chk_p else default_pid
+
                             cur.execute("""
                                 INSERT INTO sale_items (
                                     sale_id, product_id, quantity, unit_price, mrp_price,
@@ -1770,10 +1797,17 @@ def pull_all_from_cloud(blocking=False):
                                 data.get("created_at") or datetime.now().isoformat(),
                             ))
                             new_sale_id = cur.lastrowid
+                            first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+                            default_pid = first_p["id"] if first_p else 1
                             for it in (data.get("items") or []):
                                 raw_pid = int(it.get("product_id") or 0)
-                                chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-                                valid_pid = raw_pid if chk_p else 1
+                                chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() if raw_pid else None
+                                if not chk_p and it.get("sku"):
+                                    chk_p = conn.execute("SELECT id FROM products WHERE sku = ?", (it.get("sku"),)).fetchone()
+                                if not chk_p and it.get("product_name"):
+                                    chk_p = conn.execute("SELECT id FROM products WHERE name = ?", (it.get("product_name"),)).fetchone()
+                                valid_pid = chk_p["id"] if chk_p else default_pid
+
                                 cur.execute("""
                                     INSERT INTO sale_items (
                                         sale_id, product_id, quantity, unit_price, mrp_price,
