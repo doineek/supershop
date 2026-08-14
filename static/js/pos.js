@@ -379,8 +379,9 @@ checkoutBtn.addEventListener("click", async () => {
     return;
   }
 
-  const cash_amount = parseFloat(cashInput.value) || 0;
-  const card_amount = parseFloat(cardInput.value) || 0;
+  let cash_amount = parseFloat(cashInput.value) || 0;
+
+  let card_amount = parseFloat(cardInput.value) || 0;
   const customer_name = customerIdInput.value.trim();
   const customer_mobile = customerMobileInput.value.trim();
 
@@ -389,6 +390,11 @@ checkoutBtn.addEventListener("click", async () => {
       alert("Customer Mobile Number must start with '01' and be exactly 11 digits (e.g. 01700000000).");
       return;
     }
+  }
+
+  const rounded = parseFloat(cartTotalEl.textContent.replace("৳", "")) || 0;
+  if (cash_amount === 0 && card_amount === 0) {
+    cash_amount = rounded;
   }
 
   checkoutBtn.disabled = true;
@@ -400,6 +406,7 @@ checkoutBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, cash_amount, card_amount, customer_name, customer_mobile }),
     });
+
     const data = await res.json();
 
     if (!res.ok) {

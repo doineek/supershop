@@ -103,12 +103,11 @@ class ApiService {
     return _activeUrl.isNotEmpty ? _activeUrl : candidateUrls.first;
   }
 
-  static Future<http.Response?> httpGet(String path, {Duration timeout = const Duration(seconds: 4)}) async {
+  static Future<http.Response?> httpGet(String path, {Duration timeout = const Duration(seconds: 8)}) async {
     List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
     for (String serverUrl in urlsToTry) {
       try {
-        final currentTimeout = _activeUrl.isNotEmpty ? timeout : const Duration(milliseconds: 1500);
-        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(currentTimeout);
+        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
           return res;
@@ -128,7 +127,7 @@ class ApiService {
     if (_activeUrl.isEmpty && urlsToTry.length == 1) {
       for (String serverUrl in candidateUrls) {
         try {
-          final res = await http.get(Uri.parse('$serverUrl$path')).timeout(const Duration(milliseconds: 1500));
+          final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
           if (_isValidJsonResponse(res)) {
             _activeUrl = serverUrl;
             return res;
@@ -139,16 +138,15 @@ class ApiService {
     return null;
   }
 
-  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 5)}) async {
+  static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 15)}) async {
     List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
     for (String serverUrl in urlsToTry) {
       try {
-        final currentTimeout = _activeUrl.isNotEmpty ? timeout : const Duration(milliseconds: 2000);
         final res = await http.post(
           Uri.parse('$serverUrl$path'),
           headers: headers ?? {'Content-Type': 'application/json'},
           body: body,
-        ).timeout(currentTimeout);
+        ).timeout(timeout);
 
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
@@ -166,6 +164,7 @@ class ApiService {
     }
     return null;
   }
+
 
   static Future<Map<String, dynamic>> fetchShopSettings() async {
     try {

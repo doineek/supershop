@@ -1101,19 +1101,22 @@ def checkout():
             valid_serials
         ))
 
-    # IMPORTANT: rounded_total must include VAT, otherwise the customer is
-    # charged/shown a "Net Payable" that is missing the VAT amount even
-    # though VAT is computed and displayed on the receipt.
     grand_total = sub_total + total_vat
     rounded_total = round_to_whole(grand_total)
     saved_amount = round(mrp_total - grand_total, 2)
-    change_amount = round((cash_amount + card_amount) - rounded_total, 2)
 
-    if change_amount < 0:
-        conn.close()
-        return jsonify({"error": f"Amount tendered is short by {abs(change_amount):.2f}."}), 400
+    # If cashier left cash/card blank, default to exact cash payment
+    if cash_amount == 0 and card_amount == 0:
+        cash_amount = rounded_total
+        change_amount = 0.0
+    else:
+        change_amount = round((cash_amount + card_amount) - rounded_total, 2)
+        if change_amount < 0:
+            conn.close()
+            return jsonify({"error": f"Amount tendered is short by {abs(change_amount):.2f}."}), 400
 
     invoice_number = generate_invoice_number()
+
     invoice_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
