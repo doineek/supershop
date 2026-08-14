@@ -1223,9 +1223,11 @@ def delete_sale(sale_id):
     conn = get_connection()
     sale = conn.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
     if sale:
+        inv_num = sale["invoice_number"]
         conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (sale_id,))
         conn.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
         conn.commit()
+        remote_control.delete_sale_from_cloud(inv_num, sale_id=sale_id)
         flash("Sale log entry deleted successfully.", "success")
     else:
         flash("Sale entry not found.", "error")
@@ -1610,6 +1612,7 @@ def block_customer():
         )
         conn.commit()
         conn.close()
+        remote_control.push_customer_user_to_cloud(phone)
         flash(f"Customer {phone} has been successfully unblocked.", "success")
         return redirect(url_for("customers_page"))
 
@@ -1636,6 +1639,7 @@ def block_customer():
     )
     conn.commit()
     conn.close()
+    remote_control.push_customer_user_to_cloud(phone)
     flash(f"Customer {phone}  {dur_label} has been blocked.", "warning")
     return redirect(url_for("customers_page"))
 
@@ -1779,6 +1783,11 @@ def delete_customer_admin():
     conn.commit()
     conn.close()
 
+    if clean_phone:
+        remote_control.delete_customer_from_cloud(clean_phone)
+    if raw_phone and raw_phone != clean_phone:
+        remote_control.delete_customer_from_cloud(raw_phone)
+
     flash(f"Customer '{name}' ({raw_phone}) has been permanently deleted.", "success")
     return redirect(url_for("customers_page"))
 
@@ -1887,6 +1896,7 @@ def create_rider_admin():
     )
     conn.commit()
     conn.close()
+    remote_control.push_users_to_cloud()
 
     flash(f"Delivery Rider '{full_name}' ({username}) created successfully!", "success")
     return redirect(url_for("riders_page"))
@@ -1919,6 +1929,7 @@ def edit_rider_admin():
         )
     conn.commit()
     conn.close()
+    remote_control.push_users_to_cloud()
 
     flash(f"Delivery Rider '{full_name}' updated successfully!", "success")
     return redirect(url_for("riders_page"))
@@ -1937,6 +1948,7 @@ def delete_rider_admin():
     conn.execute("DELETE FROM users WHERE id = ? AND role = 'delivery'", (rider_id,))
     conn.commit()
     conn.close()
+    remote_control.push_users_to_cloud()
 
     flash("Delivery rider account deleted successfully.", "success")
     return redirect(url_for("riders_page"))
@@ -2419,10 +2431,12 @@ def new_voucher():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
             """, (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, datetime.now().isoformat()))
             conn.commit()
+            conn.close()
+            remote_control.push_vouchers_to_cloud()
             flash(f"Voucher '{code}' created successfully.", "success")
         except Exception as e:
+            conn.close()
             flash(f"Could not create voucher: {e}", "error")
-        conn.close()
     else:
         flash("Please provide a valid voucher code and discount value.", "error")
 
@@ -2459,12 +2473,15 @@ def edit_voucher(voucher_id):
                 WHERE id = ?
             """, (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, active, voucher_id))
             conn.commit()
+            conn.close()
+            remote_control.push_vouchers_to_cloud()
             flash(f"Voucher '{code}' updated successfully.", "success")
         except Exception as e:
+            conn.close()
             flash(f"Could not update voucher: {e}", "error")
     else:
+        conn.close()
         flash("Please provide a valid voucher code and discount value.", "error")
-    conn.close()
     return redirect(url_for("offers_page"))
 
 
@@ -2473,9 +2490,13 @@ def edit_voucher(voucher_id):
 @admin_required
 def delete_voucher(voucher_id):
     conn = get_connection()
+    v = conn.execute("SELECT code FROM vouchers WHERE id = ?", (voucher_id,)).fetchone()
+    code = v["code"] if v else None
     conn.execute("DELETE FROM vouchers WHERE id = ?", (voucher_id,))
     conn.commit()
     conn.close()
+    if code:
+        remote_control.delete_voucher_from_cloud(code)
     flash("Voucher deleted successfully.", "success")
     return redirect(url_for("offers_page"))
 
@@ -3356,10 +3377,14 @@ def update_online_order_status(order_id):
 @admin_required
 def delete_online_order(order_id):
     conn = get_connection()
+    ord_row = conn.execute("SELECT order_number FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    order_num = ord_row["order_number"] if ord_row else None
     conn.execute("DELETE FROM online_order_items WHERE order_id = ?", (order_id,))
     conn.execute("DELETE FROM online_orders WHERE id = ?", (order_id,))
     conn.commit()
     conn.close()
+    if order_num:
+        remote_control.delete_online_order_from_cloud(order_num, order_id=order_id)
     flash("Online order deleted successfully.", "success")
     return redirect(url_for("online_orders"))
 

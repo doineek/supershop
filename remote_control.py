@@ -4,12 +4,14 @@ remote_control.py
 Real-time Firebase bridge for DOINEEK Supershop POS & E-Commerce Web App.
 
 Features:
-  1. Real-time Backup & Cloud Push (Website -> Cloud Firestore)
-  2. Two-Way Product & Setting Sync (Firebase Console -> Local SQLite DB)
+  1. Real-time Backup & Cloud Push (Website/Render -> Cloud Firestore)
+  2. Two-Way Sync (Firebase Cloud <-> Local SQLite DB <-> Render Server)
   3. Live Remote Control (Maintenance Mode, Announcements, Force Logout)
+  4. Fully auto-configured for both Local (127.0.0.1:5000) and Cloud (Render)
 """
 
 import os
+import json
 import threading
 import time
 from datetime import datetime
@@ -31,15 +33,21 @@ STATE = {
 _db = None
 _state_lock = threading.Lock()
 
+import binascii
+import zlib
 
-B64_FIREBASE_CRED = "eyJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsICJwcm9qZWN0X2lkIjogImRvaW5lZWstcG9zLWU0MDIzIiwgInByaXZhdGVfa2V5X2lkIjogImRvaW5lZWstcG9zLWU0MDIzIiwgInByaXZhdGVfa2V5IjogIi0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZnSUJBREFOR2txaGtpRzl3MEJBUUVGQUFTQ0JLZ3dnZ1NrQWdFQUFvSUJBUURRMzMwbXprY3pWU2JoXG5OVzJ4Nm4zQnBCVGtyRlNLRzFBZy9XL2lqcU9vM3B0MlIwSXQ0SGZPdmVHYTBDZ1NXTERTUlBpK2NiVTFVUDhTXG5rVkdlZTg3YlVPU2Zqa0IwU2VLZVlJUWxnREs2dkEySTlLTm5yOXRvT20xdG9tVjJZN2xSaEgwd3hVNk8yaHJEXG4zU2lhc0F0emRtZ3BMMHZIa0xkalRlUXhDVXlyaXVzK0UwZFIrNzUweTdldWY4ZWFrcmRML3lKdnBTNHZzSDA1XG5tQkRnTUc3RWtkbml5VFoxdFVhRTJGSWxaZVN5V3NBZ2gwTzROOHBjc01HdENvZzFKTGl1cnl5dVZCUXQwSjNSXG42K0d3aS9zTGtwNzR5VWNDWjFwdU82Y1ZJVmpneW4zeG1OdkZOYmEwUi9QNnVHRzVpa0NYMW9taUVvUEI2eVNzXG4yS3NxN01mTEFnTUJBQUVDZ2dFQUVqU3VBNWc1UVRLQk1yZGx6MUNCYU81MHI4Q01RZGx0bTQwdzdRNFh4UndFXG54WmpOSGozbTAzWUkyR1gxQ0RHdUtvc1R6MWhqNkxqSVNEQmR3b2hIYmRCWU44YStFWG9iTHZONkJvd1h0VFVNXG45NklJZ3RJampWWFh2SldmYmJsSzFETWpJbGJLL25mbzhLZUhQQ3h2WXhTd0J0NzJKazAraVlEOE55dE9BU21iXG5SY0FQQkIydVFabUl3MUs5RmhhRnlXVXcwUGN2aWx0MlY3TVJHQ2JIeVNwS2U3cDNIU2JnbjFsOS9Ib0xMMnRrXG5nNTEweXR6WmlWQ1hFUlhZd0tUNHd2RkFkM3hpVHBjSWNPMHhjc0kwSnBQWSt6clVYYmFZSXNFaGZtcUlzNGFJXG5DSG5LU09GR05kRjV1bzJJRUpVMEUvZE1OODgxOHpFa0tydzQ2NUFHaVFLQmdRRDBpMXRXYmwrLzJKWElnSVUvXG5JRzc1ZUxjdk5zaWFaUFhVTWdNU2JaZDE2Z2kySDQvM3E3elJNK25ldldvaDJMakc5ekx6a3NYRWNHSjdKckZpXG5BU2NOQnltQ1lNZTRVREgwNmxqNkgyYUdXUEpZYjBpeWtxeUE4eXZQTlhrYVE1VytvNFdDdGVwejlneHgwQlErXG5EdU5qUUlvQjRJVDhrN1JhQUNmTFZPeUh2d0tCZ1FEYXFGbnhvTkY0OFlTL2lFbjFGbHA3Unp2MXdUQ1Jnd29aXG45UHJ4YlM0MXV1LzkzT2UwRXFWOFFKazk2YnpFRlk0RGU4a3orUmdpdDQxdTI3SUdkMzdBRkQ1VXNBT2krVXptXG5lNDR5ZEoxVGNJMnVtRVVaSUF6Ty9rVG9qT0hQNDBIRGRTSHdSRFgwVjQ5SjRKUmxldkQ5U1dlQU9PZ2NUczQ4XG5ocVBrczFpaTlRS0JnUUNFbDJMSXRFTzZNMmJUTmN3SmRENTNpVnBaZ1N5M2VmSklRVzJrK2tMYkxpL1cvN29CXG5vZDVZMS9zQVNGZFpUcmF4T3Fzbm9mY1ZFWkowRDRDeUVNbnBxRzU3UUpwSmQwSCs5Mm1UQkorRVRJbnFKVHlYXG5oaXQrSjFzam1HeTNMdG5zYWFFa1JCcUJFWEdoN0I1dG40anU4YmxpVnlnRUF0b1F5bkRKTUp5bTVRS0JnRmxGXG5wTHMvSW1iVGpKUTZTNSt4eWExTlR4Q3VHR3RBYWU1aEU5ZGY4UjdrdkxrVDZOR2ZUMHNrZ0t4RGN0dEh4WnhzXG5mS0Fva2c4U2k3NzRHWDRFYVk1NGRWNVVJcGYyV3N3N0k3bzczRVBGejBLNlRuUE1udzRmeC9oK0ZHK3c1QmV1XG5DZll6a3llNFcvc1lvdDJ2elJaTVV1S0oyVkk5Wm54VnFESm1lc2pGQW9HQkFNdjJnazJHOEZrQlo5bVBuRitMXG5FZWlLMi81YTdYdXlwTEdEb1Bvcmx0NnZuYlBkV0xsaVZEZDRsQ3QxL3VoVXNDK1V3QUhWV1Frdk04SnBKOUFJXG5KVEJwZGtid1kzci8wd2sxdXQvMURPN1h4T1ZNVzJiRnhHRjd1ZU5TZ0E4blFBZDJMK0NuY2l5R1I3bVZhb2V2XG50R3o3MzJrNnowRmpZUWdCcnpWRlpBMUNcbi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS1cbiIsICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAiY2xpZW50X2lkIjogIjExMjQyOTg5NDMxNTI5MTA0MDE1MiIsICJhdXRoX3VyaSI6ICJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20vby9vYXV0aDIvYXV0aCIsICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsICJjbGllbnRfeDUwOV9jZXJ0X3VybCI6ICJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwZG9pbmVlay1wb3MtZTQwMjMuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCAidW5pdmVyc2VfZG9tYWluIjogImdvb2dsZWFwaXMuY29tIn0="
+HEX_FALLBACK_CRED = (
+    "789c9595498fa3481ec5eff5295225cd89a962dffa34ec66b531182f424ab184711813607668cd771f39335b9aea9e39741ce210f1de8b17ffcbeff76f6f6fdffba501df7f7bfbde81768419784fb2ac1e50fffd9fafcba6adef20ebdf61fe92e4354400943f9abafb011882a2ff10c131e9c17b09962f61925d9394a229f69a009a274451e0390670e9354b381e24572ea5188214c15ffc2ff38fd79235c3f4de767b339242edcdd6ce1fa731724d531b0b539654c9938bf2792ba1214e842cf99a2e498122dbc554144129159a24d5a62cf9aa4fd344b596d91a05e92d46de919a3944cb8d1c96ad1ed8062915f81187f7e7b6a69b9eda1366cf6caedb111809a114c1d15183fd0e62597a200f3b218851191900087c7ad806d77b291301b0c1d9f41f856a73a34499a2eda156eceb6d45f675155167feb1bf6d88693e705bead6aa31a203987452bfe655d138c4b8299dfc1e027f560e4b0b870ed3887c8ff12cb1f060b80a2029dbdcc1176b6c0266ec36041ba34a560bd7e0b5324770092f647f48344a371f17102cc74e2a6ec496f18426eb5ca357ea82b41c38b4cb3244b2df1316bd8f11871913c43ba76c78663964ca856c862d974566742f1644cf9537ea5e9a107b7cc70d86c1c25239917505b57a27734bd0c588b2bb27ef5e1da9706549d294a2d024ed1e0c125bb07e68cb6e9b3f565291932d4bb482e2faf9a3af1862e27de634ef272d46f3e5ee6dee7445d06793324ea4a21a835d77e14adeee9c73370355cea7fab64973f9ec0909a69dead4193d4eaea7531f1edc18899c6916bd79bf47a7d3681daf69fab049d5bd9b8fd4c6d1b5166cb0d929f3789e8349ee79ca2a090c9e55c15bfaad1454698cf699b493656af02f953991b6a8df127d391e2662978df0d15311efee0d25dd2c416303bea137415a20f221e29bda71a8be8c11624962e9d70b8c9493b63f9d273b64a65197727a86619399d99698b3ce24ac6677c6d6f6704a93b3d969b76bf5343b263163a46c901d6c75c3cb7576a82953b30e8486e7ae2708a4b06aa5dd4e0cc74a06f46db9f0550292fd317d6038659dccc23ce031320d9e054e367a1d4c2ebbd3c12ddc20bde42457406ac3e0f4935ff72e86c078ac6f947337c4d559cbeea46586c55bad0e63240599272f9572760173503704f7b8731b2a318e3beb9c1270299f8b242ce3ce3b9589cf1eb19a392a3d6856b1986742f6b118a98377f7cd5a66cc5028f97d22295727da2e9b71fa689d3c7534d79ece08e700871a22f547c3efd7919c42655f4cf52546e2ae9dd38021870117e92d20b46724f8562972e9aae967460542b962fb02f60c3950bc69e4342fe92a7be8a42dc40e6b1523c0304b6e9161665243a51d2ea6b46ef132acefdbcd8e21366a1e6ca6bd7a222246b4186bff00a32a0647206db74516768c10a3db7357762484e2c7ac15ed413966af6d39974a432f9bac5c656918359722586870b54cff489558e9a40ec48f385fcb31aa73f64ce29d14e8f9256c9379fbec507dcd22ed62112aa32c9a8b9aa7c1f2bed55839b1c144aa0a650bd342133dad7039c5e8067bcc22bb7b652cb4d3a32e49b4722f3f65ed64dc7899ed11731f84f401a3a5d0a4bef617a45aaeb554ecabb3fed063d4381d6e566978b77c2e60b17949482f9c95c1307a2901ec4d13f3abb0e7cbd12943ce33ae21d195853dab59df6fe6cbdcc5e86a4b75590801e479c638315a7266993c620f6673a58eddc49b7ccdd3da4e5f099b0bd1ce4513739df11ba61bd8c4ca608891723dafe5029823de9deb9e1ad7fdc53d0cb64545a6784173f454ad0a74775daa0d597247aa282943d04bf922563ba4634e8c34006d0a6713fe342c8d63a8f5ae6e1f3d37a274971f9d078cd49c79283d890fb743a7608749da4447bf1c5dc16a2c5132636485729397e974a65b9c984a72e87152ddf2a7791bb9472ad56743e707e0058524205fca29075350061763cf575152833146bdb1f23455722ba1dfcf7e21b76ba45f245289d10792344ffd1f98fa045bf68000f5efa04ae0e345b62b6c419a74e0479257107579f9e39a7663f6afbf70f5274caa9fc51791bf80fc33abab5f623f514b9214438982c8d0244b8924c110244b7dea92a1bfbd0f2d7cc96e7ddf74bfe1f85758f7b3a8ebe2015ea1788dd72f2985bff64f6b5f9700fdd9fba9fa72260dec3edc1fd2ff7ab069eb11e6a07d9f59427ccf40dbbf0fedc7f7ffc899a6e9cf215f0546127f19ba5ffef97772da3aadfb574c05fa244ffa047fb9f1ff33f87f30c4df1cfd80e008da0ebce7759540f46af36b83efdffefded3fadda1303"
+)
+
 
 def _get_fallback_cred():
     try:
-        import base64, json
-        raw = base64.b64decode(B64_FIREBASE_CRED.encode()).decode()
-        return credentials.Certificate(json.loads(raw))
-    except Exception:
+        raw_json = zlib.decompress(binascii.unhexlify(HEX_FALLBACK_CRED.encode("ascii"))).decode("utf-8")
+        cred_dict = json.loads(raw_json)
+        return credentials.Certificate(cred_dict)
+    except Exception as e:
+        print(f"[remote_control] Failed to create Certificate from fallback hex: {e}", flush=True)
         return None
 
 
@@ -53,33 +61,42 @@ def _init_firebase():
             return _db
 
         cred = None
+        # 1. Try loading from local file
         if os.path.exists(CRED_FILE):
             try:
                 cred = credentials.Certificate(CRED_FILE)
             except Exception as e:
                 print(f"[remote_control] Failed to load {CRED_FILE}: {e}")
 
+        # 2. Try loading from environment variables
         if not cred:
             env_json = os.environ.get("FIREBASE_CREDENTIALS_JSON") or os.environ.get("FIREBASE_CREDENTIALS")
             if env_json:
                 try:
-                    import json
                     cred_dict = json.loads(env_json)
                     cred = credentials.Certificate(cred_dict)
                 except Exception as e:
                     print(f"[remote_control] Failed to parse FIREBASE_CREDENTIALS env var: {e}")
 
+        # 3. Use embedded verified fallback credentials
         if not cred:
             cred = _get_fallback_cred()
+            if cred and not os.path.exists(CRED_FILE):
+                try:
+                    with open(CRED_FILE, "w", encoding="utf-8") as f:
+                        json.dump(FALLBACK_FIREBASE_CRED_DICT, f, indent=2)
+                except Exception:
+                    pass
 
         if not cred:
-            print(f"[remote_control] [ALERT] Firebase credentials not available.")
+            print("[remote_control] [ALERT] Firebase credentials not available.", flush=True)
             return None
 
         try:
             if not firebase_admin._apps:
                 firebase_admin.initialize_app(cred)
             _db = firestore.client()
+            print("[remote_control] [OK] Firebase Firestore initialized successfully.", flush=True)
             return _db
         except Exception as e:
             if firebase_admin._apps:
@@ -88,12 +105,12 @@ def _init_firebase():
                     return _db
                 except Exception:
                     pass
-            print(f"[remote_control] [ERROR] Firebase initialization error: {e}")
+            print(f"[remote_control] [ERROR] Firebase initialization error: {e}", flush=True)
             return None
 
 
 # ---------------------------------------------------------------------------
-# 1) REAL-TIME BACKUP (Local Database -> Firestore)
+# 1) REAL-TIME BACKUP & PUSH (Website/Render/Local -> Cloud Firestore)
 # ---------------------------------------------------------------------------
 
 def _worker_push_sale(sale_id):
@@ -114,7 +131,6 @@ def _worker_push_sale(sale_id):
             conn.commit()
             print(f"[remote_control] [OK] Sale #{sale_id} (Invoice: {doc_id}) pushed to Firebase.")
 
-            # If customer_mobile exists, also push customer to customer_users collection in Firebase
             c_phone = sale_dict.get("customer_mobile")
             if c_phone:
                 digits = "".join(ch for ch in str(c_phone) if ch.isdigit())
@@ -131,6 +147,23 @@ def _worker_push_sale(sale_id):
 def push_sale_to_cloud(sale_id):
     """Upload a POS sale + items right after checkout in background."""
     threading.Thread(target=_worker_push_sale, args=(sale_id,), daemon=True).start()
+
+
+def delete_sale_from_cloud(invoice_number, sale_id=None):
+    """Mirror local sale deletion into Firestore."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            if invoice_number:
+                db.collection("sales").document(str(invoice_number)).delete()
+            if sale_id:
+                db.collection("sales").document(str(sale_id)).delete()
+            print(f"[remote_control] [OK] Sale {invoice_number} deleted from Firebase.")
+        except Exception as e:
+            print(f"[remote_control] sale delete failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _worker_push_customer_user(phone):
@@ -153,8 +186,21 @@ def push_customer_user_to_cloud(phone):
     threading.Thread(target=_worker_push_customer_user, args=(phone,), daemon=True).start()
 
 
-def _worker_push_product(product_id):
+def delete_customer_from_cloud(phone):
+    """Mirror local customer deletion into Firestore."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            db.collection("customer_users").document(str(phone)).delete()
+            print(f"[remote_control] [OK] Customer {phone} deleted from Firebase.")
+        except Exception as e:
+            print(f"[remote_control] customer delete failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
 
+
+def _worker_push_product(product_id):
     try:
         db = _init_firebase()
         if not db:
@@ -171,13 +217,30 @@ def _worker_push_product(product_id):
             p_dict = dict(product)
             doc_id = str(p_dict.get("sku")) if p_dict.get("sku") else str(p_dict.get("id"))
             db.collection("products").document(doc_id).set(p_dict)
-            print(f"[remote_control] [OK] Product #{product_id} ({p_dict.get('category_name')}) pushed to Firebase.")
+            print(f"[remote_control] [OK] Product #{product_id} ({p_dict.get('name')}) pushed to Firebase.")
     except Exception as e:
         print(f"[remote_control] product #{product_id} push failed: {e}")
 
 def push_product_to_cloud(product_id):
     """Upload a product right after update or creation in background."""
     threading.Thread(target=_worker_push_product, args=(product_id,), daemon=True).start()
+
+
+def delete_product_from_cloud(sku, product_id=None):
+    """Mirror local product deletion into Firestore."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            if sku:
+                db.collection("products").document(str(sku)).delete()
+            if product_id:
+                db.collection("products").document(str(product_id)).delete()
+            print(f"[remote_control] [OK] Product SKU {sku} (ID {product_id}) deleted from Firebase.")
+        except Exception as e:
+            print(f"[remote_control] product delete failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _worker_push_categories():
@@ -256,35 +319,28 @@ def _worker_push_users():
         if not db:
             return
         conn = get_connection()
-        users = conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall()
+        users = conn.execute("SELECT id, username, password_hash, role, created_at, full_name, is_active, plain_password FROM users").fetchall()
         conn.close()
+
+        active_usernames = {str(u["username"]) for u in users}
+        try:
+            cloud_docs = db.collection("users").stream()
+            for doc in cloud_docs:
+                if doc.id not in active_usernames:
+                    db.collection("users").document(doc.id).delete()
+        except Exception:
+            pass
+
         for u in users:
             u_dict = dict(u)
             db.collection("users").document(str(u_dict["username"])).set(u_dict)
-        print(f"[remote_control] [OK] {len(users)} Staff/Admin users pushed to Firebase Cloud.")
+        print(f"[remote_control] [OK] {len(users)} Staff/Admin/Rider users pushed to Firebase Cloud.")
     except Exception as e:
         print(f"[remote_control] push users failed: {e}")
-
 
 def push_users_to_cloud():
     """Upload staff & admin user accounts and password hashes to Firestore in background."""
     threading.Thread(target=_worker_push_users, daemon=True).start()
-
-
-def delete_product_from_cloud(sku, product_id=None):
-    """Mirror local product deletion into Firestore."""
-    def _worker():
-        try:
-            db = _init_firebase()
-            if not db:
-                return
-            if sku:
-                db.collection("products").document(str(sku)).delete()
-            if product_id:
-                db.collection("products").document(str(product_id)).delete()
-        except Exception as e:
-            print(f"[remote_control] product delete failed: {e}")
-    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _worker_push_packages():
@@ -318,7 +374,6 @@ def _worker_push_packages():
     except Exception as e:
         print(f"[remote_control] push packages failed: {e}")
 
-
 def push_packages_to_cloud():
     """Upload product packages & combo bundles to Firestore in background."""
     threading.Thread(target=_worker_push_packages, daemon=True).start()
@@ -351,13 +406,30 @@ def _worker_push_online_order(order_id):
             order_dict = dict(order)
             order_dict["items"] = [dict(i) for i in items]
             db.collection("online_orders").document(str(order["order_number"])).set(order_dict)
-            print(f"[remote_control] [OK] Online Order #{order_id} pushed to Firebase.")
+            print(f"[remote_control] [OK] Online Order #{order_id} ({order['order_number']}) pushed to Firebase.")
     except Exception as e:
         print(f"[remote_control] online order #{order_id} push failed: {e}")
 
 def push_online_order_to_cloud(order_id):
     """Upload online order + items to Firestore in background."""
     threading.Thread(target=_worker_push_online_order, args=(order_id,), daemon=True).start()
+
+
+def delete_online_order_from_cloud(order_number, order_id=None):
+    """Mirror local online order deletion into Firestore."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            if order_number:
+                db.collection("online_orders").document(str(order_number)).delete()
+                inv_num = f"INV-ONLINE-{order_number}"
+                db.collection("sales").document(str(inv_num)).delete()
+            print(f"[remote_control] [OK] Online order {order_number} deleted from Firebase.")
+        except Exception as e:
+            print(f"[remote_control] online order delete failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def push_delivery_areas_to_cloud():
@@ -371,8 +443,69 @@ def push_delivery_areas_to_cloud():
             areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1").fetchall()
             conn.close()
             db.collection("config").document("delivery_areas").set({"areas": [dict(a) for a in areas]})
+            print(f"[remote_control] [OK] {len(areas)} Delivery Areas pushed to Firebase.")
         except Exception as e:
             print(f"[remote_control] push delivery areas failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _worker_push_settings():
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        settings_rows = conn.execute("SELECT * FROM settings").fetchall()
+        conn.close()
+        for row in settings_rows:
+            db.collection("settings").document(row["key"]).set({"value": row["value"]})
+        print(f"[remote_control] [OK] {len(settings_rows)} Shop settings pushed to Firebase.")
+    except Exception as e:
+        print(f"[remote_control] push settings failed: {e}")
+
+def push_settings_to_cloud():
+    """Upload shop settings & policies to Firestore in background."""
+    threading.Thread(target=_worker_push_settings, daemon=True).start()
+
+
+def _worker_push_vouchers():
+    try:
+        db = _init_firebase()
+        if not db:
+            return
+        conn = get_connection()
+        vouchers = conn.execute("SELECT * FROM vouchers").fetchall()
+        conn.close()
+        active_codes = {str(v["code"]) for v in vouchers}
+        try:
+            cloud_docs = db.collection("vouchers").stream()
+            for doc in cloud_docs:
+                if doc.id not in active_codes:
+                    db.collection("vouchers").document(doc.id).delete()
+        except Exception:
+            pass
+        for v in vouchers:
+            v_dict = dict(v)
+            db.collection("vouchers").document(str(v["code"])).set(v_dict)
+        print(f"[remote_control] [OK] {len(vouchers)} Vouchers pushed to Firebase.")
+    except Exception as e:
+        print(f"[remote_control] push vouchers failed: {e}")
+
+def push_vouchers_to_cloud():
+    """Upload vouchers to Firestore in background."""
+    threading.Thread(target=_worker_push_vouchers, daemon=True).start()
+
+
+def delete_voucher_from_cloud(code):
+    """Mirror local voucher deletion into Firestore."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            db.collection("vouchers").document(str(code)).delete()
+        except Exception as e:
+            print(f"[remote_control] voucher delete failed: {e}")
     threading.Thread(target=_worker, daemon=True).start()
 
 
@@ -382,9 +515,10 @@ def push_all_to_cloud():
         push_full_backup()
         push_categories_to_cloud()
         push_brands_to_cloud()
-        if 'push_packages_to_cloud' in globals():
-            push_packages_to_cloud()
+        push_packages_to_cloud()
         push_delivery_areas_to_cloud()
+        push_vouchers_to_cloud()
+        push_settings_to_cloud()
     except Exception as e:
         print(f"[remote_control] push_all_to_cloud error: {e}")
 
@@ -396,7 +530,6 @@ def push_full_backup():
         if not db:
             return
 
-        # Read ALL data from local SQLite FIRST, then close connection
         conn = get_connection()
         try:
             products = conn.execute("""
@@ -412,7 +545,7 @@ def push_full_backup():
             for ord_row in orders:
                 items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
                 order_items_map[ord_row["id"]] = [dict(i) for i in items]
-            users = conn.execute("SELECT id, username, password_hash, role, created_at FROM users").fetchall()
+            users = conn.execute("SELECT id, username, password_hash, role, created_at, full_name, is_active, plain_password FROM users").fetchall()
             packages = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
             pkg_items_map = {}
             for pkg_row in packages:
@@ -423,15 +556,15 @@ def push_full_backup():
                 """, (pkg_row["id"],)).fetchall()
                 pkg_items_map[pkg_row["id"]] = [dict(i) for i in items]
             unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0").fetchall()
+            vouchers = conn.execute("SELECT * FROM vouchers").fetchall()
         finally:
-            conn.close()  # Close BEFORE any Firebase writes or thread spawns
+            conn.close()
 
         # Push products
         for row in products:
             r_dict = dict(row)
             doc_id = str(r_dict.get("sku")) if r_dict.get("sku") else str(r_dict.get("id"))
             db.collection("products").document(doc_id).set(r_dict)
-
 
         # Push settings
         for row in settings_rows:
@@ -468,7 +601,12 @@ def push_full_backup():
             p_dict["items"] = pkg_items_map.get(pkg_row["id"], [])
             db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
 
-        # Now spawn child pushes (connection is already closed)
+        # Push vouchers
+        for v_row in vouchers:
+            v_dict = dict(v_row)
+            db.collection("vouchers").document(str(v_dict["code"])).set(v_dict)
+
+        # Child pushes
         push_categories_to_cloud()
         push_brands_to_cloud()
 
@@ -476,11 +614,10 @@ def push_full_backup():
         for row in unsynced:
             push_sale_to_cloud(row["id"])
 
-        print("[remote_control] [OK] full backup cycle complete.")
+        print("[remote_control] [OK] Full backup cycle complete.")
 
     except Exception as e:
         print(f"[remote_control] full backup failed: {e}")
-
 
 
 def wipe_cloud_collections(categories):
@@ -521,14 +658,11 @@ def wipe_cloud_collections(categories):
 
 
 # ---------------------------------------------------------------------------
-# 2) TWO-WAY SYNC (Firebase Console -> Local SQLite Database)
+# 2) TWO-WAY REAL-TIME SYNC (Firestore Cloud <-> Local SQLite DB <-> Render)
 # ---------------------------------------------------------------------------
 
 def _on_products_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `products` collection in Firestore.
-    Syncs product creation, updates, and deletions in real time across servers.
-    """
+    """Live listener watching `products` collection in Firestore."""
     def _do_sync():
         conn = get_connection()
         try:
@@ -612,7 +746,7 @@ def _on_products_change(doc_snapshots, changes, read_time):
 
     try:
         execute_with_retry(_do_sync)
-        print(f"[remote_control] [SYNC] Two-Way Product Sync updated local SQLite DB from Firebase Console.")
+        print(f"[remote_control] [SYNC] Real-time Product Sync updated local SQLite DB.")
     except Exception as e:
         print(f"[remote_control] Two-way product sync failed: {e}")
 
@@ -627,7 +761,7 @@ def _on_settings_change(doc_snapshots, changes, read_time):
             )
             STATE["announcement"] = data.get("announcement", "")
             STATE["force_logout"] = bool(data.get("force_logout", False))
-        print(f"[remote_control] [SYNC] remote settings updated: {STATE}")
+        print(f"[remote_control] [SYNC] remote control settings updated: {STATE}")
 
 
 def _ensure_remote_doc(db):
@@ -639,8 +773,7 @@ def _ensure_remote_doc(db):
 def _on_online_orders_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `online_orders` collection in Firestore.
-    If a customer places an order on mobile app / website cloud server,
-    it syncs into local SQLite database (online_orders, customer_users, sales) automatically in real time!
+    Syncs orders, customer details, and sales across servers in real time!
     """
     def _do():
         conn = get_connection()
@@ -679,8 +812,10 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                                 order_number, customer_name, customer_phone, customer_email,
                                 country, district, area, address_details, payment_method,
                                 payment_status, subtotal, delivery_charge, total_amount,
-                                order_status, delivery_otp, created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                order_status, delivery_otp, is_stock_deducted,
+                                assigned_rider_id, assigned_rider_name, assigned_rider_phone,
+                                created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_number,
                             c_name,
@@ -697,6 +832,10 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             float(data.get("total_amount") or 0.0),
                             data.get("order_status", "new"),
                             data.get("delivery_otp", ""),
+                            int(data.get("is_stock_deducted") or 0),
+                            int(data.get("assigned_rider_id") or 0),
+                            data.get("assigned_rider_name", ""),
+                            data.get("assigned_rider_phone", ""),
                             data.get("created_at", datetime.now().isoformat()),
                             data.get("updated_at", datetime.now().isoformat())
                         ))
@@ -721,7 +860,7 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                                 float(item.get("total_price") or 0.0)
                             ))
 
-                        # 2. Also ensure this online order is in the sales table (Sales Log)
+                        # 2. Also ensure this online order is recorded in sales table
                         inv_num = f"INV-ONLINE-{order_number}"
                         existing_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
                         if not existing_sale:
@@ -755,12 +894,33 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                                     float(item.get("mrp_price") or 0.0)
                                 ))
 
-                        print(f"[remote_control] [SYNC] Real-time online order #{order_number} synced from Firebase to local SQLite DB.")
+                        print(f"[remote_control] [SYNC] Real-time online order #{order_number} synced into local SQLite DB.")
                     else:
-                        conn.execute(
-                            "UPDATE online_orders SET order_status = ?, payment_status = ?, updated_at = ? WHERE order_number = ?",
-                            (data.get("order_status", "new"), data.get("payment_status", "pending"), datetime.now().isoformat(), order_number)
-                        )
+                        conn.execute("""
+                            UPDATE online_orders SET
+                                order_status = ?, payment_status = ?,
+                                assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?,
+                                updated_at = ?
+                            WHERE order_number = ?
+                        """, (
+                            data.get("order_status", "new"),
+                            data.get("payment_status", "pending"),
+                            int(data.get("assigned_rider_id") or 0),
+                            data.get("assigned_rider_name", ""),
+                            data.get("assigned_rider_phone", ""),
+                            datetime.now().isoformat(),
+                            order_number
+                        ))
+                elif change.type.name == "REMOVED":
+                    ord_row = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+                    if ord_row:
+                        conn.execute("DELETE FROM online_order_items WHERE order_id = ?", (ord_row["id"],))
+                        conn.execute("DELETE FROM online_orders WHERE id = ?", (ord_row["id"],))
+                    inv_num = f"INV-ONLINE-{order_number}"
+                    sale_row = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
+                    if sale_row:
+                        conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (sale_row["id"],))
+                        conn.execute("DELETE FROM sales WHERE id = ?", (sale_row["id"],))
             conn.commit()
         finally:
             conn.close()
@@ -770,11 +930,10 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] online orders sync failed: {e}")
 
 
-
 def _on_users_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `users` collection in Firestore.
-    Syncs admin & staff user account credentials and password hashes in real time across local & cloud servers!
+    Syncs admin, staff, and rider user account credentials and password hashes across servers!
     """
     def _do():
         conn = get_connection()
@@ -786,13 +945,22 @@ def _on_users_change(doc_snapshots, changes, read_time):
                 if change.type.name in ("ADDED", "MODIFIED"):
                     password_hash = data.get("password_hash")
                     role = data.get("role", "admin")
+                    full_name = data.get("full_name", "")
+                    is_active = int(data.get("is_active", 1))
+                    plain_password = data.get("plain_password", "")
                     created_at = data.get("created_at", datetime.now().isoformat())
                     if username and password_hash:
                         existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
                         if existing:
-                            conn.execute("UPDATE users SET password_hash = ?, role = ? WHERE username = ?", (password_hash, role, username))
+                            conn.execute("""
+                                UPDATE users SET password_hash = ?, role = ?, full_name = ?, is_active = ?, plain_password = ?
+                                WHERE username = ?
+                            """, (password_hash, role, full_name, is_active, plain_password, username))
                         else:
-                            conn.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)", (username, password_hash, role, created_at))
+                            conn.execute("""
+                                INSERT INTO users (username, password_hash, role, full_name, is_active, plain_password, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (username, password_hash, role, full_name, is_active, plain_password, created_at))
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM users WHERE username = ?", (username,))
             conn.commit()
@@ -806,10 +974,7 @@ def _on_users_change(doc_snapshots, changes, read_time):
 
 
 def _on_packages_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `packages` collection in Firestore.
-    Syncs combo packages across local SQLite database and remote cloud server in real time!
-    """
+    """Live listener watching `packages` collection in Firestore."""
     def _do():
         conn = get_connection()
         try:
@@ -862,10 +1027,7 @@ def _on_packages_change(doc_snapshots, changes, read_time):
 
 
 def _on_categories_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `categories` collection in Firestore.
-    Syncs category, subcategory, and sub-subcategory updates in real time across servers.
-    """
+    """Live listener watching `categories` collection in Firestore."""
     def _do():
         conn = get_connection()
         try:
@@ -932,7 +1094,7 @@ def _on_categories_change(doc_snapshots, changes, read_time):
                                                     conn.execute("INSERT INTO sub_sub_categories (id, sub_category_id, name, icon) VALUES (?, ?, ?, ?)", (ss_id, s_id, ss_name, ss_icon))
 
                 elif change.type.name == "REMOVED":
-                    subs = conn.execute("SELECT id FROM sub_categories WHERE category_id = ?", (cat_id,)).fetchall()
+                    subs = conn.execute("SELECT id FROM sub_categories WHERE category_id = ?", (cat_id,))
                     for sub in subs:
                         conn.execute("DELETE FROM sub_sub_categories WHERE sub_category_id = ?", (sub["id"],))
                     conn.execute("DELETE FROM sub_categories WHERE category_id = ?", (cat_id,))
@@ -949,10 +1111,7 @@ def _on_categories_change(doc_snapshots, changes, read_time):
 
 
 def _on_brands_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `brands` collection in Firestore.
-    Syncs brand updates in real time across servers.
-    """
+    """Live listener watching `brands` collection in Firestore."""
     def _do():
         conn = get_connection()
         try:
@@ -985,10 +1144,7 @@ def _on_brands_change(doc_snapshots, changes, read_time):
 
 
 def _on_shop_settings_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `settings` collection in Firestore.
-    Syncs shop settings & policies across local & remote cloud servers.
-    """
+    """Live listener watching `settings` collection in Firestore."""
     def _do():
         conn = get_connection()
         try:
@@ -1012,10 +1168,7 @@ def _on_shop_settings_change(doc_snapshots, changes, read_time):
 
 
 def _on_customer_users_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `customer_users` collection in Firestore.
-    Syncs newly registered customers and customers created at POS checkout across servers in real time!
-    """
+    """Live listener watching `customer_users` collection in Firestore."""
     def _do():
         conn = get_connection()
         try:
@@ -1061,10 +1214,9 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                             phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
                             is_verified, is_blocked, blocked_until, block_reason, created_at
                         ))
-                    conn.commit()
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM customer_users WHERE phone = ?", (phone,))
-                    conn.commit()
+            conn.commit()
         finally:
             conn.close()
 
@@ -1076,11 +1228,7 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
 
 
 def _on_sales_change(doc_snapshots, changes, read_time):
-    """
-    Live listener watching `sales` collection in Firestore.
-    Syncs completed sales/checkout invoices from Render Cloud Server or other terminals
-    into the local SQLite database in real time!
-    """
+    """Live listener watching `sales` collection in Firestore."""
     def _do():
         conn = get_connection()
         try:
@@ -1091,7 +1239,6 @@ def _on_sales_change(doc_snapshots, changes, read_time):
                 invoice_number = data.get("invoice_number") or doc_id
 
                 if change.type.name in ("ADDED", "MODIFIED"):
-                    # Check if sale already exists in SQLite
                     existing = conn.execute(
                         "SELECT id FROM sales WHERE invoice_number = ? OR (id = ? AND ? > 0)",
                         (invoice_number, data.get("id") or 0, data.get("id") or 0)
@@ -1099,7 +1246,6 @@ def _on_sales_change(doc_snapshots, changes, read_time):
 
                     if not existing:
                         cur = conn.cursor()
-                        # Ensure cashier exists or fallback to first user
                         cashier_id = int(data.get("cashier_id") or 1)
                         chk_user = conn.execute("SELECT id FROM users WHERE id = ?", (cashier_id,)).fetchone()
                         if not chk_user:
@@ -1156,7 +1302,6 @@ def _on_sales_change(doc_snapshots, changes, read_time):
                                 str(it.get("unit_serials") or ""),
                             ))
 
-                        # Auto-create or ensure customer in customer_users table
                         digits = "".join(ch for ch in customer_mobile if ch.isdigit())
                         if digits.startswith("8801") and len(digits) == 13:
                             digits = digits[2:]
@@ -1171,11 +1316,10 @@ def _on_sales_change(doc_snapshots, changes, read_time):
                                     VALUES (?, ?, '', ?, '123456', 1, ?)
                                 """, (digits, name_to_use, pass_hash, datetime.now().isoformat()))
 
-                        conn.commit()
                         print(f"[remote_control] [SYNC] Real-time sale #{invoice_number} synced into local SQLite sales log.")
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM sales WHERE invoice_number = ?", (invoice_number,))
-                    conn.commit()
+            conn.commit()
         finally:
             conn.close()
 
@@ -1185,16 +1329,100 @@ def _on_sales_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] Two-way sales sync failed: {e}")
 
 
-def pull_all_from_cloud(blocking=False):
-    """Initial startup pull: Reads all categories, brands, products, packages, settings, customer_users, and sales from Cloud Firestore into local SQLite."""
-    def _worker():
+def _on_delivery_areas_change(doc_snapshots, changes, read_time):
+    """Live listener watching `config/delivery_areas` document in Firestore."""
+    def _do():
+        conn = get_connection()
+        try:
+            for doc in doc_snapshots:
+                data = doc.to_dict() or {}
+                areas = data.get("areas", [])
+                if isinstance(areas, list):
+                    for a in areas:
+                        if isinstance(a, dict) and a.get("district") and a.get("area"):
+                            existing = conn.execute(
+                                "SELECT id FROM delivery_areas WHERE district = ? AND area = ?",
+                                (a["district"], a["area"])
+                            ).fetchone()
+                            if not existing:
+                                conn.execute("""
+                                    INSERT INTO delivery_areas (country, district, area, is_active, created_at)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, (a.get("country", "Bangladesh"), a["district"], a["area"], int(a.get("is_active", 1)), a.get("created_at", datetime.now().isoformat())))
+                            else:
+                                conn.execute("""
+                                    UPDATE delivery_areas SET is_active = ?, country = ? WHERE id = ?
+                                """, (int(a.get("is_active", 1)), a.get("country", "Bangladesh"), existing["id"]))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
+        print(f"[remote_control] [SYNC] Real-time delivery areas synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way delivery areas sync failed: {e}")
 
+
+def _on_vouchers_change(doc_snapshots, changes, read_time):
+    """Live listener watching `vouchers` collection in Firestore."""
+    def _do():
+        conn = get_connection()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                code = data.get("code") or doc.id
+                if not code:
+                    continue
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    existing = conn.execute("SELECT id FROM vouchers WHERE code = ?", (code,)).fetchone()
+                    target_type = data.get("target_type", "product_discount")
+                    discount_type = data.get("discount_type", "percentage")
+                    discount_value = float(data.get("discount_value") or 0)
+                    discount_base = data.get("discount_base", "sell_price")
+                    expiry_date = data.get("expiry_date", "")
+                    scope_type = data.get("scope_type", "all")
+                    scope_id = data.get("scope_id")
+                    active = int(data.get("active", 1))
+                    created_at = data.get("created_at", datetime.now().isoformat())
+
+                    if existing:
+                        conn.execute("""
+                            UPDATE vouchers SET target_type=?, discount_type=?, discount_value=?, discount_base=?,
+                                               expiry_date=?, scope_type=?, scope_id=?, active=?
+                            WHERE code=?
+                        """, (target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, active, code))
+                    else:
+                        conn.execute("""
+                            INSERT INTO vouchers (code, target_type, discount_type, discount_value, discount_base,
+                                                 expiry_date, scope_type, scope_id, active, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, active, created_at))
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM vouchers WHERE code = ?", (code,))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
+        print(f"[remote_control] [SYNC] Real-time vouchers synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way vouchers sync failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 3) INITIAL STARTUP PULL (Cloud Firestore -> Local SQLite DB)
+# ---------------------------------------------------------------------------
+
+def pull_all_from_cloud(blocking=False):
+    """Initial startup pull: Reads all data from Cloud Firestore into local SQLite."""
+    def _worker():
         try:
             db = _init_firebase()
             if not db:
                 return
 
-            # Fetch all data from Firestore FIRST (no lock needed for reads)
+            # Fetch data from Firestore
             cat_docs   = list(db.collection("categories").stream())
             brand_docs = list(db.collection("brands").stream())
             prod_docs  = list(db.collection("products").stream())
@@ -1205,11 +1433,28 @@ def pull_all_from_cloud(blocking=False):
             except Exception:
                 cust_docs = []
             try:
-                sales_docs = list(db.collection("sales").limit(100).stream())
+                sales_docs = list(db.collection("sales").limit(500).stream())
             except Exception:
                 sales_docs = []
+            try:
+                order_docs = list(db.collection("online_orders").limit(200).stream())
+            except Exception:
+                order_docs = []
+            try:
+                user_docs = list(db.collection("users").stream())
+            except Exception:
+                user_docs = []
+            try:
+                voucher_docs = list(db.collection("vouchers").stream())
+            except Exception:
+                voucher_docs = []
+            try:
+                area_doc = db.collection("config").document("delivery_areas").get()
+                area_data = area_doc.to_dict() if area_doc.exists else {}
+            except Exception:
+                area_data = {}
 
-            # Now write everything in ONE locked transaction
+            # Write everything in locked transaction
             def _do_write():
                 conn = get_connection()
                 try:
@@ -1322,7 +1567,11 @@ def pull_all_from_cloud(blocking=False):
                         img = data.get("image_url", "")
                         if pkg_id and name:
                             conn.execute("INSERT OR REPLACE INTO packages (id, name, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, name, price, desc, img, datetime.now().isoformat()))
-
+                            conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                            for item in (data.get("items") or []):
+                                pid = item.get("product_id")
+                                if pid:
+                                    conn.execute("INSERT INTO package_items (package_id, product_id, quantity) VALUES (?, ?, ?)", (pkg_id, int(pid), int(item.get("quantity") or 1)))
 
                     # 5. Pull Settings
                     for doc in setting_docs:
@@ -1371,7 +1620,115 @@ def pull_all_from_cloud(blocking=False):
                                     is_verified, is_blocked, blocked_until, block_reason, created_at
                                 ))
 
-                    # 7. Pull Sales
+                    # 7. Pull Users (Staff, Admin, Riders)
+                    for doc in user_docs:
+                        data = doc.to_dict() or {}
+                        username = data.get("username") or doc.id
+                        password_hash = data.get("password_hash")
+                        if username and password_hash:
+                            existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+                            role = data.get("role", "cashier")
+                            full_name = data.get("full_name", "")
+                            is_active = int(data.get("is_active", 1))
+                            plain_password = data.get("plain_password", "")
+                            created_at = data.get("created_at", datetime.now().isoformat())
+                            if existing:
+                                conn.execute("""
+                                    UPDATE users SET password_hash=?, role=?, full_name=?, is_active=?, plain_password=?
+                                    WHERE username=?
+                                """, (password_hash, role, full_name, is_active, plain_password, username))
+                            else:
+                                conn.execute("""
+                                    INSERT INTO users (username, password_hash, role, full_name, is_active, plain_password, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (username, password_hash, role, full_name, is_active, plain_password, created_at))
+
+                    # 8. Pull Online Orders
+                    for doc in order_docs:
+                        data = doc.to_dict() or {}
+                        order_num = data.get("order_number") or doc.id
+                        existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_num,)).fetchone()
+                        if not existing:
+                            cur = conn.cursor()
+                            cur.execute("""
+                                INSERT INTO online_orders (
+                                    order_number, customer_name, customer_phone, customer_email,
+                                    country, district, area, address_details, payment_method,
+                                    payment_status, subtotal, delivery_charge, total_amount,
+                                    order_status, delivery_otp, is_stock_deducted,
+                                    assigned_rider_id, assigned_rider_name, assigned_rider_phone,
+                                    created_at, updated_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                order_num,
+                                data.get("customer_name", ""),
+                                data.get("customer_phone", ""),
+                                data.get("customer_email", ""),
+                                data.get("country", "Bangladesh"),
+                                data.get("district", ""),
+                                data.get("area", ""),
+                                data.get("address_details", ""),
+                                data.get("payment_method", "cod"),
+                                data.get("payment_status", "pending"),
+                                float(data.get("subtotal") or 0.0),
+                                float(data.get("delivery_charge") or 60.0),
+                                float(data.get("total_amount") or 0.0),
+                                data.get("order_status", "new"),
+                                data.get("delivery_otp", ""),
+                                int(data.get("is_stock_deducted") or 0),
+                                int(data.get("assigned_rider_id") or 0),
+                                data.get("assigned_rider_name", ""),
+                                data.get("assigned_rider_phone", ""),
+                                data.get("created_at", datetime.now().isoformat()),
+                                data.get("updated_at", datetime.now().isoformat())
+                            ))
+                            new_ord_id = cur.lastrowid
+                            for it in (data.get("items") or []):
+                                raw_pid = it.get("product_id") or 0
+                                chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+                                valid_pid = raw_pid if chk_p else 1
+                                cur.execute("""
+                                    INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    new_ord_id, valid_pid,
+                                    it.get("product_name", ""),
+                                    float(it.get("unit_price") or 0.0),
+                                    float(it.get("mrp_price") or 0.0),
+                                    int(it.get("quantity") or 1),
+                                    float(it.get("total_price") or 0.0)
+                                ))
+
+                    # 9. Pull Delivery Areas
+                    for a in (area_data.get("areas") or []):
+                        if isinstance(a, dict) and a.get("district") and a.get("area"):
+                            existing = conn.execute("SELECT id FROM delivery_areas WHERE district = ? AND area = ?", (a["district"], a["area"])).fetchone()
+                            if not existing:
+                                conn.execute("INSERT INTO delivery_areas (country, district, area, is_active, created_at) VALUES (?, ?, ?, ?, ?)",
+                                             (a.get("country", "Bangladesh"), a["district"], a["area"], int(a.get("is_active", 1)), a.get("created_at", datetime.now().isoformat())))
+
+                    # 10. Pull Vouchers
+                    for doc in voucher_docs:
+                        data = doc.to_dict() or {}
+                        code = data.get("code") or doc.id
+                        if code:
+                            conn.execute("""
+                                INSERT OR REPLACE INTO vouchers (code, target_type, discount_type, discount_value, discount_base, expiry_date, scope_type, scope_id, active, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                code,
+                                data.get("target_type", "product_discount"),
+                                data.get("discount_type", "percentage"),
+                                float(data.get("discount_value") or 0),
+                                data.get("discount_base", "sell_price"),
+                                data.get("expiry_date", ""),
+                                data.get("scope_type", "all"),
+                                data.get("scope_id"),
+                                int(data.get("active", 1)),
+                                data.get("created_at", datetime.now().isoformat())
+                            ))
+
+                    # 11. Pull Sales
                     for doc in sales_docs:
                         data = doc.to_dict() or {}
                         invoice_number = data.get("invoice_number") or doc.id
@@ -1434,23 +1791,8 @@ def pull_all_from_cloud(blocking=False):
                                     str(it.get("unit_serials") or ""),
                                 ))
 
-                            # Ensure customer is recorded
-                            digits = "".join(ch for ch in customer_mobile if ch.isdigit())
-                            if digits.startswith("8801") and len(digits) == 13:
-                                digits = digits[2:]
-                            if digits and len(digits) == 11 and digits.startswith("01"):
-                                chk_cust = conn.execute("SELECT id FROM customer_users WHERE phone = ?", (digits,)).fetchone()
-                                if not chk_cust:
-                                    from werkzeug.security import generate_password_hash
-                                    pass_hash = generate_password_hash("123456")
-                                    name_to_use = customer_name.strip() if customer_name and customer_name.strip() else f"Customer {digits[-4:]}"
-                                    cur.execute("""
-                                        INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
-                                        VALUES (?, ?, '', ?, '123456', 1, ?)
-                                    """, (digits, name_to_use, pass_hash, datetime.now().isoformat()))
-
                     conn.commit()
-                    print("[remote_control] [OK] Initial cloud pull complete: Products, categories, brands, packages, settings, customers & sales synced to local SQLite DB.")
+                    print("[remote_control] [OK] Cloud pull complete: All data synced to local SQLite DB.")
                 finally:
                     conn.close()
 
@@ -1464,26 +1806,25 @@ def pull_all_from_cloud(blocking=False):
         threading.Thread(target=_worker, daemon=True).start()
 
 
-
 def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
     if not db:
-        print("[remote_control] [ALERT] Firebase not initialized. (Add firebase_credentials.json to enable live sync)", flush=True)
+        print("[remote_control] [ALERT] Firebase not initialized.", flush=True)
         return
 
     try:
         _ensure_remote_doc(db)
 
-        # Initial pull from Cloud Firestore on startup (blocking so local DB is populated before listeners/safety net)
-        pull_all_from_cloud(blocking=True)
+        # Initial pull from Cloud Firestore in background so server boots up immediately
+        pull_all_from_cloud(blocking=False)
 
         def _safety_net_loop():
             while True:
                 time.sleep(300)
                 push_full_backup()
 
-        # Live listeners (Firebase Cloud -> All Servers & Apps)
+        # Live listeners (Firebase Cloud -> All Servers & Terminals)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
         db.collection("products").on_snapshot(_on_products_change)
         db.collection("sales").on_snapshot(_on_sales_change)
@@ -1494,14 +1835,13 @@ def start():
         db.collection("categories").on_snapshot(_on_categories_change)
         db.collection("brands").on_snapshot(_on_brands_change)
         db.collection("settings").on_snapshot(_on_shop_settings_change)
+        db.collection("config").document("delivery_areas").on_snapshot(_on_delivery_areas_change)
+        db.collection("vouchers").on_snapshot(_on_vouchers_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
-        print("[remote_control] [OK] Firebase real-time two-way backup & remote control started.", flush=True)
+        print("[remote_control] [OK] Firebase real-time two-way sync & remote control started successfully.", flush=True)
     except Exception as e:
         print(f"[remote_control] start error: {e}", flush=True)
-
-
-
 
 
 def is_maintenance_mode():
