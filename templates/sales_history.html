@@ -19,7 +19,12 @@
   <tr>
     <td><strong>{{ s.invoice_number or ('#' ~ s.id) }}</strong></td>
     <td>{{ s.created_at[:16].replace("T", " ") }}</td>
-    <td>{{ s.customer_name or s.cashier_name }}</td>
+    <td>
+      <div><strong>{{ s.customer_name or s.cashier_name or 'Walk-in Customer' }}</strong></div>
+      {% if s.customer_mobile %}
+      <div style="font-size: 0.82rem; color: #64748b; font-weight: 500;">📞 {{ s.customer_mobile }}</div>
+      {% endif %}
+    </td>
     <td>
       {% if s.channel == 'Online' %}
       <span style="background: #3b82f6; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: bold;">📱 Online</span>
