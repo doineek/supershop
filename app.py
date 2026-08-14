@@ -226,6 +226,32 @@ def dashboard():
 def products():
     conn = get_connection()
     open_cat = request.args.get("open_cat", "0") == "1"
+    today_date = datetime.now().strftime("%Y-%m-%d")
+
+    # Auto-move expired products to returned_items (only if not already logged)
+    expired_prods = conn.execute("""
+        SELECT * FROM products
+        WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date < ? AND stock_qty > 0
+    """, (today_date,)).fetchall()
+
+    for ep in expired_prods:
+        already = conn.execute(
+            "SELECT id FROM returned_items WHERE product_id = ? AND reason LIKE '%Expired%'", (ep["id"],)
+        ).fetchone()
+        if not already:
+            conn.execute("""
+                INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                ep["id"], ep["name"], ep["stock_qty"],
+                f"Auto: Date Expired ({ep['expiry_date']})",
+                ep["expiry_date"],
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ))
+    if expired_prods:
+        conn.commit()
+
+    # Active (non-expired) products only
     rows = conn.execute("""
         SELECT p.*,
                c.name AS category_name,
@@ -236,14 +262,19 @@ def products():
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
         LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
+        WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?)
         ORDER BY p.name
-    """).fetchall()
+    """, (today_date,)).fetchall()
+
+    expired_count = len(expired_prods)
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     conn.close()
-    return render_template("products.html", products=rows, categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, open_cat=open_cat)
+    return render_template("products.html", products=rows, categories=categories,
+                           sub_categories=sub_categories, sub_sub_categories=sub_sub_categories,
+                           brands=brands, open_cat=open_cat, expired_count=expired_count)
 
 
 @app.route("/products/new", methods=["GET", "POST"])
@@ -3310,17 +3341,36 @@ def api_settings():
 @app.route("/api/products", methods=["GET"])
 def api_products():
     conn = get_connection()
-    rows = conn.execute("""
-        SELECT p.*,
-               c.name AS category_name,
-               sc.name AS sub_category_name,
-               ssc.name AS sub_sub_category_name
-        FROM products p
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
-        LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
-        ORDER BY p.name
-    """).fetchall()
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    include_expired = request.args.get("include_expired", "0") == "1"
+
+    if include_expired:
+        # Admin view: show all including expired
+        rows = conn.execute("""
+            SELECT p.*,
+                   c.name AS category_name,
+                   sc.name AS sub_category_name,
+                   ssc.name AS sub_sub_category_name
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+            LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
+            ORDER BY p.name
+        """).fetchall()
+    else:
+        # Public/default: exclude expired products
+        rows = conn.execute("""
+            SELECT p.*,
+                   c.name AS category_name,
+                   sc.name AS sub_category_name,
+                   ssc.name AS sub_sub_category_name
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+            LEFT JOIN sub_sub_categories ssc ON p.sub_sub_category_id = ssc.id
+            WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?)
+            ORDER BY p.name
+        """, (today_date,)).fetchall()
     conn.close()
 
     result = []
@@ -3338,6 +3388,7 @@ def api_products():
             d["image_url"] = ", ".join(norm_parts)
         result.append(d)
     return jsonify(result)
+
 
 
 @app.route("/api/categories", methods=["GET"])

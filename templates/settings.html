@@ -441,22 +441,25 @@ async function triggerForceCloudSync() {
   btn.innerText = "Syncing with Cloud...";
 
   try {
-    const res = await fetch('/admin/force-cloud-sync', { method: 'POST' });
+    const res = await fetch('/api/sync/force-push', { method: 'POST' });
     const data = await res.json();
     btn.disabled = false;
     btn.innerText = "⚡ Force Live Cloud Sync Now";
 
     if (data.success) {
       alert("✅ " + data.message);
+    } else if (res.status === 401) {
+      alert("⚠️ Not authenticated. Please login again.");
     } else {
       alert("⚠️ " + (data.message || "Sync failed."));
     }
   } catch (err) {
     btn.disabled = false;
     btn.innerText = "⚡ Force Live Cloud Sync Now";
-    alert("Network error: Could not sync with cloud.");
+    alert("Network error: Could not connect to sync server.");
   }
 }
+
 
 document.addEventListener('DOMContentLoaded', loadSnapshotList);
 </script>
