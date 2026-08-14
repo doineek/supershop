@@ -652,7 +652,7 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `online_orders` collection in Firestore.
     If a customer places an order on mobile app / website cloud server,
-    it syncs into local SQLite database automatically in real time!
+    it syncs into local SQLite database (online_orders, customer_users, sales) automatically in real time!
     """
     def _do():
         conn = get_connection()
@@ -661,6 +661,27 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                 doc = change.document
                 data = doc.to_dict() or {}
                 order_number = doc.id
+                c_name = data.get("customer_name", "")
+                c_phone = data.get("customer_phone", "")
+                c_email = data.get("customer_email", "")
+
+                # 1. Auto-create or ensure customer in customer_users
+                digits = "".join(ch for ch in str(c_phone) if ch.isdigit())
+                if digits.startswith("8801") and len(digits) == 13:
+                    digits = digits[2:]
+                if digits and len(digits) == 11 and digits.startswith("01"):
+                    chk_cust = conn.execute("SELECT id, name FROM customer_users WHERE phone = ?", (digits,)).fetchone()
+                    if not chk_cust:
+                        from werkzeug.security import generate_password_hash
+                        pass_hash = generate_password_hash("123456")
+                        name_to_use = c_name.strip() if c_name and c_name.strip() else f"Customer {digits[-4:]}"
+                        conn.execute("""
+                            INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                            VALUES (?, ?, ?, ?, '123456', 1, ?)
+                        """, (digits, name_to_use, c_email or "", pass_hash, data.get("created_at") or datetime.now().isoformat()))
+                    elif c_name and c_name.strip() and (not chk_cust["name"] or chk_cust["name"].startswith("Customer ")):
+                        conn.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (c_name.strip(), digits))
+
                 if change.type.name in ("ADDED", "MODIFIED"):
                     existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
                     if not existing:
@@ -674,9 +695,9 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_number,
-                            data.get("customer_name", ""),
-                            data.get("customer_phone", ""),
-                            data.get("customer_email", ""),
+                            c_name,
+                            c_phone,
+                            c_email,
                             data.get("country", "Bangladesh"),
                             data.get("district", ""),
                             data.get("area", ""),
@@ -711,6 +732,41 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                                 int(item.get("quantity") or 1),
                                 float(item.get("total_price") or 0.0)
                             ))
+
+                        # 2. Also ensure this online order is in the sales table (Sales Log)
+                        inv_num = f"INV-ONLINE-{order_number}"
+                        existing_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
+                        if not existing_sale:
+                            cur.execute("""
+                                INSERT INTO sales (
+                                    invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
+                                    total_amount, rounded_total, vat_amount, saved_amount, cash_amount, card_amount, change_amount, created_at, is_synced
+                                ) VALUES (?, ?, 1, ?, ?, ?, 'Online', ?, ?, 0, 0, ?, 0, 0, ?, 1)
+                            """, (
+                                inv_num,
+                                data.get("created_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                                c_name,
+                                c_name,
+                                c_phone,
+                                float(data.get("subtotal") or 0.0),
+                                float(data.get("total_amount") or 0.0),
+                                float(data.get("total_amount") or 0.0),
+                                data.get("created_at", datetime.now().isoformat())
+                            ))
+                            new_sale_id = cur.lastrowid
+                            for item in items:
+                                raw_pid = item.get("product_id") or 0
+                                valid_pid = raw_pid if conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() else 1
+                                cur.execute("""
+                                    INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                                    VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+                                """, (
+                                    new_sale_id, valid_pid,
+                                    int(item.get("quantity") or 1),
+                                    float(item.get("unit_price") or 0.0),
+                                    float(item.get("mrp_price") or 0.0)
+                                ))
+
                         print(f"[remote_control] [SYNC] Real-time online order #{order_number} synced from Firebase to local SQLite DB.")
                     else:
                         conn.execute(
@@ -724,6 +780,7 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
         execute_with_retry(_do)
     except Exception as e:
         print(f"[remote_control] online orders sync failed: {e}")
+
 
 
 def _on_users_change(doc_snapshots, changes, read_time):

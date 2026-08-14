@@ -3786,7 +3786,28 @@ def api_place_order():
     total_amount = subtotal + delivery_charge
     created_at = datetime.now().isoformat()
 
+    # Normalize phone
+    digits = re.sub(r"\D", "", str(customer_phone or ""))
+    if digits.startswith("8801") and len(digits) == 13:
+        digits = digits[2:]
+    clean_phone = digits if digits else customer_phone
+
     cur = conn.cursor()
+
+    # 1. Auto-create or update Customer in customer_users
+    if clean_phone and len(clean_phone) == 11 and clean_phone.startswith("01"):
+        chk_cust = cur.execute("SELECT id, name FROM customer_users WHERE phone = ?", (clean_phone,)).fetchone()
+        if not chk_cust:
+            pass_hash = generate_password_hash("123456")
+            name_to_use = customer_name.strip() if customer_name and customer_name.strip() else f"Customer {clean_phone[-4:]}"
+            cur.execute("""
+                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                VALUES (?, ?, ?, ?, '123456', 1, ?)
+            """, (clean_phone, name_to_use, customer_email or "", pass_hash, created_at))
+        elif customer_name and customer_name.strip() and (not chk_cust["name"] or chk_cust["name"].startswith("Customer ")):
+            cur.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (customer_name.strip(), clean_phone))
+
+    # 2. Insert into online_orders
     cur.execute("""
         INSERT INTO online_orders (
             order_number, customer_name, customer_phone, customer_email,
@@ -3795,14 +3816,14 @@ def api_place_order():
             order_status, delivery_otp, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
     """, (
-        order_number, customer_name, customer_phone, customer_email,
+        order_number, customer_name, clean_phone, customer_email,
         country, district, area, address_details, payment_method,
         "pending" if payment_method == "cod" else "paid",
         subtotal, delivery_charge, total_amount, otp, created_at, created_at
     ))
-
     order_id = cur.lastrowid
 
+    # 3. Insert into online_order_items
     for item in processed_items:
         raw_pid = item["product_id"]
         valid_pid = raw_pid
@@ -3824,10 +3845,45 @@ def api_place_order():
             remote_control.push_product_to_cloud(valid_pid)
 
     cur.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
+
+    # 4. Also insert into sales table so it appears in Sales Log immediately
+    inv_num = f"INV-ONLINE-{order_number}"
+    cur.execute("""
+        INSERT INTO sales (
+            invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
+            total_amount, rounded_total, vat_amount, saved_amount, cash_amount, card_amount, change_amount, created_at, is_synced
+        ) VALUES (?, ?, 1, ?, ?, ?, 'Online', ?, ?, 0, 0, ?, 0, 0, ?, 0)
+    """, (
+        inv_num,
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        customer_name,
+        customer_name,
+        clean_phone,
+        subtotal,
+        total_amount,
+        total_amount,
+        created_at
+    ))
+    sale_id = cur.lastrowid
+
+    for item in processed_items:
+        raw_pid = item["product_id"]
+        valid_pid = raw_pid if conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone() else 1
+        cur.execute("""
+            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+            VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+        """, (
+            sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
+        ))
+
     conn.commit()
     conn.close()
 
+    # 5. Push to Cloud
     remote_control.push_online_order_to_cloud(order_id)
+    remote_control.push_sale_to_cloud(sale_id)
+    if clean_phone and len(clean_phone) == 11 and clean_phone.startswith("01"):
+        remote_control.push_customer_user_to_cloud(clean_phone)
 
     return jsonify({
         "success": True,
@@ -3836,6 +3892,7 @@ def api_place_order():
         "delivery_otp": otp,
         "total_amount": total_amount
     })
+
 
 
 @app.route("/api/orders/pending-count", methods=["GET"])

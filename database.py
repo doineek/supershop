@@ -163,8 +163,11 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_number TEXT UNIQUE NOT NULL DEFAULT '',
         invoice_date TEXT NOT NULL DEFAULT '',
-        cashier_id INTEGER NOT NULL,
+        cashier_id INTEGER NOT NULL DEFAULT 1,
         customer_id TEXT NOT NULL DEFAULT '',
+        customer_name TEXT NOT NULL DEFAULT '',
+        customer_mobile TEXT NOT NULL DEFAULT '',
+        channel TEXT NOT NULL DEFAULT 'Offline',
         total_amount REAL NOT NULL,
         rounded_total REAL NOT NULL DEFAULT 0,
         vat_amount REAL NOT NULL DEFAULT 0,
@@ -172,9 +175,12 @@ def init_db():
         cash_amount REAL NOT NULL DEFAULT 0,
         card_amount REAL NOT NULL DEFAULT 0,
         change_amount REAL NOT NULL DEFAULT 0,
+        print_count INTEGER NOT NULL DEFAULT 0,
+        is_synced INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         FOREIGN KEY (cashier_id) REFERENCES users(id)
     );
+
 
     CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
