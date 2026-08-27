@@ -192,10 +192,74 @@ def logout():
 
 
 # ===========================================================================
-# Dashboard
+# Customer Storefront & Dashboard Routes
 # ===========================================================================
 
+def render_storefront():
+    conn = get_connection()
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # Active Products (exclude expired)
+    products = conn.execute("""
+        SELECT p.*, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?) AND p.stock_qty > 0
+        ORDER BY p.name
+    """, (today_date,)).fetchall()
+    
+    categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    
+    raw_pkgs = conn.execute("SELECT * FROM packages").fetchall()
+    packages = []
+    for pkg in raw_pkgs:
+        p_dict = dict(pkg)
+        items = conn.execute("""
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp
+            FROM package_items pi JOIN products p ON pi.product_id = p.id
+            WHERE pi.package_id = ?
+        """, (pkg["id"],)).fetchall()
+        p_dict["included_items"] = [dict(i) for i in items]
+        packages.append(p_dict)
+        
+    delivery_areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    shop_settings = get_all_settings(conn)
+    conn.close()
+    
+    return render_template(
+        "store.html",
+        products=products,
+        categories=categories,
+        packages=packages,
+        delivery_areas=delivery_areas,
+        settings=shop_settings
+    )
+
+
 @app.route("/")
+def home():
+    if session.get("user_id"):
+        return redirect(url_for("dashboard"))
+    return render_storefront()
+
+
+@app.route("/store")
+def store_front():
+    return render_storefront()
+
+
+@app.route("/app")
+@app.route("/app/<path:path>")
+def flutter_web_app(path="index.html"):
+    from flask import send_from_directory
+    flutter_dir = os.path.join(app.static_folder, "flutter_web")
+    if not path or path == "index.html" or not os.path.exists(os.path.join(flutter_dir, path)):
+        return send_from_directory(flutter_dir, "index.html")
+    return send_from_directory(flutter_dir, path)
+
+
+@app.route("/dashboard")
+@app.route("/admin")
 @login_required
 def dashboard():
     conn = get_connection()
