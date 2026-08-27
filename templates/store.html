@@ -1034,7 +1034,7 @@
            data-category="{{ p.category_name or '' }}"
            data-trending="{{ p.is_trending or 0 }}"
            data-flash="{{ p.is_flash_sale or 0 }}"
-           data-offer="{{ p.is_offer or 0 }}">
+           data-offer="{{ p.is_offer or 0 }}" data-offer-type="{{ p.offer_type or '' }}" data-offer-value="{{ p.offer_value or '' }}" data-offer-title="{{ p.offer_title or '' }}">
         
         <div class="prod-img-box">
           {% if p.offer_title %}
@@ -1056,7 +1056,7 @@
         </div>
 
         <div id="btnWrap-{{ p.id }}">
-          <button class="btn-add" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}')">
+          <button class="btn-add" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
             + ADD
           </button>
           <div class="stepper-box" id="stepperBox-{{ p.id }}">
@@ -1534,12 +1534,71 @@
       refreshCartDisplay();
     }
 
-    function addProductCart(id, name, price, img) {
+
+    function parseBogoQuantitiesJS(offerValue, offerTitle, name) {
+      const v = (offerValue || "").trim();
+      const t = (offerTitle || "").trim();
+      const n = (name || "").trim();
+
+      const reg = /buy\s*(\d+)\s*get\s*(\d+)/i;
+      for (const str of [v, t, n]) {
+        if (str) {
+          const match = str.match(reg);
+          if (match) {
+            const b = parseInt(match[1], 10);
+            const f = parseInt(match[2], 10);
+            if (b > 0 && f > 0) return { buyQty: b, freeQty: f };
+          }
+        }
+      }
+
+      if (v && v.includes(",")) {
+        const parts = v.split(",").map(p => parseInt(p.trim(), 10));
+        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[0] > 0 && parts[1] > 0) {
+          return { buyQty: parts[0], freeQty: parts[1] };
+        }
+      }
+
+      if (v && /^\d+$/.test(v)) {
+        const d = parseInt(v, 10);
+        if (d > 0) return { buyQty: d, freeQty: 1 };
+      }
+
+      return { buyQty: 1, freeQty: 1 };
+    }
+
+    function getBuyXGetYStats(item) {
+      const offerType = (item.offer_type || "").toLowerCase();
+      const offerTitle = (item.offer_title || "").toLowerCase();
+      const offerValue = (item.offer_value || "").toLowerCase();
+      const isOffer = offerType === "buy_x_get_y" || offerType === "bogo" || offerType === "buy_x_get_x" || offerTitle.includes("buy") || offerValue.includes("buy") || (item.name || "").toLowerCase().includes("buy");
+
+      if (!isOffer) {
+        return { isOffer: false, buyQty: 0, freeQty: 0, paidQty: item.quantity, freeQtyTotal: 0 };
+      }
+
+      const { buyQty, freeQty } = parseBogoQuantitiesJS(item.offer_value, item.offer_title, item.name);
+      const totalSet = buyQty + freeQty;
+      const sets = Math.floor(item.quantity / totalSet);
+      const remainder = item.quantity % totalSet;
+      const paidQty = sets * buyQty + Math.min(remainder, buyQty);
+      const freeQtyTotal = item.quantity - paidQty;
+
+      return { isOffer: true, buyQty, freeQty, paidQty, freeQtyTotal };
+    }
+
+    function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
       if (!cart[id]) {
-        cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false };
+        cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
       } else {
         cart[id].quantity += 1;
       }
+      
+      const stats = getBuyXGetYStats(cart[id]);
+      if (stats.isOffer && cart[id].quantity === stats.buyQty) {
+        alert(`🎁 BUY ${stats.buyQty} GET ${stats.freeQty} FREE OFFER ACTIVE!\n\nYou added ${stats.buyQty} items of "${cart[id].name}". Add 1 more to your bag to get it 100% FREE!`);
+      }
+
       saveCart();
       openCartDrawer();
     }
@@ -1568,7 +1627,12 @@
     function refreshCartDisplay() {
       const items = Object.values(cart);
       const totalCount = items.reduce((sum, it) => sum + it.quantity, 0);
-      const subtotal = items.reduce((sum, it) => sum + (it.price * it.quantity), 0);
+      let subtotal = 0;
+      items.forEach(it => {
+        const stats = getBuyXGetYStats(it);
+        const linePrice = it.price * stats.paidQty;
+        subtotal += linePrice;
+      });
       const grandTotal = subtotal > 0 ? (subtotal + DELIVERY_CHARGE) : 0;
 
       document.getElementById('topCartBadge').textContent = totalCount;
@@ -1598,7 +1662,10 @@
             <img src="${it.img || '/static/images/logo.png'}" class="cart-row-img" onerror="this.src='/static/images/logo.png'">
             <div class="cart-row-info">
               <div class="cart-row-title">${it.name}</div>
-              <div class="cart-row-price">TK ${(it.price * it.quantity).toFixed(2)}</div>
+              <div class="cart-row-price">
+                TK ${(it.price * getBuyXGetYStats(it).paidQty).toFixed(2)}
+                ${getBuyXGetYStats(it).freeQtyTotal > 0 ? `<span style="background:#10B981; color:#fff; font-size:0.7rem; font-weight:800; padding:2px 6px; border-radius:10px; margin-left:4px;">🎁 ${getBuyXGetYStats(it).freeQtyTotal} FREE</span>` : ''}
+              </div>
             </div>
             <div style="display:flex; align-items:center; gap:6px; background:#F1F5F9; border-radius:6px; padding:2px;">
               <button class="step-btn" style="background:#CBD5E1; color:#0F172A; width:26px; height:26px;" onclick="modifyQty('${it.id}', -1)">-</button>
@@ -1638,7 +1705,10 @@
             <img src="${it.img || '/static/images/logo.png'}" class="cart-row-img" onerror="this.src='/static/images/logo.png'">
             <div class="cart-row-info">
               <div class="cart-row-title">${it.name}</div>
-              <div class="cart-row-price">TK ${(it.price * it.quantity).toFixed(2)}</div>
+              <div class="cart-row-price">
+                TK ${(it.price * getBuyXGetYStats(it).paidQty).toFixed(2)}
+                ${getBuyXGetYStats(it).freeQtyTotal > 0 ? `<span style="background:#10B981; color:#fff; font-size:0.7rem; font-weight:800; padding:2px 6px; border-radius:10px; margin-left:4px;">🎁 ${getBuyXGetYStats(it).freeQtyTotal} FREE</span>` : ''}
+              </div>
             </div>
             <div style="display:flex; align-items:center; gap:6px; background:#F1F5F9; border-radius:6px; padding:2px;">
               <button class="step-btn" style="background:#CBD5E1; color:#0F172A; width:26px; height:26px;" onclick="modifyQty('${it.id}', -1); renderCartView();">-</button>
