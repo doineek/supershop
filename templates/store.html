@@ -1354,6 +1354,113 @@
       background: rgba(255, 255, 255, 0.15);
     }
 
+    
+    /* Product Details Modal (Matching Mobile App ProductDetailScreen) */
+    .prod-detail-modal-box {
+      background: #FFFFFF;
+      width: 100%;
+      max-width: 520px;
+      border-radius: 20px;
+      padding: 20px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+    }
+    .detail-img-box {
+      width: 100%;
+      height: 240px;
+      background: #F8FAFC;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .detail-main-img {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+      transition: transform 0.3s;
+    }
+    .detail-img-nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.4);
+      color: #FFFFFF;
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+    .detail-img-nav-btn:hover {
+      background: rgba(0, 0, 0, 0.7);
+    }
+    .detail-img-prev { left: 10px; }
+    .detail-img-next { right: 10px; }
+    .detail-img-dots {
+      position: absolute;
+      bottom: 8px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+    }
+    .detail-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+    }
+    .detail-dot.active {
+      width: 16px;
+      border-radius: 8px;
+      background: var(--primary);
+    }
+    .stock-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin: 8px 0 12px;
+    }
+    .stock-in {
+      background: #ECFDF5;
+      color: #047857;
+      border: 1px solid #A7F3D0;
+    }
+    .stock-out {
+      background: #FEF2F2;
+      color: #B91C1C;
+      border: 1px solid #FECACA;
+    }
+    .detail-desc-box {
+      background: #F8FAFC;
+      border-radius: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      font-size: 0.88rem;
+      line-height: 1.6;
+      color: var(--text-main);
+      margin-top: 10px;
+      white-space: pre-line;
+    }
+
     /* Rich Store Footer Section */
     .store-footer-area {
       background: #FFFFFF;
@@ -1555,7 +1662,9 @@
              data-offer="{{ p.is_offer or 0 }}"
              data-offer-type="{{ p.offer_type or '' }}"
              data-offer-value="{{ p.offer_value or '' }}"
-             data-offer-title="{{ p.offer_title or '' }}">
+             data-offer-title="{{ p.offer_title or '' }}"
+             onclick="openProductDetailModal({{ p.id }})"
+             style="cursor:pointer;">
           
           <div class="prod-img-box">
             {% if p.offer_title %}
@@ -1577,7 +1686,7 @@
           </div>
 
           <!-- Dual Action Buttons: Add to Cart & Buy Now -->
-          <div class="card-actions-row" id="btnWrap-{{ p.id }}">
+          <div class="card-actions-row" id="btnWrap-{{ p.id }}" onclick="event.stopPropagation()">
             <button class="btn-add" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
               + Add
             </button>
@@ -2411,6 +2520,136 @@
       }
     });
 
+
+    // Product Details Modal Logic
+    let currentDetailProduct = null;
+    let detailImagesList = [];
+    let currentDetailImgIdx = 0;
+
+    function openProductDetailModal(prodId) {
+      const prod = allProducts.find(p => p.id === prodId || p.id === parseInt(prodId));
+      if (!prod) return;
+
+      currentDetailProduct = prod;
+
+      // Category & Title
+      document.getElementById('detailCatBadge').textContent = prod.category_name || prod.sub_category_name || 'Daily Groceries';
+      document.getElementById('detailTitleTxt').textContent = prod.name || 'Product';
+      document.getElementById('detailSkuTxt').textContent = `SKU: ${prod.sku || 'N/A'} • Unit: ${prod.unit || '1 Unit'}${prod.brand ? ' • Brand: ' + prod.brand : ''}`;
+
+      // Images
+      detailImagesList = (prod.image_url || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
+      if (detailImagesList.length === 0) {
+        detailImagesList = ['/static/images/logo.png'];
+      }
+      currentDetailImgIdx = 0;
+      renderDetailImage();
+
+      // Offer
+      const offerWrap = document.getElementById('detailOfferTag');
+      if (prod.offer_title) {
+        document.getElementById('detailOfferTitleTxt').textContent = prod.offer_title;
+        offerWrap.style.display = 'block';
+      } else {
+        offerWrap.style.display = 'none';
+      }
+
+      // Price
+      const sell = parseFloat(prod.sell_price || 0);
+      const mrp = parseFloat(prod.mrp || 0);
+      document.getElementById('detailSellPriceTxt').textContent = `TK ${sell.toFixed(2)}`;
+
+      const mrpEl = document.getElementById('detailMrpTxt');
+      const discEl = document.getElementById('detailDiscountBadge');
+      if (mrp > sell && mrp > 0) {
+        mrpEl.textContent = `TK ${mrp.toFixed(2)}`;
+        mrpEl.style.display = 'inline';
+        const discPercent = Math.round(((mrp - sell) / mrp) * 100);
+        discEl.textContent = `${discPercent}% OFF`;
+        discEl.style.display = 'inline';
+      } else {
+        mrpEl.style.display = 'none';
+        discEl.style.display = 'none';
+      }
+
+      // Stock
+      const stock = parseInt(prod.stock_qty || 0);
+      const stockBadge = document.getElementById('detailStockBadge');
+      const stockTxt = document.getElementById('detailStockTxt');
+      if (stock > 0) {
+        stockBadge.className = 'stock-badge-pill stock-in';
+        stockTxt.textContent = `In Stock (${stock} available)`;
+      } else {
+        stockBadge.className = 'stock-badge-pill stock-out';
+        stockTxt.textContent = `Out of Stock`;
+      }
+
+      // Description
+      const descEl = document.getElementById('detailDescTxt');
+      descEl.textContent = prod.description ? prod.description : 'High quality fresh daily essentials from DOINEEK Supershop.';
+
+      document.getElementById('productDetailModal').style.display = 'flex';
+    }
+
+    function closeProductDetailModal() {
+      document.getElementById('productDetailModal').style.display = 'none';
+      currentDetailProduct = null;
+    }
+
+    function renderDetailImage() {
+      const imgEl = document.getElementById('detailMainImg');
+      imgEl.src = detailImagesList[currentDetailImgIdx] || '/static/images/logo.png';
+
+      const prevBtn = document.getElementById('detailImgPrevBtn');
+      const nextBtn = document.getElementById('detailImgNextBtn');
+      const dotsWrap = document.getElementById('detailImgDots');
+
+      if (detailImagesList.length > 1) {
+        prevBtn.style.display = 'flex';
+        nextBtn.style.display = 'flex';
+        dotsWrap.innerHTML = detailImagesList.map((_, i) => `
+          <div class="detail-dot ${i === currentDetailImgIdx ? 'active' : ''}" onclick="setDetailImgIdx(${i})"></div>
+        `).join('');
+      } else {
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        dotsWrap.innerHTML = '';
+      }
+    }
+
+    function prevDetailImg() {
+      if (detailImagesList.length <= 1) return;
+      currentDetailImgIdx = (currentDetailImgIdx - 1 + detailImagesList.length) % detailImagesList.length;
+      renderDetailImage();
+    }
+
+    function nextDetailImg() {
+      if (detailImagesList.length <= 1) return;
+      currentDetailImgIdx = (currentDetailImgIdx + 1) % detailImagesList.length;
+      renderDetailImage();
+    }
+
+    function setDetailImgIdx(idx) {
+      currentDetailImgIdx = idx;
+      renderDetailImage();
+    }
+
+    function handleDetailAddCart() {
+      if (!currentDetailProduct) return;
+      const p = currentDetailProduct;
+      const firstImg = (p.image_url || '').split(',')[0].trim();
+      addProductCart(p.id, p.name, p.sell_price, firstImg, p.offer_type || '', p.offer_value || '', p.offer_title || '');
+      closeProductDetailModal();
+    }
+
+    function handleDetailBuyNow() {
+      if (!currentDetailProduct) return;
+      const p = currentDetailProduct;
+      const firstImg = (p.image_url || '').split(',')[0].trim();
+      buyProductNow(p.id, p.name, p.sell_price, firstImg, p.offer_type || '', p.offer_value || '', p.offer_title || '');
+      closeProductDetailModal();
+    }
+
     // Handle District Change & Populate Areas
     function handleDistrictChange(selectedDistrict) {
       const areaSelect = document.getElementById('orderDeliveryArea');
@@ -3242,5 +3481,63 @@
       }
     }
   </script>
+
+  <!-- Product Details Modal (Matching Mobile App ProductDetailScreen) -->
+  <div class="modal-backdrop" id="productDetailModal" onclick="if(event.target === this) closeProductDetailModal()">
+    <div class="prod-detail-modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span style="font-size:0.8rem; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px;" id="detailCatBadge">Grocery</span>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeProductDetailModal()">✕</button>
+      </div>
+
+      <!-- Image Box with Carousel -->
+      <div class="detail-img-box">
+        <img src="/static/images/logo.png" alt="Product" class="detail-main-img" id="detailMainImg" onerror="this.src='/static/images/logo.png'">
+        <button class="detail-img-nav-btn detail-img-prev" id="detailImgPrevBtn" onclick="prevDetailImg()" style="display:none;">❮</button>
+        <button class="detail-img-nav-btn detail-img-next" id="detailImgNextBtn" onclick="nextDetailImg()" style="display:none;">❯</button>
+        <div class="detail-img-dots" id="detailImgDots"></div>
+      </div>
+
+      <!-- Offer Badge -->
+      <div id="detailOfferTag" style="display:none; margin-bottom:6px;">
+        <span style="background:#FEE2E2; color:#DC2626; font-size:0.75rem; font-weight:800; padding:3px 8px; border-radius:6px;" id="detailOfferTitleTxt">SPECIAL OFFER</span>
+      </div>
+
+      <!-- Title & SKU -->
+      <h2 style="font-size:1.25rem; font-weight:800; color:var(--text-main); line-height:1.3; margin-bottom:4px;" id="detailTitleTxt">Product Name</h2>
+      <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px;" id="detailSkuTxt">SKU: --- • Unit: 1 pc</div>
+
+      <!-- Price Row -->
+      <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:6px;">
+        <span style="font-size:1.35rem; font-weight:900; color:var(--primary);" id="detailSellPriceTxt">TK 0.00</span>
+        <span style="font-size:0.92rem; color:var(--text-muted); text-decoration:line-through; display:none;" id="detailMrpTxt">TK 0.00</span>
+        <span style="background:#FEF3C7; color:#B45309; font-size:0.75rem; font-weight:800; padding:2px 6px; border-radius:4px; display:none;" id="detailDiscountBadge">0% OFF</span>
+      </div>
+
+      <!-- Stock Status -->
+      <div id="detailStockBadge" class="stock-badge-pill stock-in">
+        <span>✅</span> <span id="detailStockTxt">In Stock</span>
+      </div>
+
+      <!-- Description -->
+      <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:6px;">
+        <div style="font-size:0.92rem; font-weight:800; color:var(--text-main);">📋 Product Details / Description</div>
+        <div class="detail-desc-box" id="detailDescTxt">
+          Product specifications and details.
+        </div>
+      </div>
+
+      <!-- Bottom Action Buttons in Modal -->
+      <div style="display:flex; gap:10px; margin-top:18px;">
+        <button class="btn-add" style="padding:12px; font-size:0.92rem;" id="modalBtnAdd" onclick="handleDetailAddCart()">
+          🛒 + Add to Bag
+        </button>
+        <button class="btn-buy-now" style="padding:12px; font-size:0.92rem;" id="modalBtnBuy" onclick="handleDetailBuyNow()">
+          ⚡ Buy Now
+        </button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
