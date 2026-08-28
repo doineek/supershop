@@ -6,7 +6,7 @@
   <title>{{ settings.shop_name or 'DOINEEK Supershop' }}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <style>
@@ -105,11 +105,12 @@
     }
     .location-icon { color: var(--accent); font-size: 0.85rem; }
 
-    /* Top Search Bar */
+    /* Top Search Bar & Floating Autocomplete Dropdown */
     .search-wrapper {
       max-width: 1200px;
       margin: 0 auto;
       padding: 4px 14px 10px;
+      position: relative;
     }
     .search-container {
       position: relative;
@@ -157,6 +158,66 @@
       justify-content: center;
     }
 
+    /* Floating Autocomplete Search Dropdown (matching mobile app instant search) */
+    .search-dropdown {
+      position: absolute;
+      top: calc(100% - 4px);
+      left: 14px;
+      right: 14px;
+      background: #FFFFFF;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+      max-height: 340px;
+      overflow-y: auto;
+      z-index: 150;
+      display: none;
+      border: 1px solid var(--border);
+    }
+    .search-result-item {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #F1F5F9;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+    .search-result-item:hover {
+      background: var(--primary-light);
+    }
+    .search-item-img {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      object-fit: contain;
+      background: #F8FAFC;
+      border: 1px solid var(--border);
+    }
+    .search-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .search-item-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .search-item-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .search-item-price {
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
     /* Views: Home, Category, Cart, Profile */
     .app-view {
       max-width: 1200px;
@@ -168,7 +229,7 @@
       display: block;
     }
 
-    /* Clickable Current Offer Hero Banner (1/4 screen height) */
+    /* Dynamic Promotion Hero Banner (1/4 screen height) */
     .hero-offer-banner {
       position: relative;
       border-radius: 18px;
@@ -183,76 +244,104 @@
       box-shadow: var(--shadow-lg);
     }
     .banner-slide {
-      padding: 24px 22px;
+      padding: 20px 22px;
       color: #FFFFFF;
-      min-height: 135px;
+      min-height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: relative;
+      background: linear-gradient(135deg, #1B5E20 0%, #047857 50%, #065F46 100%);
+    }
+    .banner-left-content {
+      flex: 1;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      transition: background 0.5s ease;
-      position: relative;
+      z-index: 2;
     }
-    .banner-slide-1 { background: linear-gradient(135deg, #E65100 0%, #F57C00 100%); }
-    .banner-slide-2 { background: linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%); }
-    .banner-slide-3 { background: linear-gradient(135deg, #4A148C 0%, #7B1FA2 100%); }
-    .banner-slide-4 { background: linear-gradient(135deg, #006064 0%, #00838F 100%); }
-    
     .banner-badge-top {
       align-self: flex-start;
-      background: rgba(0, 0, 0, 0.25);
-      color: #FFFFFF;
+      background: #F59E0B;
+      color: #000000;
       font-size: 0.72rem;
       font-weight: 800;
       padding: 3px 10px;
       border-radius: 12px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      box-shadow: var(--shadow-sm);
     }
     .banner-title {
-      font-size: 1.35rem;
+      font-size: 1.25rem;
       font-weight: 800;
       margin-bottom: 4px;
       letter-spacing: -0.02em;
+      line-height: 1.25;
     }
     .banner-subtitle {
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       font-weight: 500;
       opacity: 0.95;
+      margin-bottom: 8px;
     }
-    .banner-action-btn {
-      align-self: flex-start;
-      margin-top: 10px;
+    .banner-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .banner-price {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: #FDE047;
+    }
+    .banner-mrp {
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: line-through;
+    }
+    .banner-right-img-box {
+      width: 110px;
+      height: 110px;
       background: #FFFFFF;
-      color: #0F172A;
-      font-size: 0.8rem;
-      font-weight: 800;
-      padding: 6px 14px;
-      border-radius: 20px;
-      box-shadow: var(--shadow-sm);
+      border-radius: 14px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .banner-product-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
     }
     .banner-indicators {
       position: absolute;
-      bottom: 10px;
-      right: 16px;
+      bottom: 8px;
+      right: 14px;
       display: flex;
-      gap: 6px;
+      gap: 5px;
+      z-index: 3;
     }
     .indicator-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.4);
       transition: all 0.3s;
     }
     .indicator-dot.active {
-      width: 20px;
+      width: 18px;
       border-radius: 10px;
       background: #FFFFFF;
     }
 
-    /* Filter Quick Tabs */
+    /* Filter Quick Tabs (with Combo Offers Tab) */
     .filter-tabs {
       display: flex;
       gap: 8px;
@@ -337,12 +426,15 @@
       color: var(--text-muted);
     }
 
-    /* Combo Packages */
+    /* Combo Packages Container (Shown on Combo Tab or Section) */
+    #comboPackagesSection {
+      display: none;
+      margin-bottom: 24px;
+    }
     .packages-container {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 12px;
-      margin-bottom: 24px;
     }
     .package-card {
       background: #FFFFFF;
@@ -412,13 +504,18 @@
       display: flex;
       flex-direction: column;
       position: relative;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
       box-shadow: var(--shadow-sm);
     }
     .prod-card:hover {
       box-shadow: var(--shadow-md);
       transform: translateY(-2px);
       border-color: var(--primary-light);
+    }
+    .prod-card.highlight-card {
+      border: 2px solid var(--primary) !important;
+      box-shadow: 0 0 15px rgba(107, 33, 168, 0.4) !important;
+      transform: scale(1.02);
     }
     .prod-img-box {
       width: 100%;
@@ -562,7 +659,7 @@
       font-size: 0.88rem;
     }
 
-    /* 3-Level Category Directory Tree in Category View */
+    /* 3-Level Category Directory Tree */
     .category-tree-container {
       display: flex;
       flex-direction: column;
@@ -624,7 +721,6 @@
       transform: rotate(180deg);
     }
 
-    /* Sub-categories container */
     .subcat-tree-body {
       display: none;
       padding: 0 16px 14px;
@@ -656,7 +752,6 @@
       color: var(--text-muted);
     }
 
-    /* Sub-sub-categories list */
     .subsubcat-list {
       display: none;
       padding: 8px 14px 10px;
@@ -757,7 +852,6 @@
       margin-top: 4px;
     }
 
-    /* Profile Sub-sections */
     .profile-section-title {
       font-size: 0.95rem;
       font-weight: 800;
@@ -1018,7 +1112,7 @@
       box-shadow: var(--shadow-lg);
     }
 
-    /* Bottom Navigation Bar matching Mobile App */
+    /* Bottom Navigation Bar */
     .nav-bar-bottom {
       position: fixed;
       bottom: 0;
@@ -1092,7 +1186,6 @@
       background: rgba(255, 255, 255, 0.15);
     }
 
-    
     /* Rich Store Footer Section */
     .store-footer-area {
       background: #FFFFFF;
@@ -1143,17 +1236,6 @@
     .youtube-btn { background: #FF0000; color: #FFFFFF; }
     .x-btn { background: #000000; color: #FFFFFF; }
     .instagram-btn { background: linear-gradient(45deg, #F09433 0%, #E6683C 25%, #DC2743 50%, #CC2366 75%, #BC1888 100%); color: #FFFFFF; }
-
-    /* Footer */
-    .store-footer-area {
-      max-width: 1200px;
-      margin: 40px auto 0;
-      padding: 20px 14px;
-      border-top: 1px solid var(--border);
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.82rem;
-    }
   </style>
 </head>
 <body>
@@ -1191,12 +1273,17 @@
       </div>
     </div>
 
-    <!-- Search Input on Header -->
+    <!-- Search Input on Header with Floating Autocomplete Dropdown -->
     <div class="search-wrapper" id="searchWrapper">
       <div class="search-container">
         <span class="search-left-icon">🔍</span>
-        <input type="text" class="search-input" id="mainSearchInput" placeholder="Search products, categories & brands..." onkeyup="handleSearch(this.value)">
+        <input type="text" class="search-input" id="mainSearchInput" placeholder="Search products, brands & categories..." oninput="handleSearchInput(this.value)" onfocus="handleSearchInput(this.value)" autocomplete="off">
         <button class="search-clear-btn" id="searchClearBtn" onclick="clearSearch()">✕</button>
+      </div>
+
+      <!-- Instant Search Autocomplete Dropdown -->
+      <div class="search-dropdown" id="searchDropdown">
+        <!-- Injected via JavaScript -->
       </div>
     </div>
   </header>
@@ -1204,32 +1291,38 @@
   <!-- ================= 1. HOME VIEW ================= -->
   <div class="app-view active-view" id="view-home">
     
-    <!-- Clickable Hero Current Offer Banner (1/4 Screen) -->
-    <div class="hero-offer-banner" onclick="handleOfferBannerClick()">
-      <div class="banner-slide banner-slide-1" id="bannerSlide">
-        <div class="banner-badge-top">🔥 ACTIVE SPECIAL OFFER</div>
-        <div class="banner-title" id="bannerTitle">🔥 20% OFF Flash Sale!</div>
-        <div class="banner-subtitle" id="bannerSubtitle">Daily groceries at best prices!</div>
-        <div class="banner-action-btn">Shop Offer Deals ➔</div>
-        <div class="banner-indicators">
-          <div class="indicator-dot active" id="dot0"></div>
-          <div class="indicator-dot" id="dot1"></div>
-          <div class="indicator-dot" id="dot2"></div>
-          <div class="indicator-dot" id="dot3"></div>
+    <!-- Dynamic Clickable Active Promotion Hero Banner (1/4 Screen) -->
+    <div class="hero-offer-banner" id="heroBannerContainer" onclick="handleActivePromoClick()">
+      <div class="banner-slide" id="bannerSlideBox">
+        <div class="banner-left-content">
+          <div class="banner-badge-top" id="bannerBadgeTxt">🔥 ACTIVE SPECIAL OFFER</div>
+          <div class="banner-title" id="bannerTitleTxt">DOINEEK Supershop Deals</div>
+          <div class="banner-subtitle" id="bannerSubtitleTxt">Best daily grocery discounts at your door!</div>
+          <div class="banner-price-row" id="bannerPriceRow">
+            <span class="banner-price" id="bannerPriceTxt">TK 0.00</span>
+            <span class="banner-mrp" id="bannerMrpTxt"></span>
+          </div>
+        </div>
+        <div class="banner-right-img-box" id="bannerImgBox">
+          <img src="/static/images/logo.png" alt="Promo Item" class="banner-product-img" id="bannerProductImg" onerror="this.src='/static/images/logo.png'">
+        </div>
+        <div class="banner-indicators" id="bannerDotsWrap">
+          <!-- Dots injected dynamically -->
         </div>
       </div>
     </div>
 
-    <!-- Quick Filter Tabs -->
+    <!-- Quick Filter Tabs (All Products First, followed by Combo Offers, Trending, Flash Sale, Offers) -->
     <div class="filter-tabs">
-      <button class="filter-tab active" onclick="setFilterTab('all', this)">✨ All Items</button>
-      <button class="filter-tab" onclick="setFilterTab('trending', this)">🔥 Trending</button>
-      <button class="filter-tab" onclick="setFilterTab('flash_sale', this)">⚡ Flash Sale</button>
-      <button class="filter-tab" onclick="setFilterTab('offers', this)">🎁 Offers</button>
+      <button class="filter-tab active" id="tab-all" onclick="setFilterTab('all', this)">✨ All Products</button>
+      <button class="filter-tab" id="tab-packages" onclick="setFilterTab('packages', this)">🎁 Combo Offers ({{ packages|length }})</button>
+      <button class="filter-tab" id="tab-trending" onclick="setFilterTab('trending', this)">🔥 Trending</button>
+      <button class="filter-tab" id="tab-flash" onclick="setFilterTab('flash_sale', this)">⚡ Flash Sale</button>
+      <button class="filter-tab" id="tab-offers" onclick="setFilterTab('offers', this)">🏷️ Special Offers</button>
     </div>
 
     <!-- Horizontal Category Pills -->
-    <div class="categories-bar">
+    <div class="categories-bar" id="categoryPillsBar">
       <button class="cat-item-pill active" onclick="selectCat('all', this)">All Categories</button>
       {% for cat in categories %}
       <button class="cat-item-pill" onclick="selectCat('{{ cat.name }}', this)">
@@ -1238,98 +1331,101 @@
       {% endfor %}
     </div>
 
-    <!-- Combo Deals Section -->
-    {% if packages %}
-    <div class="section-title-row">
-      <div class="section-title">🎁 Special Combo Bundles</div>
-      <div class="section-count">{{ packages|length }} Deals Available</div>
-    </div>
-    <div class="packages-container">
-      {% for pkg in packages %}
-      <div class="package-card">
-        <span class="pkg-badge">SUPER SAVER</span>
-        <div>
-          <div class="pkg-title">{{ pkg.name }}</div>
-          <div class="pkg-items-desc">
-            {% for item in pkg.included_items %}
-              • {{ item.product_name }} ({{ item.quantity }}x)<br>
-            {% endfor %}
+    <!-- Combo Offers Section (Shown when Combo Offers Tab is active) -->
+    <div id="comboPackagesSection">
+      <div class="section-title-row">
+        <div class="section-title">🎁 Special Combo Bundles</div>
+        <div class="section-count">{{ packages|length }} Deals Available</div>
+      </div>
+      <div class="packages-container">
+        {% for pkg in packages %}
+        <div class="package-card">
+          <span class="pkg-badge">SUPER SAVER</span>
+          <div>
+            <div class="pkg-title">{{ pkg.name }}</div>
+            <div class="pkg-items-desc">
+              {% for item in pkg.included_items %}
+                • {{ item.product_name }} ({{ item.quantity }}x)<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="pkg-footer">
+            <div class="pkg-price">TK {{ "%.2f"|format(pkg.package_price) }}</div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-add" style="padding:6px 10px;" onclick="addPackageCart('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+                + Add
+              </button>
+              <button class="btn-buy-now" style="padding:6px 12px;" onclick="buyPackageNow('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+                Buy Now
+              </button>
+            </div>
           </div>
         </div>
-        <div class="pkg-footer">
-          <div class="pkg-price">TK {{ "%.2f"|format(pkg.package_price) }}</div>
-          <div style="display:flex; gap:6px;">
-            <button class="btn-add" style="padding:6px 10px;" onclick="addPackageCart('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Main Products Feed Grid (Visible by default for All Products) -->
+    <div id="regularProductsSection">
+      <div class="section-title-row">
+        <div class="section-title" id="gridTitle">🛒 Fresh Groceries &amp; Products</div>
+        <div class="section-count" id="productCountLabel">{{ products|length }} Products</div>
+      </div>
+
+      <div class="products-grid" id="mainProductsGrid">
+        {% for p in products %}
+        <div class="prod-card"
+             id="card-{{ p.id }}"
+             data-id="{{ p.id }}"
+             data-name="{{ p.name|lower }}"
+             data-sku="{{ p.sku|lower }}"
+             data-category="{{ p.category_name or '' }}"
+             data-subcategory="{{ p.sub_category_name or '' }}"
+             data-subsubcategory="{{ p.sub_sub_category_name or '' }}"
+             data-trending="{{ p.is_trending or 0 }}"
+             data-flash="{{ p.is_flash_sale or 0 }}"
+             data-offer="{{ p.is_offer or 0 }}"
+             data-offer-type="{{ p.offer_type or '' }}"
+             data-offer-value="{{ p.offer_value or '' }}"
+             data-offer-title="{{ p.offer_title or '' }}">
+          
+          <div class="prod-img-box">
+            {% if p.offer_title %}
+              <span class="promo-tag">{{ p.offer_title }}</span>
+            {% elif p.mrp and p.mrp > p.sell_price %}
+              <span class="promo-tag">{{ "%.0f"|format(((p.mrp - p.sell_price) / p.mrp) * 100) }}% OFF</span>
+            {% endif %}
+            <img src="{{ p.image_url.split(',')[0].strip() if p.image_url else '/static/images/logo.png' }}" alt="{{ p.name }}" class="prod-img" onerror="this.src='/static/images/logo.png'">
+          </div>
+
+          <div class="prod-name" title="{{ p.name }}">{{ p.name }}</div>
+          <div class="prod-sku">{{ p.unit or '1 Unit' }} • SKU: {{ p.sku }}</div>
+
+          <div class="prod-price-area">
+            <span class="price-current">TK {{ "%.2f"|format(p.sell_price) }}</span>
+            {% if p.mrp and p.mrp > p.sell_price %}
+              <span class="price-mrp">TK {{ "%.2f"|format(p.mrp) }}</span>
+            {% endif %}
+          </div>
+
+          <!-- Dual Action Buttons: Add to Cart & Buy Now -->
+          <div class="card-actions-row" id="btnWrap-{{ p.id }}">
+            <button class="btn-add" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
               + Add
             </button>
-            <button class="btn-buy-now" style="padding:6px 12px;" onclick="buyPackageNow('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+            <div class="stepper-box" id="stepperBox-{{ p.id }}">
+              <button class="step-btn" onclick="modifyQty('{{ p.id }}', -1)">-</button>
+              <span class="step-qty" id="stepQty-{{ p.id }}">1</span>
+              <button class="step-btn" onclick="modifyQty('{{ p.id }}', 1)">+</button>
+            </div>
+            <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
               Buy Now
             </button>
           </div>
+
         </div>
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    <!-- Product Feed Grid -->
-    <div class="section-title-row" style="margin-top:10px;">
-      <div class="section-title" id="gridTitle">🛒 Fresh Groceries & Products</div>
-      <div class="section-count" id="productCountLabel">{{ products|length }} Products</div>
-    </div>
-
-    <div class="products-grid" id="mainProductsGrid">
-      {% for p in products %}
-      <div class="prod-card"
-           data-id="{{ p.id }}"
-           data-name="{{ p.name|lower }}"
-           data-sku="{{ p.sku|lower }}"
-           data-category="{{ p.category_name or '' }}"
-           data-subcategory="{{ p.sub_category_name or '' }}"
-           data-subsubcategory="{{ p.sub_sub_category_name or '' }}"
-           data-trending="{{ p.is_trending or 0 }}"
-           data-flash="{{ p.is_flash_sale or 0 }}"
-           data-offer="{{ p.is_offer or 0 }}"
-           data-offer-type="{{ p.offer_type or '' }}"
-           data-offer-value="{{ p.offer_value or '' }}"
-           data-offer-title="{{ p.offer_title or '' }}">
-        
-        <div class="prod-img-box">
-          {% if p.offer_title %}
-            <span class="promo-tag">{{ p.offer_title }}</span>
-          {% elif p.mrp and p.mrp > p.sell_price %}
-            <span class="promo-tag">{{ "%.0f"|format(((p.mrp - p.sell_price) / p.mrp) * 100) }}% OFF</span>
-          {% endif %}
-          <img src="{{ p.image_url.split(',')[0].strip() if p.image_url else '/static/images/logo.png' }}" alt="{{ p.name }}" class="prod-img" onerror="this.src='/static/images/logo.png'">
-        </div>
-
-        <div class="prod-name" title="{{ p.name }}">{{ p.name }}</div>
-        <div class="prod-sku">{{ p.unit or '1 Unit' }} • SKU: {{ p.sku }}</div>
-
-        <div class="prod-price-area">
-          <span class="price-current">TK {{ "%.2f"|format(p.sell_price) }}</span>
-          {% if p.mrp and p.mrp > p.sell_price %}
-            <span class="price-mrp">TK {{ "%.2f"|format(p.mrp) }}</span>
-          {% endif %}
-        </div>
-
-        <!-- Dual Action Buttons: Add to Cart & Buy Now -->
-        <div class="card-actions-row" id="btnWrap-{{ p.id }}">
-          <button class="btn-add" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
-            + Add
-          </button>
-          <div class="stepper-box" id="stepperBox-{{ p.id }}">
-            <button class="step-btn" onclick="modifyQty('{{ p.id }}', -1)">-</button>
-            <span class="step-qty" id="stepQty-{{ p.id }}">1</span>
-            <button class="step-btn" onclick="modifyQty('{{ p.id }}', 1)">+</button>
-          </div>
-          <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
-            Buy Now
-          </button>
-        </div>
-
-      </div>
-      {% endfor %}
     </div>
 
   </div>
@@ -1790,8 +1886,10 @@
   </div>
 
   <script>
-    // Global delivery areas data from backend
+    // Global Data passed from Backend
+    const allProducts = {{ products|tojson }};
     const allDeliveryAreas = {{ delivery_areas|tojson }};
+    const activePromotions = {{ promotions|tojson }};
     const DEFAULT_DELIVERY_CHARGE = parseFloat("{{ settings.delivery_charge|float if settings.delivery_charge else 60.0 }}");
 
     // Cart persistence & Auth State
@@ -1851,37 +1949,163 @@
       return { isOffer: true, buyQty, freeQty, paidQty, freeQtyTotal };
     }
 
-    // Hero Promo Carousel
-    const banners = [
-      { title: "🔥 20% OFF Flash Sale!", sub: "Daily groceries at best prices!", tab: "flash_sale", cls: "banner-slide-1" },
-      { title: "🚀 Superfast 30-Min Delivery", sub: "Nearest rider ready in your area!", tab: "all", cls: "banner-slide-2" },
-      { title: "🎁 Buy 1 Get 1 Free Offers", sub: "Don't miss today's best deals!", tab: "offers", cls: "banner-slide-3" },
-      { title: "💳 Cash On Delivery Guaranteed", sub: "Pay safely upon receiving products!", tab: "all", cls: "banner-slide-4" }
-    ];
-    let bannerIdx = 0;
-    setInterval(() => {
-      bannerIdx = (bannerIdx + 1) % banners.length;
-      const b = banners[bannerIdx];
-      const slide = document.getElementById('bannerSlide');
-      if (slide) {
-        slide.className = 'banner-slide ' + b.cls;
-        document.getElementById('bannerTitle').textContent = b.title;
-        document.getElementById('bannerSubtitle').textContent = b.sub;
-        for (let i = 0; i < 4; i++) {
-          const dot = document.getElementById('dot' + i);
-          if (dot) dot.className = 'indicator-dot' + (i === bannerIdx ? ' active' : '');
-        }
-      }
-    }, 3000);
+    // Dynamic Banner Promo Carousel (Showing ONLY Active Special Offers & Banner Promotions)
+    let promoIdx = 0;
+    let promoTimer = null;
 
-    function handleOfferBannerClick() {
-      const b = banners[bannerIdx];
-      setFilterTab(b.tab, document.querySelector(`.filter-tab[onclick*="${b.tab}"]`) || document.querySelector('.filter-tab'));
-      window.scrollTo({ top: 400, behavior: 'smooth' });
+    function initDynamicBanner() {
+      const dotsWrap = document.getElementById('bannerDotsWrap');
+      if (!activePromotions || activePromotions.length === 0) {
+        document.getElementById('bannerBadgeTxt').textContent = '✨ SPECIAL OFFER';
+        document.getElementById('bannerTitleTxt').textContent = 'Shop Daily Fresh Groceries';
+        document.getElementById('bannerSubtitleTxt').textContent = 'Express delivery right to your doorstep!';
+        document.getElementById('bannerPriceTxt').textContent = '';
+        dotsWrap.innerHTML = '';
+        return;
+      }
+
+      dotsWrap.innerHTML = activePromotions.map((_, i) => `<div class="indicator-dot ${i === 0 ? 'active' : ''}" id="pdot${i}"></div>`).join('');
+      renderPromoSlide(0);
+
+      if (activePromotions.length > 1) {
+        if (promoTimer) clearInterval(promoTimer);
+        promoTimer = setInterval(() => {
+          promoIdx = (promoIdx + 1) % activePromotions.length;
+          renderPromoSlide(promoIdx);
+        }, 3000);
+      }
     }
+
+    function renderPromoSlide(idx) {
+      if (!activePromotions || activePromotions.length === 0) return;
+      const item = activePromotions[idx];
+      document.getElementById('bannerBadgeTxt').textContent = item.offer_title ? item.offer_title.toUpperCase() : '🔥 SPECIAL OFFER';
+      document.getElementById('bannerTitleTxt').textContent = item.name || 'Special Offer Item';
+      document.getElementById('bannerSubtitleTxt').textContent = item.category_name ? `Category: ${item.category_name}` : 'Grab this limited-time discount now!';
+      document.getElementById('bannerPriceTxt').textContent = `TK ${(item.sell_price || 0).toFixed(2)}`;
+      
+      const mrpEl = document.getElementById('bannerMrpTxt');
+      if (item.mrp && item.mrp > item.sell_price) {
+        mrpEl.textContent = `TK ${(item.mrp || 0).toFixed(2)}`;
+        mrpEl.style.display = 'inline';
+      } else {
+        mrpEl.style.display = 'none';
+      }
+
+      const imgEl = document.getElementById('bannerProductImg');
+      const firstImg = item.image_url ? item.image_url.split(',')[0].trim() : '';
+      imgEl.src = firstImg || '/static/images/logo.png';
+
+      // Update dots
+      for (let i = 0; i < activePromotions.length; i++) {
+        const dot = document.getElementById(`pdot${i}`);
+        if (dot) dot.className = 'indicator-dot' + (i === idx ? ' active' : '');
+      }
+    }
+
+    function handleActivePromoClick() {
+      if (!activePromotions || activePromotions.length === 0) {
+        setFilterTab('offers', document.getElementById('tab-offers'));
+        return;
+      }
+      const item = activePromotions[promoIdx];
+      if (item && item.id) {
+        setFilterTab('all', document.getElementById('tab-all'));
+        setTimeout(() => {
+          scrollToProduct(item.id);
+        }, 100);
+      }
+    }
+
+    // Instant Search Input & Dropdown Autocomplete
+    function handleSearchInput(q) {
+      const query = (q || '').trim().toLowerCase();
+      const dropdown = document.getElementById('searchDropdown');
+      const clearBtn = document.getElementById('searchClearBtn');
+
+      if (query.length > 0) {
+        clearBtn.style.display = 'flex';
+      } else {
+        clearBtn.style.display = 'none';
+        dropdown.style.display = 'none';
+        applyFilters();
+        return;
+      }
+
+      // Filter matching products
+      const matches = allProducts.filter(p => {
+        const name = (p.name || '').toLowerCase();
+        const sku = (p.sku || '').toLowerCase();
+        const cat = (p.category_name || '').toLowerCase();
+        const sub = (p.sub_category_name || '').toLowerCase();
+        return name.includes(query) || sku.includes(query) || cat.includes(query) || sub.includes(query);
+      }).slice(0, 10);
+
+      if (matches.length > 0) {
+        dropdown.innerHTML = matches.map(p => {
+          const img = p.image_url ? p.image_url.split(',')[0].trim() : '/static/images/logo.png';
+          return `
+            <div class="search-result-item" onclick="handleSearchItemSelect(${p.id})">
+              <img src="${img}" class="search-item-img" onerror="this.src='/static/images/logo.png'">
+              <div class="search-item-info">
+                <div class="search-item-title">${p.name}</div>
+                <div class="search-item-meta">${p.category_name || 'Grocery'} • SKU: ${p.sku || ''}</div>
+              </div>
+              <div class="search-item-price">TK ${(p.sell_price || 0).toFixed(2)}</div>
+            </div>
+          `;
+        }).join('');
+        dropdown.style.display = 'block';
+      } else {
+        dropdown.innerHTML = `
+          <div style="padding:16px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+            No products found matching "<strong>${q}</strong>"
+          </div>
+        `;
+        dropdown.style.display = 'block';
+      }
+
+      applyFilters();
+    }
+
+    function handleSearchItemSelect(prodId) {
+      document.getElementById('searchDropdown').style.display = 'none';
+      switchView('home');
+      setFilterTab('all', document.getElementById('tab-all'));
+      setTimeout(() => {
+        scrollToProduct(prodId);
+      }, 100);
+    }
+
+    function scrollToProduct(prodId) {
+      const card = document.getElementById('card-' + prodId);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('highlight-card');
+        setTimeout(() => {
+          card.classList.remove('highlight-card');
+        }, 2200);
+      }
+    }
+
+    function clearSearch() {
+      document.getElementById('mainSearchInput').value = '';
+      document.getElementById('searchClearBtn').style.display = 'none';
+      document.getElementById('searchDropdown').style.display = 'none';
+      applyFilters();
+    }
+
+    // Close search dropdown on click outside
+    document.addEventListener('click', (e) => {
+      const searchWrapper = document.getElementById('searchWrapper');
+      if (searchWrapper && !searchWrapper.contains(e.target)) {
+        document.getElementById('searchDropdown').style.display = 'none';
+      }
+    });
 
     // Initial state load
     window.addEventListener('DOMContentLoaded', () => {
+      initDynamicBanner();
       refreshAuthState();
       refreshCartDisplay();
       
@@ -1891,6 +2115,18 @@
       }
     });
 
+    // Handle District Change & Populate Areas
+    function handleDistrictChange(selectedDistrict) {
+      const areaSelect = document.getElementById('orderDeliveryArea');
+      if (!areaSelect) return;
+
+      const filtered = allDeliveryAreas.filter(a => (a.district || '').trim().toLowerCase() === selectedDistrict.trim().toLowerCase());
+      if (filtered.length > 0) {
+        areaSelect.innerHTML = filtered.map(a => `<option value="${a.id}" data-zone="${a.area}">${a.area} (Delivery: TK ${(a.delivery_charge || DEFAULT_DELIVERY_CHARGE).toFixed(0)})</option>`).join('');
+      } else {
+        areaSelect.innerHTML = `<option value="1" data-zone="Main Town">Main Town Area</option>`;
+      }
+    }
 
     // Store Policy Modal Logic
     let storePoliciesCache = null;
@@ -1921,19 +2157,6 @@
       document.getElementById('policyModal').style.display = 'none';
     }
 
-    // Handle District Change & Populate Areas
-    function handleDistrictChange(selectedDistrict) {
-      const areaSelect = document.getElementById('orderDeliveryArea');
-      if (!areaSelect) return;
-
-      const filtered = allDeliveryAreas.filter(a => (a.district || '').trim().toLowerCase() === selectedDistrict.trim().toLowerCase());
-      if (filtered.length > 0) {
-        areaSelect.innerHTML = filtered.map(a => `<option value="${a.id}" data-zone="${a.area}">${a.area} (Delivery: TK ${(a.delivery_charge || DEFAULT_DELIVERY_CHARGE).toFixed(0)})</option>`).join('');
-      } else {
-        areaSelect.innerHTML = `<option value="1" data-zone="Main Town">Main Town Area</option>`;
-      }
-    }
-
     // Toggle 3-Level Category Tree Accordions
     function toggleCatTree(id) {
       const el = document.getElementById('body-' + id);
@@ -1957,6 +2180,7 @@
 
     function filterBySpecificCategory(catName) {
       switchView('home');
+      setFilterTab('all', document.getElementById('tab-all'));
       activeCategory = catName;
       activeSubCategory = 'all';
       activeSubSubCategory = 'all';
@@ -1968,6 +2192,7 @@
 
     function filterBySpecificSubCategory(subName) {
       switchView('home');
+      setFilterTab('all', document.getElementById('tab-all'));
       activeCategory = 'all';
       activeSubCategory = subName;
       activeSubSubCategory = 'all';
@@ -1976,6 +2201,7 @@
 
     function filterBySpecificSubSubCategory(subsubName) {
       switchView('home');
+      setFilterTab('all', document.getElementById('tab-all'));
       activeCategory = 'all';
       activeSubCategory = 'all';
       activeSubSubCategory = subsubName;
@@ -2293,7 +2519,6 @@
       openCartDrawer();
     }
 
-    // Instant Buy Now Action
     function buyProductNow(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
       if (!cart[id]) {
         cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
@@ -2480,7 +2705,21 @@
       document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
       if (el) el.classList.add('active');
       activeFilterTab = tab;
-      applyFilters();
+
+      const comboSection = document.getElementById('comboPackagesSection');
+      const regularSection = document.getElementById('regularProductsSection');
+      const catPillsBar = document.getElementById('categoryPillsBar');
+
+      if (tab === 'packages') {
+        if (comboSection) comboSection.style.display = 'block';
+        if (regularSection) regularSection.style.display = 'none';
+        if (catPillsBar) catPillsBar.style.display = 'none';
+      } else {
+        if (comboSection) comboSection.style.display = 'none';
+        if (regularSection) regularSection.style.display = 'block';
+        if (catPillsBar) catPillsBar.style.display = 'flex';
+        applyFilters();
+      }
     }
 
     function selectCat(catName, el) {
@@ -2489,17 +2728,6 @@
       activeCategory = catName;
       activeSubCategory = 'all';
       activeSubSubCategory = 'all';
-      applyFilters();
-    }
-
-    function handleSearch(val) {
-      document.getElementById('searchClearBtn').style.display = val.trim() ? 'flex' : 'none';
-      applyFilters();
-    }
-
-    function clearSearch() {
-      document.getElementById('mainSearchInput').value = '';
-      document.getElementById('searchClearBtn').style.display = 'none';
       applyFilters();
     }
 
@@ -2543,6 +2771,12 @@
         document.getElementById('gridTitle').textContent = `📄 ${activeSubSubCategory}`;
       } else if (activeCategory !== 'all') {
         document.getElementById('gridTitle').textContent = `🛍️ Category: ${activeCategory}`;
+      } else if (activeFilterTab === 'trending') {
+        document.getElementById('gridTitle').textContent = `🔥 Trending Products`;
+      } else if (activeFilterTab === 'flash_sale') {
+        document.getElementById('gridTitle').textContent = `⚡ Flash Sale Deals`;
+      } else if (activeFilterTab === 'offers') {
+        document.getElementById('gridTitle').textContent = `🏷️ Special Offers`;
       } else {
         document.getElementById('gridTitle').textContent = `🛒 Fresh Groceries & Products`;
       }

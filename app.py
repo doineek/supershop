@@ -294,12 +294,15 @@ def render_storefront():
     if not districts:
         districts = ["Tangail"]
 
-    promos = [
-        {"title": "🔥 20% OFF Flash Sale!", "subtitle": "Daily groceries at best prices!", "tab": "flash_sale", "color": "linear-gradient(135deg, #E65100 0%, #F57C00 100%)"},
-        {"title": "🚀 Superfast 30-Min Delivery", "subtitle": "Nearest rider ready in your area!", "tab": "all", "color": "linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%)"},
-        {"title": "🎁 Buy 1 Get 1 Free Offers", "subtitle": "Don't miss today's best deals!", "tab": "offers", "color": "linear-gradient(135deg, #4A148C 0%, #7B1FA2 100%)"},
-        {"title": "💳 Cash On Delivery Guaranteed", "subtitle": "Pay safely upon receiving products!", "tab": "all", "color": "linear-gradient(135deg, #006064 0%, #00838F 100%)"}
-    ]
+    # Fetch real Active Special Offers & Banner Promotions from database
+    promo_rows = conn.execute("""
+        SELECT p.*, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.is_promotion = 1 OR p.is_offer = 1 OR p.offer_type = 'bogo'
+        ORDER BY p.id DESC
+    """).fetchall()
+    promos = [dict(r) for r in promo_rows]
 
     shop_settings = get_all_settings(conn)
     conn.close()
