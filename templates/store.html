@@ -1251,20 +1251,21 @@
       box-shadow: var(--shadow-lg);
     }
 
-    /* Bottom Navigation Bar */
+    /* Bottom Navigation Bar (Vibrant Highlight & Active Pill) */
     .nav-bar-bottom {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
-      height: 60px;
+      height: 64px;
       background: #FFFFFF;
       border-top: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-around;
       z-index: 90;
-      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+      box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.07);
+      padding: 0 6px;
     }
     @media (min-width: 768px) {
       .nav-bar-bottom { display: none; }
@@ -1274,30 +1275,58 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
+      justify-content: center;
+      gap: 3px;
       font-size: 0.72rem;
       font-weight: 700;
-      color: var(--text-muted);
+      color: #64748B;
       text-decoration: none;
       cursor: pointer;
       position: relative;
+      flex: 1;
+      height: 52px;
+      border-radius: 12px;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .nav-tab-item.active { color: var(--primary); }
-    .nav-tab-icon { font-size: 1.25rem; }
+    .nav-tab-item.active {
+      color: var(--primary) !important;
+      background: #F3E8FF !important;
+      font-weight: 800 !important;
+    }
+    .nav-tab-item.active::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 26px;
+      height: 3.5px;
+      background: var(--primary);
+      border-radius: 0 0 4px 4px;
+    }
+    .nav-tab-icon {
+      font-size: 1.25rem;
+      transition: transform 0.2s;
+    }
+    .nav-tab-item.active .nav-tab-icon {
+      transform: scale(1.15);
+    }
     .tab-badge {
       position: absolute;
-      top: -2px;
-      right: -8px;
+      top: 3px;
+      right: calc(50% - 22px);
       background: var(--danger);
       color: #fff;
       font-size: 0.68rem;
       font-weight: 800;
-      width: 18px;
+      min-width: 18px;
       height: 18px;
-      border-radius: 50%;
+      padding: 0 4px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
+      border: 1.5px solid #FFFFFF;
     }
 
     /* Desktop Navigation Tabs */
@@ -2358,6 +2387,28 @@
       if (distSelect && distSelect.value) {
         handleDistrictChange(distSelect.value);
       }
+
+      // Restore active tab on page refresh
+      const hashTab = (window.location.hash || '').replace('#', '').toLowerCase();
+      const savedTab = localStorage.getItem('supershop_active_tab') || 'home';
+      const validTabs = ['home', 'category', 'cart', 'profile'];
+      
+      if (validTabs.includes(hashTab)) {
+        switchView(hashTab, false);
+      } else if (validTabs.includes(savedTab)) {
+        switchView(savedTab, false);
+      } else {
+        switchView('home', false);
+      }
+    });
+
+    // Handle browser back/forward buttons
+    window.addEventListener('hashchange', () => {
+      const hashTab = (window.location.hash || '').replace('#', '').toLowerCase();
+      const validTabs = ['home', 'category', 'cart', 'profile'];
+      if (validTabs.includes(hashTab)) {
+        switchView(hashTab, false);
+      }
     });
 
     // Handle District Change & Populate Areas
@@ -2563,9 +2614,23 @@
       }
     }
 
-    function switchView(viewName) {
+    function switchView(viewName, updateHistory = true) {
+      const validTabs = ['home', 'category', 'cart', 'profile'];
+      if (!validTabs.includes(viewName)) {
+        viewName = 'home';
+      }
+
+      // Persist active tab across page refresh & navigation
+      localStorage.setItem('supershop_active_tab', viewName);
+      if (updateHistory) {
+        history.replaceState(null, '', '#' + viewName);
+      }
+
       document.querySelectorAll('.app-view').forEach(v => v.classList.remove('active-view'));
-      document.getElementById('view-' + viewName).classList.add('active-view');
+      const activeViewEl = document.getElementById('view-' + viewName);
+      if (activeViewEl) {
+        activeViewEl.classList.add('active-view');
+      }
 
       const tabIds = ['Home', 'Category', 'Cart', 'Profile'];
       tabIds.forEach(t => {
@@ -2581,7 +2646,11 @@
         }
       });
 
-      document.getElementById('searchWrapper').style.display = (viewName === 'home') ? 'block' : 'none';
+      const searchWrap = document.getElementById('searchWrapper');
+      if (searchWrap) {
+        searchWrap.style.display = (viewName === 'home') ? 'block' : 'none';
+      }
+      
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
       if (viewName === 'cart') {
