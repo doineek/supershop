@@ -195,20 +195,85 @@ def logout():
 # Customer Storefront & Dashboard Routes
 # ===========================================================================
 
+def ensure_customer_profile_columns():
+    try:
+        conn = get_connection()
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(customer_users)").fetchall()]
+        if "avatar_base64" not in cols:
+            conn.execute("ALTER TABLE customer_users ADD COLUMN avatar_base64 TEXT DEFAULT ''")
+        if "avatar_url" not in cols:
+            conn.execute("ALTER TABLE customer_users ADD COLUMN avatar_url TEXT DEFAULT ''")
+        if "address" not in cols:
+            conn.execute("ALTER TABLE customer_users ADD COLUMN address TEXT DEFAULT ''")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("[migration] customer_users column check:", e)
+
+ensure_customer_profile_columns()
+
+
+def get_categories_tree_data(conn):
+    cats = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    subs = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
+    subsubs = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
+
+    cat_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL GROUP BY category_id").fetchall())
+    sub_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL GROUP BY sub_category_id").fetchall())
+    subsub_counts = dict(conn.execute("SELECT sub_sub_category_id, COUNT(*) FROM products WHERE sub_sub_category_id IS NOT NULL GROUP BY sub_sub_category_id").fetchall())
+    uncategorized_count = conn.execute("SELECT COUNT(*) FROM products WHERE category_id IS NULL OR category_id NOT IN (SELECT id FROM categories)").fetchone()[0]
+    
+    cat_list = []
+    for c in cats:
+        c_dict = dict(c)
+        c_subs = []
+        for s in subs:
+            if s["category_id"] == c["id"]:
+                s_dict = dict(s)
+                s_subsubs = []
+                for ss in subsubs:
+                    if ss["sub_category_id"] == s["id"]:
+                        ss_dict = dict(ss)
+                        ss_dict["product_count"] = subsub_counts.get(ss["id"], 0)
+                        s_subsubs.append(ss_dict)
+                s_dict["product_count"] = sub_counts.get(s["id"], 0)
+                s_dict["sub_sub_categories"] = s_subsubs
+                c_subs.append(s_dict)
+        c_dict["product_count"] = cat_counts.get(c["id"], 0)
+        c_dict["sub_categories"] = c_subs
+        cat_list.append(c_dict)
+
+    if uncategorized_count > 0:
+        cat_list.append({
+            "id": -1,
+            "name": "Uncategorized",
+            "icon": "📦",
+            "product_count": uncategorized_count,
+            "sub_categories": []
+        })
+    return cat_list
+
+
 def render_storefront():
     conn = get_connection()
     today_date = datetime.now().strftime("%Y-%m-%d")
     
     # Active Products (exclude expired)
     products = conn.execute("""
-        SELECT p.*, c.name AS category_name
+        SELECT p.*, 
+               c.name AS category_name,
+               s.name AS sub_category_name,
+               ss.name AS sub_sub_category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN sub_categories s ON p.sub_category_id = s.id
+        LEFT JOIN sub_sub_categories ss ON p.sub_sub_category_id = ss.id
         WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?) AND p.stock_qty > 0
         ORDER BY p.name
     """, (today_date,)).fetchall()
     
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+    categories_tree = get_categories_tree_data(conn)
     
     raw_pkgs = conn.execute("SELECT * FROM packages").fetchall()
     packages = []
@@ -222,18 +287,91 @@ def render_storefront():
         p_dict["included_items"] = [dict(i) for i in items]
         packages.append(p_dict)
         
-    delivery_areas = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    delivery_areas_rows = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    delivery_areas = [dict(r) for r in delivery_areas_rows]
+    
+    districts = sorted(list(set([r["district"].strip() for r in delivery_areas if r.get("district") and r["district"].strip()])))
+    if not districts:
+        districts = ["Tangail"]
+
+    promos = [
+        {"title": "🔥 20% OFF Flash Sale!", "subtitle": "Daily groceries at best prices!", "tab": "flash_sale", "color": "linear-gradient(135deg, #E65100 0%, #F57C00 100%)"},
+        {"title": "🚀 Superfast 30-Min Delivery", "subtitle": "Nearest rider ready in your area!", "tab": "all", "color": "linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%)"},
+        {"title": "🎁 Buy 1 Get 1 Free Offers", "subtitle": "Don't miss today's best deals!", "tab": "offers", "color": "linear-gradient(135deg, #4A148C 0%, #7B1FA2 100%)"},
+        {"title": "💳 Cash On Delivery Guaranteed", "subtitle": "Pay safely upon receiving products!", "tab": "all", "color": "linear-gradient(135deg, #006064 0%, #00838F 100%)"}
+    ]
+
     shop_settings = get_all_settings(conn)
     conn.close()
     
     return render_template(
         "store.html",
-        products=products,
-        categories=categories,
+        products=[dict(p) for p in products],
+        categories=[dict(c) for c in categories],
+        categories_tree=categories_tree,
         packages=packages,
         delivery_areas=delivery_areas,
+        districts=districts,
+        promotions=promos,
         settings=shop_settings
     )
+
+
+@app.route("/api/customer/update-profile", methods=["POST"])
+def api_customer_update_profile():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip()
+    avatar_base64 = data.get("avatar_base64", "").strip()
+    avatar_url = data.get("avatar_url", "").strip()
+    address = data.get("address", "").strip()
+
+    if not phone:
+        return jsonify({"success": False, "message": "Phone number is required."}), 400
+
+    conn = get_connection()
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    if not cust:
+        conn.close()
+        return jsonify({"success": False, "message": "Customer account not found."}), 404
+
+    updates = []
+    params = []
+    if name:
+        updates.append("name = ?")
+        params.append(name)
+    if email:
+        updates.append("email = ?")
+        params.append(email)
+    if avatar_url:
+        updates.append("avatar_url = ?")
+        params.append(avatar_url)
+    if avatar_base64:
+        updates.append("avatar_base64 = ?")
+        params.append(avatar_base64)
+    if address:
+        updates.append("address = ?")
+        params.append(address)
+
+    if updates:
+        params.append(phone)
+        conn.execute(f"UPDATE customer_users SET {', '.join(updates)} WHERE phone = ?", tuple(params))
+        conn.commit()
+
+    updated_cust = conn.execute("SELECT id, phone, name, email, avatar_url, avatar_base64, address FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    conn.close()
+    
+    try:
+        remote_control.push_customer_user_to_cloud(phone)
+    except Exception as e:
+        print("[customer_update] Error syncing to cloud:", e)
+
+    return jsonify({
+        "success": True,
+        "message": "Profile updated successfully!",
+        "user": dict(updated_cust) if updated_cust else {"phone": phone, "name": name}
+    })
 
 
 @app.route("/")
@@ -2400,44 +2538,8 @@ def api_brands():
 @app.route("/api/categories/tree", methods=["GET"])
 def api_categories_tree():
     conn = get_connection()
-    cats = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
-    subs = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
-    subsubs = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
-
-    cat_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL GROUP BY category_id").fetchall())
-    sub_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL GROUP BY sub_category_id").fetchall())
-    subsub_counts = dict(conn.execute("SELECT sub_sub_category_id, COUNT(*) FROM products WHERE sub_sub_category_id IS NOT NULL GROUP BY sub_sub_category_id").fetchall())
-    uncategorized_count = conn.execute("SELECT COUNT(*) FROM products WHERE category_id IS NULL OR category_id NOT IN (SELECT id FROM categories)").fetchone()[0]
+    cat_list = get_categories_tree_data(conn)
     conn.close()
-    
-    cat_list = []
-    for c in cats:
-        c_dict = dict(c)
-        c_subs = []
-        for s in subs:
-            if s["category_id"] == c["id"]:
-                s_dict = dict(s)
-                s_subsubs = []
-                for ss in subsubs:
-                    if ss["sub_category_id"] == s["id"]:
-                        ss_dict = dict(ss)
-                        ss_dict["product_count"] = subsub_counts.get(ss["id"], 0)
-                        s_subsubs.append(ss_dict)
-                s_dict["product_count"] = sub_counts.get(s["id"], 0)
-                s_dict["sub_sub_categories"] = s_subsubs
-                c_subs.append(s_dict)
-        c_dict["product_count"] = cat_counts.get(c["id"], 0)
-        c_dict["sub_categories"] = c_subs
-        cat_list.append(c_dict)
-
-    # Append virtual 'Uncategorized' category node
-    cat_list.append({
-        "id": -1,
-        "name": "Uncategorized",
-        "icon": "📦",
-        "product_count": uncategorized_count,
-        "sub_categories": []
-    })
     return jsonify(cat_list)
 
 

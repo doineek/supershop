@@ -791,7 +791,15 @@ class _CartScreenState extends State<CartScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
+                  const Center(
+                    child: Text(
+                      "By clicking 'Confirm Order', you agree to our Terms and Conditions",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
 
                   // Place Order Button
                   SizedBox(
