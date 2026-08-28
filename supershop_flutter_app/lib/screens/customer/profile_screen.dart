@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/locale_provider.dart';
 import '../../providers/theme_provider.dart';
@@ -342,8 +343,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _supportPhone,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.purple),
                   ),
-                  const SizedBox(height: 4),
-                  const Text("Call for order assistance & support", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final cleanPhone = _supportPhone.replaceAll(RegExp(r'[^0-9+]'), '');
+                        final Uri launchUri = Uri(scheme: 'tel', path: cleanPhone);
+                        try {
+                          if (await canLaunchUrl(launchUri)) {
+                            await launchUrl(launchUri);
+                          } else {
+                            await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                          }
+                        } catch (e) {
+                          debugPrint("Could not dial phone: $e");
+                        }
+                      },
+                      icon: const Icon(Icons.phone, color: Colors.white, size: 20),
+                      label: const Text("Call / Dial Now", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text("Tap to call for order assistance & support", style: TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),
             ),
@@ -356,57 +384,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-    );
-  }
-  void _showLanguageSelectorDialog(BuildContext context, LocaleProvider localeProv) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.language, color: Colors.blue, size: 24),
-                  SizedBox(width: 8),
-                  Text(
-                    'Select App Language / ভাষা নির্বাচন করুন',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const Text('🇺🇸', style: TextStyle(fontSize: 22)),
-                title: const Text('English (US)', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('Default app language'),
-                trailing: !localeProv.isBengali ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                onTap: () {
-                  localeProv.setLocale(const Locale('en'));
-                  Navigator.pop(ctx);
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Text('🇧🇩', style: TextStyle(fontSize: 22)),
-                title: const Text('বাংলা (Bengali)', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('বাংলা ভাষায় অ্যাপ ব্যবহার করুন'),
-                trailing: localeProv.isBengali ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                onTap: () {
-                  localeProv.setLocale(const Locale('bn'));
-                  Navigator.pop(ctx);
-                },
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -743,19 +720,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             themeProv.toggleTheme(val);
                           },
                         ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.language, color: Colors.blue),
-                          title: const Text('App Language', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(
-                            localeProv.currentLanguageName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
-                          ),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                          onTap: () {
-                            _showLanguageSelectorDialog(context, localeProv);
-                          },
-                        ),
+
                         const Divider(height: 1),
                         ListTile(
                           leading: const Icon(Icons.support_agent, color: Colors.purple),

@@ -2159,6 +2159,44 @@
     </div>
   </div>
 
+  <!-- Customer Support Helpline Modal (With Direct Dial Action) -->
+  <div class="modal-backdrop" id="customerSupportModal" onclick="if(event.target === this) closeCustomerSupportDialog()">
+    <div class="modal-box" style="max-width:440px; text-align:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary); display:flex; align-items:center; gap:8px;">
+          🎧 Customer Support
+        </h3>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeCustomerSupportDialog()">✕</button>
+      </div>
+
+      <div style="font-size:1.1rem; font-weight:800; color:var(--text-main); margin-bottom:4px;">
+        {{ settings.shop_name or 'DOINEEK Supershop' }}
+      </div>
+      <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:16px;">
+        {{ settings.shop_address or 'Tangail Sadar, Tangail' }}
+      </div>
+
+      <div style="background:#F3E8FF; border:1px solid #D8B4FE; border-radius:14px; padding:18px; margin-bottom:16px;">
+        <div style="font-size:0.85rem; font-weight:700; color:var(--primary); margin-bottom:6px;">
+          Helpline Number:
+        </div>
+        <div style="font-size:1.5rem; font-weight:900; color:var(--primary); letter-spacing:0.5px; margin-bottom:12px;">
+          {{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}
+        </div>
+        <a href="tel:{{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; padding:12px; font-size:1rem;">
+          📞 Call / Dial Now
+        </a>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">
+          Tap button to dial helpline directly on your phone
+        </div>
+      </div>
+
+      <div style="font-size:0.8rem; color:var(--text-muted);">
+        Our support team is available daily from 8:00 AM to 11:00 PM.
+      </div>
+    </div>
+  </div>
+
   <!-- Order History Modal -->
   <div class="modal-backdrop" id="orderHistoryModal">
     <div class="modal-box" style="max-width:540px;">
@@ -2922,7 +2960,11 @@
     }
 
     function openCustomerSupportDialog() {
-      alert("🎧 Customer Support Helpline:\n\n{{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}\n\nOur support team is available daily from 8:00 AM to 11:00 PM.");
+      document.getElementById('customerSupportModal').style.display = 'flex';
+    }
+
+    function closeCustomerSupportDialog() {
+      document.getElementById('customerSupportModal').style.display = 'none';
     }
 
     async function handleSaveAddressOnly(e) {
