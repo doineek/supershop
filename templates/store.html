@@ -1634,7 +1634,7 @@
         </div>
 
         <button type="submit" class="btn-checkout" id="btnPlaceOrder" style="margin-top:6px;">
-          Confirm Order Now
+          Confirm Order
         </button>
       </form>
     </div>
@@ -2458,12 +2458,12 @@
         } else {
           alert('Error: ' + (data.message || 'Unable to place order.'));
           btn.disabled = false;
-          btn.textContent = 'Confirm Order Now';
+          btn.textContent = 'Confirm Order';
         }
       } catch (err) {
         alert('Could not connect to server. Please check your internet connection.');
         btn.disabled = false;
-        btn.textContent = 'Confirm Order Now';
+        btn.textContent = 'Confirm Order';
       }
     }
   </script>
