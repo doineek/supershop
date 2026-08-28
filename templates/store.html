@@ -2418,7 +2418,7 @@
 
       const filtered = allDeliveryAreas.filter(a => (a.district || '').trim().toLowerCase() === selectedDistrict.trim().toLowerCase());
       if (filtered.length > 0) {
-        areaSelect.innerHTML = filtered.map(a => `<option value="${a.id}" data-zone="${a.area}">${a.area} (Delivery: TK ${(a.delivery_charge || DEFAULT_DELIVERY_CHARGE).toFixed(0)})</option>`).join('');
+        areaSelect.innerHTML = filtered.map(a => `<option value="${a.id}" data-zone="${a.area}">${a.area}</option>`).join('');
       } else {
         areaSelect.innerHTML = `<option value="1" data-zone="Main Town">Main Town Area</option>`;
       }

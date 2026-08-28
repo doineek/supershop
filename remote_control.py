@@ -353,12 +353,17 @@ def _worker_push_packages():
         
         active_ids = {str(r["id"]) for r in pkg_rows}
         try:
-            cloud_docs = db.collection("packages").stream()
+            cloud_docs = list(db.collection("packages").stream())
             for doc in cloud_docs:
-                if doc.id not in active_ids:
-                    db.collection("packages").document(doc.id).delete()
-        except Exception:
-            pass
+                data = doc.to_dict() or {}
+                doc_pkg_id = str(data.get("id") or doc.id)
+                if doc.id not in active_ids and doc_pkg_id not in active_ids:
+                    try:
+                        db.collection("packages").document(doc.id).delete()
+                    except Exception:
+                        pass
+        except Exception as err:
+            print(f"[remote_control] cloud packages purge error: {err}")
 
         for pkg in pkg_rows:
             p_dict = dict(pkg)
@@ -380,14 +385,26 @@ def push_packages_to_cloud():
 
 
 def delete_package_from_cloud(package_id):
-    """Mirror local package deletion into Firestore."""
+    """Mirror local package deletion into Firestore permanently."""
     def _worker():
         try:
             db = _init_firebase()
             if not db:
                 return
-            db.collection("packages").document(str(package_id)).delete()
-            push_packages_to_cloud()
+            # 1. Delete by direct doc ID
+            try:
+                db.collection("packages").document(str(package_id)).delete()
+            except Exception:
+                pass
+            # 2. Query and delete any matches by data ID
+            try:
+                matches = list(db.collection("packages").where("id", "==", int(package_id)).stream())
+                for m in matches:
+                    db.collection("packages").document(m.id).delete()
+            except Exception:
+                pass
+            # 3. Synchronously purge all non-existing packages from Firestore
+            _worker_push_packages()
         except Exception as e:
             print(f"[remote_control] package delete failed: {e}")
     threading.Thread(target=_worker, daemon=True).start()
