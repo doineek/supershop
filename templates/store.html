@@ -776,6 +776,145 @@
       color: var(--primary);
     }
 
+    
+    /* App-like Profile Cards & Tiles */
+    .app-profile-card {
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 16px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .app-profile-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .app-avatar-wrapper {
+      position: relative;
+      flex-shrink: 0;
+    }
+    .app-avatar-circle {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: #DCFCE7;
+      color: #16A34A;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      font-weight: 800;
+      border: 2px solid #22C55E;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .app-avatar-circle img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .app-avatar-cam-badge {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      background: #16A34A;
+      color: #FFFFFF;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      cursor: pointer;
+      border: 2px solid #FFFFFF;
+      box-shadow: var(--shadow-sm);
+    }
+    .app-user-name {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.2;
+    }
+    .app-user-phone {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #2563EB;
+      margin-top: 4px;
+    }
+    .app-user-email {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Flutter Style ListTile */
+    .app-list-tile {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      gap: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-radius: 10px;
+    }
+    .app-list-tile:hover {
+      background: #F8FAFC;
+    }
+    .tile-icon-box {
+      font-size: 1.5rem;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .tile-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .tile-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .tile-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tile-divider {
+      height: 1px;
+      background: #F1F5F9;
+      margin: 0 14px;
+    }
+    .btn-logout-full {
+      width: 100%;
+      height: 48px;
+      background: #DC2626;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 10px rgba(220, 38, 38, 0.25);
+      transition: background 0.2s;
+    }
+    .btn-logout-full:hover {
+      background: #B91C1C;
+    }
+
     /* Profile Tab View */
     .profile-card {
       background: #FFFFFF;
@@ -1533,98 +1672,117 @@
     </div>
   </div>
 
-  <!-- ================= 4. PROFILE VIEW ================= -->
+  <!-- ================= 4. PROFILE VIEW (Exact Flutter App Mirror) ================= -->
   <div class="app-view" id="view-profile">
     
-    <!-- Logged-in Customer View -->
-    <div id="loggedInProfileArea" style="display:none;">
+    <!-- Logged-in Customer View (Identical to Mobile App) -->
+    <div id="loggedInProfileArea" style="display:none; max-width:680px; margin:0 auto;">
       
-      <!-- Profile Header & Picture Update -->
-      <div class="profile-card">
-        <div class="profile-header">
-          <div class="profile-avatar-wrap">
-            <div class="profile-avatar" id="profAvatarContainer">
+      <!-- Top Card: Profile Header (Green Avatar, Name, Phone, Email) -->
+      <div class="app-profile-card">
+        <div class="app-profile-header">
+          <div class="app-avatar-wrapper">
+            <div class="app-avatar-circle" id="profAvatarContainer" onclick="triggerProfilePhotoPicker()">
               <span id="profAvatarLetter">👤</span>
             </div>
-            <label class="avatar-edit-btn" title="Change Profile Picture">
+            <label class="app-avatar-cam-badge" title="Upload Profile Picture">
               📷
-              <input type="file" accept="image/*" style="display:none;" onchange="handleProfilePictureUpload(event)">
+              <input type="file" id="profilePhotoInput" accept="image/*" style="display:none;" onchange="handleProfilePictureUpload(event)">
             </label>
           </div>
-          <div>
-            <div class="profile-info-title" id="profNameLabel">Customer Account</div>
-            <div class="profile-info-phone" id="profPhoneLabel">01700000000</div>
-            <div class="verified-badge">✅ Verified Account</div>
+          <div style="flex:1; min-width:0;">
+            <div class="app-user-name" id="profNameLabel">Customer User</div>
+            <div class="app-user-phone" id="profPhoneLabel">01700000000</div>
+            <div class="app-user-email" id="profEmailLabel"></div>
           </div>
         </div>
+      </div>
 
-        <button onclick="handleCustomerLogout()" style="width:100%; background:#FEE2E2; color:#B91C1C; border:1px solid #FCA5A5; padding:10px; border-radius:10px; font-weight:800; cursor:pointer; font-size:0.88rem;">
-          🚪 Sign Out
+      <!-- Card 1: Default Delivery Address (Red Pin, Subtitle, Change Button) -->
+      <div class="app-profile-card" style="padding:10px 14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+            <span style="font-size:1.6rem; color:#EF4444; flex-shrink:0;">📍</span>
+            <div style="min-width:0;">
+              <div style="font-size:0.92rem; font-weight:700; color:var(--text-main);">Default Delivery Address</div>
+              <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="profAddressSubtitle">
+                Tangail Sadar, Tangail
+              </div>
+            </div>
+          </div>
+          <button onclick="openEditAddressModal()" style="background:none; border:none; color:#2563EB; font-weight:700; font-size:0.85rem; cursor:pointer; padding:6px 8px;">
+            Change
+          </button>
+        </div>
+      </div>
+
+      <!-- Card 2: Settings & Options List (Clean Flutter Style) -->
+      <div class="app-profile-card" style="padding:4px 0;">
+        
+        <!-- Order History -->
+        <div class="app-list-tile" onclick="openOrderHistoryModal()">
+          <div class="tile-icon-box">🧾</div>
+          <div class="tile-content">
+            <div class="tile-title">Order History</div>
+            <div class="tile-subtitle">View previous purchases &amp; live status</div>
+          </div>
+          <span style="color:#94A3B8; font-size:0.85rem;">➔</span>
+        </div>
+        <div class="tile-divider"></div>
+
+        <!-- Change Password -->
+        <div class="app-list-tile" onclick="openChangePasswordModal()">
+          <div class="tile-icon-box">🔑</div>
+          <div class="tile-content">
+            <div class="tile-title">Change Password</div>
+            <div class="tile-subtitle">Update your account security password</div>
+          </div>
+          <span style="color:#94A3B8; font-size:0.85rem;">➔</span>
+        </div>
+        <div class="tile-divider"></div>
+
+        <!-- Personal Information -->
+        <div class="app-list-tile" onclick="openEditPersonalInfoModal()">
+          <div class="tile-icon-box">👤</div>
+          <div class="tile-content">
+            <div class="tile-title">Personal Information</div>
+            <div class="tile-subtitle">Edit full name and email address</div>
+          </div>
+          <span style="color:#94A3B8; font-size:0.85rem;">➔</span>
+        </div>
+        <div class="tile-divider"></div>
+
+        <!-- Customer Support -->
+        <div class="app-list-tile" onclick="openCustomerSupportDialog()">
+          <div class="tile-icon-box">🎧</div>
+          <div class="tile-content">
+            <div class="tile-title">Customer Support</div>
+            <div class="tile-subtitle">Helpline: {{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}</div>
+          </div>
+          <span style="color:#94A3B8; font-size:0.85rem;">➔</span>
+        </div>
+
+      </div>
+
+      <!-- Bottom Full-Width Log Out Button -->
+      <div style="margin-top:20px;">
+        <button class="btn-logout-full" onclick="handleCustomerLogout()">
+          <span>🚪</span> Log Out
         </button>
       </div>
 
-      <!-- Profile Settings (Name, Email, Delivery Address) -->
-      <div class="profile-card">
-        <div class="profile-section-title">⚙️ Personal Information &amp; Address</div>
-        <form onsubmit="handleUpdateProfileInfo(event)">
-          <div class="profile-form-grid">
-            <div class="form-group">
-              <label class="form-label">Full Name</label>
-              <input type="text" class="form-control" id="profEditName" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Email Address</label>
-              <input type="email" class="form-control" id="profEditEmail" placeholder="yourname@gmail.com">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Default Street / Delivery Address</label>
-            <textarea class="form-control" id="profEditAddress" rows="2" placeholder="House no, road, landmark..."></textarea>
-          </div>
-          <button type="submit" class="btn-submit" id="btnSaveProfile" style="padding:10px;">
-            Save Information
-          </button>
-        </form>
-      </div>
-
-      <!-- Password Change Section -->
-      <div class="profile-card">
-        <div class="profile-section-title">🔒 Change Password</div>
-        <form onsubmit="handleChangePassword(event)">
-          <div class="form-group">
-            <label class="form-label">Current Password</label>
-            <input type="password" class="form-control" id="currPasswordInput" placeholder="Enter current password" required>
-          </div>
-          <div class="profile-form-grid">
-            <div class="form-group">
-              <label class="form-label">New Password</label>
-              <input type="password" class="form-control" id="newPasswordInput" placeholder="Min 6 digits" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Confirm New Password</label>
-              <input type="password" class="form-control" id="confirmNewPasswordInput" placeholder="Re-enter new password" required>
-            </div>
-          </div>
-          <button type="submit" class="btn-submit" id="btnChangePass" style="padding:10px; background:#4B5563;">
-            Update Password
-          </button>
-        </form>
-      </div>
-
-      <!-- Order History Section -->
-      <div class="section-title-row" style="margin-top:20px;">
-        <div class="section-title">📦 My Recent Orders</div>
-        <button onclick="fetchMyOrdersHistory()" style="background:none; border:none; color:var(--primary); font-weight:700; cursor:pointer; font-size:0.85rem;">🔄 Refresh</button>
-      </div>
-
-      <div id="myOrdersListContainer">
-        <div style="text-align:center; padding:30px; color:var(--text-muted);">Loading your orders...</div>
-      </div>
     </div>
 
-    <!-- Logged-out Auth Form View -->
-    <div id="loggedOutAuthArea">
-      <div class="profile-card" style="max-width:440px; margin:0 auto;">
+    <!-- Logged-out Guest Card & Auth View (Matching Flutter Welcome Guest) -->
+    <div id="loggedOutAuthArea" style="max-width:460px; margin:0 auto;">
+      
+      <!-- Welcome Guest Card -->
+      <div class="app-profile-card" style="text-align:center; padding:28px 20px;">
+        <div style="font-size:3.5rem; color:#16A34A; margin-bottom:10px;">👤</div>
+        <div style="font-size:1.2rem; font-weight:800; color:var(--text-main);">Welcome Guest Customer!</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin:8px 0 20px; line-height:1.4;">
+          Sign in or register an account to view your orders, save delivery address, and place orders smoothly.
+        </div>
         
         <div class="auth-tabs">
           <button class="auth-tab-btn active" id="tabLoginBtn" onclick="toggleAuthTab('login')">Sign In</button>
@@ -1632,9 +1790,9 @@
         </div>
 
         <!-- Login Form -->
-        <form id="customerLoginForm" onsubmit="handleCustomerLogin(event)">
+        <form id="customerLoginForm" onsubmit="handleCustomerLogin(event)" style="text-align:left;">
           <div style="background:#F0FDF4; border:1px solid #BBF7D0; color:#15803D; padding:10px 14px; border-radius:10px; font-size:0.82rem; margin-bottom:14px; font-weight:600;">
-            🔐 Sign In with your Mobile Number and Password (default: <strong>123456</strong>) to place and track orders.
+            🔐 Default Password for Mobile Number is <strong>123456</strong>
           </div>
 
           <div class="form-group">
@@ -1653,7 +1811,7 @@
         </form>
 
         <!-- Register Form -->
-        <form id="customerRegisterForm" style="display:none;" onsubmit="handleCustomerRegister(event)">
+        <form id="customerRegisterForm" style="display:none; text-align:left;" onsubmit="handleCustomerRegister(event)">
           <div class="form-group">
             <label class="form-label">Full Name*</label>
             <input type="text" class="form-control" id="regNameInput" placeholder="Your full name" required>
@@ -1673,10 +1831,96 @@
             Create Account
           </button>
         </form>
-
       </div>
+
     </div>
 
+  </div>
+
+  <!-- Edit Address Modal -->
+  <div class="modal-backdrop" id="editAddressModal">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary);">📍 Edit Default Delivery Address</h3>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeEditAddressModal()">✕</button>
+      </div>
+
+      <form onsubmit="handleSaveAddressOnly(event)">
+        <div class="form-group">
+          <label class="form-label">Street / House / Delivery Address*</label>
+          <textarea class="form-control" id="modalEditAddressInput" rows="3" placeholder="House no, road, landmark..." required></textarea>
+        </div>
+        <button type="submit" class="btn-submit">
+          Save Address
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Personal Information Modal -->
+  <div class="modal-backdrop" id="editPersonalInfoModal">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary);">👤 Edit Personal Information</h3>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeEditPersonalInfoModal()">✕</button>
+      </div>
+
+      <form onsubmit="handleUpdateProfileInfo(event)">
+        <div class="form-group">
+          <label class="form-label">Full Name*</label>
+          <input type="text" class="form-control" id="profEditName" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" class="form-control" id="profEditEmail" placeholder="yourname@gmail.com">
+        </div>
+        <button type="submit" class="btn-submit" id="btnSaveProfile">
+          Save Changes
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div class="modal-backdrop" id="changePasswordModal">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary);">🔑 Change Password</h3>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeChangePasswordModal()">✕</button>
+      </div>
+
+      <form onsubmit="handleChangePassword(event)">
+        <div class="form-group">
+          <label class="form-label">Current Password*</label>
+          <input type="password" class="form-control" id="currPasswordInput" placeholder="Enter current password" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">New Password (min 6 digits)*</label>
+          <input type="password" class="form-control" id="newPasswordInput" placeholder="Enter new password" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm New Password*</label>
+          <input type="password" class="form-control" id="confirmNewPasswordInput" placeholder="Re-enter new password" required>
+        </div>
+        <button type="submit" class="btn-submit" id="btnChangePass">
+          Update Password
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Order History Modal -->
+  <div class="modal-backdrop" id="orderHistoryModal">
+    <div class="modal-box" style="max-width:540px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary);">🧾 My Order History</h3>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeOrderHistoryModal()">✕</button>
+      </div>
+
+      <div id="myOrdersListContainer" style="max-height:65vh; overflow-y:auto; padding-right:4px;">
+        <div style="text-align:center; padding:30px; color:var(--text-muted);">Loading orders...</div>
+      </div>
+    </div>
   </div>
 
   <!-- Slide-Out Cart Drawer -->
@@ -1950,6 +2194,7 @@
     }
 
     // Dynamic Banner Promo Carousel (Showing ONLY Active Special Offers & Banner Promotions)
+    const PROMO_INTERVAL_SEC = Math.max(1, parseInt("{{ promo_interval_sec or 2 }}") || 2);
     let promoIdx = 0;
     let promoTimer = null;
 
@@ -1972,7 +2217,7 @@
         promoTimer = setInterval(() => {
           promoIdx = (promoIdx + 1) % activePromotions.length;
           renderPromoSlide(promoIdx);
-        }, 3000);
+        }, PROMO_INTERVAL_SEC * 1000);
       }
     }
 
@@ -2157,6 +2402,79 @@
       document.getElementById('policyModal').style.display = 'none';
     }
 
+
+    // Profile Modal Helpers
+    function triggerProfilePhotoPicker() {
+      document.getElementById('profilePhotoInput').click();
+    }
+
+    function openEditAddressModal() {
+      document.getElementById('modalEditAddressInput').value = (currentCustomer && currentCustomer.address) || localStorage.getItem('cust_address') || '';
+      document.getElementById('editAddressModal').style.display = 'flex';
+    }
+    function closeEditAddressModal() {
+      document.getElementById('editAddressModal').style.display = 'none';
+    }
+
+    function openEditPersonalInfoModal() {
+      document.getElementById('profEditName').value = (currentCustomer && currentCustomer.name) || '';
+      document.getElementById('profEditEmail').value = (currentCustomer && currentCustomer.email) || '';
+      document.getElementById('editPersonalInfoModal').style.display = 'flex';
+    }
+    function closeEditPersonalInfoModal() {
+      document.getElementById('editPersonalInfoModal').style.display = 'none';
+    }
+
+    function openChangePasswordModal() {
+      document.getElementById('currPasswordInput').value = '';
+      document.getElementById('newPasswordInput').value = '';
+      document.getElementById('confirmNewPasswordInput').value = '';
+          closeChangePasswordModal();
+      document.getElementById('changePasswordModal').style.display = 'flex';
+    }
+    function closeChangePasswordModal() {
+      document.getElementById('changePasswordModal').style.display = 'none';
+    }
+
+    function openOrderHistoryModal() {
+      document.getElementById('orderHistoryModal').style.display = 'flex';
+      fetchMyOrdersHistory();
+    }
+    function closeOrderHistoryModal() {
+      document.getElementById('orderHistoryModal').style.display = 'none';
+    }
+
+    function openCustomerSupportDialog() {
+      alert("🎧 Customer Support Helpline:\n\n{{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}\n\nOur support team is available daily from 8:00 AM to 11:00 PM.");
+    }
+
+    async function handleSaveAddressOnly(e) {
+      e.preventDefault();
+      const newAddress = document.getElementById('modalEditAddressInput').value.trim();
+      if (!currentCustomer || !currentCustomer.phone) return;
+
+      try {
+        const res = await fetch('/api/customer/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: currentCustomer.phone, address: newAddress })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          currentCustomer.address = newAddress;
+          localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+          localStorage.setItem('cust_address', newAddress);
+          refreshAuthState();
+          closeEditAddressModal();
+          alert('Delivery address updated successfully!');
+        } else {
+          alert('Failed to update address: ' + (data.message || 'Error'));
+        }
+      } catch (err) {
+        alert('Could not connect to server.');
+      }
+    }
+
     // Toggle 3-Level Category Tree Accordions
     function toggleCatTree(id) {
       const el = document.getElementById('body-' + id);
@@ -2226,10 +2544,12 @@
           avContainer.innerHTML = `<span>${(currentCustomer.name || 'C')[0].toUpperCase()}</span>`;
         }
 
-        // Fill form fields
-        document.getElementById('profEditName').value = currentCustomer.name || '';
-        document.getElementById('profEditEmail').value = currentCustomer.email || '';
-        document.getElementById('profEditAddress').value = currentCustomer.address || localStorage.getItem('cust_address') || '';
+        if (currentCustomer.email) {
+          document.getElementById('profEmailLabel').textContent = currentCustomer.email;
+        } else {
+          document.getElementById('profEmailLabel').textContent = '';
+        }
+        document.getElementById('profAddressSubtitle').textContent = currentCustomer.address || localStorage.getItem('cust_address') || 'Tangail Sadar, Tangail';
 
         // Fill checkout fields
         document.getElementById('orderCustName').value = currentCustomer.name || '';
@@ -2404,6 +2724,7 @@
           localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
           localStorage.setItem('cust_address', address);
           refreshAuthState();
+          closeEditPersonalInfoModal();
           alert('Profile information updated successfully!');
         } else {
           alert('Update failed: ' + (data.message || 'Server error'));
@@ -2449,6 +2770,7 @@
           document.getElementById('currPasswordInput').value = '';
           document.getElementById('newPasswordInput').value = '';
           document.getElementById('confirmNewPasswordInput').value = '';
+          closeChangePasswordModal();
         } else {
           alert('Password update failed: ' + (data.message || 'Incorrect current password.'));
         }

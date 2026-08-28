@@ -316,6 +316,7 @@ def render_storefront():
         delivery_areas=delivery_areas,
         districts=districts,
         promotions=promos,
+        promo_interval_sec=int(shop_settings.get("promo_interval_sec") or 2),
         settings=shop_settings
     )
 
