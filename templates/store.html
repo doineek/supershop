@@ -2147,10 +2147,6 @@
 
         <!-- Login Form -->
         <form id="customerLoginForm" onsubmit="handleCustomerLogin(event)" style="text-align:left;">
-          <div style="background:#F0FDF4; border:1px solid #BBF7D0; color:#15803D; padding:10px 14px; border-radius:10px; font-size:0.82rem; margin-bottom:14px; font-weight:600;">
-            🔐 Default Password for Mobile Number is <strong>123456</strong>
-          </div>
-
           <div class="form-group">
             <label class="form-label">Mobile Number (11 Digits)</label>
             <input type="tel" class="form-control" id="loginPhoneInput" placeholder="01700000000" maxlength="11" pattern="01[3-9][0-9]{8}" required>
@@ -2158,7 +2154,7 @@
 
           <div class="form-group">
             <label class="form-label">Password</label>
-            <input type="password" class="form-control" id="loginPasswordInput" placeholder="Enter password (e.g. 123456)" required>
+            <input type="password" class="form-control" id="loginPasswordInput" placeholder="Enter your password" required>
           </div>
 
           <button type="submit" class="btn-submit" id="loginSubmitBtn">
