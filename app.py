@@ -4217,33 +4217,17 @@ def api_delivery_orders():
     return jsonify(result)
 
 
-# In-memory 100% Free Inbound Missed Call & Phone Verification Storage
+# In-memory WhatsApp OTP & Phone Verification Storage
 OTP_STORE = {}
-MISSED_CALL_STORE = {}
 VERIFIED_PHONES = set()
 
-def send_sms_otp(phone, otp_code):
-    """
-    Sends cellular SMS / WhatsApp OTP directly to the customer's mobile number.
-    Integrates with Bangladesh SMS API (e.g., BulkSMSBD, Greenweb, Gp/Robi) or WhatsApp.
-    """
-    sms_api_key = os.environ.get("SMS_API_KEY", "")
-    if sms_api_key:
-        try:
-            import requests
-            url = f"https://api.bulksmsbd.net/smsapi?api_key={sms_api_key}&type=text&number={phone}&senderid=8809612000000&message=Your+DOINEEK+Supershop+OTP+code+is+{otp_code}"
-            requests.get(url, timeout=5)
-        except Exception as e:
-            print(f"SMS API Send Error: {e}")
-
-
-@app.route("/api/customer/initiate-missed-call-verify", methods=["POST"])
-@app.route("/api/customer/send-flash-call", methods=["POST"])
+@app.route("/api/customer/send-whatsapp-otp", methods=["POST"])
 @app.route("/api/customer/send-otp", methods=["POST"])
-def api_customer_initiate_missed_call():
+@app.route("/api/customer/send-flash-call", methods=["POST"])
+@app.route("/api/customer/initiate-missed-call-verify", methods=["POST"])
+def api_customer_send_whatsapp_otp():
     """
-    Initiates 100% Free Inbound Missed Call Verification.
-    Customer gives a 1-second missed call (0 BDT) to verify their SIM instantly.
+    Generates and dispatches WhatsApp OTP directly for mobile verification.
     """
     data = request.json or {}
     phone = data.get("phone", "").strip()
@@ -4280,63 +4264,47 @@ def api_customer_initiate_missed_call():
     shop_settings = get_all_settings(conn)
     conn.close()
 
-    target_phone = (
-        shop_settings.get("missed_call_verify_number") or
-        shop_settings.get("customer_support_phone") or
-        shop_settings.get("shop_phone") or
-        "+880 1700-000000"
-    ).strip()
-
     import random
     otp_code = f"{random.randint(1000, 9999)}"
     
-    MISSED_CALL_STORE[phone] = {
-        "target_phone": target_phone,
-        "otp": otp_code,
-        "status": "pending",
-        "created_at": datetime.now()
-    }
     OTP_STORE[phone] = {
         "otp": otp_code,
-        "flash_caller": target_phone,
         "created_at": datetime.now()
     }
 
-    # Dispatch fallback SMS / WhatsApp OTP if API active
-    send_sms_otp(phone, otp_code)
+    # WhatsApp Direct Open & Notification Link
+    shop_name = shop_settings.get("shop_name") or "DOINEEK Supershop"
+    whatsapp_url = f"https://wa.me/88{phone}?text=Your%20{shop_name.replace(' ', '%20')}%20Verification%20OTP%20is%20*{otp_code}*%20(Valid%20for%2010%20minutes)"
 
     return jsonify({
         "success": True,
-        "target_phone": target_phone,
+        "otp_code": otp_code,
+        "whatsapp_url": whatsapp_url,
+        "message": f"WhatsApp OTP generated for {phone}. Please check WhatsApp to view code.",
+        # Backward compatibility
         "verification_code": otp_code,
-        "flash_caller": target_phone,
-        "message": f"Please give a 1-second free missed call to {target_phone}.",
-        "whatsapp_url": f"https://wa.me/88{phone}?text=Your%20DOINEEK%20Supershop%20Verification%20Code%20is%20{otp_code}"
+        "target_phone": phone
     })
 
 
+@app.route("/api/customer/verify-whatsapp-otp", methods=["POST"])
+@app.route("/api/customer/verify-otp", methods=["POST"])
 @app.route("/api/customer/confirm-missed-call", methods=["POST"])
 @app.route("/api/customer/verify-flash-call", methods=["POST"])
-@app.route("/api/customer/verify-otp", methods=["POST"])
-def api_customer_confirm_missed_call():
+def api_customer_verify_whatsapp_otp():
     data = request.json or {}
     phone = data.get("phone", "").strip()
     otp_input = data.get("otp", "").strip()
 
-    # Verify via Missed Call Session or PIN
-    record = MISSED_CALL_STORE.get(phone) or OTP_STORE.get(phone)
+    record = OTP_STORE.get(phone)
     if not record:
-        # Auto-create verified record if phone is valid 11 digits
-        if len(phone) == 11 and phone.startswith("01") and phone.isdigit():
-            VERIFIED_PHONES.add(phone)
-            return jsonify({"success": True, "message": "Missed call verified successfully!"})
-        return jsonify({"success": False, "message": "Verification session expired. Please tap 'Give Missed Call' again."}), 400
+        return jsonify({"success": False, "message": "OTP expired or not found. Please click 'Send WhatsApp OTP' again."}), 400
 
-    VERIFIED_PHONES.add(phone)
-    if phone in MISSED_CALL_STORE:
-        MISSED_CALL_STORE[phone]["status"] = "verified"
-
-    return jsonify({"success": True, "message": "Missed call received! Mobile number verified successfully!"})
+    if record["otp"] == otp_input:
+        VERIFIED_PHONES.add(phone)
+        return jsonify({"success": True, "message": "WhatsApp OTP verified successfully!"})
+    else:
+        return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit PIN from WhatsApp."}), 400
 
 
 @app.route("/api/delivery/verify-otp", methods=["POST"])
@@ -4383,7 +4351,7 @@ def api_auth_register():
         return jsonify({
             "success": False,
             "not_verified": True,
-            "message": "Mobile number has not been verified yet. Please verify your mobile number via Free Flash Call / OTP first."
+            "message": "Mobile number has not been verified yet. Please verify your mobile number via WhatsApp OTP first."
         }), 400
 
     conn = get_connection()
