@@ -1644,6 +1644,36 @@
       white-space: pre-line;
     }
 
+    
+    /* Top APK Download Link (No icon, white background, matching font color) */
+    .top-apk-banner-wrap {
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+    .top-apk-download-btn {
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #FFFFFF;
+      color: var(--primary);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.2s ease;
+      letter-spacing: 0.2px;
+    }
+    .top-apk-download-btn:hover {
+      border-color: var(--primary);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+
     /* Rich Store Footer Section */
     .store-footer-area {
       background: #FFFFFF;
@@ -2146,7 +2176,7 @@
           <div class="form-group">
             <label class="form-label">WhatsApp Mobile Number (11 Digits)*</label>
             <div style="display:flex; gap:8px;">
-              <input type="tel" class="form-control" id="regPhoneInput" placeholder="01700000000" maxlength="11" pattern="01[3-9][0-9]{8}" required style="flex:1;">
+              <input type="tel" class="form-control" id="regPhoneInput" placeholder="01700000000" maxlength="11" pattern="01[3-9][0-9]{8}" oninput="handleRegPhoneChange()" required style="flex:1;">
               <button type="button" class="btn-submit" id="btnTriggerVerify" onclick="sendWhatsappOtp()" style="width:auto; padding:0 14px; font-size:0.82rem; background:#16A34A; white-space:nowrap; display:flex; align-items:center; gap:4px;">
                 <span>💬</span> <span>Send OTP</span>
               </button>
@@ -3352,8 +3382,21 @@
     let isCustomerPhoneVerified = false;
     let verifiedCustomerPhone = '';
 
-    let isCustomerPhoneVerified = false;
-    let verifiedCustomerPhone = '';
+    function handleRegPhoneChange() {
+      const phone = document.getElementById('regPhoneInput').value.trim();
+      if (phone !== verifiedCustomerPhone) {
+        isCustomerPhoneVerified = false;
+        document.getElementById('regVerifiedBadge').style.display = 'none';
+        document.getElementById('btnTriggerVerify').style.display = 'flex';
+        document.getElementById('regPhoneInput').readOnly = false;
+        
+        const submitBtn = document.getElementById('regSubmitBtn');
+        submitBtn.disabled = true;
+        submitBtn.style.background = '#CBD5E1';
+        submitBtn.style.cursor = 'not-allowed';
+        submitBtn.textContent = 'Create Account (Verify Mobile First)';
+      }
+    }
 
     async function sendWhatsappOtp() {
       const phone = document.getElementById('regPhoneInput').value.trim();
@@ -3454,7 +3497,8 @@
       const btn = document.getElementById('regSubmitBtn');
 
       if (!isCustomerPhoneVerified || phone !== verifiedCustomerPhone) {
-        alert('⚠️ Please verify your mobile number via WhatsApp OTP first before creating an account.');
+        alert('⚠️ Mobile number is not verified! Please click "Send OTP" and verify your 4-digit code first.');
+        sendWhatsappOtp();
         return;
       }
 
