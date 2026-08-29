@@ -177,24 +177,50 @@ class _HomeScreenState extends State<HomeScreen> {
     return const Icon(Icons.person);
   }
 
-  Widget _buildSocialIcon(IconData icon, Color color, String url, String name) {
-    return InkWell(
-      onTap: () async {
-        if (url.trim().isNotEmpty) {
-          final Uri uri = Uri.parse(url.trim());
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Could not open $name link: $url")),
-            );
-          }
-        } else {
+  Future<void> _launchSocialUrl(String rawUrl, String name) async {
+    String cleanUrl = rawUrl.trim();
+    if (cleanUrl.isEmpty) {
+      if (name.toLowerCase().contains("facebook")) {
+        cleanUrl = "https://www.facebook.com/doineek";
+      } else if (name.toLowerCase().contains("youtube")) {
+        cleanUrl = "https://www.youtube.com";
+      } else if (name.toLowerCase().contains("instagram")) {
+        cleanUrl = "https://www.instagram.com";
+      } else if (name.toLowerCase().contains("x") || name.toLowerCase().contains("twitter")) {
+        cleanUrl = "https://x.com";
+      } else {
+        cleanUrl = "https://www.facebook.com";
+      }
+    }
+
+    if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+      cleanUrl = "https://$cleanUrl";
+    }
+
+    try {
+      final Uri uri = Uri.parse(cleanUrl);
+      // Launch external application (will automatically open the native app like Facebook/YouTube if installed, otherwise browser)
+      final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      try {
+        final Uri uri = Uri.parse(cleanUrl);
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (err) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("$name link is not configured yet in Admin Settings")),
+            SnackBar(content: Text("Could not open $name: $cleanUrl")),
           );
         }
-      },
+      }
+    }
+  }
+
+  Widget _buildSocialIcon(IconData icon, Color color, String url, String name) {
+    return InkWell(
+      onTap: () => _launchSocialUrl(url, name),
       child: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
