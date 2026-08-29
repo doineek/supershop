@@ -5018,5 +5018,25 @@ def api_force_push():
 
 
 
+
+@app.route("/download-apk")
+@app.route("/apk")
+def download_app_apk():
+    """Direct 1-click APK download for Android users."""
+    from flask import send_file
+    apk_path = os.path.join(app.root_path, "static", "apk", "supershop_latest.apk")
+    if not os.path.exists(apk_path):
+        flutter_apk = os.path.join(app.root_path, "supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
+        if os.path.exists(flutter_apk):
+            import shutil
+            os.makedirs(os.path.dirname(apk_path), exist_ok=True)
+            shutil.copy2(flutter_apk, apk_path)
+    return send_file(
+        apk_path,
+        as_attachment=True,
+        download_name="supershop_app.apk",
+        mimetype="application/vnd.android.package-archive"
+    )
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

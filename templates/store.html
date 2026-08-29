@@ -2096,17 +2096,23 @@
               A free flash call / missed call is placed to your phone. Enter the 4-digit code shown below or on caller ID:
             </div>
 
-            <!-- Caller ID Display Simulator -->
-            <div id="flashCallerDisplay" style="background:#F3E8FF; border:1px dashed #A855F7; border-radius:8px; padding:10px; text-align:center; margin-bottom:10px;">
-              <div style="font-size:0.72rem; color:var(--primary); font-weight:700;">INCOMING FLASH CALL FROM:</div>
-              <div style="font-size:1.15rem; font-weight:900; color:var(--primary); letter-spacing:1px;" id="flashCallerNumber">09612-XXX-XXXX</div>
-              <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Security Verification PIN: <strong id="flashPinDisplay" style="color:#DC2626; font-size:0.9rem;">----</strong></div>
+            <!-- Caller ID Display Simulator with Auto-Ringing -->
+            <div id="flashCallerDisplay" style="background:#F3E8FF; border:1px solid #C084FC; border-radius:12px; padding:14px; text-align:center; margin-bottom:12px;">
+              <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
+                <span style="display:inline-block; width:10px; height:10px; background:#10B981; border-radius:50%; animation:pulse 1.2s infinite;"></span>
+                <span style="font-size:0.75rem; color:var(--primary); font-weight:800; text-transform:uppercase;">Incoming Flash Call / Ringing...</span>
+              </div>
+              <div style="font-size:1.3rem; font-weight:900; color:var(--primary); letter-spacing:1.5px; margin:4px 0;" id="flashCallerNumber">09612-XXX-XXXX</div>
+              <div style="font-size:0.75rem; color:#475569;">Security Verification PIN: <strong id="flashPinDisplay" style="color:#DC2626; font-size:1.05rem; background:#FEE2E2; padding:2px 8px; border-radius:6px; letter-spacing:2px;">----</strong></div>
+              <div style="margin-top:8px; font-size:0.72rem; color:#059669; font-weight:700;" id="flashRingingStatus">
+                ⏳ Auto-verifying in <span id="flashCountdownTxt">3</span>s...
+              </div>
             </div>
 
             <div style="display:flex; gap:8px;">
               <input type="text" class="form-control" id="regOtpInput" placeholder="Enter 4-Digit PIN" maxlength="6" style="text-align:center; font-weight:800; font-size:1.1rem; letter-spacing:2px;">
-              <button type="button" class="btn-submit" id="btnConfirmOtp" onclick="confirmMobileVerification()" style="width:auto; padding:0 16px; font-size:0.85rem; background:#059669;">
-                Confirm
+              <button type="button" class="btn-submit" id="btnConfirmOtp" onclick="confirmMobileVerification()" style="width:auto; padding:0 18px; font-size:0.88rem; background:#059669;">
+                Confirm & Verify
               </button>
             </div>
 
@@ -3224,6 +3230,8 @@
     let isCustomerPhoneVerified = false;
     let verifiedCustomerPhone = '';
 
+    let flashCallTimer = null;
+
     async function triggerMobileVerification() {
       const phone = document.getElementById('regPhoneInput').value.trim();
       if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
@@ -3234,6 +3242,8 @@
       const triggerBtn = document.getElementById('btnTriggerVerify');
       triggerBtn.disabled = true;
       triggerBtn.textContent = 'Calling...';
+
+      if (flashCallTimer) clearInterval(flashCallTimer);
 
       try {
         const res = await fetch('/api/customer/send-flash-call', {
@@ -3252,10 +3262,26 @@
             waLink.href = data.whatsapp_url;
           }
 
-          // Auto-fill for seamless verification convenience
           if (data.verification_code) {
             document.getElementById('regOtpInput').value = data.verification_code;
           }
+
+          // Auto-verify countdown timer for seamless user experience
+          let countdown = 3;
+          const countEl = document.getElementById('flashCountdownTxt');
+          const statusEl = document.getElementById('flashRingingStatus');
+          statusEl.style.display = 'block';
+          countEl.textContent = countdown;
+
+          flashCallTimer = setInterval(() => {
+            countdown--;
+            if (countEl) countEl.textContent = countdown;
+            if (countdown <= 0) {
+              clearInterval(flashCallTimer);
+              confirmMobileVerification();
+            }
+          }, 1000);
+
         } else {
           alert(data.message || 'Could not initiate Free Flash Call.');
         }
