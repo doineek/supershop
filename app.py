@@ -275,7 +275,7 @@ def render_storefront():
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     categories_tree = get_categories_tree_data(conn)
     
-    raw_pkgs = conn.execute("SELECT * FROM packages").fetchall()
+    raw_pkgs = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
     packages = []
     for pkg in raw_pkgs:
         p_dict = dict(pkg)
@@ -4629,6 +4629,30 @@ def edit_package(package_id):
     else:
         flash("Please enter package name, price, and select at least 1 product.", "error")
     conn.close()
+    return redirect(url_for("packages_page"))
+
+
+@app.route("/packages/<int:package_id>/toggle-status", methods=["POST"])
+@login_required
+@admin_required
+def toggle_package_status(package_id):
+    conn = get_connection()
+    pkg = conn.execute("SELECT id, name, is_active FROM packages WHERE id = ?", (package_id,)).fetchone()
+    if not pkg:
+        conn.close()
+        flash("Package not found.", "error")
+        return redirect(url_for("packages_page"))
+    
+    new_status = 0 if pkg["is_active"] else 1
+    conn.execute("UPDATE packages SET is_active = ? WHERE id = ?", (new_status, package_id))
+    conn.commit()
+    conn.close()
+    
+    # Sync status to cloud Firestore
+    remote_control.push_packages_to_cloud()
+    
+    status_text = "Activated (Now Live on Store & App)" if new_status == 1 else "Deactivated (Hidden from Store & App)"
+    flash(f"Combo package '{pkg['name']}' has been {status_text}.", "success")
     return redirect(url_for("packages_page"))
 
 

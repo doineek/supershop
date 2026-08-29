@@ -349,15 +349,17 @@ def _worker_push_packages():
         if not db:
             return
         conn = get_connection()
-        pkg_rows = conn.execute("SELECT * FROM packages WHERE is_active = 1 ORDER BY id DESC").fetchall()
+        all_pkg_rows = conn.execute("SELECT * FROM packages ORDER BY id DESC").fetchall()
         
-        active_ids = {str(r["id"]) for r in pkg_rows}
+        all_local_ids = {str(r["id"]) for r in all_pkg_rows}
+        
+        # 1. Purge remote Firestore packages that no longer exist in SQLite
         try:
             cloud_docs = list(db.collection("packages").stream())
             for doc in cloud_docs:
                 data = doc.to_dict() or {}
                 doc_pkg_id = str(data.get("id") or doc.id)
-                if doc.id not in active_ids and doc_pkg_id not in active_ids:
+                if doc.id not in all_local_ids and doc_pkg_id not in all_local_ids:
                     try:
                         db.collection("packages").document(doc.id).delete()
                     except Exception:
@@ -365,7 +367,8 @@ def _worker_push_packages():
         except Exception as err:
             print(f"[remote_control] cloud packages purge error: {err}")
 
-        for pkg in pkg_rows:
+        # 2. Push all local packages with exact is_active status
+        for pkg in all_pkg_rows:
             p_dict = dict(pkg)
             items = conn.execute("""
                 SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
@@ -375,7 +378,7 @@ def _worker_push_packages():
             p_dict["items"] = [dict(i) for i in items]
             db.collection("packages").document(str(pkg["id"])).set(p_dict)
         conn.close()
-        print(f"[remote_control] [OK] {len(pkg_rows)} Packages pushed & synced to Firebase Cloud.")
+        print(f"[remote_control] [OK] {len(all_pkg_rows)} Packages pushed & synced to Firebase Cloud.")
     except Exception as e:
         print(f"[remote_control] push packages failed: {e}")
 
@@ -385,7 +388,7 @@ def push_packages_to_cloud():
 
 
 def delete_package_from_cloud(package_id):
-    """Mirror local package deletion into Firestore permanently."""
+    """Mirror local package deletion into Firestore permanently and record tombstone."""
     def _worker():
         try:
             db = _init_firebase()
@@ -403,7 +406,15 @@ def delete_package_from_cloud(package_id):
                     db.collection("packages").document(m.id).delete()
             except Exception:
                 pass
-            # 3. Synchronously purge all non-existing packages from Firestore
+            # 3. Add to tombstones in Firestore so listeners never re-insert
+            try:
+                db.collection("deleted_packages").document(str(package_id)).set({
+                    "id": int(package_id),
+                    "deleted_at": datetime.now().isoformat()
+                })
+            except Exception:
+                pass
+            # 4. Synchronously purge all non-existing packages from Firestore
             _worker_push_packages()
         except Exception as e:
             print(f"[remote_control] package delete failed: {e}")
@@ -1013,6 +1024,15 @@ def _on_packages_change(doc_snapshots, changes, read_time):
     def _do():
         conn = get_connection()
         try:
+            db = _init_firebase()
+            deleted_tombstones = set()
+            if db:
+                try:
+                    tombstone_docs = list(db.collection("deleted_packages").stream())
+                    deleted_tombstones = {doc.id for doc in tombstone_docs}
+                except Exception:
+                    pass
+
             for change in changes:
                 doc = change.document
                 data = doc.to_dict() or {}
@@ -1020,6 +1040,18 @@ def _on_packages_change(doc_snapshots, changes, read_time):
                     pkg_id = int(doc.id)
                 except Exception:
                     continue
+
+                # If this package was explicitly deleted, permanently ignore and clean up from cloud
+                if str(pkg_id) in deleted_tombstones or doc.id in deleted_tombstones:
+                    conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                    conn.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
+                    if db:
+                        try:
+                            db.collection("packages").document(doc.id).delete()
+                        except Exception:
+                            pass
+                    continue
+
                 if change.type.name in ("ADDED", "MODIFIED"):
                     name = data.get("name", "")
                     description = data.get("description", "")
