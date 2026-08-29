@@ -238,6 +238,68 @@
       box-shadow: var(--shadow-md);
       cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: pan-y;
+    }
+    .hero-offer-banner:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+    .banner-slide-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.45);
+      color: #FFFFFF;
+      border: 1.5px solid rgba(255, 255, 255, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      cursor: pointer;
+      z-index: 5;
+      opacity: 0;
+      transition: opacity 0.2s, background 0.2s, transform 0.2s;
+    }
+    .hero-offer-banner:hover .banner-slide-arrow {
+      opacity: 1;
+    }
+    .banner-arrow-prev {
+      left: 10px;
+    }
+    .banner-arrow-next {
+      right: 10px;
+    }
+    .banner-slide-arrow:hover {
+      background: rgba(0, 0, 0, 0.8);
+      transform: translateY(-50%) scale(1.1);
+    }
+    .banner-slide.slide-anim-left {
+      animation: bannerSlideInRight 0.3s ease-out forwards;
+    }
+    .banner-slide.slide-anim-right {
+      animation: bannerSlideInLeft 0.3s ease-out forwards;
+    }
+    @keyframes bannerSlideInRight {
+      from { opacity: 0.7; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes bannerSlideInLeft {
+      from { opacity: 0.7; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .hero-offer-banner {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow-md);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
     .hero-offer-banner:hover {
       transform: translateY(-2px);
@@ -1784,8 +1846,10 @@
     
 
     
-    <!-- Dynamic Clickable Active Promotion Hero Banner (1/4 Screen) -->
-    <div class="hero-offer-banner" id="heroBannerContainer" onclick="handleActivePromoClick()">
+    <!-- Dynamic Clickable Active Promotion Hero Banner with Swipe/Slide Controls -->
+    <div class="hero-offer-banner" id="heroBannerContainer" onclick="handleActivePromoContainerClick(event)">
+      <button class="banner-slide-arrow banner-arrow-prev" id="bannerArrowPrev" onclick="event.stopPropagation(); prevPromoSlide();" title="Previous offer" aria-label="Previous">❮</button>
+      <button class="banner-slide-arrow banner-arrow-next" id="bannerArrowNext" onclick="event.stopPropagation(); nextPromoSlide();" title="Next offer" aria-label="Next">❯</button>
       <div class="banner-slide" id="bannerSlideBox">
         <div class="banner-left-content">
           <div class="banner-badge-top" id="bannerBadgeTxt">🔥 ACTIVE SPECIAL OFFER</div>
@@ -2700,37 +2764,53 @@
       return { isOffer: true, buyQty, freeQty, paidQty, freeQtyTotal };
     }
 
-    // Dynamic Banner Promo Carousel (Showing ONLY Active Special Offers & Banner Promotions)
+    // Dynamic Banner Promo Carousel with Touch Swipe & Mouse Drag
     const PROMO_INTERVAL_SEC = Math.max(1, parseInt("{{ promo_interval_sec or 2 }}") || 2);
     let promoIdx = 0;
     let promoTimer = null;
+    let didSwipeOrDrag = false;
 
     function initDynamicBanner() {
       const dotsWrap = document.getElementById('bannerDotsWrap');
+      const prevArrow = document.getElementById('bannerArrowPrev');
+      const nextArrow = document.getElementById('bannerArrowNext');
+
       if (!activePromotions || activePromotions.length === 0) {
         document.getElementById('bannerBadgeTxt').textContent = '✨ SPECIAL OFFER';
         document.getElementById('bannerTitleTxt').textContent = 'Shop Daily Fresh Groceries';
         document.getElementById('bannerSubtitleTxt').textContent = 'Express delivery right to your doorstep!';
         document.getElementById('bannerPriceTxt').textContent = '';
         dotsWrap.innerHTML = '';
+        if (prevArrow) prevArrow.style.display = 'none';
+        if (nextArrow) nextArrow.style.display = 'none';
         return;
       }
 
-      dotsWrap.innerHTML = activePromotions.map((_, i) => `<div class="indicator-dot ${i === 0 ? 'active' : ''}" id="pdot${i}"></div>`).join('');
+      dotsWrap.innerHTML = activePromotions.map((_, i) => `<div class="indicator-dot ${i === 0 ? 'active' : ''}" id="pdot${i}" onclick="event.stopPropagation(); goToPromoSlide(${i});"></div>`).join('');
       renderPromoSlide(0);
 
       if (activePromotions.length > 1) {
-        if (promoTimer) clearInterval(promoTimer);
-        promoTimer = setInterval(() => {
-          promoIdx = (promoIdx + 1) % activePromotions.length;
-          renderPromoSlide(promoIdx);
-        }, PROMO_INTERVAL_SEC * 1000);
+        if (prevArrow) prevArrow.style.display = 'flex';
+        if (nextArrow) nextArrow.style.display = 'flex';
+        resetPromoTimer();
+        setupBannerSwipe();
+      } else {
+        if (prevArrow) prevArrow.style.display = 'none';
+        if (nextArrow) nextArrow.style.display = 'none';
       }
     }
 
-    function renderPromoSlide(idx) {
+    function renderPromoSlide(idx, direction = '') {
       if (!activePromotions || activePromotions.length === 0) return;
       const item = activePromotions[idx];
+      const slideBox = document.getElementById('bannerSlideBox');
+
+      if (direction && slideBox) {
+        slideBox.classList.remove('slide-anim-left', 'slide-anim-right');
+        void slideBox.offsetWidth; // Trigger reflow for CSS animation
+        slideBox.classList.add(direction === 'left' ? 'slide-anim-left' : 'slide-anim-right');
+      }
+
       document.getElementById('bannerBadgeTxt').textContent = item.offer_title ? item.offer_title.toUpperCase() : '🔥 SPECIAL OFFER';
       document.getElementById('bannerTitleTxt').textContent = item.name || 'Special Offer Item';
       document.getElementById('bannerSubtitleTxt').textContent = item.category_name ? `Category: ${item.category_name}` : 'Grab this limited-time discount now!';
@@ -2753,6 +2833,129 @@
         const dot = document.getElementById(`pdot${i}`);
         if (dot) dot.className = 'indicator-dot' + (i === idx ? ' active' : '');
       }
+    }
+
+    function nextPromoSlide() {
+      if (!activePromotions || activePromotions.length <= 1) return;
+      promoIdx = (promoIdx + 1) % activePromotions.length;
+      renderPromoSlide(promoIdx, 'left');
+      resetPromoTimer();
+    }
+
+    function prevPromoSlide() {
+      if (!activePromotions || activePromotions.length <= 1) return;
+      promoIdx = (promoIdx - 1 + activePromotions.length) % activePromotions.length;
+      renderPromoSlide(promoIdx, 'right');
+      resetPromoTimer();
+    }
+
+    function goToPromoSlide(i) {
+      if (!activePromotions || i < 0 || i >= activePromotions.length) return;
+      const direction = i >= promoIdx ? 'left' : 'right';
+      promoIdx = i;
+      renderPromoSlide(promoIdx, direction);
+      resetPromoTimer();
+    }
+
+    function resetPromoTimer() {
+      if (promoTimer) clearInterval(promoTimer);
+      if (activePromotions && activePromotions.length > 1) {
+        promoTimer = setInterval(() => {
+          promoIdx = (promoIdx + 1) % activePromotions.length;
+          renderPromoSlide(promoIdx, 'left');
+        }, PROMO_INTERVAL_SEC * 1000);
+      }
+    }
+
+    function setupBannerSwipe() {
+      const container = document.getElementById('heroBannerContainer');
+      if (!container || container.dataset.swipeInitialized) return;
+      container.dataset.swipeInitialized = 'true';
+
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let isSwiping = false;
+
+      // Mobile Touch Events
+      container.addEventListener('touchstart', (e) => {
+        if (!activePromotions || activePromotions.length <= 1) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        isSwiping = true;
+        didSwipeOrDrag = false;
+      }, { passive: true });
+
+      container.addEventListener('touchmove', (e) => {
+        if (!isSwiping) return;
+        const currentX = e.touches[0].clientX;
+        const currentY = e.touches[0].clientY;
+        const diffX = currentX - touchStartX;
+        const diffY = currentY - touchStartY;
+        if (Math.abs(diffX) > 15 && Math.abs(diffX) > Math.abs(diffY)) {
+          didSwipeOrDrag = true;
+        }
+      }, { passive: true });
+
+      container.addEventListener('touchend', (e) => {
+        if (!isSwiping) return;
+        isSwiping = false;
+        const touchEndX = e.changedTouches[0].clientX;
+        const diffX = touchEndX - touchStartX;
+
+        if (Math.abs(diffX) >= 35) {
+          didSwipeOrDrag = true;
+          if (diffX < 0) {
+            nextPromoSlide(); // Slide left -> next
+          } else {
+            prevPromoSlide(); // Slide right -> previous
+          }
+        }
+      });
+
+      // Desktop Mouse Drag Events
+      let isMouseDown = false;
+      let mouseStartX = 0;
+
+      container.addEventListener('mousedown', (e) => {
+        if (!activePromotions || activePromotions.length <= 1) return;
+        if (e.target.closest('.banner-slide-arrow') || e.target.closest('.indicator-dot')) return;
+        isMouseDown = true;
+        mouseStartX = e.clientX;
+        didSwipeOrDrag = false;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isMouseDown) return;
+        const diffX = e.clientX - mouseStartX;
+        if (Math.abs(diffX) > 15) {
+          didSwipeOrDrag = true;
+        }
+      });
+
+      window.addEventListener('mouseup', (e) => {
+        if (!isMouseDown) return;
+        isMouseDown = false;
+        const diffX = e.clientX - mouseStartX;
+        if (Math.abs(diffX) >= 45) {
+          didSwipeOrDrag = true;
+          if (diffX < 0) {
+            nextPromoSlide();
+          } else {
+            prevPromoSlide();
+          }
+        }
+      });
+    }
+
+    function handleActivePromoContainerClick(event) {
+      if (didSwipeOrDrag) {
+        didSwipeOrDrag = false;
+        return; // User was sliding, don't open product
+      }
+      if (event.target.closest('.banner-slide-arrow') || event.target.closest('.indicator-dot')) {
+        return;
+      }
+      handleActivePromoClick();
     }
 
     function handleActivePromoClick() {
