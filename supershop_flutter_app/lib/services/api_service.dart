@@ -80,8 +80,10 @@ class ApiService {
     }
 
     // 1. Global 24/7 Online Production Server (Fastest and always online for mobile app & web)
-    const String cloudUrl = "https://supershop-mj0g.onrender.com";
+    const String cloudUrl = "https://doineek.onrender.com";
+    const String fallbackCloudUrl = "https://supershop-mj0g.onrender.com";
     if (!list.contains(cloudUrl)) list.add(cloudUrl);
+    if (!list.contains(fallbackCloudUrl)) list.add(fallbackCloudUrl);
 
     // 2. Direct Local Wi-Fi & PC Servers
     final localIps = [

@@ -4936,7 +4936,7 @@ def admin_create_snapshot():
 def admin_force_cloud_sync():
     try:
         remote_control.push_full_backup()
-        return jsonify({"success": True, "message": "Instant Live Cloud Sync completed! All local data pushed to https://supershop-mj0g.onrender.com/."})
+        return jsonify({"success": True, "message": "Instant Live Cloud Sync completed! All local data pushed to https://doineek.onrender.com/."})
     except Exception as e:
         return jsonify({"success": False, "message": f"Cloud Sync Error: {e}"}), 500
 
