@@ -431,12 +431,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   ? Image.network(
                                                       imgUrl,
                                                       fit: BoxFit.contain,
-                                                      errorBuilder: (_, __, ___) => const Center(
-                                                        child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
+                                                      errorBuilder: (_, __, ___) => Center(
+                                                        child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                                                       ),
                                                     )
-                                                  : const Center(
-                                                      child: Icon(Icons.shopping_bag, size: 50, color: Colors.green),
+                                                  : Center(
+                                                      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                                                     ),
                                             ),
                                           ),
@@ -812,10 +812,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                       child: prod.imageUrl.isNotEmpty
                                                                           ? Image.network(
                                                                               prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
-                                                                              fit: BoxFit.cover,
-                                                                              errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF7E22CE)),
+                                                                              fit: BoxFit.contain,
+                                                                              errorBuilder: (_, __, ___) => Padding(
+                                                                                padding: const EdgeInsets.all(8.0),
+                                                                                child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                                                              ),
                                                                             )
-                                                                          : const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF7E22CE)),
+                                                                          : Padding(
+                                                                              padding: const EdgeInsets.all(8.0),
+                                                                              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                                                            ),
                                                                     ),
                                                                   ),
                                                                   if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)
@@ -1124,10 +1130,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
                         width: 36,
                         height: 36,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 24, color: Colors.grey),
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', width: 36, height: 36, fit: BoxFit.contain),
                       )
-                    : const Icon(Icons.shopping_bag, size: 24, color: Colors.grey),
+                    : Image.asset('assets/images/logo.png', width: 36, height: 36, fit: BoxFit.contain),
               ),
               title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               subtitle: Text("TK ${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -1498,10 +1504,16 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                           child: prod.imageUrl.isNotEmpty
                                               ? Image.network(
                                                   prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF7E22CE)),
+                                                  fit: BoxFit.contain,
+                                                  errorBuilder: (_, __, ___) => Padding(
+                                                    padding: const EdgeInsets.all(8.0),
+                                                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                                  ),
                                                 )
-                                              : const Icon(Icons.shopping_bag, size: 40, color: Color(0xFF7E22CE)),
+                                              : Padding(
+                                                  padding: const EdgeInsets.all(8.0),
+                                                  child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                                                ),
                                         ),
                                       ),
                                       if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)

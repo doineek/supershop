@@ -70,7 +70,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     child: Image.network(
                       images[index],
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 100, color: Colors.white54),
+                      errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                     ),
                   ),
                 );
@@ -157,7 +157,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
               ),
               child: images.isEmpty
-                  ? const Icon(Icons.shopping_bag, size: 100, color: Colors.grey)
+                  ? Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Center(child: Image.asset('assets/images/logo.png', fit: BoxFit.contain)),
+                    )
                   : Stack(
                       children: [
                         PageView.builder(
@@ -179,7 +182,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                       child: Image.network(
                                         images[index],
                                         fit: BoxFit.contain,
-                                        errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 100, color: Colors.grey),
+                                        errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                                       ),
                                     ),
                                     // Click to Zoom Hint Icon
