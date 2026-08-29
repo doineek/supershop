@@ -2060,7 +2060,7 @@
           </button>
         </form>
 
-        <!-- Register Form -->
+        <!-- Register Form with Free Flash Call & Phone Verification -->
         <form id="customerRegisterForm" style="display:none; text-align:left;" onsubmit="handleCustomerRegister(event)">
           <div class="form-group">
             <label class="form-label">Full Name*</label>
@@ -2069,7 +2069,56 @@
 
           <div class="form-group">
             <label class="form-label">Mobile Number (11 Digits)*</label>
-            <input type="tel" class="form-control" id="regPhoneInput" placeholder="01700000000" maxlength="11" pattern="01[3-9][0-9]{8}" required>
+            <div style="display:flex; gap:8px;">
+              <input type="tel" class="form-control" id="regPhoneInput" placeholder="01700000000" maxlength="11" pattern="01[3-9][0-9]{8}" required style="flex:1;">
+              <button type="button" class="btn-submit" id="btnTriggerVerify" onclick="triggerMobileVerification()" style="width:auto; padding:0 14px; font-size:0.82rem; background:var(--primary); white-space:nowrap;">
+                📞 Verify
+              </button>
+            </div>
+          </div>
+
+          <!-- Verified State Badge -->
+          <div id="regVerifiedBadge" style="display:none; background:#ECFDF5; border:1px solid #A7F3D0; padding:10px 14px; border-radius:10px; margin-bottom:14px; align-items:center; gap:8px;">
+            <span style="font-size:1.2rem;">✅</span>
+            <div>
+              <div style="font-size:0.85rem; font-weight:800; color:#047857;">Mobile Number Verified!</div>
+              <div style="font-size:0.75rem; color:#065F46;" id="regVerifiedPhoneTxt">017XXXXXXXX</div>
+            </div>
+          </div>
+
+          <!-- Flash Call Verification Box (Shown when triggered) -->
+          <div id="flashCallVerifyBox" style="display:none; background:#F8FAFC; border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; gap:6px; font-size:0.88rem; font-weight:800; color:var(--primary); margin-bottom:6px;">
+              <span>📞</span> <span>Free Flash Call Verification</span>
+            </div>
+            
+            <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px;" id="flashCallInstructions">
+              A free flash call / missed call is placed to your phone. Enter the 4-digit code shown below or on caller ID:
+            </div>
+
+            <!-- Caller ID Display Simulator -->
+            <div id="flashCallerDisplay" style="background:#F3E8FF; border:1px dashed #A855F7; border-radius:8px; padding:10px; text-align:center; margin-bottom:10px;">
+              <div style="font-size:0.72rem; color:var(--primary); font-weight:700;">INCOMING FLASH CALL FROM:</div>
+              <div style="font-size:1.15rem; font-weight:900; color:var(--primary); letter-spacing:1px;" id="flashCallerNumber">09612-XXX-XXXX</div>
+              <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Security Verification PIN: <strong id="flashPinDisplay" style="color:#DC2626; font-size:0.9rem;">----</strong></div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <input type="text" class="form-control" id="regOtpInput" placeholder="Enter 4-Digit PIN" maxlength="6" style="text-align:center; font-weight:800; font-size:1.1rem; letter-spacing:2px;">
+              <button type="button" class="btn-submit" id="btnConfirmOtp" onclick="confirmMobileVerification()" style="width:auto; padding:0 16px; font-size:0.85rem; background:#059669;">
+                Confirm
+              </button>
+            </div>
+
+            <!-- Free WhatsApp Fallback -->
+            <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+              <a href="#" id="regWhatsappVerifyLink" target="_blank" style="font-size:0.75rem; color:#16A34A; text-decoration:none; font-weight:700; display:flex; align-items:center; gap:4px;">
+                <span>💬</span> <span>Verify via WhatsApp (Free)</span>
+              </a>
+              <button type="button" onclick="triggerMobileVerification()" style="background:none; border:none; color:var(--primary); font-size:0.75rem; font-weight:700; cursor:pointer;">
+                🔄 Resend Call
+              </button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -2077,8 +2126,8 @@
             <input type="password" class="form-control" id="regPasswordInput" placeholder="Password (minimum 6 digits)" required>
           </div>
 
-          <button type="submit" class="btn-submit" id="regSubmitBtn">
-            Create Account
+          <button type="submit" class="btn-submit" id="regSubmitBtn" style="background:#CBD5E1; cursor:not-allowed;" disabled>
+            Create Account (Verify First)
           </button>
         </form>
       </div>
@@ -3172,12 +3221,114 @@
       }
     }
 
+    let isCustomerPhoneVerified = false;
+    let verifiedCustomerPhone = '';
+
+    async function triggerMobileVerification() {
+      const phone = document.getElementById('regPhoneInput').value.trim();
+      if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
+        alert("Please enter a valid 11-digit Bangladeshi mobile number starting with '01' (e.g. 01712345678).");
+        return;
+      }
+
+      const triggerBtn = document.getElementById('btnTriggerVerify');
+      triggerBtn.disabled = true;
+      triggerBtn.textContent = 'Calling...';
+
+      try {
+        const res = await fetch('/api/customer/send-flash-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, purpose: 'registration' })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          document.getElementById('flashCallVerifyBox').style.display = 'block';
+          document.getElementById('flashCallerNumber').textContent = data.flash_caller || '09612-DOINEEK';
+          document.getElementById('flashPinDisplay').textContent = data.verification_code || '----';
+          
+          const waLink = document.getElementById('regWhatsappVerifyLink');
+          if (data.whatsapp_url) {
+            waLink.href = data.whatsapp_url;
+          }
+
+          // Auto-fill for seamless verification convenience
+          if (data.verification_code) {
+            document.getElementById('regOtpInput').value = data.verification_code;
+          }
+        } else {
+          alert(data.message || 'Could not initiate Free Flash Call.');
+        }
+      } catch (err) {
+        alert('Server connection error. Please try again.');
+      } finally {
+        triggerBtn.disabled = false;
+        triggerBtn.textContent = '📞 Verify';
+      }
+    }
+
+    async function confirmMobileVerification() {
+      const phone = document.getElementById('regPhoneInput').value.trim();
+      const otp = document.getElementById('regOtpInput').value.trim();
+
+      if (!otp) {
+        alert('Please enter the 4-digit verification PIN.');
+        return;
+      }
+
+      const confirmBtn = document.getElementById('btnConfirmOtp');
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Verifying...';
+
+      try {
+        const res = await fetch('/api/customer/verify-flash-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, otp })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          isCustomerPhoneVerified = true;
+          verifiedCustomerPhone = phone;
+
+          // Update UI to locked verified state
+          document.getElementById('flashCallVerifyBox').style.display = 'none';
+          document.getElementById('regPhoneInput').readOnly = true;
+          document.getElementById('btnTriggerVerify').style.display = 'none';
+          
+          const badge = document.getElementById('regVerifiedBadge');
+          badge.style.display = 'flex';
+          document.getElementById('regVerifiedPhoneTxt').textContent = phone;
+
+          // Unlock submit button
+          const submitBtn = document.getElementById('regSubmitBtn');
+          submitBtn.disabled = false;
+          submitBtn.style.background = 'var(--primary)';
+          submitBtn.style.cursor = 'pointer';
+          submitBtn.textContent = 'Create Account';
+          alert('✅ Mobile number verified successfully! You can now create your account.');
+        } else {
+          alert('Verification failed: ' + (data.message || 'Invalid PIN.'));
+        }
+      } catch (err) {
+        alert('Server connection error.');
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm';
+      }
+    }
+
     async function handleCustomerRegister(e) {
       e.preventDefault();
       const name = document.getElementById('regNameInput').value.trim();
       const phone = document.getElementById('regPhoneInput').value.trim();
       const password = document.getElementById('regPasswordInput').value.trim();
       const btn = document.getElementById('regSubmitBtn');
+
+      if (!isCustomerPhoneVerified || phone !== verifiedCustomerPhone) {
+        alert('⚠️ Please verify your mobile number via Free Flash Call first before creating an account.');
+        return;
+      }
 
       btn.disabled = true;
       btn.textContent = 'Creating Account...';

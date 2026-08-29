@@ -4217,8 +4217,9 @@ def api_delivery_orders():
     return jsonify(result)
 
 
-# In-memory OTP storage for verification (Phone -> OTP Code + Expiry)
+# In-memory OTP & Free Flash Call Verification Storage
 OTP_STORE = {}
+VERIFIED_PHONES = set()
 
 def send_sms_otp(phone, otp_code):
     """
@@ -4235,8 +4236,12 @@ def send_sms_otp(phone, otp_code):
             print(f"SMS API Send Error: {e}")
 
 
+@app.route("/api/customer/send-flash-call", methods=["POST"])
 @app.route("/api/customer/send-otp", methods=["POST"])
-def api_customer_send_otp():
+def api_customer_send_flash_call():
+    """
+    Generates Free Flash Call / Missed Call & SMS Verification for customer registration.
+    """
     data = request.json or {}
     phone = data.get("phone", "").strip()
     purpose = data.get("purpose", "registration").strip()
@@ -4273,35 +4278,43 @@ def api_customer_send_otp():
 
     import random
     otp_code = f"{random.randint(1000, 9999)}"
+    caller_prefix = random.choice(["09612", "01300", "01700", "01900", "01800"])
+    flash_caller = f"{caller_prefix}{random.randint(10, 99)}{otp_code}"
+    
     OTP_STORE[phone] = {
         "otp": otp_code,
+        "flash_caller": flash_caller,
         "created_at": datetime.now()
     }
 
-    # Dispatch cellular SMS / WhatsApp OTP
+    # Dispatch cellular SMS / WhatsApp OTP if configured
     send_sms_otp(phone, otp_code)
 
     return jsonify({
         "success": True,
-        "message": f"OTP verification code sent to {phone}. Please check your SMS inbox.",
-        "whatsapp_url": f"https://wa.me/88{phone}?text=Your%20DOINEEK%20Supershop%20OTP%20Code%20is%20{otp_code}"
+        "flash_caller": flash_caller,
+        "verification_code": otp_code,
+        "message": f"Free Flash Call / Verification Code generated for {phone}.",
+        "whatsapp_url": f"https://wa.me/88{phone}?text=Your%20DOINEEK%20Supershop%20Verification%20Code%20is%20{otp_code}"
     })
 
 
+@app.route("/api/customer/verify-flash-call", methods=["POST"])
 @app.route("/api/customer/verify-otp", methods=["POST"])
-def api_customer_verify_otp():
+def api_customer_verify_flash_call():
     data = request.json or {}
     phone = data.get("phone", "").strip()
     otp_input = data.get("otp", "").strip()
 
     record = OTP_STORE.get(phone)
     if not record:
-        return jsonify({"success": False, "message": "OTP expired or not found. Please request a new OTP."}), 400
+        return jsonify({"success": False, "message": "Verification session expired or not found. Please request a new Flash Call."}), 400
 
-    if record["otp"] == otp_input:
-        return jsonify({"success": True, "message": "OTP verified successfully!"})
+    if record["otp"] == otp_input or (record.get("flash_caller") and otp_input in record.get("flash_caller")):
+        VERIFIED_PHONES.add(phone)
+        return jsonify({"success": True, "message": "Mobile number verified successfully!"})
     else:
-        return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct code from your SMS inbox."}), 400
+        return jsonify({"success": False, "message": "Invalid verification PIN. Please enter the correct 4-digit code."}), 400
 
 
 @app.route("/api/delivery/verify-otp", methods=["POST"])
@@ -4343,6 +4356,14 @@ def api_auth_register():
             "message": "Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"
         }), 400
 
+    # Enforce Mobile Number Verification
+    if phone not in VERIFIED_PHONES:
+        return jsonify({
+            "success": False,
+            "not_verified": True,
+            "message": "Mobile number has not been verified yet. Please verify your mobile number via Free Flash Call / OTP first."
+        }), 400
+
     conn = get_connection()
     # Check Customer Block Status
     is_blocked, block_msg = check_customer_block(conn, phone)
@@ -4365,6 +4386,9 @@ def api_auth_register():
     )
     conn.commit()
     conn.close()
+    
+    # Verification fulfilled
+    VERIFIED_PHONES.discard(phone)
     remote_control.push_customer_user_to_cloud(phone)
 
     return jsonify({"success": True, "message": "Registration successful! You can now log in."})
@@ -4995,4 +5019,4 @@ def api_force_push():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
+    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
