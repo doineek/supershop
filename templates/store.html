@@ -1357,54 +1357,33 @@
     
     
 
-    /* Android APK Download UI Styles */
+    /* Android APK Download UI Styles - Clean White Background, Primary Text, No Icon */
     .apk-download-top-btn {
-      background: #10B981;
-      color: #FFFFFF !important;
+      background: #FFFFFF !important;
+      color: var(--primary) !important;
       font-weight: 800;
-      font-size: 0.8rem;
+      font-size: 0.84rem;
       border-radius: 20px;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 6px 14px;
-      transition: all 0.2s;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+      justify-content: center;
+      padding: 6px 16px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      border: 1.5px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
       white-space: nowrap;
+      letter-spacing: 0.2px;
     }
     .apk-download-top-btn:hover {
-      background: #059669;
+      background: #F8FAFC !important;
+      color: var(--primary-dark, #581C87) !important;
       transform: translateY(-1px);
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.18);
     }
-    .app-download-strip {
-      background: linear-gradient(90deg, #065F46, #047857);
-      color: #FFFFFF;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 0.82rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-    }
-    .btn-download-app-pill {
-      background: #FFFFFF;
-      color: #065F46 !important;
-      font-weight: 800;
-      font-size: 0.76rem;
-      padding: 4px 12px;
-      border-radius: 20px;
-      text-decoration: none;
-      white-space: nowrap;
-      transition: background 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .btn-download-app-pill:hover {
-      background: #ECFDF5;
-    }
+    
+    
+    
     .app-download-card-profile {
       background: linear-gradient(135deg, #10B981, #059669);
       color: #FFFFFF;
@@ -1746,7 +1725,7 @@
       <!-- Top Cart & APK Download Icon for Mobile & Desktop -->
       <div style="display:flex; align-items:center; gap:8px;">
         <a href="/download-apk" class="apk-download-top-btn" title="Download Android App APK">
-          <span>📱</span> <span>App APK</span>
+          App APK
         </a>
         <button onclick="openCartDrawer()" style="background:rgba(255,255,255,0.15); border:none; color:#fff; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; font-size:1.15rem;">
           🛒
@@ -1773,16 +1752,7 @@
   <!-- ================= 1. HOME VIEW ================= -->
   <div class="app-view active-view" id="view-home">
     
-    <!-- Top Android App Download Notification Strip -->
-    <div class="app-download-strip">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:1.2rem;">📱</span>
-        <span>Install <strong>DOINEEK Android App</strong> for smooth ordering!</span>
-      </div>
-      <a href="/download-apk" class="btn-download-app-pill">
-        ⬇️ Install App (APK)
-      </a>
-    </div>
+
     
     <!-- Dynamic Clickable Active Promotion Hero Banner (1/4 Screen) -->
     <div class="hero-offer-banner" id="heroBannerContainer" onclick="handleActivePromoClick()">
@@ -2576,6 +2546,65 @@
   </div>
 
   <script>
+    // Global View Switcher (Home, Category, Cart, Profile)
+    function switchView(viewName, updateHistory = true) {
+      const validTabs = ['home', 'category', 'cart', 'profile'];
+      if (!validTabs.includes(viewName)) {
+        viewName = 'home';
+      }
+
+      // Persist active tab across page refresh & navigation
+      try {
+        localStorage.setItem('supershop_active_tab', viewName);
+        if (updateHistory) {
+          history.replaceState(null, '', '#' + viewName);
+        }
+      } catch (e) {}
+
+      // Hide all views & show requested view
+      document.querySelectorAll('.app-view').forEach(v => {
+        v.style.display = 'none';
+        v.classList.remove('active-view');
+      });
+
+      const activeViewEl = document.getElementById('view-' + viewName);
+      if (activeViewEl) {
+        activeViewEl.style.display = 'block';
+        activeViewEl.classList.add('active-view');
+      }
+
+      // Update Desktop & Mobile active highlights
+      const tabIds = ['Home', 'Category', 'Cart', 'Profile'];
+      tabIds.forEach(t => {
+        const lower = t.toLowerCase();
+        const mobEl = document.getElementById('mobTab' + t);
+        const deskEl = document.getElementById('deskTab' + t);
+        if (lower === viewName) {
+          if (mobEl) mobEl.classList.add('active');
+          if (deskEl) deskEl.classList.add('active');
+        } else {
+          if (mobEl) mobEl.classList.remove('active');
+          if (deskEl) deskEl.classList.remove('active');
+        }
+      });
+
+      // Show Search Bar only on Home
+      const searchWrap = document.getElementById('searchWrapper');
+      if (searchWrap) {
+        searchWrap.style.display = (viewName === 'home') ? 'block' : 'none';
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Special Tab Render Actions
+      if (viewName === 'cart' && typeof renderCartView === 'function') {
+        renderCartView();
+      }
+      if (viewName === 'profile' && typeof refreshAuthState === 'function') {
+        refreshAuthState();
+      }
+    }
+
     // Global Data passed from Backend
     const allProducts = {{ products|tojson }};
     const allDeliveryAreas = {{ delivery_areas|tojson }};
@@ -3240,49 +3269,7 @@
       }
     }
 
-    function switchView(viewName, updateHistory = true) {
-      const validTabs = ['home', 'category', 'cart', 'profile'];
-      if (!validTabs.includes(viewName)) {
-        viewName = 'home';
-      }
 
-      // Persist active tab across page refresh & navigation
-      localStorage.setItem('supershop_active_tab', viewName);
-      if (updateHistory) {
-        history.replaceState(null, '', '#' + viewName);
-      }
-
-      document.querySelectorAll('.app-view').forEach(v => v.classList.remove('active-view'));
-      const activeViewEl = document.getElementById('view-' + viewName);
-      if (activeViewEl) {
-        activeViewEl.classList.add('active-view');
-      }
-
-      const tabIds = ['Home', 'Category', 'Cart', 'Profile'];
-      tabIds.forEach(t => {
-        const lower = t.toLowerCase();
-        const mobEl = document.getElementById('mobTab' + t);
-        const deskEl = document.getElementById('deskTab' + t);
-        if (lower === viewName) {
-          if (mobEl) mobEl.classList.add('active');
-          if (deskEl) deskEl.classList.add('active');
-        } else {
-          if (mobEl) mobEl.classList.remove('active');
-          if (deskEl) deskEl.classList.remove('active');
-        }
-      });
-
-      const searchWrap = document.getElementById('searchWrapper');
-      if (searchWrap) {
-        searchWrap.style.display = (viewName === 'home') ? 'block' : 'none';
-      }
-      
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-
-      if (viewName === 'cart') {
-        renderCartView();
-      }
-    }
 
     function toggleAuthTab(type) {
       if (type === 'login') {
