@@ -1356,6 +1356,98 @@
 
     
     
+
+    /* Android APK Download UI Styles */
+    .apk-download-top-btn {
+      background: #10B981;
+      color: #FFFFFF !important;
+      font-weight: 800;
+      font-size: 0.8rem;
+      border-radius: 20px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      transition: all 0.2s;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+      white-space: nowrap;
+    }
+    .apk-download-top-btn:hover {
+      background: #059669;
+      transform: translateY(-1px);
+    }
+    .app-download-strip {
+      background: linear-gradient(90deg, #065F46, #047857);
+      color: #FFFFFF;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .btn-download-app-pill {
+      background: #FFFFFF;
+      color: #065F46 !important;
+      font-weight: 800;
+      font-size: 0.76rem;
+      padding: 4px 12px;
+      border-radius: 20px;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-download-app-pill:hover {
+      background: #ECFDF5;
+    }
+    .app-download-card-profile {
+      background: linear-gradient(135deg, #10B981, #059669);
+      color: #FFFFFF;
+      border-radius: 16px;
+      padding: 16px 20px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.25);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .app-icon-badge {
+      font-size: 2.2rem;
+      background: rgba(255, 255, 255, 0.2);
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-download-app-white {
+      background: #FFFFFF;
+      color: #047857 !important;
+      font-weight: 900;
+      font-size: 0.88rem;
+      padding: 10px 18px;
+      border-radius: 10px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-download-app-white:hover {
+      background: #F0FDF4;
+      transform: scale(1.02);
+    }
+
     /* Fullscreen Image Zoom Lightbox (Matching Flutter InteractiveViewer) */
     .zoom-lightbox-backdrop {
       position: fixed;
@@ -1651,8 +1743,11 @@
         <button class="desktop-tab-btn" id="deskTabProfile" onclick="switchView('profile')">👤 Profile</button>
       </div>
 
-      <!-- Top Cart Icon for Mobile -->
+      <!-- Top Cart & APK Download Icon for Mobile & Desktop -->
       <div style="display:flex; align-items:center; gap:8px;">
+        <a href="/download-apk" class="apk-download-top-btn" title="Download Android App APK">
+          <span>📱</span> <span>App APK</span>
+        </a>
         <button onclick="openCartDrawer()" style="background:rgba(255,255,255,0.15); border:none; color:#fff; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; font-size:1.15rem;">
           🛒
           <span class="tab-badge" id="topCartBadge">0</span>
@@ -1677,6 +1772,17 @@
 
   <!-- ================= 1. HOME VIEW ================= -->
   <div class="app-view active-view" id="view-home">
+    
+    <!-- Top Android App Download Notification Strip -->
+    <div class="app-download-strip">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:1.2rem;">📱</span>
+        <span>Install <strong>DOINEEK Android App</strong> for smooth ordering!</span>
+      </div>
+      <a href="/download-apk" class="btn-download-app-pill">
+        ⬇️ Install App (APK)
+      </a>
+    </div>
     
     <!-- Dynamic Clickable Active Promotion Hero Banner (1/4 Screen) -->
     <div class="hero-offer-banner" id="heroBannerContainer" onclick="handleActivePromoClick()">
