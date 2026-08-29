@@ -226,7 +226,7 @@
       display: none;
     }
     .app-view.active-view {
-      display: block;
+      display: block !important;
     }
 
     /* Dynamic Promotion Hero Banner (1/4 screen height) */
@@ -2546,38 +2546,36 @@
   </div>
 
   <script>
-// Global Rock-Solid View Switcher (Home, Category, Cart, Profile)
-    function switchView(viewName, updateHistory = true) {
-      if (!['home', 'category', 'cart', 'profile'].includes(viewName)) {
+    // Global Rock-Solid View Switcher (Home, Category, Cart, Profile)
+    window.switchView = function(viewName, updateHistory) {
+      if (!viewName || !['home', 'category', 'cart', 'profile'].includes(viewName)) {
         viewName = 'home';
       }
 
-      // Update LocalStorage & URL Hash
       try {
         localStorage.setItem('supershop_active_tab', viewName);
-        if (updateHistory && window.location.hash !== '#' + viewName) {
+        if (updateHistory !== false && window.location.hash !== '#' + viewName) {
           history.replaceState(null, '', '#' + viewName);
         }
       } catch (e) {}
 
       // Explicitly toggle all 4 views
       const views = ['home', 'category', 'cart', 'profile'];
-      views.forEach(tab => {
+      views.forEach(function(tab) {
         const v = document.getElementById('view-' + tab);
         if (v) {
           if (tab === viewName) {
-            v.style.setProperty('display', 'block', 'important');
+            v.style.display = 'block';
             v.classList.add('active-view');
           } else {
-            v.style.setProperty('display', 'none', 'important');
+            v.style.display = 'none';
             v.classList.remove('active-view');
           }
         }
       });
 
       // Update Desktop & Mobile active highlights
-      const tabIds = ['Home', 'Category', 'Cart', 'Profile'];
-      tabIds.forEach(t => {
+      ['Home', 'Category', 'Cart', 'Profile'].forEach(function(t) {
         const lower = t.toLowerCase();
         const mobEl = document.getElementById('mobTab' + t);
         const deskEl = document.getElementById('deskTab' + t);
@@ -2590,7 +2588,7 @@
         }
       });
 
-      // Show Search Bar on Home
+      // Show Search Bar on Home only
       const searchWrap = document.getElementById('searchWrapper');
       if (searchWrap) {
         searchWrap.style.display = (viewName === 'home') ? 'block' : 'none';
@@ -2608,6 +2606,9 @@
       } catch (err) {
         console.error('Tab render error:', err);
       }
+    };
+    function switchView(viewName, updateHistory) {
+      window.switchView(viewName, updateHistory);
     }
 
     // Global Data passed from Backend
@@ -2828,15 +2829,38 @@
       }
     });
 
-    // Initial state load
+    // Initial state load & explicit event binding
     window.addEventListener('DOMContentLoaded', () => {
-      initDynamicBanner();
-      refreshAuthState();
-      refreshCartDisplay();
+      // Attach explicit event listeners for desktop & mobile navigation
+      const navBindings = [
+        { id: 'deskTabHome', tab: 'home' },
+        { id: 'deskTabCategory', tab: 'category' },
+        { id: 'deskTabCart', tab: 'cart' },
+        { id: 'deskTabProfile', tab: 'profile' },
+        { id: 'mobTabHome', tab: 'home' },
+        { id: 'mobTabCategory', tab: 'category' },
+        { id: 'mobTabCart', tab: 'cart' },
+        { id: 'mobTabProfile', tab: 'profile' }
+      ];
+
+      navBindings.forEach(({ id, tab }) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.switchView(tab);
+          });
+        }
+      });
+
+      try { initDynamicBanner(); } catch (e) {}
+      try { refreshAuthState(); } catch (e) {}
+      try { refreshCartDisplay(); } catch (e) {}
       
       const distSelect = document.getElementById('orderDistrictSelect');
       if (distSelect && distSelect.value) {
-        handleDistrictChange(distSelect.value);
+        try { handleDistrictChange(distSelect.value); } catch (e) {}
       }
 
       // Restore active tab on page refresh
@@ -2845,11 +2869,11 @@
       const validTabs = ['home', 'category', 'cart', 'profile'];
       
       if (validTabs.includes(hashTab)) {
-        switchView(hashTab, false);
+        window.switchView(hashTab, false);
       } else if (validTabs.includes(savedTab)) {
-        switchView(savedTab, false);
+        window.switchView(savedTab, false);
       } else {
-        switchView('home', false);
+        window.switchView('home', false);
       }
     });
 
@@ -3239,9 +3263,12 @@
 
     // Authentication State & Profile Management
     function refreshAuthState() {
+      const loggedInArea = document.getElementById('loggedInProfileArea');
+      const loggedOutArea = document.getElementById('loggedOutAuthArea');
+      
       if (currentCustomer && currentCustomer.phone) {
-        document.getElementById('loggedOutAuthArea').style.display = 'none';
-        document.getElementById('loggedInProfileArea').style.display = 'block';
+        if (loggedOutArea) loggedOutArea.style.display = 'none';
+        if (loggedInArea) loggedInArea.style.display = 'block';
         document.getElementById('profNameLabel').textContent = currentCustomer.name || ('Customer ' + currentCustomer.phone.slice(-4));
         document.getElementById('profPhoneLabel').textContent = currentCustomer.phone;
         
