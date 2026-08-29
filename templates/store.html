@@ -2086,43 +2086,51 @@
             </div>
           </div>
 
-          <!-- Flash Call Verification Box (Shown when triggered) -->
-          <div id="flashCallVerifyBox" style="display:none; background:#F8FAFC; border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px;">
-            <div style="display:flex; align-items:center; gap:6px; font-size:0.88rem; font-weight:800; color:var(--primary); margin-bottom:6px;">
-              <span>📞</span> <span>Free Flash Call Verification</span>
-            </div>
-            
-            <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px;" id="flashCallInstructions">
-              A free flash call / missed call is placed to your phone. Enter the 4-digit code shown below or on caller ID:
+          <!-- Inbound Missed Call Verification Box (100% Free - 0 Tk) -->
+          <div id="flashCallVerifyBox" style="display:none; background:#F8FAFC; border:1.5px solid #C084FC; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(107,33,168,0.08);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.92rem; font-weight:800; color:var(--primary);">
+                <span>📞</span> <span>100% Free Missed Call Verification</span>
+              </div>
+              <span style="background:#ECFDF5; color:#047857; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:12px; border:1px solid #A7F3D0;">
+                0 TK COST
+              </span>
             </div>
 
-            <!-- Caller ID Display Simulator with Auto-Ringing -->
-            <div id="flashCallerDisplay" style="background:#F3E8FF; border:1px solid #C084FC; border-radius:12px; padding:14px; text-align:center; margin-bottom:12px;">
-              <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
-                <span style="display:inline-block; width:10px; height:10px; background:#10B981; border-radius:50%; animation:pulse 1.2s infinite;"></span>
-                <span style="font-size:0.75rem; color:var(--primary); font-weight:800; text-transform:uppercase;">Incoming Flash Call / Ringing...</span>
+            <div style="font-size:0.8rem; color:#334155; line-height:1.45; margin-bottom:12px;">
+              আপনার এই সিম নম্বর থেকে নিচের নম্বরে <strong>১ সেকেন্ডের একটি মিসড কল</strong> দিন (১ম রিংয়েই কল কেটে যাবে, কোনো ব্যালেন্স কাটবে না):
+            </div>
+
+            <!-- Target Store Phone Card & Direct Dial Button -->
+            <div style="background:#F3E8FF; border:1px dashed var(--primary); border-radius:12px; padding:14px; text-align:center; margin-bottom:12px;">
+              <div style="font-size:0.72rem; color:var(--primary); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">GIVE MISSED CALL TO THIS NUMBER:</div>
+              <div style="font-size:1.4rem; font-weight:900; color:var(--primary); letter-spacing:1px; margin:4px 0;" id="missedCallTargetPhone">
+                {{ settings.customer_support_phone or settings.shop_phone or '+880 1700-000000' }}
               </div>
-              <div style="font-size:1.3rem; font-weight:900; color:var(--primary); letter-spacing:1.5px; margin:4px 0;" id="flashCallerNumber">09612-XXX-XXXX</div>
-              <div style="font-size:0.75rem; color:#475569;">Security Verification PIN: <strong id="flashPinDisplay" style="color:#DC2626; font-size:1.05rem; background:#FEE2E2; padding:2px 8px; border-radius:6px; letter-spacing:2px;">----</strong></div>
-              <div style="margin-top:8px; font-size:0.72rem; color:#059669; font-weight:700;" id="flashRingingStatus">
-                ⏳ Auto-verifying in <span id="flashCountdownTxt">3</span>s...
+              <div style="margin-top:8px;">
+                <a href="tel:{{ settings.customer_support_phone or settings.shop_phone or '+8801700000000' }}" id="directDialMissedCallBtn" class="btn-submit" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 18px; font-size:0.9rem; text-decoration:none; background:var(--primary); border-radius:8px;">
+                  📞 Dial / Call Now (১-সেকেন্ড মিসড কল)
+                </a>
               </div>
             </div>
 
-            <div style="display:flex; gap:8px;">
-              <input type="text" class="form-control" id="regOtpInput" placeholder="Enter 4-Digit PIN" maxlength="6" style="text-align:center; font-weight:800; font-size:1.1rem; letter-spacing:2px;">
-              <button type="button" class="btn-submit" id="btnConfirmOtp" onclick="confirmMobileVerification()" style="width:auto; padding:0 18px; font-size:0.88rem; background:#059669;">
-                Confirm & Verify
+            <!-- Verification Progress Bar & Auto-Confirmation Button -->
+            <div style="text-align:center;">
+              <button type="button" class="btn-submit" id="btnConfirmOtp" onclick="confirmMobileVerification()" style="width:100%; padding:12px; font-size:0.92rem; background:#059669; font-weight:800; border-radius:10px; box-shadow:0 3px 10px rgba(5,150,105,0.25);">
+                ✅ I Gave Missed Call / Verify My Number
               </button>
+              <div style="font-size:0.72rem; color:#64748B; margin-top:8px;">
+                মিসড কল দেওয়া মাত্রই উপরের বাটনে ক্লিক করুন অথবা ৩ সেকেন্ড অপেক্ষা করুন।
+              </div>
             </div>
 
-            <!-- Free WhatsApp Fallback -->
-            <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+            <!-- Fallback WhatsApp Verification -->
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); display:flex; justify-content:space-between; align-items:center;">
               <a href="#" id="regWhatsappVerifyLink" target="_blank" style="font-size:0.75rem; color:#16A34A; text-decoration:none; font-weight:700; display:flex; align-items:center; gap:4px;">
                 <span>💬</span> <span>Verify via WhatsApp (Free)</span>
               </a>
               <button type="button" onclick="triggerMobileVerification()" style="background:none; border:none; color:var(--primary); font-size:0.75rem; font-weight:700; cursor:pointer;">
-                🔄 Resend Call
+                🔄 Refresh
               </button>
             </div>
           </div>
@@ -3230,7 +3238,7 @@
     let isCustomerPhoneVerified = false;
     let verifiedCustomerPhone = '';
 
-    let flashCallTimer = null;
+    let missedCallTimer = null;
 
     async function triggerMobileVerification() {
       const phone = document.getElementById('regPhoneInput').value.trim();
@@ -3241,12 +3249,12 @@
 
       const triggerBtn = document.getElementById('btnTriggerVerify');
       triggerBtn.disabled = true;
-      triggerBtn.textContent = 'Calling...';
+      triggerBtn.textContent = 'Connecting...';
 
-      if (flashCallTimer) clearInterval(flashCallTimer);
+      if (missedCallTimer) clearInterval(missedCallTimer);
 
       try {
-        const res = await fetch('/api/customer/send-flash-call', {
+        const res = await fetch('/api/customer/initiate-missed-call-verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone, purpose: 'registration' })
@@ -3254,36 +3262,20 @@
         const data = await res.json();
         if (res.ok && data.success) {
           document.getElementById('flashCallVerifyBox').style.display = 'block';
-          document.getElementById('flashCallerNumber').textContent = data.flash_caller || '09612-DOINEEK';
-          document.getElementById('flashPinDisplay').textContent = data.verification_code || '----';
+          const targetNum = data.target_phone || '01700000000';
+          document.getElementById('missedCallTargetPhone').textContent = targetNum;
           
+          const dialBtn = document.getElementById('directDialMissedCallBtn');
+          if (dialBtn) {
+            dialBtn.href = 'tel:' + targetNum.replace(/[^0-9+]/g, '');
+          }
+
           const waLink = document.getElementById('regWhatsappVerifyLink');
           if (data.whatsapp_url) {
             waLink.href = data.whatsapp_url;
           }
-
-          if (data.verification_code) {
-            document.getElementById('regOtpInput').value = data.verification_code;
-          }
-
-          // Auto-verify countdown timer for seamless user experience
-          let countdown = 3;
-          const countEl = document.getElementById('flashCountdownTxt');
-          const statusEl = document.getElementById('flashRingingStatus');
-          statusEl.style.display = 'block';
-          countEl.textContent = countdown;
-
-          flashCallTimer = setInterval(() => {
-            countdown--;
-            if (countEl) countEl.textContent = countdown;
-            if (countdown <= 0) {
-              clearInterval(flashCallTimer);
-              confirmMobileVerification();
-            }
-          }, 1000);
-
         } else {
-          alert(data.message || 'Could not initiate Free Flash Call.');
+          alert(data.message || 'Could not initiate Missed Call verification.');
         }
       } catch (err) {
         alert('Server connection error. Please try again.');

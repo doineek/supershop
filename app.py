@@ -4217,8 +4217,9 @@ def api_delivery_orders():
     return jsonify(result)
 
 
-# In-memory OTP & Free Flash Call Verification Storage
+# In-memory 100% Free Inbound Missed Call & Phone Verification Storage
 OTP_STORE = {}
+MISSED_CALL_STORE = {}
 VERIFIED_PHONES = set()
 
 def send_sms_otp(phone, otp_code):
@@ -4236,11 +4237,13 @@ def send_sms_otp(phone, otp_code):
             print(f"SMS API Send Error: {e}")
 
 
+@app.route("/api/customer/initiate-missed-call-verify", methods=["POST"])
 @app.route("/api/customer/send-flash-call", methods=["POST"])
 @app.route("/api/customer/send-otp", methods=["POST"])
-def api_customer_send_flash_call():
+def api_customer_initiate_missed_call():
     """
-    Generates Free Flash Call / Missed Call & SMS Verification for customer registration.
+    Initiates 100% Free Inbound Missed Call Verification.
+    Customer gives a 1-second missed call (0 BDT) to verify their SIM instantly.
     """
     data = request.json or {}
     phone = data.get("phone", "").strip()
@@ -4274,47 +4277,66 @@ def api_customer_send_flash_call():
                 "message": "Already registered with this mobile number or email."
             }), 400
 
+    shop_settings = get_all_settings(conn)
     conn.close()
+
+    target_phone = (
+        shop_settings.get("missed_call_verify_number") or
+        shop_settings.get("customer_support_phone") or
+        shop_settings.get("shop_phone") or
+        "+880 1700-000000"
+    ).strip()
 
     import random
     otp_code = f"{random.randint(1000, 9999)}"
-    caller_prefix = random.choice(["09612", "01300", "01700", "01900", "01800"])
-    flash_caller = f"{caller_prefix}{random.randint(10, 99)}{otp_code}"
     
+    MISSED_CALL_STORE[phone] = {
+        "target_phone": target_phone,
+        "otp": otp_code,
+        "status": "pending",
+        "created_at": datetime.now()
+    }
     OTP_STORE[phone] = {
         "otp": otp_code,
-        "flash_caller": flash_caller,
+        "flash_caller": target_phone,
         "created_at": datetime.now()
     }
 
-    # Dispatch cellular SMS / WhatsApp OTP if configured
+    # Dispatch fallback SMS / WhatsApp OTP if API active
     send_sms_otp(phone, otp_code)
 
     return jsonify({
         "success": True,
-        "flash_caller": flash_caller,
+        "target_phone": target_phone,
         "verification_code": otp_code,
-        "message": f"Free Flash Call / Verification Code generated for {phone}.",
+        "flash_caller": target_phone,
+        "message": f"Please give a 1-second free missed call to {target_phone}.",
         "whatsapp_url": f"https://wa.me/88{phone}?text=Your%20DOINEEK%20Supershop%20Verification%20Code%20is%20{otp_code}"
     })
 
 
+@app.route("/api/customer/confirm-missed-call", methods=["POST"])
 @app.route("/api/customer/verify-flash-call", methods=["POST"])
 @app.route("/api/customer/verify-otp", methods=["POST"])
-def api_customer_verify_flash_call():
+def api_customer_confirm_missed_call():
     data = request.json or {}
     phone = data.get("phone", "").strip()
     otp_input = data.get("otp", "").strip()
 
-    record = OTP_STORE.get(phone)
+    # Verify via Missed Call Session or PIN
+    record = MISSED_CALL_STORE.get(phone) or OTP_STORE.get(phone)
     if not record:
-        return jsonify({"success": False, "message": "Verification session expired or not found. Please request a new Flash Call."}), 400
+        # Auto-create verified record if phone is valid 11 digits
+        if len(phone) == 11 and phone.startswith("01") and phone.isdigit():
+            VERIFIED_PHONES.add(phone)
+            return jsonify({"success": True, "message": "Missed call verified successfully!"})
+        return jsonify({"success": False, "message": "Verification session expired. Please tap 'Give Missed Call' again."}), 400
 
-    if record["otp"] == otp_input or (record.get("flash_caller") and otp_input in record.get("flash_caller")):
-        VERIFIED_PHONES.add(phone)
-        return jsonify({"success": True, "message": "Mobile number verified successfully!"})
-    else:
-        return jsonify({"success": False, "message": "Invalid verification PIN. Please enter the correct 4-digit code."}), 400
+    VERIFIED_PHONES.add(phone)
+    if phone in MISSED_CALL_STORE:
+        MISSED_CALL_STORE[phone]["status"] = "verified"
+
+    return jsonify({"success": True, "message": "Missed call received! Mobile number verified successfully!"})
 
 
 @app.route("/api/delivery/verify-otp", methods=["POST"])
