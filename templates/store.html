@@ -1707,7 +1707,7 @@
         </div>
         <div class="brand-info">
           <div class="brand-name">{{ settings.shop_name or 'DOINEEK Supershop' }}</div>
-          <div class="location-badge" onclick="openCheckoutModal()">
+          <div class="location-badge" onclick="event.stopPropagation(); openCheckoutModal()">
             <span class="location-icon">📍</span>
             <span id="headerLocationTxt">Tangail Sadar, Main Area ▾</span>
           </div>
@@ -2546,32 +2546,34 @@
   </div>
 
   <script>
-    // Global View Switcher (Home, Category, Cart, Profile)
+// Global Rock-Solid View Switcher (Home, Category, Cart, Profile)
     function switchView(viewName, updateHistory = true) {
-      const validTabs = ['home', 'category', 'cart', 'profile'];
-      if (!validTabs.includes(viewName)) {
+      if (!['home', 'category', 'cart', 'profile'].includes(viewName)) {
         viewName = 'home';
       }
 
-      // Persist active tab across page refresh & navigation
+      // Update LocalStorage & URL Hash
       try {
         localStorage.setItem('supershop_active_tab', viewName);
-        if (updateHistory) {
+        if (updateHistory && window.location.hash !== '#' + viewName) {
           history.replaceState(null, '', '#' + viewName);
         }
       } catch (e) {}
 
-      // Hide all views & show requested view
-      document.querySelectorAll('.app-view').forEach(v => {
-        v.style.display = 'none';
-        v.classList.remove('active-view');
+      // Explicitly toggle all 4 views
+      const views = ['home', 'category', 'cart', 'profile'];
+      views.forEach(tab => {
+        const v = document.getElementById('view-' + tab);
+        if (v) {
+          if (tab === viewName) {
+            v.style.setProperty('display', 'block', 'important');
+            v.classList.add('active-view');
+          } else {
+            v.style.setProperty('display', 'none', 'important');
+            v.classList.remove('active-view');
+          }
+        }
       });
-
-      const activeViewEl = document.getElementById('view-' + viewName);
-      if (activeViewEl) {
-        activeViewEl.style.display = 'block';
-        activeViewEl.classList.add('active-view');
-      }
 
       // Update Desktop & Mobile active highlights
       const tabIds = ['Home', 'Category', 'Cart', 'Profile'];
@@ -2588,20 +2590,23 @@
         }
       });
 
-      // Show Search Bar only on Home
+      // Show Search Bar on Home
       const searchWrap = document.getElementById('searchWrapper');
       if (searchWrap) {
         searchWrap.style.display = (viewName === 'home') ? 'block' : 'none';
       }
 
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo(0, 0);
 
-      // Special Tab Render Actions
-      if (viewName === 'cart' && typeof renderCartView === 'function') {
-        renderCartView();
-      }
-      if (viewName === 'profile' && typeof refreshAuthState === 'function') {
-        refreshAuthState();
+      // Trigger dynamic tab views
+      try {
+        if (viewName === 'cart' && typeof renderCartView === 'function') {
+          renderCartView();
+        } else if (viewName === 'profile' && typeof refreshAuthState === 'function') {
+          refreshAuthState();
+        }
+      } catch (err) {
+        console.error('Tab render error:', err);
       }
     }
 
