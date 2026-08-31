@@ -623,11 +623,39 @@ def push_full_backup():
         except Exception:
             pass
 
-        # Push packages
+        # Check deleted packages tombstones in Firestore
+        deleted_pkg_ids = set()
+        try:
+            del_docs = list(db.collection("deleted_packages").stream())
+            for ddoc in del_docs:
+                ddata = ddoc.to_dict() or {}
+                deleted_pkg_ids.add(str(ddata.get("id") or ddoc.id))
+        except Exception:
+            pass
+
+        # Purge any deleted packages locally so they never get pushed back
+        if deleted_pkg_ids:
+            try:
+                p_conn = get_connection()
+                for d_id in deleted_pkg_ids:
+                    try:
+                        p_conn.execute("DELETE FROM package_items WHERE package_id = ?", (int(d_id),))
+                        p_conn.execute("DELETE FROM packages WHERE id = ?", (int(d_id),))
+                    except Exception:
+                        pass
+                p_conn.commit()
+                p_conn.close()
+            except Exception:
+                pass
+
+        # Push valid packages only
         for pkg_row in packages:
+            pkg_id_str = str(pkg_row["id"])
+            if pkg_id_str in deleted_pkg_ids:
+                continue
             p_dict = dict(pkg_row)
             p_dict["items"] = pkg_items_map.get(pkg_row["id"], [])
-            db.collection("packages").document(str(pkg_row["id"])).set(p_dict)
+            db.collection("packages").document(pkg_id_str).set(p_dict)
 
         # Push vouchers
         for v_row in vouchers:
@@ -1091,6 +1119,29 @@ def _on_packages_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] [SYNC] Real-time combo packages synced across servers.")
     except Exception as e:
         print(f"[remote_control] Two-way packages sync failed: {e}")
+
+
+def _on_deleted_packages_change(doc_snapshots, changes, read_time):
+    """Live listener for deleted packages tombstones across all instances."""
+    def _do():
+        conn = get_connection()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                try:
+                    pkg_id = int(data.get("id") or doc.id)
+                except Exception:
+                    continue
+                conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                conn.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
+    except Exception as e:
+        print(f"[remote_control] deleted packages sync failed: {e}")
 
 
 def _on_categories_change(doc_snapshots, changes, read_time):
@@ -1630,19 +1681,46 @@ def pull_all_from_cloud(blocking=False):
                                 is_offer, is_promotion, offer_title, offer_type, offer_value, offer_base, expiry_date
                             ))
 
-                    # 4. Pull Packages
+                    # 4. Pull Packages (Respecting tombstones & active status)
+                    deleted_pkg_ids_pull = set()
+                    try:
+                        del_docs_pull = list(db.collection("deleted_packages").stream())
+                        for ddoc in del_docs_pull:
+                            ddata = ddoc.to_dict() or {}
+                            deleted_pkg_ids_pull.add(str(ddata.get("id") or ddoc.id))
+                    except Exception:
+                        pass
+
+                    # Purge any deleted packages locally
+                    for d_id in deleted_pkg_ids_pull:
+                        try:
+                            conn.execute("DELETE FROM package_items WHERE package_id = ?", (int(d_id),))
+                            conn.execute("DELETE FROM packages WHERE id = ?", (int(d_id),))
+                        except Exception:
+                            pass
+
                     for doc in pkg_docs:
                         data = doc.to_dict() or {}
                         try:
                             pkg_id = int(data.get("id") or doc.id)
                         except Exception:
                             continue
+                        if str(pkg_id) in deleted_pkg_ids_pull or doc.id in deleted_pkg_ids_pull:
+                            conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
+                            conn.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
+                            try:
+                                db.collection("packages").document(doc.id).delete()
+                            except Exception:
+                                pass
+                            continue
+
                         name = data.get("name") or data.get("package_title") or ""
                         price = float(data.get("package_price") or data.get("price") or 0)
                         desc = data.get("description", "")
                         img = data.get("image_url", "")
+                        is_active = int(data.get("is_active", 1))
                         if pkg_id and name:
-                            conn.execute("INSERT OR REPLACE INTO packages (id, name, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)", (pkg_id, name, price, desc, img, datetime.now().isoformat()))
+                            conn.execute("INSERT OR REPLACE INTO packages (id, name, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (pkg_id, name, price, desc, img, is_active, datetime.now().isoformat()))
                             conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
                             for item in (data.get("items") or []):
                                 pid = item.get("product_id")
@@ -1915,6 +1993,7 @@ def start():
         db.collection("online_orders").on_snapshot(_on_online_orders_change)
         db.collection("users").on_snapshot(_on_users_change)
         db.collection("packages").on_snapshot(_on_packages_change)
+        db.collection("deleted_packages").on_snapshot(_on_deleted_packages_change)
         db.collection("categories").on_snapshot(_on_categories_change)
         db.collection("brands").on_snapshot(_on_brands_change)
         db.collection("settings").on_snapshot(_on_shop_settings_change)
