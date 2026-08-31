@@ -3758,6 +3758,7 @@ def delete_delivery_area(area_id):
 # ===========================================================================
 
 @app.route("/api/settings", methods=["GET"])
+@app.route("/api/settings/shop", methods=["GET"])
 def api_settings():
     settings = get_all_settings()
     settings["logo_url"] = url_for("static", filename="images/logo.png", _external=True)

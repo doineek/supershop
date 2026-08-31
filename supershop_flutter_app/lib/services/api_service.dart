@@ -184,8 +184,16 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> fetchShopSettings() async {
+    Map<String, dynamic>? cachedData;
+    final cached = await _getFromDiskCache('cached_shop_settings');
+    if (cached != null) {
+      try {
+        cachedData = jsonDecode(cached) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+
     try {
-      final res = await httpGet('/api/settings/shop', timeout: const Duration(seconds: 12));
+      final res = await httpGet('/api/settings', timeout: const Duration(seconds: 6));
       if (res != null && res.statusCode == 200) {
         Map<String, dynamic> data = jsonDecode(res.body);
         _saveToDiskCache('cached_shop_settings', jsonEncode(data));
@@ -194,15 +202,15 @@ class ApiService {
     } catch (e) {
       debugPrint("Error fetching shop settings: $e");
     }
-    final cached = await _getFromDiskCache('cached_shop_settings');
-    if (cached != null) {
-      try {
-        return jsonDecode(cached) as Map<String, dynamic>;
-      } catch (_) {}
+
+    if (cachedData != null) {
+      return cachedData;
     }
+
     return {
       "shop_name": "DOINEEK Supershop",
-      "shop_phone": "+880-1XXX-XXXXXX",
+      "shop_phone": "+880-1700-000000",
+      "customer_support_phone": "+880-1700-000000",
       "shop_address": "House 12, Road 5, Tangail",
     };
   }
