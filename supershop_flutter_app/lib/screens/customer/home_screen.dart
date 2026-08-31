@@ -488,15 +488,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           return Stack(
             children: [
-              _bottomNavIndex == 1
-                  ? _buildCategoryDirectoryView()
-                  : _bottomNavIndex == 2
-                      ? const CartScreen()
-                      : _bottomNavIndex == 3
-                          ? const ProfileScreen()
-                          : Column(
-                      children: [
-                        // Persistent Top Search Bar
+              IndexedStack(
+                index: _bottomNavIndex,
+                children: [
+                  Column(
+                    children: [
+                      // Persistent Top Search Bar
                         Container(
                           color: const Color(0xFF6B21A8),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -1206,6 +1203,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
+                  _buildCategoryDirectoryView(),
+                  const CartScreen(),
+                  const ProfileScreen(),
+                ],
+              ),
 
               // Instant Search Dropdown Overlay
               if (_searchQuery.trim().isNotEmpty && _bottomNavIndex == 0)

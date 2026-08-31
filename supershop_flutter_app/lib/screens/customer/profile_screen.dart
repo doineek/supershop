@@ -25,45 +25,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _userEmail = '';
   String _userAvatar = '👤';
   String _userImageBase64 = '';
-  String _supportPhone = '';
-  String _shopName = '';
-  String _shopAddress = '';
-  bool _isLoading = true;
+  String _supportPhone = '+880-1700-000000';
+  String _shopName = 'DOINEEK';
+  String _shopAddress = 'House 12, Road 5, Tangail';
+  bool _isLoading = false;
 
   final List<String> _presetAvatars = ['👤', '🧔', '👩', '🧑‍💼', '🐱', '🦊', '🚀', '💎', '👑', '🦸'];
 
   @override
   void initState() {
     super.initState();
-    _loadProfileData();
+    _loadLocalProfileImmediately();
+    _loadProfileDataAsync();
   }
 
-  void _loadProfileData() async {
-    final prefs = await SharedPreferences.getInstance();
-    var settings = await ApiService.fetchShopSettings();
+  void _loadProfileData() {
+    _loadLocalProfileImmediately();
+    _loadProfileDataAsync();
+  }
 
-    String userPhone = prefs.getString('user_phone') ?? '';
-    String phoneImg = userPhone.isNotEmpty ? (prefs.getString('saved_img_$userPhone') ?? '') : '';
-    String phoneAv = userPhone.isNotEmpty ? (prefs.getString('saved_av_$userPhone') ?? '') : '';
+  void _loadLocalProfileImmediately() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String userPhone = prefs.getString('user_phone') ?? '';
+      String phoneImg = userPhone.isNotEmpty ? (prefs.getString('saved_img_$userPhone') ?? '') : '';
+      String phoneAv = userPhone.isNotEmpty ? (prefs.getString('saved_av_$userPhone') ?? '') : '';
+      String imgB64 = prefs.getString('user_image_base64') ?? phoneImg;
+      String av = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
 
-    String imgB64 = prefs.getString('user_image_base64') ?? phoneImg;
-    String av = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
+      if (!mounted) return;
+      setState(() {
+        _userName = prefs.getString('user_name') ?? 'Customer User';
+        _userPhone = userPhone;
+        _userEmail = prefs.getString('user_email') ?? '';
+        _userAvatar = av;
+        _userImageBase64 = imgB64;
+      });
+    } catch (_) {}
+  }
 
-    if (!mounted) return;
-    setState(() {
-      _userName = prefs.getString('user_name') ?? 'Customer User';
-      _userPhone = userPhone;
-      _userEmail = prefs.getString('user_email') ?? '';
-      _userAvatar = av;
-      _userImageBase64 = imgB64;
-      _supportPhone = (settings['customer_support_phone'] ?? settings['shop_phone'] ?? '').toString();
-      if (_supportPhone.isEmpty) {
-        _supportPhone = '+880-1700-000000';
-      }
-      _shopName = (settings['shop_name'] ?? 'DOINEEK').toString();
-      _shopAddress = (settings['shop_address'] ?? 'House 12, Road 5, Tangail').toString();
-      _isLoading = false;
-    });
+  Future<void> _loadProfileDataAsync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String userPhone = prefs.getString('user_phone') ?? '';
+      String phoneImg = userPhone.isNotEmpty ? (prefs.getString('saved_img_$userPhone') ?? '') : '';
+      String phoneAv = userPhone.isNotEmpty ? (prefs.getString('saved_av_$userPhone') ?? '') : '';
+      String imgB64 = prefs.getString('user_image_base64') ?? phoneImg;
+      String av = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
+
+      var settings = await ApiService.fetchShopSettings();
+
+      if (!mounted) return;
+      setState(() {
+        _userName = prefs.getString('user_name') ?? 'Customer User';
+        _userPhone = userPhone;
+        _userEmail = prefs.getString('user_email') ?? '';
+        _userAvatar = av;
+        _userImageBase64 = imgB64;
+        String supPhone = (settings['customer_support_phone'] ?? settings['shop_phone'] ?? '').toString();
+        if (supPhone.isNotEmpty) {
+          _supportPhone = supPhone;
+        }
+        _shopName = (settings['shop_name'] ?? _shopName).toString();
+        _shopAddress = (settings['shop_address'] ?? _shopAddress).toString();
+      });
+    } catch (_) {}
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -559,10 +585,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('My Profile'),
         backgroundColor: Colors.green,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
+      body: RefreshIndicator(
+        onRefresh: () => _loadProfileDataAsync(),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
                   if (_userPhone.isEmpty)
@@ -767,6 +794,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+        ),
     );
   }
 }
