@@ -25,7 +25,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _selectedTab = 'all'; // all, trending, flash_sale, offers
   String _shopName = "DOINEEK Supershop";
   String _userAvatar = "👤";
@@ -33,7 +33,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _bottomNavIndex = 0;
   String _searchQuery = "";
   String _sortBy = "default";
-  Future<List<dynamic>>? _categoriesTreeFuture;
+  List<dynamic> _categoriesTree = [];
+  bool _isLoadingCategories = false;
+  Timer? _retryTimer;
+  int _retryCount = 0;
 
   final PageController _bannerController = PageController();
   Timer? _bannerTimer;
@@ -53,31 +56,157 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _categoriesTreeFuture = ApiService.fetchCategoriesTree();
-    _loadShopName();
+    WidgetsBinding.instance.addObserver(this);
+    _loadCachedDataInstantly();
     _loadUserProfile();
-    _loadPromotions();
-    _loadPackages();
+    _loadAllData(retryIfEmpty: true);
   }
 
-  void _loadPackages() async {
-    var pkgs = await ApiService.getPackages();
-    if (!mounted) return;
-    setState(() {
-      _packagesList = pkgs;
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Automatically refresh data when app returns from background
+      _loadAllData(retryIfEmpty: true);
+    }
   }
 
-  void _loadPromotions() async {
-    var data = await ApiService.fetchPromotions();
+  void _loadCachedDataInstantly() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load cached promotions
+      final cachedPromo = prefs.getString('cached_promotions');
+      if (cachedPromo != null && cachedPromo.isNotEmpty) {
+        try {
+          final data = jsonDecode(cachedPromo);
+          final list = data['promotions'] as List<dynamic>? ?? [];
+          final interval = data['interval_sec'] ?? 2;
+          if (list.isNotEmpty && mounted) {
+            setState(() {
+              _promoList = list;
+              _promoIntervalSec = interval > 0 ? interval : 2;
+            });
+            _startBannerTimer();
+          }
+        } catch (_) {}
+      }
+
+      // Load cached categories tree
+      final cachedCats = prefs.getString('cached_categories_tree');
+      if (cachedCats != null && cachedCats.isNotEmpty) {
+        try {
+          final list = jsonDecode(cachedCats) as List<dynamic>? ?? [];
+          if (list.isNotEmpty && mounted) {
+            setState(() {
+              _categoriesTree = list;
+            });
+          }
+        } catch (_) {}
+      }
+
+      // Load cached packages
+      final cachedPkgs = prefs.getString('cached_packages');
+      if (cachedPkgs != null && cachedPkgs.isNotEmpty) {
+        try {
+          final list = jsonDecode(cachedPkgs) as List<dynamic>? ?? [];
+          if (list.isNotEmpty && mounted) {
+            setState(() {
+              _packagesList = list;
+            });
+          }
+        } catch (_) {}
+      }
+
+      // Load cached settings
+      final cachedSettings = prefs.getString('cached_shop_settings');
+      if (cachedSettings != null && cachedSettings.isNotEmpty) {
+        try {
+          final map = jsonDecode(cachedSettings) as Map<String, dynamic>? ?? {};
+          if (mounted) {
+            setState(() {
+              _shopName = map['shop_name'] ?? "DOINEEK Supershop";
+              _facebookUrl = (map['facebook_url'] ?? '').toString();
+              _youtubeUrl = (map['youtube_url'] ?? '').toString();
+              _xUrl = (map['x_url'] ?? '').toString();
+              _instagramUrl = (map['instagram_url'] ?? '').toString();
+            });
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadAllData({bool retryIfEmpty = true}) async {
     if (!mounted) return;
-    int interval = data['interval_sec'] ?? 2;
-    List list = data['promotions'] ?? [];
     setState(() {
-      _promoIntervalSec = interval > 0 ? interval : 2;
-      _promoList = list;
+      if (_categoriesTree.isEmpty) _isLoadingCategories = true;
     });
-    _startBannerTimer();
+
+    try {
+      // 1. Fetch Promotions
+      final promoData = await ApiService.fetchPromotions();
+      int interval = promoData['interval_sec'] ?? 2;
+      List promoList = promoData['promotions'] ?? [];
+
+      // 2. Fetch Category Tree
+      final catTree = await ApiService.fetchCategoriesTree();
+
+      // 3. Fetch Packages
+      final pkgs = await ApiService.getPackages();
+
+      // 4. Fetch Shop Settings
+      final settings = await ApiService.fetchShopSettings();
+
+      if (!mounted) return;
+      setState(() {
+        _isLoadingCategories = false;
+        if (promoList.isNotEmpty) {
+          _promoList = promoList;
+          _promoIntervalSec = interval > 0 ? interval : 2;
+          _startBannerTimer();
+        }
+        if (catTree.isNotEmpty) {
+          _categoriesTree = catTree;
+        }
+        if (pkgs.isNotEmpty) {
+          _packagesList = pkgs;
+        }
+        if (settings.isNotEmpty) {
+          _shopName = settings['shop_name'] ?? "DOINEEK Supershop";
+          _facebookUrl = (settings['facebook_url'] ?? '').toString();
+          _youtubeUrl = (settings['youtube_url'] ?? '').toString();
+          _xUrl = (settings['x_url'] ?? '').toString();
+          _instagramUrl = (settings['instagram_url'] ?? '').toString();
+        }
+      });
+
+      // If data is still missing (e.g. server was sleeping during cold start), auto-retry in background
+      bool hasMissingData = _promoList.isEmpty || _categoriesTree.isEmpty;
+      if (hasMissingData && retryIfEmpty && _retryCount < 5) {
+        _retryCount++;
+        _retryTimer?.cancel();
+        _retryTimer = Timer(Duration(seconds: 3 * _retryCount), () {
+          if (mounted) {
+            _loadAllData(retryIfEmpty: true);
+          }
+        });
+      } else if (!hasMissingData) {
+        _retryCount = 0;
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingCategories = false;
+        });
+        if (retryIfEmpty && _retryCount < 5) {
+          _retryCount++;
+          _retryTimer?.cancel();
+          _retryTimer = Timer(Duration(seconds: 3 * _retryCount), () {
+            if (mounted) _loadAllData(retryIfEmpty: true);
+          });
+        }
+      }
+    }
   }
 
   void _startBannerTimer() {
@@ -97,6 +226,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _retryTimer?.cancel();
     _bannerTimer?.cancel();
     _bannerController.dispose();
     super.dispose();
@@ -1197,22 +1328,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCategoryDirectoryView() {
-    return FutureBuilder<List<dynamic>>(
-      future: _categoriesTreeFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final categoriesTree = snapshot.data ?? [];
-        if (categoriesTree.isEmpty) {
-          return const Center(child: Text("No categories available"));
-        }
+    if (_isLoadingCategories && _categoriesTree.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: categoriesTree.length,
-          itemBuilder: (context, index) {
-            final cat = categoriesTree[index];
+    if (_categoriesTree.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => _loadAllData(retryIfEmpty: false),
+        child: ListView(
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.category_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 12),
+                  const Text("No categories available", style: TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _loadAllData(retryIfEmpty: false),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Tap to Refresh"),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6B21A8), foregroundColor: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _loadAllData(retryIfEmpty: false),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _categoriesTree.length,
+        itemBuilder: (context, index) {
+          final cat = _categoriesTree[index];
             final List subs = cat["sub_categories"] ?? [];
             final String catIcon = cat["icon"] ?? "";
             final int catProdCount = cat["product_count"] ?? 0;
@@ -1290,9 +1444,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           },
-        );
-      },
-    );
+        ),
+      );
   }
 
   Widget _buildPolicyLink(String title, String key) {

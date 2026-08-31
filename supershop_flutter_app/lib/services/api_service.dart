@@ -168,14 +168,37 @@ class ApiService {
   }
 
 
+  static void _saveToDiskCache(String key, String value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+    } catch (_) {}
+  }
+
+  static Future<String?> _getFromDiskCache(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    } catch (_) {}
+    return null;
+  }
+
   static Future<Map<String, dynamic>> fetchShopSettings() async {
     try {
-      final res = await httpGet('/api/settings');
+      final res = await httpGet('/api/settings/shop', timeout: const Duration(seconds: 12));
       if (res != null && res.statusCode == 200) {
-        return jsonDecode(res.body);
+        Map<String, dynamic> data = jsonDecode(res.body);
+        _saveToDiskCache('cached_shop_settings', jsonEncode(data));
+        return data;
       }
     } catch (e) {
       debugPrint("Error fetching shop settings: $e");
+    }
+    final cached = await _getFromDiskCache('cached_shop_settings');
+    if (cached != null) {
+      try {
+        return jsonDecode(cached) as Map<String, dynamic>;
+      } catch (_) {}
     }
     return {
       "shop_name": "DOINEEK Supershop",
@@ -186,37 +209,64 @@ class ApiService {
 
   static Future<Map<String, String>> fetchStorePolicies() async {
     try {
-      final res = await httpGet('/api/settings/policies');
+      final res = await httpGet('/api/settings/policies', timeout: const Duration(seconds: 12));
       if (res != null && res.statusCode == 200) {
         Map<String, dynamic> data = jsonDecode(res.body);
-        return data.map((key, value) => MapEntry(key, value.toString()));
+        final map = data.map((key, value) => MapEntry(key, value.toString()));
+        _saveToDiskCache('cached_store_policies', jsonEncode(map));
+        return map;
       }
     } catch (e) {
       debugPrint("Error fetching store policies: $e");
+    }
+    final cached = await _getFromDiskCache('cached_store_policies');
+    if (cached != null) {
+      try {
+        Map<String, dynamic> data = jsonDecode(cached);
+        return data.map((key, value) => MapEntry(key, value.toString()));
+      } catch (_) {}
     }
     return {};
   }
 
   static Future<List<dynamic>> fetchCategoriesTree() async {
     try {
-      final res = await httpGet('/api/categories/tree');
+      final res = await httpGet('/api/categories/tree', timeout: const Duration(seconds: 12));
       if (res != null && res.statusCode == 200) {
-        return jsonDecode(res.body);
+        final list = jsonDecode(res.body) as List<dynamic>;
+        if (list.isNotEmpty) {
+          _saveToDiskCache('cached_categories_tree', res.body);
+        }
+        return list;
       }
     } catch (e) {
       debugPrint("Error fetching category tree: $e");
+    }
+    final cached = await _getFromDiskCache('cached_categories_tree');
+    if (cached != null) {
+      try {
+        return jsonDecode(cached) as List<dynamic>;
+      } catch (_) {}
     }
     return [];
   }
 
   static Future<Map<String, dynamic>> fetchPromotions() async {
     try {
-      final res = await httpGet('/api/promotions');
+      final res = await httpGet('/api/promotions', timeout: const Duration(seconds: 12));
       if (res != null && res.statusCode == 200) {
-        return jsonDecode(res.body);
+        final map = jsonDecode(res.body) as Map<String, dynamic>;
+        _saveToDiskCache('cached_promotions', res.body);
+        return map;
       }
     } catch (e) {
       debugPrint("Error fetching promotions: $e");
+    }
+    final cached = await _getFromDiskCache('cached_promotions');
+    if (cached != null) {
+      try {
+        return jsonDecode(cached) as Map<String, dynamic>;
+      } catch (_) {}
     }
     return {"interval_sec": 2, "promotions": []};
   }
@@ -495,11 +545,19 @@ class ApiService {
 
   static Future<List<dynamic>> getPackages() async {
     try {
-      final res = await httpGet('/api/packages');
+      final res = await httpGet('/api/packages', timeout: const Duration(seconds: 12));
       if (res != null && res.statusCode == 200) {
-        return jsonDecode(res.body) as List<dynamic>;
+        final list = jsonDecode(res.body) as List<dynamic>;
+        _saveToDiskCache('cached_packages', res.body);
+        return list;
       }
     } catch (_) {}
+    final cached = await _getFromDiskCache('cached_packages');
+    if (cached != null) {
+      try {
+        return jsonDecode(cached) as List<dynamic>;
+      } catch (_) {}
+    }
     return [];
   }
 
