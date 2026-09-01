@@ -1950,7 +1950,7 @@
             {% elif p.mrp and p.mrp > p.sell_price %}
               <span class="promo-tag">{{ "%.0f"|format(((p.mrp - p.sell_price) / p.mrp) * 100) }}% OFF</span>
             {% endif %}
-            <img src="{{ p.image_url.split(',')[0].strip() if p.image_url else '/static/images/logo.png' }}" alt="{{ p.name }}" class="prod-img" onerror="this.src='/static/images/logo.png'">
+            <img src="{{ p.image_url|first_image }}" alt="{{ p.name }}" class="prod-img" onerror="this.src='/static/images/logo.png'">
           </div>
 
           <div class="prod-name" title="{{ p.name }}">{{ p.name }}</div>
@@ -1965,10 +1965,10 @@
 
           <!-- Dual Action Buttons: Add to Cart & Buy Now -->
           <div class="card-actions-row" id="btnWrap-{{ p.id }}" onclick="event.stopPropagation()">
-            <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}', this)">
+            <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '', 0, '', '', '', '', this)">
               + Add
             </button>
-            <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
+            <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}')">
               Buy Now
             </button>
           </div>
@@ -2828,7 +2828,10 @@
       }
 
       const imgEl = document.getElementById('bannerProductImg');
-      const firstImg = item.image_url ? item.image_url.split(',')[0].trim() : '';
+      let firstImg = '';
+      if (item.image_url) {
+        firstImg = item.image_url.startsWith('data:image/') ? item.image_url : item.image_url.split(',')[0].trim();
+      }
       imgEl.src = firstImg || '/static/images/logo.png';
 
       // Update dots
@@ -3001,7 +3004,10 @@
 
       if (matches.length > 0) {
         dropdown.innerHTML = matches.map(p => {
-          const img = p.image_url ? p.image_url.split(',')[0].trim() : '/static/images/logo.png';
+          let img = '/static/images/logo.png';
+          if (p.image_url) {
+            img = p.image_url.startsWith('data:image/') ? p.image_url : p.image_url.split(',')[0].trim();
+          }
           return `
             <div class="search-result-item" onclick="handleSearchItemSelect(${p.id})">
               <img src="${img}" class="search-item-img" onerror="this.src='/static/images/logo.png'">
@@ -3211,7 +3217,11 @@
       document.getElementById('detailSkuTxt').textContent = `SKU: ${prod.sku || 'N/A'} • Unit: ${prod.unit || '1 Unit'}${prod.brand ? ' • Brand: ' + prod.brand : ''}`;
 
       // Images
-      detailImagesList = (prod.image_url || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
+      if (prod.image_url && prod.image_url.startsWith('data:image/')) {
+        detailImagesList = [prod.image_url];
+      } else {
+        detailImagesList = (prod.image_url || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
+      }
       if (detailImagesList.length === 0) {
         detailImagesList = ['/static/images/logo.png'];
       }
@@ -3310,16 +3320,14 @@
     function handleDetailAddCart() {
       if (!currentDetailProduct) return;
       const p = currentDetailProduct;
-      const firstImg = (p.image_url || '').split(',')[0].trim();
-      addProductCart(p.id, p.name, p.sell_price, firstImg, p.offer_type || '', p.offer_value || '', p.offer_title || '');
+      addProductCart(p.id);
       closeProductDetailModal();
     }
 
     function handleDetailBuyNow() {
       if (!currentDetailProduct) return;
       const p = currentDetailProduct;
-      const firstImg = (p.image_url || '').split(',')[0].trim();
-      buyProductNow(p.id, p.name, p.sell_price, firstImg, p.offer_type || '', p.offer_value || '', p.offer_title || '');
+      buyProductNow(p.id);
       closeProductDetailModal();
     }
 

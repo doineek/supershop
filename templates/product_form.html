@@ -278,8 +278,17 @@ function autoCalculateDoineekPrice() {
 // Existing Images Manager
 let existingImages = [];
 const rawImages = `{{ product.image_url if product and product.image_url else '' }}`;
+function parseImagesJS(raw) {
+  if (!raw || !raw.trim()) return [];
+  raw = raw.trim();
+  if (raw.startsWith('data:image/')) {
+    return [raw];
+  }
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
 if (rawImages.trim()) {
-  existingImages = rawImages.split(',').map(s => s.trim()).filter(Boolean);
+  existingImages = parseImagesJS(rawImages);
 }
 
 function renderExistingImages() {

@@ -58,6 +58,17 @@ def process_uploaded_image_file(file_path, max_dim=800, quality=75):
         return ""
 
 
+@app.template_filter('first_image')
+def first_image_filter(img_val):
+    if not img_val:
+        return "/static/images/logo.png"
+    img_val = str(img_val).strip()
+    if img_val.startswith("data:image/"):
+        return img_val
+    parts = [p.strip() for p in img_val.split(",") if p.strip()]
+    return parts[0] if parts else "/static/images/logo.png"
+
+
 @app.before_request
 def handle_cors_options():
     if request.method == "OPTIONS":
@@ -3913,14 +3924,17 @@ def api_products():
         d = dict(r)
         img = (d.get("image_url") or "").strip()
         if img:
-            parts = [p.strip() for p in img.split(",") if p.strip()]
-            norm_parts = []
-            for p in parts:
-                if p.startswith("/static/"):
-                    norm_parts.append(request.host_url.rstrip("/") + p)
-                else:
-                    norm_parts.append(p)
-            d["image_url"] = ", ".join(norm_parts)
+            if img.startswith("data:image/"):
+                d["image_url"] = img
+            else:
+                parts = [p.strip() for p in img.split(",") if p.strip()]
+                norm_parts = []
+                for p in parts:
+                    if p.startswith("/static/"):
+                        norm_parts.append(request.host_url.rstrip("/") + p)
+                    else:
+                        norm_parts.append(p)
+                d["image_url"] = ", ".join(norm_parts)
         result.append(d)
     return jsonify(result)
 
