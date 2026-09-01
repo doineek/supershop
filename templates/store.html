@@ -2702,6 +2702,23 @@
     let cart = JSON.parse(localStorage.getItem('supershop_cart_en') || '{}');
     let currentCustomer = JSON.parse(localStorage.getItem('supershop_logged_customer') || 'null');
 
+    // Safe Multi-Image Splitter & Getter
+    function splitImageUrlsJS(imgStr) {
+      if (!imgStr) return [];
+      imgStr = String(imgStr).trim();
+      if (!imgStr) return [];
+      if (imgStr.includes(' || ')) {
+        return imgStr.split(' || ').map(s => s.trim()).filter(Boolean);
+      }
+      const parts = imgStr.split(/,\s*(?=data:image\/|https?:\/\/|\/static\/|\/uploads\/)/i);
+      return parts.map(s => s.trim()).filter(Boolean);
+    }
+
+    function getFirstImageJS(imgStr) {
+      const list = splitImageUrlsJS(imgStr);
+      return list.length > 0 ? list[0] : '/static/images/logo.png';
+    }
+
     // BOGO / Buy X Get Y Calculation Logic
     function parseBogoQuantitiesJS(offerValue, offerTitle, name) {
       const banglaToEng = {'০':'0', '১':'1', '২':'2', '৩':'3', '৪':'4', '৫':'5', '৬':'6', '৭':'7', '৮':'8', '৯':'9'};
@@ -2828,11 +2845,7 @@
       }
 
       const imgEl = document.getElementById('bannerProductImg');
-      let firstImg = '';
-      if (item.image_url) {
-        firstImg = item.image_url.startsWith('data:image/') ? item.image_url : item.image_url.split(',')[0].trim();
-      }
-      imgEl.src = firstImg || '/static/images/logo.png';
+      imgEl.src = getFirstImageJS(item.image_url);
 
       // Update dots
       for (let i = 0; i < activePromotions.length; i++) {
@@ -3004,10 +3017,7 @@
 
       if (matches.length > 0) {
         dropdown.innerHTML = matches.map(p => {
-          let img = '/static/images/logo.png';
-          if (p.image_url) {
-            img = p.image_url.startsWith('data:image/') ? p.image_url : p.image_url.split(',')[0].trim();
-          }
+          const img = getFirstImageJS(p.image_url);
           return `
             <div class="search-result-item" onclick="handleSearchItemSelect(${p.id})">
               <img src="${img}" class="search-item-img" onerror="this.src='/static/images/logo.png'">
@@ -3217,11 +3227,7 @@
       document.getElementById('detailSkuTxt').textContent = `SKU: ${prod.sku || 'N/A'} • Unit: ${prod.unit || '1 Unit'}${prod.brand ? ' • Brand: ' + prod.brand : ''}`;
 
       // Images
-      if (prod.image_url && prod.image_url.startsWith('data:image/')) {
-        detailImagesList = [prod.image_url];
-      } else {
-        detailImagesList = (prod.image_url || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
-      }
+      detailImagesList = splitImageUrlsJS(prod.image_url);
       if (detailImagesList.length === 0) {
         detailImagesList = ['/static/images/logo.png'];
       }
