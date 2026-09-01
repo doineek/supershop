@@ -785,6 +785,8 @@ def _on_products_change(doc_snapshots, changes, read_time):
                             is_offer = 1
 
                     if existing:
+                        if not image_url and existing["image_url"]:
+                            image_url = existing["image_url"]
                         conn.execute("""
                             UPDATE products SET
                                 sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
@@ -1693,6 +1695,8 @@ def pull_all_from_cloud(blocking=False):
                                 is_offer = 1
 
                         if existing:
+                            if not image_url and existing["image_url"]:
+                                image_url = existing["image_url"]
                             conn.execute("""
                                 UPDATE products SET
                                     sku=?, name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,

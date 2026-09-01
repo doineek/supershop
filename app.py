@@ -38,6 +38,26 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
+def process_uploaded_image_file(file_path, max_dim=800, quality=75):
+    """
+    Optimizes an uploaded image file and returns a persistent Base64 Data URI.
+    Ensures images survive ephemeral server restarts (Render) and sync seamlessly across all terminals & devices.
+    """
+    try:
+        from PIL import Image
+        import io, base64
+        with Image.open(file_path) as im:
+            im = im.convert("RGB")
+            im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            im.save(out, format="JPEG", quality=quality, optimize=True)
+            encoded = base64.b64encode(out.getvalue()).decode("utf-8")
+            return f"data:image/jpeg;base64,{encoded}"
+    except Exception as e:
+        print(f"[image_processing] Error optimizing image {file_path}: {e}")
+        return ""
+
+
 @app.before_request
 def handle_cors_options():
     if request.method == "OPTIONS":
@@ -554,7 +574,11 @@ def new_product():
                 filename = secure_filename(f"{sku}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
-                uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
+                data_uri = process_uploaded_image_file(file_path)
+                if data_uri:
+                    uploaded_urls.append(data_uri)
+                else:
+                    uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
 
         if uploaded_urls:
             if image_url:
@@ -648,14 +672,18 @@ def edit_product(product_id):
                 filename = secure_filename(f"{sku_clean}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
-                uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
+                data_uri = process_uploaded_image_file(file_path)
+                if data_uri:
+                    uploaded_urls.append(data_uri)
+                else:
+                    uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
 
         if uploaded_urls:
             if image_url:
                 image_url = ", ".join(uploaded_urls) + ", " + image_url
             else:
                 image_url = ", ".join(uploaded_urls)
-        elif not image_url:
+        elif not image_url and product:
             image_url = product["image_url"]
 
         is_trending = 1 if request.form.get("is_trending") == "on" else 0
@@ -946,7 +974,11 @@ def restock_from_returned(return_id):
                 filename = secure_filename(f"{sku_clean}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
-                uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
+                data_uri = process_uploaded_image_file(file_path)
+                if data_uri:
+                    uploaded_urls.append(data_uri)
+                else:
+                    uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
         if uploaded_urls:
             image_url = ", ".join(uploaded_urls) + (", " + image_url if image_url else "")
         elif not image_url and product:
@@ -4610,8 +4642,12 @@ def packages_page():
             fn = secure_filename(file.filename)
             file_path = os.path.join(upload_dir, f"{int(time.time())}_{fn}")
             file.save(file_path)
-            rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
-            image_url = f"/{rel_path}"
+            data_uri = process_uploaded_image_file(file_path)
+            if data_uri:
+                image_url = data_uri
+            else:
+                rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
+                image_url = f"/{rel_path}"
 
         if name and package_price > 0 and prod_ids:
             cur = conn.cursor()
@@ -4679,8 +4715,14 @@ def edit_package(package_id):
         fn = secure_filename(file.filename)
         file_path = os.path.join(upload_dir, f"{int(time.time())}_{fn}")
         file.save(file_path)
-        rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
-        image_url = f"/{rel_path}"
+        data_uri = process_uploaded_image_file(file_path)
+        if data_uri:
+            image_url = data_uri
+        else:
+            rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
+            image_url = f"/{rel_path}"
+    elif not image_url and pkg:
+        image_url = pkg["image_url"]
 
     if name and package_price > 0 and prod_ids:
         cur = conn.cursor()
