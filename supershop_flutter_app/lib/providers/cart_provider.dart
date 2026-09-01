@@ -21,24 +21,32 @@ class CartItem {
         ot == 'bogo' ||
         title.contains('buy') ||
         val.contains('buy') ||
-        pName.contains('buy 2 get 1') ||
-        pName.contains('buy 1 get 1') ||
+        title.contains('get') ||
+        val.contains('get') ||
+        pName.contains('buy') ||
         (product.isOffer && val.contains(','));
   }
 
-  int get paidQuantity {
-    if (!isBuyOffer) return quantity;
-
+  Map<String, int> get bogoStats {
     String val = product.offerValue.trim();
     String title = product.offerTitle.trim();
     String name = product.name.trim();
+
+    // Convert Bangla digits if present
+    const banglaToEng = {'০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'};
+    String normalizeDigits(String s) {
+      String out = s;
+      banglaToEng.forEach((b, e) => out = out.replaceAll(b, e));
+      return out;
+    }
 
     int buyQty = 1;
     int freeQty = 1;
     bool found = false;
 
-    RegExp reg = RegExp(r'buy\s*(\d+)\s*get\s*(\d+)', caseSensitive: false);
-    for (String str in [val, title, name]) {
+    RegExp reg = RegExp(r'buy\s*(\d+)\s*[\w\s,]*get\s*(\d+)', caseSensitive: false);
+    for (String raw in [val, title, name]) {
+      String str = normalizeDigits(raw);
       if (str.isNotEmpty) {
         Match? match = reg.firstMatch(str);
         if (match != null) {
@@ -55,7 +63,7 @@ class CartItem {
     }
 
     if (!found && val.contains(',')) {
-      var parts = val.split(',').map((e) => int.tryParse(e.trim()) ?? 0).toList();
+      var parts = normalizeDigits(val).split(',').map((e) => int.tryParse(e.trim()) ?? 0).toList();
       if (parts.length >= 2 && parts[0] > 0 && parts[1] > 0) {
         buyQty = parts[0];
         freeQty = parts[1];
@@ -63,13 +71,26 @@ class CartItem {
       }
     }
 
-    if (!found && RegExp(r'^\d+$').hasMatch(val)) {
-      int? d = int.tryParse(val);
+    if (!found && RegExp(r'^\d+$').hasMatch(normalizeDigits(val))) {
+      int? d = int.tryParse(normalizeDigits(val));
       if (d != null && d > 0) {
         buyQty = d;
         freeQty = 1;
+        found = true;
       }
     }
+
+    return {'buyQty': buyQty, 'freeQty': freeQty};
+  }
+
+  int get buyQuantity => bogoStats['buyQty'] ?? 1;
+  int get freePerSetQuantity => bogoStats['freeQty'] ?? 1;
+
+  int get paidQuantity {
+    if (!isBuyOffer) return quantity;
+
+    int buyQty = buyQuantity;
+    int freeQty = freePerSetQuantity;
 
     int totalSet = buyQty + freeQty;
     int sets = quantity ~/ totalSet;

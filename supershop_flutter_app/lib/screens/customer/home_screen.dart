@@ -533,9 +533,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               if (_promoList.isNotEmpty) {
                                 final item = _promoList[index];
                                 String name = item["name"] ?? "Special Offer";
-                                String offerTitle = item["offer_title"] != null && item["offer_title"].toString().isNotEmpty
-                                    ? item["offer_title"].toString()
-                                    : "🔥 SPECIAL OFFER";
+                                String offerTitle = item["offer_title"] != null && item["offer_title"].toString().trim().isNotEmpty
+                                    ? item["offer_title"].toString().trim()
+                                    : (item["offer_type"] == "bogo"
+                                        ? (item["offer_value"] != null && item["offer_value"].toString().trim().isNotEmpty
+                                            ? item["offer_value"].toString().trim()
+                                            : "BUY 1 GET 1 FREE")
+                                        : "🔥 SPECIAL OFFER");
                                 String imgUrl = item["image_url"] != null ? item["image_url"].toString().split(',').first.trim() : "";
                                 if (imgUrl.isNotEmpty && !imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
                                   imgUrl = imgUrl.startsWith('/') ? "${ApiService.baseUrl}$imgUrl" : "${ApiService.baseUrl}/$imgUrl";
@@ -978,7 +982,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                             ),
                                                                     ),
                                                                   ),
-                                                                  if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)
+                                                                  if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)
                                                                     Positioned(
                                                                       top: 6,
                                                                       left: 6,
@@ -986,8 +990,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                                                                         decoration: BoxDecoration(
                                                                           gradient: LinearGradient(
-                                                                            colors: prod.offerType == 'buy_x_get_y'
-                                                                                ? [const Color(0xFF7E22CE), const Color(0xFFA855F7)]
+                                                                            colors: (prod.offerType == 'buy_x_get_y' || prod.offerType == 'bogo' || prod.offerTitle.toLowerCase().contains('buy'))
+                                                                                ? [const Color(0xFFEA580C), const Color(0xFFF97316)]
                                                                                 : [const Color(0xFFE11D48), const Color(0xFFF43F5E)],
                                                                           ),
                                                                           borderRadius: BorderRadius.circular(6),
@@ -996,9 +1000,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                         child: Text(
                                                                           prod.offerTitle.isNotEmpty
                                                                               ? prod.offerTitle
-                                                                              : (prod.offerType == 'percentage'
-                                                                                  ? '${prod.offerValue}% OFF'
-                                                                                  : 'TK ${savedAmount.toStringAsFixed(0)} ${loc.translate('save')}'),
+                                                                              : (prod.offerType == 'bogo'
+                                                                                  ? (prod.offerValue.isNotEmpty ? prod.offerValue : 'Buy 1 Get 1 Free')
+                                                                                  : (prod.offerType == 'percentage'
+                                                                                      ? '% OFF'
+                                                                                      : 'TK  Save')),
                                                                           style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                                                                         ),
                                                                       ),
@@ -1697,31 +1703,33 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                                 ),
                                         ),
                                       ),
-                                      if (prod.isOffer || prod.offerTitle.isNotEmpty || savedAmount > 0)
-                                        Positioned(
-                                          top: 6,
-                                          left: 6,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                colors: prod.offerType == 'buy_x_get_y'
-                                                    ? [const Color(0xFF7E22CE), const Color(0xFFA855F7)]
-                                                    : [const Color(0xFFE11D48), const Color(0xFFF43F5E)],
-                                              ),
-                                              borderRadius: BorderRadius.circular(6),
-                                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 3)],
-                                            ),
-                                            child: Text(
-                                              prod.offerTitle.isNotEmpty
-                                                  ? prod.offerTitle
-                                                  : (prod.offerType == 'percentage'
-                                                      ? '${prod.offerValue}% OFF'
-                                                      : 'TK ${savedAmount.toStringAsFixed(0)} Save'),
-                                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                            ),
-                                          ),
-                                        ),
+                                                if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)
+                                Positioned(
+                                  top: 6,
+                                  left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: (prod.offerType == 'buy_x_get_y' || prod.offerType == 'bogo' || prod.offerTitle.toLowerCase().contains('buy'))
+                                            ? [const Color(0xFFEA580C), const Color(0xFFF97316)]
+                                            : [const Color(0xFFE11D48), const Color(0xFFF43F5E)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 3)],
+                                    ),
+                                    child: Text(
+                                      prod.offerTitle.isNotEmpty
+                                          ? prod.offerTitle
+                                          : (prod.offerType == 'bogo'
+                                              ? (prod.offerValue.isNotEmpty ? prod.offerValue : 'Buy 1 Get 1 Free')
+                                              : (prod.offerType == 'percentage'
+                                                  ? '% OFF'
+                                                  : 'TK  Save')),
+                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
                                     ],
                                   ),
                                 ),

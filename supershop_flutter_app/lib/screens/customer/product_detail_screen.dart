@@ -292,7 +292,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 16),
 
             // Offer Title Tag
-            if (product.offerTitle.isNotEmpty)
+            if (product.offerTitle.isNotEmpty || product.offerType == 'bogo' || product.isOffer)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -300,7 +300,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  product.offerTitle,
+                  product.offerTitle.isNotEmpty
+                      ? product.offerTitle
+                      : (product.offerType == 'bogo'
+                          ? (product.offerValue.isNotEmpty ? product.offerValue : 'Buy 1 Get 1 Free')
+                          : 'Special Offer'),
                   style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                 ),
               ),

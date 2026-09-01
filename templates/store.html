@@ -2699,8 +2699,6 @@
     };
     function switchView(viewName, updateHistory) {
       window.switchView(viewName, updateHistory);
-    }
-
     // Global Data passed from Backend
     const allProducts = {{ products|tojson }};
     const allDeliveryAreas = {{ delivery_areas|tojson }};
@@ -2713,11 +2711,16 @@
 
     // BOGO / Buy X Get Y Calculation Logic
     function parseBogoQuantitiesJS(offerValue, offerTitle, name) {
-      const v = (offerValue || "").trim();
-      const t = (offerTitle || "").trim();
-      const n = (name || "").trim();
+      const banglaToEng = {'০':'0', '১':'1', '২':'2', '৩':'3', '৪':'4', '৫':'5', '৬':'6', '৭':'7', '৮':'8', '৯':'9'};
+      function normDigits(str) {
+        return (str || "").replace(/[০-৯]/g, d => banglaToEng[d] || d).trim();
+      }
 
-      const reg = /buy\s*(\d+)\s*get\s*(\d+)/i;
+      const v = normDigits(offerValue);
+      const t = normDigits(offerTitle);
+      const n = normDigits(name);
+
+      const reg = /buy\s*(\d+)\s*[\w\s,]*get\s*(\d+)/i;
       for (const str of [v, t, n]) {
         if (str) {
           const match = str.match(reg);
@@ -2748,7 +2751,7 @@
       const offerType = (item.offer_type || "").toLowerCase();
       const offerTitle = (item.offer_title || "").toLowerCase();
       const offerValue = (item.offer_value || "").toLowerCase();
-      const isOffer = offerType === "buy_x_get_y" || offerType === "bogo" || offerType === "buy_x_get_x" || offerTitle.includes("buy") || offerValue.includes("buy") || (item.name || "").toLowerCase().includes("buy");
+      const isOffer = offerType === "buy_x_get_y" || offerType === "bogo" || offerType === "buy_x_get_x" || offerTitle.includes("buy") || offerValue.includes("buy") || offerTitle.includes("get") || offerValue.includes("get") || (item.name || "").toLowerCase().includes("buy");
 
       if (!isOffer) {
         return { isOffer: false, buyQty: 0, freeQty: 0, paidQty: item.quantity, freeQtyTotal: 0 };
@@ -2800,18 +2803,25 @@
       }
     }
 
-    function renderPromoSlide(idx, direction = '') {
+    function renderPromoSlide(idx, direction = null) {
       if (!activePromotions || activePromotions.length === 0) return;
-      const item = activePromotions[idx];
-      const slideBox = document.getElementById('bannerSlideBox');
+      promoIdx = (idx + activePromotions.length) % activePromotions.length;
+      const item = activePromotions[promoIdx];
 
-      if (direction && slideBox) {
+      // Update dot active indicator
+      document.querySelectorAll('.indicator-dot').forEach((d, i) => {
+        d.classList.toggle('active', i === promoIdx);
+      });
+
+      const slideBox = document.getElementById('bannerSlideBox');
+      if (slideBox && direction) {
         slideBox.classList.remove('slide-anim-left', 'slide-anim-right');
         void slideBox.offsetWidth; // Trigger reflow for CSS animation
         slideBox.classList.add(direction === 'left' ? 'slide-anim-left' : 'slide-anim-right');
       }
 
-      document.getElementById('bannerBadgeTxt').textContent = item.offer_title ? item.offer_title.toUpperCase() : '🔥 SPECIAL OFFER';
+      const offerBadge = item.offer_title ? item.offer_title.toUpperCase() : (item.offer_type === 'bogo' ? (item.offer_value ? item.offer_value.toUpperCase() : 'BUY 1 GET 1 FREE') : '🔥 SPECIAL OFFER');
+      document.getElementById('bannerBadgeTxt').textContent = offerBadge;
       document.getElementById('bannerTitleTxt').textContent = item.name || 'Special Offer Item';
       document.getElementById('bannerSubtitleTxt').textContent = item.category_name ? `Category: ${item.category_name}` : 'Grab this limited-time discount now!';
       document.getElementById('bannerPriceTxt').textContent = `TK ${(item.sell_price || 0).toFixed(2)}`;
@@ -3885,15 +3895,24 @@
     }
 
     function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
+      const prod = allProducts.find(p => p.id == id || p.id == parseInt(id));
+      if (prod) {
+        if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
+        if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
+        if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
+      }
       if (!cart[id]) {
         cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
       } else {
         cart[id].quantity += 1;
+        if (offer_type) cart[id].offer_type = offer_type;
+        if (offer_value) cart[id].offer_value = offer_value;
+        if (offer_title) cart[id].offer_title = offer_title;
       }
       
       const stats = getBuyXGetYStats(cart[id]);
       if (stats.isOffer && cart[id].quantity === stats.buyQty) {
-        alert(`🎁 BUY ${stats.buyQty} GET ${stats.freeQty} FREE OFFER ACTIVE!\n\nYou added ${stats.buyQty} items of "${cart[id].name}". Add 1 more to your bag to get it 100% FREE!`);
+        alert(`🎁 BUY ${stats.buyQty} GET ${stats.freeQty} FREE OFFER ACTIVE!\n\nYou added ${stats.buyQty} items of "${cart[id].name}". Add ${stats.freeQty} more to your bag to get it 100% FREE!`);
       }
 
       saveCart();
@@ -3901,8 +3920,18 @@
     }
 
     function buyProductNow(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
+      const prod = allProducts.find(p => p.id == id || p.id == parseInt(id));
+      if (prod) {
+        if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
+        if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
+        if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
+      }
       if (!cart[id]) {
         cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
+      } else {
+        if (offer_type) cart[id].offer_type = offer_type;
+        if (offer_value) cart[id].offer_value = offer_value;
+        if (offer_title) cart[id].offer_title = offer_title;
       }
       saveCart();
       openCheckoutModal();

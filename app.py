@@ -2825,9 +2825,15 @@ def save_product_offer():
     is_offer = 1 if request.form.get("is_offer") == "1" else 0
     is_promotion = 1 if request.form.get("is_promotion") == "1" else 0
 
-    if offer_type == "bogo" and not offer_title:
-        offer_title = f"Buy {offer_value or '1'} Get 1 Free"
+    if offer_type == "bogo":
         is_offer = 1
+        if not offer_value and offer_title:
+            offer_value = offer_title
+        elif not offer_title and offer_value:
+            offer_title = offer_value
+        elif not offer_title and not offer_value:
+            offer_title = "Buy 1 Get 1 Free"
+            offer_value = "Buy 1 Get 1 Free"
 
     if product_id:
         conn = get_connection()

@@ -523,7 +523,9 @@ class _CartScreenState extends State<CartScreen> {
                                   Text(
                                     item.freeQuantity > 0
                                         ? "🎁 BOGO Offer: ${item.freeQuantity} Free Item(s) Included!"
-                                        : "💡 Buy 2 Get 1 FREE Offer Available",
+                                        : (item.product.offerTitle.isNotEmpty
+                                            ? "💡 ${item.product.offerTitle} Available"
+                                            : "💡 Buy ${item.buyQuantity} Get ${item.freePerSetQuantity} FREE Offer Available"),
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,

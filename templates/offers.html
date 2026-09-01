@@ -243,7 +243,7 @@ function updateVoucherScopeOptions() {
 
       <div>
         <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px;">Offer Type</label>
-        <select name="offer_type" id="offerTypeSelect" onchange="toggleOfferTypeInputs()" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+        <select name="offer_type" id="offerTypeSelect" onchange="toggleOfferTypeInputs(true)" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
           <option value="pct">Percentage Off (%)</option>
           <option value="flat">Flat Discount (TK Amount)</option>
           <option value="bogo">Buy X Get Y Free (Selectable BOGO)</option>
@@ -398,20 +398,46 @@ const categoriesData = {{ categories|tojson }};
 const subCategoriesData = {{ sub_categories|tojson }};
 const subSubCategoriesData = {{ sub_sub_categories|tojson }};
 
-function toggleOfferTypeInputs() {
+function parseAndSetBogoSelects(valStr, titleStr) {
+  const combined = (valStr || "") + " " + (titleStr || "");
+  if (combined.toLowerCase().includes('buy') && combined.toLowerCase().includes('get')) {
+    const match = combined.match(/buy\s*(\d+)\s*[\w\s,]*get\s*(\d+)/i);
+    if (match) {
+      document.getElementById('buyXSelect').value = match[1];
+      document.getElementById('getYSelect').value = match[2];
+      return true;
+    }
+  }
+  if (valStr && valStr.includes(',')) {
+    const parts = valStr.split(',').map(p => p.trim());
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      document.getElementById('buyXSelect').value = parts[0];
+      document.getElementById('getYSelect').value = parts[1];
+      return true;
+    }
+  }
+  return false;
+}
+
+function toggleOfferTypeInputs(isUserAction = false) {
   const type = document.getElementById('offerTypeSelect').value;
   const bogoBox = document.getElementById('bogoSelectBox');
   if (type === 'bogo') {
     bogoBox.style.display = 'block';
-    updateBogoOfferValue();
+    const val = document.getElementById('offerValueInput').value;
+    const title = document.getElementById('offerTitleInput').value;
+    const hadValues = parseAndSetBogoSelects(val, title);
+    if (!hadValues || isUserAction) {
+      updateBogoOfferValue();
+    }
   } else {
     bogoBox.style.display = 'none';
   }
 }
 
 function updateBogoOfferValue() {
-  const x = document.getElementById('buyXSelect').value;
-  const y = document.getElementById('getYSelect').value;
+  const x = document.getElementById('buyXSelect').value || "1";
+  const y = document.getElementById('getYSelect').value || "1";
   const bogoStr = `Buy ${x} Get ${y} Free`;
   document.getElementById('offerValueInput').value = bogoStr;
   document.getElementById('offerTitleInput').value = bogoStr;
@@ -467,9 +493,13 @@ function selectProduct(element) {
   if (val) document.getElementById('offerValueInput').value = val;
   if (base) document.getElementById('offerBaseSelect').value = base;
 
-  toggleOfferTypeInputs();
+  if (type === 'bogo') {
+    parseAndSetBogoSelects(val, title);
+  }
+
+  toggleOfferTypeInputs(false);
   
-  document.getElementById('isOfferCheck').checked = (isOffer == '1');
+  document.getElementById('isOfferCheck').checked = (isOffer == '1' || type === 'bogo');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
   document.getElementById('formHeading').innerText = 'Update Offer for #' + sku + ' - ' + name;
@@ -494,18 +524,13 @@ function editOfferFromRow(row) {
   if (val) document.getElementById('offerValueInput').value = val;
   if (base) document.getElementById('offerBaseSelect').value = base;
 
-  toggleOfferTypeInputs();
-
-  // Try parsing Buy X Get Y if val is like Buy 2 Get 1 Free
-  if (val && val.toLowerCase().includes('buy') && val.toLowerCase().includes('get')) {
-    const match = val.match(/buy\s+(\d+)\s+get\s+(\d+)/i);
-    if (match) {
-      document.getElementById('buyXSelect').value = match[1];
-      document.getElementById('getYSelect').value = match[2];
-    }
+  if (type === 'bogo') {
+    parseAndSetBogoSelects(val, title);
   }
 
-  document.getElementById('isOfferCheck').checked = (isOffer == '1');
+  toggleOfferTypeInputs(false);
+
+  document.getElementById('isOfferCheck').checked = (isOffer == '1' || type === 'bogo');
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
   document.getElementById('formHeading').innerText = 'Update Offer for #' + sku + ' - ' + name;
