@@ -2699,6 +2699,8 @@
     };
     function switchView(viewName, updateHistory) {
       window.switchView(viewName, updateHistory);
+    }
+
     // Global Data passed from Backend
     const allProducts = {{ products|tojson }};
     const allDeliveryAreas = {{ delivery_areas|tojson }};
