@@ -54,7 +54,13 @@ class Product {
 
   List<String> get imageList {
     if (imageUrl.isEmpty) return [];
-    List<String> rawList = imageUrl.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    String raw = imageUrl.trim();
+    if (raw.isEmpty) return [];
+    if (raw.contains(' || ')) {
+      return raw.split(' || ').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+    RegExp reg = RegExp(r',\s*(?=data:image\/|https?:\/\/|\/static\/|\/uploads\/)', caseSensitive: false);
+    List<String> rawList = raw.split(reg).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     List<String> result = [];
     for (var img in rawList) {
       if (img.startsWith('/')) {

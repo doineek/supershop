@@ -11,6 +11,7 @@ import '../../providers/locale_provider.dart';
 import '../../services/api_service.dart';
 
 import 'cart_screen.dart';
+import '../../widgets/app_image_loader.dart';
 import '../../widgets/location_selector_dialog.dart';
 import 'my_orders_screen.dart';
 import 'product_detail_screen.dart';
@@ -540,8 +541,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             ? item["offer_value"].toString().trim()
                                             : "BUY 1 GET 1 FREE")
                                         : "🔥 SPECIAL OFFER");
-                                String imgUrl = item["image_url"] != null ? item["image_url"].toString().split(',').first.trim() : "";
-                                if (imgUrl.isNotEmpty && !imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
+                                String imgUrl = (item["image_url"] ?? "").toString().trim();
+                                if (imgUrl.isNotEmpty && !imgUrl.startsWith('data:image/') && !imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
                                   imgUrl = imgUrl.startsWith('/') ? "${ApiService.baseUrl}$imgUrl" : "${ApiService.baseUrl}/$imgUrl";
                                 }
 
@@ -556,9 +557,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         context,
                                         MaterialPageRoute(builder: (_) => ProductDetailScreen(product: prod)),
                                       );
-                                    } catch (e) {
-                                      debugPrint("Error opening promotion product: $e");
-                                    }
+                                    } catch (_) {}
                                   },
                                   child: Container(
                                     margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -585,17 +584,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             padding: const EdgeInsets.all(6),
                                             child: ClipRRect(
                                               borderRadius: BorderRadius.circular(8),
-                                              child: imgUrl.isNotEmpty
-                                                  ? Image.network(
-                                                      imgUrl,
-                                                      fit: BoxFit.contain,
-                                                      errorBuilder: (_, __, ___) => Center(
-                                                        child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                                      ),
-                                                    )
-                                                  : Center(
-                                                      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                                    ),
+                                              child: AppImageLoader(
+                                                imageUrl: imgUrl,
+                                                fit: BoxFit.contain,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -967,19 +959,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                   Center(
                                                                     child: ClipRRect(
                                                                       borderRadius: BorderRadius.circular(10),
-                                                                      child: prod.imageUrl.isNotEmpty
-                                                                          ? Image.network(
-                                                                              prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
-                                                                              fit: BoxFit.contain,
-                                                                              errorBuilder: (_, __, ___) => Padding(
-                                                                                padding: const EdgeInsets.all(8.0),
-                                                                                child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                                                              ),
-                                                                            )
-                                                                          : Padding(
-                                                                              padding: const EdgeInsets.all(8.0),
-                                                                              child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                                                            ),
+                                                                      child: AppImageLoader(
+                                                                        imageUrl: prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
+                                                                        fit: BoxFit.contain,
+                                                                      ),
                                                                     ),
                                                                   ),
                                                                   if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)
@@ -1290,15 +1273,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               dense: true,
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: prod.imageUrl.isNotEmpty
-                    ? Image.network(
-                        prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
-                        width: 36,
-                        height: 36,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', width: 36, height: 36, fit: BoxFit.contain),
-                      )
-                    : Image.asset('assets/images/logo.png', width: 36, height: 36, fit: BoxFit.contain),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: AppImageLoader(
+                    imageUrl: prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
+                    width: 36,
+                    height: 36,
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
               title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               subtitle: Text("TK ${prod.effectivePrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -1688,19 +1672,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                       Center(
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(10),
-                                          child: prod.imageUrl.isNotEmpty
-                                              ? Image.network(
-                                                  prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (_, __, ___) => Padding(
-                                                    padding: const EdgeInsets.all(8.0),
-                                                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                                  ),
-                                                )
-                                              : Padding(
-                                                  padding: const EdgeInsets.all(8.0),
-                                                  child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                                ),
+                                          child: AppImageLoader(
+                                            imageUrl: prod.imageList.isNotEmpty ? prod.imageList.first : prod.imageUrl,
+                                            fit: BoxFit.contain,
+                                          ),
                                         ),
                                       ),
                                                 if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)

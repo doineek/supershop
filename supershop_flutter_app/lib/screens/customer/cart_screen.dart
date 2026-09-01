@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
+import '../../widgets/app_image_loader.dart';
 import '../../widgets/location_selector_dialog.dart';
 import 'home_screen.dart';
 import 'my_orders_screen.dart';
@@ -489,27 +490,16 @@ class _CartScreenState extends State<CartScreen> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: imgUrl.isNotEmpty
-                                ? Image.network(
-                                    imgUrl.split(',').first.trim(),
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      width: 56,
-                                      height: 56,
-                                      padding: const EdgeInsets.all(4),
-                                      color: Colors.grey.shade100,
-                                      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                    ),
-                                  )
-                                : Container(
-                                    width: 56,
-                                    height: 56,
-                                    padding: const EdgeInsets.all(4),
-                                    color: Colors.grey.shade100,
-                                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                                  ),
+                            child: SizedBox(
+                              width: 56,
+                              height: 56,
+                              child: AppImageLoader(
+                                imageUrl: imgUrl,
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(

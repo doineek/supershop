@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
+import '../../widgets/app_image_loader.dart';
 import 'cart_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -67,10 +68,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   minScale: 0.8,
                   maxScale: 4.0,
                   child: Center(
-                    child: Image.network(
-                      images[index],
+                    child: AppImageLoader(
+                      imageUrl: images[index],
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                     ),
                   ),
                 );
@@ -179,10 +179,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 child: Stack(
                                   children: [
                                     Center(
-                                      child: Image.network(
-                                        images[index],
+                                      child: AppImageLoader(
+                                        imageUrl: images[index],
                                         fit: BoxFit.contain,
-                                        errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                                       ),
                                     ),
                                     // Click to Zoom Hint Icon
