@@ -20,9 +20,17 @@
     <img src="{{ url_for('static', filename='images/logo.png') }}" alt="{{ shop.shop_name }}" class="brand-logo">
     <span class="brand-name">{{ shop.shop_name }}</span>
   </div>
-  <div class="who">
-    <span>{{ session.username }} · {{ session.role }}</span>
-    <a href="{{ url_for('logout') }}" class="logout">Log out</a>
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('store_front') }}" target="_blank" style="background:#16a34a; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 4px rgba(0,0,0,0.2); transition:background 0.2s;" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+      🛍️ <span>Customer Store</span>
+    </a>
+    <a href="{{ url_for('static', filename='apk/supershop_latest.apk') }}" download style="background:#2563eb; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 4px rgba(0,0,0,0.2); transition:background 0.2s;" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+      📲 <span>Download APK</span>
+    </a>
+    <div class="who" style="margin-left:6px;">
+      <span>{{ session.username }} · {{ session.role }}</span>
+      <a href="{{ url_for('logout') }}" class="logout">Log out</a>
+    </div>
   </div>
 </header>
 {% endif %}
@@ -30,7 +38,13 @@
 <div class="{% if session.user_id %}app-shell{% else %}unauth-shell{% endif %}">
   {% if session.user_id %}
   <nav class="sidebar">
-    <a href="{{ url_for('dashboard') }}" class="sidebar-item {{ 'active' if request.path == '/' }}">
+    <a href="{{ url_for('store_front') }}" target="_blank" class="sidebar-item" style="background:#f0fdf4; color:#15803d; font-weight:700; border:1px solid #bbf7d0; margin-bottom:4px; border-radius:8px;">
+      <span class="sidebar-icon">🛍️</span><span>Customer Store</span>
+    </a>
+    <a href="{{ url_for('static', filename='apk/supershop_latest.apk') }}" download class="sidebar-item" style="background:#eff6ff; color:#1d4ed8; font-weight:700; border:1px solid #bfdbfe; margin-bottom:10px; border-radius:8px;">
+      <span class="sidebar-icon">📲</span><span>Download APK</span>
+    </a>
+    <a href="{{ url_for('dashboard') }}" class="sidebar-item {{ 'active' if request.path == '/' or request.path == '/dashboard' }}">
       <span class="sidebar-icon">📊</span><span>Dashboard</span>
     </a>
     <a href="{{ url_for('pos') }}" class="sidebar-item {{ 'active' if request.path == '/pos' }}">
