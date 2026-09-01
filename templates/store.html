@@ -1814,15 +1814,11 @@
         <button class="desktop-tab-btn" id="deskTabProfile" onclick="switchView('profile')">👤 Profile</button>
       </div>
 
-      <!-- Top Cart & APK Download Icon for Mobile & Desktop -->
+      <!-- Top APK Download Icon for Mobile & Desktop -->
       <div style="display:flex; align-items:center; gap:8px;">
         <a href="/download-apk" class="apk-download-top-btn" title="Download Android App APK">
           App APK
         </a>
-        <button onclick="openCartDrawer()" style="background:rgba(255,255,255,0.15); border:none; color:#fff; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; font-size:1.15rem;">
-          🛒
-          <span class="tab-badge" id="topCartBadge">0</span>
-        </button>
       </div>
     </div>
 
@@ -4012,9 +4008,10 @@
       });
       const grandTotal = subtotal > 0 ? (subtotal + DEFAULT_DELIVERY_CHARGE) : 0;
 
-      document.getElementById('topCartBadge').textContent = totalCount;
-      document.getElementById('bottomCartBadge').textContent = totalCount;
-      document.getElementById('deskCartCount').textContent = totalCount;
+      const btmBadge = document.getElementById('bottomCartBadge');
+      if (btmBadge) btmBadge.textContent = totalCount;
+      const deskCount = document.getElementById('deskCartCount');
+      if (deskCount) deskCount.textContent = totalCount;
       document.getElementById('drawerCountText').textContent = `(${totalCount} items)`;
       document.getElementById('cartViewCountText').textContent = `(${totalCount} items)`;
 
