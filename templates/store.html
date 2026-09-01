@@ -1969,14 +1969,9 @@
 
           <!-- Dual Action Buttons: Add to Cart & Buy Now -->
           <div class="card-actions-row" id="btnWrap-{{ p.id }}" onclick="event.stopPropagation()">
-            <button class="btn-add" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
+            <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}', this)">
               + Add
             </button>
-            <div class="stepper-box" id="stepperBox-{{ p.id }}">
-              <button class="step-btn" onclick="modifyQty('{{ p.id }}', -1)">-</button>
-              <span class="step-qty" id="stepQty-{{ p.id }}">1</span>
-              <button class="step-btn" onclick="modifyQty('{{ p.id }}', 1)">+</button>
-            </div>
             <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '{{ p.name|e }}', {{ p.sell_price }}, '{{ p.image_url.split(',')[0].strip() if p.image_url else '' }}', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}')">
               Buy Now
             </button>
@@ -3891,12 +3886,44 @@
     }
 
     // Cart and Order Logic
+    let toastTimeout = null;
+    function showCartToast(message, count) {
+      let toast = document.getElementById('cartToastPopup');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'cartToastPopup';
+        toast.style.cssText = 'position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(100px); background:#0f172a; color:#ffffff; padding:12px 20px; border-radius:30px; box-shadow:0 10px 25px rgba(0,0,0,0.3); display:flex; align-items:center; gap:12px; z-index:99999; opacity:0; pointer-events:none; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-size:14px; font-weight:600;';
+        toast.innerHTML = `
+          <span style="font-size:18px;">🛒</span>
+          <span id="cartToastMsg">Added to cart!</span>
+          <button onclick="openCartDrawer()" style="background:#16a34a; color:#fff; border:none; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; margin-left:6px;">View Bag (${count || 1}) →</button>
+        `;
+        document.body.appendChild(toast);
+      }
+      document.getElementById('cartToastMsg').textContent = message || 'Added to cart!';
+      const viewBtn = toast.querySelector('button');
+      if (viewBtn && count) {
+        viewBtn.textContent = `View Bag (${count}) →`;
+      }
+      
+      toast.style.opacity = '1';
+      toast.style.pointerEvents = 'auto';
+      toast.style.transform = 'translateX(-50%) translateY(0)';
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.pointerEvents = 'none';
+        toast.style.transform = 'translateX(-50%) translateY(100px)';
+      }, 2500);
+    }
+
     function saveCart() {
       localStorage.setItem('supershop_cart_en', JSON.stringify(cart));
       refreshCartDisplay();
     }
 
-    function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
+    function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '', btnEl = null) {
       const prod = allProducts.find(p => p.id == id || p.id == parseInt(id));
       if (prod) {
         if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
@@ -3911,14 +3938,21 @@
         if (offer_value) cart[id].offer_value = offer_value;
         if (offer_title) cart[id].offer_title = offer_title;
       }
-      
-      const stats = getBuyXGetYStats(cart[id]);
-      if (stats.isOffer && cart[id].quantity === stats.buyQty) {
-        alert(`🎁 BUY ${stats.buyQty} GET ${stats.freeQty} FREE OFFER ACTIVE!\n\nYou added ${stats.buyQty} items of "${cart[id].name}". Add ${stats.freeQty} more to your bag to get it 100% FREE!`);
-      }
 
       saveCart();
-      openCartDrawer();
+
+      const totalItems = Object.values(cart).reduce((sum, it) => sum + it.quantity, 0);
+      showCartToast(`✓ "${name}" added to cart!`, totalItems);
+
+      const targetBtn = btnEl || document.getElementById(`btnAdd-${id}`);
+      if (targetBtn) {
+        targetBtn.innerHTML = '✓ Added';
+        targetBtn.style.background = '#15803d';
+        setTimeout(() => {
+          targetBtn.innerHTML = '+ Add';
+          targetBtn.style.background = '';
+        }, 1200);
+      }
     }
 
     function buyProductNow(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
@@ -3947,7 +3981,9 @@
         cart[pkgKey].quantity += 1;
       }
       saveCart();
-      openCartDrawer();
+
+      const totalItems = Object.values(cart).reduce((sum, it) => sum + it.quantity, 0);
+      showCartToast(`✓ "${name}" added to cart!`, totalItems);
     }
 
     function buyPackageNow(id, name, price) {
@@ -4016,23 +4052,6 @@
           </div>
         `).join('');
       }
-
-      // Sync product card steppers & buttons
-      document.querySelectorAll('.prod-card').forEach(card => {
-        const pid = card.dataset.id;
-        const stepper = document.getElementById(`stepperBox-${pid}`);
-        const addBtn = card.querySelector('.btn-add');
-        const qtyLabel = document.getElementById(`stepQty-${pid}`);
-
-        if (cart[pid] && cart[pid].quantity > 0) {
-          if (stepper) stepper.style.display = 'flex';
-          if (addBtn) addBtn.style.display = 'none';
-          if (qtyLabel) qtyLabel.textContent = cart[pid].quantity;
-        } else {
-          if (stepper) stepper.style.display = 'none';
-          if (addBtn) addBtn.style.display = 'flex';
-        }
-      });
     }
 
     function renderCartView() {
