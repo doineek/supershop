@@ -760,9 +760,29 @@ def _on_products_change(doc_snapshots, changes, read_time):
 
                     existing = None
                     if sku:
-                        existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
+                        existing = conn.execute("SELECT * FROM products WHERE sku = ?", (sku,)).fetchone()
                     if not existing and prod_id:
-                        existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+                        existing = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+
+                    # Auto-normalize BOGO or preserve local active offer if incoming firestore data is missing offer fields
+                    if (offer_type in ('bogo', 'buy_x_get_y', 'buy_x_get_x') or 
+                        'buy' in offer_title.lower() or 
+                        'buy' in offer_value.lower()):
+                        offer_type = 'bogo'
+                        is_offer = 1
+                        if not offer_title and offer_value:
+                            offer_title = offer_value
+                        elif not offer_value and offer_title:
+                            offer_value = offer_title
+                    elif existing:
+                        local_type = existing["offer_type"] or ""
+                        local_title = existing["offer_title"] or ""
+                        local_val = existing["offer_value"] or ""
+                        if (local_type in ('bogo', 'buy_x_get_y', 'buy_x_get_x') or 'buy' in local_title.lower() or 'buy' in local_val.lower()) and not offer_type:
+                            offer_type = 'bogo'
+                            offer_title = local_title or local_val or "Buy 1 Get 1 Free"
+                            offer_value = local_val or local_title or "Buy 1 Get 1 Free"
+                            is_offer = 1
 
                     if existing:
                         conn.execute("""
@@ -1648,9 +1668,30 @@ def pull_all_from_cloud(blocking=False):
                         expiry_date = data.get("expiry_date", "")
                         existing = None
                         if sku:
-                            existing = conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone()
+                            existing = conn.execute("SELECT * FROM products WHERE sku = ?", (sku,)).fetchone()
                         if not existing and prod_id:
-                            existing = conn.execute("SELECT id FROM products WHERE id = ?", (prod_id,)).fetchone()
+                            existing = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+
+                        # Auto-normalize BOGO or preserve local active offer if incoming firestore data is missing offer fields
+                        if (offer_type in ('bogo', 'buy_x_get_y', 'buy_x_get_x') or 
+                            'buy' in offer_title.lower() or 
+                            'buy' in offer_value.lower()):
+                            offer_type = 'bogo'
+                            is_offer = 1
+                            if not offer_title and offer_value:
+                                offer_title = offer_value
+                            elif not offer_value and offer_title:
+                                offer_value = offer_title
+                        elif existing:
+                            local_type = existing["offer_type"] or ""
+                            local_title = existing["offer_title"] or ""
+                            local_val = existing["offer_value"] or ""
+                            if (local_type in ('bogo', 'buy_x_get_y', 'buy_x_get_x') or 'buy' in local_title.lower() or 'buy' in local_val.lower()) and not offer_type:
+                                offer_type = 'bogo'
+                                offer_title = local_title or local_val or "Buy 1 Get 1 Free"
+                                offer_value = local_val or local_title or "Buy 1 Get 1 Free"
+                                is_offer = 1
+
                         if existing:
                             conn.execute("""
                                 UPDATE products SET

@@ -212,6 +212,8 @@ function updateVoucherScopeOptions() {
         
         <div id="productDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:240px; overflow-y:auto; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:100; margin-top:4px;">
           {% for p in all_products %}
+          {% set is_bogo_p = (p.offer_type in ['bogo', 'buy_x_get_y', 'buy_x_get_x'] or 'buy' in (p.offer_title or '')|lower or 'buy' in (p.offer_value or '')|lower) %}
+          {% set eff_type_p = 'bogo' if is_bogo_p else (p.offer_type or 'pct') %}
           <div class="product-option-item" 
                data-id="{{ p.id }}"
                data-name="{{ p.name }}"
@@ -220,7 +222,7 @@ function updateVoucherScopeOptions() {
                data-costprice="{{ p.cost_price }}"
                data-sellprice="{{ p.sell_price }}"
                data-offertitle="{{ p.offer_title or '' }}"
-               data-offertype="{{ p.offer_type or 'pct' }}"
+               data-offertype="{{ eff_type_p }}"
                data-offervalue="{{ p.offer_value or '' }}"
                data-offerbase="{{ p.offer_base or 'mrp' }}"
                data-isoffer="{{ p.is_offer or 0 }}"
@@ -325,6 +327,8 @@ function updateVoucherScopeOptions() {
     </thead>
     <tbody>
       {% for p in offer_products %}
+      {% set is_bogo_row = (p.offer_type in ['bogo', 'buy_x_get_y', 'buy_x_get_x'] or 'buy' in (p.offer_title or '')|lower or 'buy' in (p.offer_value or '')|lower) %}
+      {% set eff_type_row = 'bogo' if is_bogo_row else (p.offer_type or 'pct') %}
       <tr class="offer-row"
           onclick="editOfferFromRow(this)"
           data-id="{{ p.id }}"
@@ -334,7 +338,7 @@ function updateVoucherScopeOptions() {
           data-costprice="{{ p.cost_price }}"
           data-sellprice="{{ p.sell_price }}"
           data-offertitle="{{ p.offer_title or '' }}"
-          data-offertype="{{ p.offer_type or 'pct' }}"
+          data-offertype="{{ eff_type_row }}"
           data-offervalue="{{ p.offer_value or '' }}"
           data-offerbase="{{ p.offer_base or 'mrp' }}"
           data-isoffer="{{ p.is_offer or 0 }}"
@@ -364,11 +368,11 @@ function updateVoucherScopeOptions() {
           TK {{ "%.2f"|format(p.sell_price) }}
         </td>
         <td style="padding:12px;">
-          <span style="background:#dbeafe; color:#1d4ed8; padding:3px 8px; border-radius:4px; font-size:12px; font-weight:600; display:inline-block; margin-bottom:4px;">
-            {{ p.offer_title or 'Special Offer' }}
+          <span style="background:{% if is_bogo_row %}#f3e8ff; color:#7e22ce;{% else %}#dbeafe; color:#1d4ed8;{% endif %} padding:3px 8px; border-radius:4px; font-size:12px; font-weight:700; display:inline-block; margin-bottom:4px;">
+            {{ p.offer_title if p.offer_title else (p.offer_value if is_bogo_row else 'Special Offer') }}
           </span>
           <div style="font-size:11px; color:#475569;">
-            Type: {{ (p.offer_type or 'pct')|upper }} | Base: {{ (p.offer_base or 'mrp')|upper }}
+            Type: <strong style="color:{% if is_bogo_row %}#7e22ce{% else %}#2563eb{% endif %};">{{ 'BOGO' if is_bogo_row else eff_type_row|upper }}</strong> | Base: {{ (p.offer_base or 'mrp')|upper }}
           </div>
         </td>
         <td style="padding:12px; text-align:center;">
@@ -477,10 +481,10 @@ function selectProduct(element) {
   const id = element.getAttribute('data-id');
   const name = element.getAttribute('data-name');
   const sku = element.getAttribute('data-sku');
-  const title = element.getAttribute('data-offertitle');
-  const type = element.getAttribute('data-offertype');
-  const val = element.getAttribute('data-offervalue');
-  const base = element.getAttribute('data-offerbase');
+  const title = element.getAttribute('data-offertitle') || '';
+  const type = element.getAttribute('data-offertype') || '';
+  const val = element.getAttribute('data-offervalue') || '';
+  const base = element.getAttribute('data-offerbase') || 'mrp';
   const isOffer = element.getAttribute('data-isoffer');
   const isPromo = element.getAttribute('data-ispromotion');
 
@@ -488,18 +492,21 @@ function selectProduct(element) {
   document.getElementById('productSearchInput').value = '#' + sku + ' - ' + name;
   document.getElementById('productDropdown').style.display = 'none';
 
-  if (title) document.getElementById('offerTitleInput').value = title;
-  if (type) document.getElementById('offerTypeSelect').value = type;
-  if (val) document.getElementById('offerValueInput').value = val;
-  if (base) document.getElementById('offerBaseSelect').value = base;
+  const isBogo = (type === 'bogo' || type === 'buy_x_get_y' || title.toLowerCase().includes('buy') || val.toLowerCase().includes('buy'));
+  const finalType = isBogo ? 'bogo' : (type || 'pct');
 
-  if (type === 'bogo') {
+  document.getElementById('offerTypeSelect').value = finalType;
+  document.getElementById('offerTitleInput').value = title || (isBogo ? (val || 'Buy 1 Get 1 Free') : '');
+  document.getElementById('offerValueInput').value = val || (isBogo ? (title || 'Buy 1 Get 1 Free') : '');
+  document.getElementById('offerBaseSelect').value = base;
+
+  if (isBogo) {
     parseAndSetBogoSelects(val, title);
   }
 
   toggleOfferTypeInputs(false);
   
-  document.getElementById('isOfferCheck').checked = (isOffer == '1' || type === 'bogo');
+  document.getElementById('isOfferCheck').checked = (isOffer == '1' || isBogo);
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
   document.getElementById('formHeading').innerText = 'Update Offer for #' + sku + ' - ' + name;
@@ -509,28 +516,31 @@ function editOfferFromRow(row) {
   const id = row.getAttribute('data-id');
   const name = row.getAttribute('data-name');
   const sku = row.getAttribute('data-sku');
-  const title = row.getAttribute('data-offertitle');
-  const type = row.getAttribute('data-offertype');
-  const val = row.getAttribute('data-offervalue');
-  const base = row.getAttribute('data-offerbase');
+  const title = row.getAttribute('data-offertitle') || '';
+  const type = row.getAttribute('data-offertype') || '';
+  const val = row.getAttribute('data-offervalue') || '';
+  const base = row.getAttribute('data-offerbase') || 'mrp';
   const isOffer = row.getAttribute('data-isoffer');
   const isPromo = row.getAttribute('data-ispromotion');
 
   document.getElementById('selectedProductId').value = id;
   document.getElementById('productSearchInput').value = '#' + sku + ' - ' + name;
 
-  if (title) document.getElementById('offerTitleInput').value = title;
-  if (type) document.getElementById('offerTypeSelect').value = type;
-  if (val) document.getElementById('offerValueInput').value = val;
-  if (base) document.getElementById('offerBaseSelect').value = base;
+  const isBogo = (type === 'bogo' || type === 'buy_x_get_y' || title.toLowerCase().includes('buy') || val.toLowerCase().includes('buy'));
+  const finalType = isBogo ? 'bogo' : (type || 'pct');
 
-  if (type === 'bogo') {
+  document.getElementById('offerTypeSelect').value = finalType;
+  document.getElementById('offerTitleInput').value = title || (isBogo ? (val || 'Buy 1 Get 1 Free') : '');
+  document.getElementById('offerValueInput').value = val || (isBogo ? (title || 'Buy 1 Get 1 Free') : '');
+  document.getElementById('offerBaseSelect').value = base;
+
+  if (isBogo) {
     parseAndSetBogoSelects(val, title);
   }
 
   toggleOfferTypeInputs(false);
 
-  document.getElementById('isOfferCheck').checked = (isOffer == '1' || type === 'bogo');
+  document.getElementById('isOfferCheck').checked = (isOffer == '1' || isBogo);
   document.getElementById('isPromotionCheck').checked = (isPromo == '1');
 
   document.getElementById('formHeading').innerText = 'Update Offer for #' + sku + ' - ' + name;

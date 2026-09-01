@@ -192,6 +192,12 @@
       </label>
     </div>
 
+    <!-- Hidden Offer Metadata to prevent inventory edits from wiping active offers -->
+    <input type="hidden" name="offer_title" value="{{ product.offer_title if product and product.offer_title else '' }}">
+    <input type="hidden" name="offer_type" value="{{ product.offer_type if product and product.offer_type else '' }}">
+    <input type="hidden" name="offer_value" value="{{ product.offer_value if product and product.offer_value else '' }}">
+    <input type="hidden" name="offer_base" value="{{ product.offer_base if product and product.offer_base else 'mrp' }}">
+
   </div>
 
   <div class="actions" style="margin-top: 16px;">

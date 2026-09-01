@@ -668,6 +668,32 @@ def edit_product(product_id):
         offer_base = request.form.get("offer_base", "mrp").strip()
         expiry_date = request.form.get("expiry_date", "").strip()
 
+        # Preserve existing offer settings if not explicitly provided or if BOGO
+        existing_p = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+        if existing_p:
+            if not offer_title and existing_p["offer_title"]:
+                offer_title = existing_p["offer_title"]
+            if not offer_type and existing_p["offer_type"]:
+                offer_type = existing_p["offer_type"]
+            if not offer_value and existing_p["offer_value"]:
+                offer_value = existing_p["offer_value"]
+            if not offer_base and existing_p["offer_base"]:
+                offer_base = existing_p["offer_base"]
+            if is_offer == 0 and existing_p["is_offer"] == 1 and request.form.get("is_offer") is None:
+                is_offer = 1
+            if is_promotion == 0 and existing_p["is_promotion"] == 1 and request.form.get("is_promotion") is None:
+                is_promotion = 1
+
+        if (offer_type in ('bogo', 'buy_x_get_y', 'buy_x_get_x') or 
+            'buy' in offer_title.lower() or 
+            'buy' in offer_value.lower()):
+            offer_type = 'bogo'
+            is_offer = 1
+            if not offer_value and offer_title:
+                offer_value = offer_title
+            elif not offer_title and offer_value:
+                offer_title = offer_value
+
         def _do_update():
             try:
                 conn.execute("""
