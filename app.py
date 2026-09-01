@@ -1435,6 +1435,7 @@ def checkout():
 # ===========================================================================
 
 @app.route("/sales")
+@app.route("/sales/history")
 @login_required
 def sales_history():
     conn = get_connection()
