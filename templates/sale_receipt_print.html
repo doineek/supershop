@@ -63,6 +63,7 @@
     <tr><td><strong>Invoice No :</strong></td><td>{{ sale.invoice_number or sale.id }}</td></tr>
     <tr><td><strong>Inv. Date :</strong></td><td>{{ sale.invoice_date or sale.created_at[:16].replace('T', ' ') }}</td></tr>
     <tr><td><strong>Print Date :</strong></td><td>{{ sale.created_at[:16].replace('T', ' ') }}</td></tr>
+    <tr><td><strong>Counter/User:</strong></td><td><strong>{{ sale.cashier_name or 'Main Counter' }}</strong></td></tr>
     <tr><td><strong>Customer :</strong></td><td>{{ sale.customer_name if sale.customer_name else '-' }}</td></tr>
     <tr><td><strong>Mobile :</strong></td><td>{{ sale.customer_mobile if sale.customer_mobile else '-' }}</td></tr>
   </table>

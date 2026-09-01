@@ -20,7 +20,7 @@
     <div>Print Date: {{ sale.created_at[:16].replace("T", " ") }}</div>
     <div>Customer: {{ sale.customer_name if sale.customer_name else '-' }}</div>
     <div>Mobile: {{ sale.customer_mobile if sale.customer_mobile else '-' }}</div>
-    <div>Cashier: {{ sale.cashier_name }}</div>
+    <div>Counter / Cashier: <strong>{{ sale.cashier_name }}</strong></div>
   </div>
 
   <div class="receipt-table-wrap">

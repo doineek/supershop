@@ -20,10 +20,15 @@
     <td><strong>{{ s.invoice_number or ('#' ~ s.id) }}</strong></td>
     <td>{{ s.created_at[:16].replace("T", " ") }}</td>
     <td>
-      <div><strong>{{ s.customer_name or s.cashier_name or 'Walk-in Customer' }}</strong></div>
+      <div><strong>{{ s.customer_name or 'Walk-in Customer' }}</strong></div>
       {% if s.customer_mobile %}
       <div style="font-size: 0.82rem; color: #64748b; font-weight: 500;">📞 {{ s.customer_mobile }}</div>
       {% endif %}
+      <div style="margin-top: 4px;">
+        <span style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 2px 7px; border-radius: 4px; font-size: 0.76rem; font-weight: 600; display: inline-block;">
+          💻 Counter / Cashier: <strong style="color: #0f172a;">{{ s.cashier_name or 'Main Counter' }}</strong>
+        </span>
+      </div>
     </td>
     <td>
       {% if s.channel == 'Online' %}
