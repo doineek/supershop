@@ -145,15 +145,17 @@
       <!-- File Previews of Newly Selected Files -->
       <div id="filePreviewContainer" style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;"></div>
 
-      <!-- Existing Images Manager with ❌ Delete Buttons -->
+      <!-- Existing Images Manager with ❌ Delete and ⭐ Set as Cover Buttons -->
       <div id="existingImagesSection" style="margin-top:16px; {% if not product or not product.image_url %}display:none;{% endif %}">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
           <label style="font-size:0.88rem; color:#0f172a; font-weight:700;">
-            🖼️ Existing Images <span id="existingImagesCount" style="color:#64748b; font-weight:normal;"></span>
+            🖼️ Product Photos <span id="existingImagesCount" style="color:#64748b; font-weight:normal;"></span>
           </label>
-          <span style="font-size:0.78rem; color:#ef4444; font-weight:600;">(Click ❌ on top corner to delete)</span>
+          <span style="font-size:0.80rem; color:#0284c7; font-weight:600;">
+            ⭐ The 1st photo is shown on top. Click <strong>"Set as Cover"</strong> to change it.
+          </span>
         </div>
-        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;" id="existingImagesList">
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:12px;" id="existingImagesList">
           <!-- Rendered via JavaScript -->
         </div>
       </div>
@@ -312,14 +314,38 @@ function renderExistingImages() {
   if (countLabel) countLabel.textContent = `(${existingImages.length})`;
   if (inputEl) inputEl.value = existingImages.join(', ');
 
-  container.innerHTML = existingImages.map((imgUrl, idx) => `
-    <div style="position:relative; width:80px; height:80px; border-radius:10px; border:2px solid #cbd5e1; background:#ffffff; box-shadow:0 2px 4px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center;">
-      <img src="${imgUrl}" alt="Product Image" style="width:100%; height:100%; object-fit:cover; border-radius:8px;" onerror="this.src='/static/images/logo.png'">
-      <button type="button" onclick="deleteExistingImage(${idx})" title="Delete this image" style="position:absolute; top:-8px; right:-8px; width:24px; height:24px; border-radius:50%; background:#ef4444; color:#ffffff; border:2px solid #ffffff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.3); transition:all 0.15s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">
-        ✕
-      </button>
-    </div>
-  `).join('');
+  container.innerHTML = existingImages.map((imgUrl, idx) => {
+    const isCover = idx === 0;
+    return `
+      <div style="position:relative; width:96px; height:96px; border-radius:10px; border:${isCover ? '3px solid #16a34a' : '2px solid #cbd5e1'}; background:#ffffff; box-shadow:${isCover ? '0 0 0 3px rgba(22, 163, 74, 0.18), 0 3px 6px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.08)'}; display:flex; align-items:center; justify-content:center; margin-bottom:16px;">
+        <img src="${imgUrl}" alt="Product Image" style="width:100%; height:100%; object-fit:cover; border-radius:7px;" onerror="this.src='/static/images/logo.png'">
+        
+        <!-- Delete Button -->
+        <button type="button" onclick="deleteExistingImage(${idx})" title="Delete this image" style="position:absolute; top:-8px; right:-8px; width:24px; height:24px; border-radius:50%; background:#ef4444; color:#ffffff; border:2px solid #ffffff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.3); transition:all 0.15s; z-index:2;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">
+          ✕
+        </button>
+
+        <!-- Cover Photo Badge / Set as Cover Button -->
+        ${isCover ? `
+          <div style="position:absolute; bottom:-12px; left:50%; transform:translateX(-50%); background:#16a34a; color:#ffffff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:12px; white-space:nowrap; box-shadow:0 2px 4px rgba(0,0,0,0.2); border:1px solid #ffffff; z-index:2;">
+            ⭐ Cover
+          </div>
+        ` : `
+          <button type="button" onclick="setPrimaryImage(${idx})" title="Set this photo as primary cover displayed on top" style="position:absolute; bottom:-12px; left:50%; transform:translateX(-50%); background:#0284c7; color:#ffffff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #ffffff; cursor:pointer; white-space:nowrap; box-shadow:0 2px 4px rgba(0,0,0,0.2); transition:all 0.15s; z-index:2;" onmouseover="this.style.background='#0369a1'; this.style.transform='translateX(-50%) scale(1.08)'" onmouseout="this.style.background='#0284c7'; this.style.transform='translateX(-50%) scale(1)'">
+            ☆ Set Cover
+          </button>
+        `}
+      </div>
+    `;
+  }).join('');
+}
+
+function setPrimaryImage(idx) {
+  if (idx > 0 && idx < existingImages.length) {
+    const [chosen] = existingImages.splice(idx, 1);
+    existingImages.unshift(chosen);
+    renderExistingImages();
+  }
 }
 
 function deleteExistingImage(idx) {
