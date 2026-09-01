@@ -683,7 +683,7 @@ def edit_product(product_id):
                 image_url = ", ".join(uploaded_urls) + ", " + image_url
             else:
                 image_url = ", ".join(uploaded_urls)
-        elif not image_url and product:
+        elif "image_url" not in request.form and product:
             image_url = product["image_url"]
 
         is_trending = 1 if request.form.get("is_trending") == "on" else 0
@@ -981,7 +981,7 @@ def restock_from_returned(return_id):
                     uploaded_urls.append(url_for("static", filename=f"uploads/products/{filename}"))
         if uploaded_urls:
             image_url = ", ".join(uploaded_urls) + (", " + image_url if image_url else "")
-        elif not image_url and product:
+        elif "image_url" not in request.form and product:
             image_url = product["image_url"]
 
         target_product_id = product["id"] if product else None

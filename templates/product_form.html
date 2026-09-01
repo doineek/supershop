@@ -142,27 +142,26 @@
         <input type="file" id="multiFileInput" name="product_image_files" accept="image/*" multiple style="display:none;" onchange="handleFileSelect(this.files)">
       </div>
 
-      <div id="filePreviewContainer" style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;"></div>
+      <!-- File Previews of Newly Selected Files -->
+      <div id="filePreviewContainer" style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap;"></div>
 
-      {% if product and product.image_url %}
-      <div style="margin-top:12px;">
-        <label style="font-size:0.85rem; color:#475569; font-weight:bold;">Existing Images:</label>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
-          {% for img_path in product.image_url.split(',') %}
-            {% if img_path.strip() %}
-            <div style="position:relative;">
-              <img src="{{ img_path.strip() }}" alt="Preview" style="height: 60px; width:60px; object-fit:cover; border-radius: 6px; border: 1px solid #cbd5e1;">
-            </div>
-            {% endif %}
-          {% endfor %}
+      <!-- Existing Images Manager with ❌ Delete Buttons -->
+      <div id="existingImagesSection" style="margin-top:16px; {% if not product or not product.image_url %}display:none;{% endif %}">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label style="font-size:0.88rem; color:#0f172a; font-weight:700;">
+            🖼️ Existing Images <span id="existingImagesCount" style="color:#64748b; font-weight:normal;"></span>
+          </label>
+          <span style="font-size:0.78rem; color:#ef4444; font-weight:600;">(Click ❌ on top corner to delete)</span>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;" id="existingImagesList">
+          <!-- Rendered via JavaScript -->
         </div>
       </div>
-      {% endif %}
     </div>
 
     <div class="field" style="margin-top:12px;">
-      <label>Product Image URL</label>
-      <input type="text" name="image_url" placeholder="https://example.com/image.jpg or /static/uploads/..." value="{{ product.image_url if product else '' }}">
+      <label>Product Image URL / Persistent Data (Auto-updated on delete/upload)</label>
+      <input type="text" id="imageUrlInput" name="image_url" placeholder="https://example.com/image.jpg or data:image/..." value="{{ product.image_url if product else '' }}">
     </div>
 
     <div class="field" style="margin-top: 10px;">
@@ -276,8 +275,101 @@ function autoCalculateDoineekPrice() {
   }
 }
 
+// Existing Images Manager
+let existingImages = [];
+const rawImages = `{{ product.image_url if product and product.image_url else '' }}`;
+if (rawImages.trim()) {
+  existingImages = rawImages.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function renderExistingImages() {
+  const container = document.getElementById('existingImagesList');
+  const section = document.getElementById('existingImagesSection');
+  const countLabel = document.getElementById('existingImagesCount');
+  const inputEl = document.getElementById('imageUrlInput');
+
+  if (!container || !section) return;
+
+  if (existingImages.length === 0) {
+    if (countLabel) countLabel.textContent = '(0)';
+    container.innerHTML = '<div style="color:#dc2626; font-size:0.82rem; font-weight:600; padding:10px 14px; background:#fef2f2; border:1px dashed #fca5a5; border-radius:8px; width:100%;">🗑️ All existing images removed. Upload new photos above or click "Save product".</div>';
+    if (inputEl) inputEl.value = '';
+    return;
+  }
+
+  section.style.display = 'block';
+  if (countLabel) countLabel.textContent = `(${existingImages.length})`;
+  if (inputEl) inputEl.value = existingImages.join(', ');
+
+  container.innerHTML = existingImages.map((imgUrl, idx) => `
+    <div style="position:relative; width:80px; height:80px; border-radius:10px; border:2px solid #cbd5e1; background:#ffffff; box-shadow:0 2px 4px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center;">
+      <img src="${imgUrl}" alt="Product Image" style="width:100%; height:100%; object-fit:cover; border-radius:8px;" onerror="this.src='/static/images/logo.png'">
+      <button type="button" onclick="deleteExistingImage(${idx})" title="Delete this image" style="position:absolute; top:-8px; right:-8px; width:24px; height:24px; border-radius:50%; background:#ef4444; color:#ffffff; border:2px solid #ffffff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.3); transition:all 0.15s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">
+        ✕
+      </button>
+    </div>
+  `).join('');
+}
+
+function deleteExistingImage(idx) {
+  if (idx >= 0 && idx < existingImages.length) {
+    existingImages.splice(idx, 1);
+    renderExistingImages();
+  }
+}
+
+// Live preview for newly selected files
+function handleFileSelect(files) {
+  const previewContainer = document.getElementById('filePreviewContainer');
+  if (!previewContainer) return;
+  previewContainer.innerHTML = '';
+
+  if (!files || files.length === 0) return;
+
+  Array.from(files).forEach((file) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const card = document.createElement('div');
+      card.style.cssText = 'position:relative; width:80px; height:80px; border-radius:10px; border:2px solid #38bdf8; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.08);';
+      card.innerHTML = `
+        <img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius:8px;">
+        <span style="position:absolute; bottom:2px; left:2px; right:2px; background:rgba(2,132,199,0.85); color:#fff; font-size:9px; text-align:center; border-radius:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:1px 2px;">NEW</span>
+      `;
+      previewContainer.appendChild(card);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   updateCategorySubOptions();
+  renderExistingImages();
+
+  // Dropzone drag-drop support
+  const dropZone = document.getElementById('dropZone');
+  const multiFileInput = document.getElementById('multiFileInput');
+  if (dropZone && multiFileInput) {
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = '#0284c7';
+      dropZone.style.background = '#e0f2fe';
+    });
+    dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = '#0284c7';
+      dropZone.style.background = '#f0f9ff';
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = '#0284c7';
+      dropZone.style.background = '#f0f9ff';
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        multiFileInput.files = e.dataTransfer.files;
+        handleFileSelect(e.dataTransfer.files);
+      }
+    });
+  }
 });
 </script>
 {% endblock %}
