@@ -1,18 +1,14 @@
 // firestore.rules
 // -----------------------------------------------------------------------
-// Paste this into: Firebase Console -> Firestore Database -> Rules -> Publish
+// Project: doineek-pos-e4023
+// Direct Console Link: https://console.firebase.google.com/project/doineek-pos-e4023/firestore/rules
 //
-// Your Flask app talks to Firestore using the Admin SDK (firebase_credentials.json),
-// which ALWAYS bypasses these rules - so the shop's app keeps working no
-// matter what you set here. These rules only control what happens if
-// someone tries to read/write your Firestore data directly from a browser,
-// a mobile app, or the public internet (NOT the Firebase Console - console
-// access is controlled separately, by who you invite to the Firebase
-// project under Project Settings -> Users and Permissions).
-//
-// Default below: block ALL public client access. Only your server
-// (Admin SDK) and people you've added to the Firebase project can touch
-// this data. This is the safest starting point for a single-shop POS.
+// 🔒 PRODUCTION SECURITY POLICY:
+// 1. All direct public client (browser/web/mobile REST) access is BLOCKED (allow read, write: if false).
+// 2. Your Flask Web Server (Render) and Desktop POS App communicate via Firebase Admin SDK
+//    (Service Account credentials: firebase_credentials.json), which securely bypasses these rules
+//    with full administrative and real-time syncing permissions.
+// 3. This completely closes the "Test Mode" security vulnerability and stops all Firebase security warning emails.
 
 rules_version = '2';
 service cloud.firestore {
@@ -22,3 +18,4 @@ service cloud.firestore {
     }
   }
 }
+
