@@ -80,7 +80,7 @@
   </thead>
   <tbody>
     {% for item in items %}
-    {% set line_total = item.unit_price * item.quantity %}
+    {% set line_total = item.line_total if item.line_total is defined else (item.unit_price * (item.paid_qty if item.paid_qty is defined else item.quantity)) %}
     <tr>
       <td>{{ loop.index }}</td>
       <td>
@@ -88,6 +88,9 @@
         {% set off_badge = item.offer_title or (item.offer_value ~ ' OFF' if item.offer_value else '') %}
         {% if off_badge %}
           <br><small style="font-weight:600; color:#1d4ed8;">🏷️ Offer: {{ off_badge }}</small>
+        {% endif %}
+        {% if item.free_qty and item.free_qty > 0 %}
+          <br><small style="font-weight:700; color:#15803d;">🎁 Free: {{ item.free_qty }} pcs (Paid: {{ item.paid_qty }})</small>
         {% endif %}
         {% if item.unit_serials %}<br><small>SL: {{ item.unit_serials }}</small>{% endif %}
       </td>
@@ -103,7 +106,12 @@
 
 <div class="totals-block">
   <div class="total-row"><span>Sub-Total:</span><span>{{ "%.2f"|format(sale.total_amount) }}</span></div>
+  {% if sale.delivery_charge and sale.delivery_charge > 0 %}
+  <div class="total-row"><span>+ Delivery Charge:</span><span>{{ "%.2f"|format(sale.delivery_charge) }}</span></div>
+  {% endif %}
+  {% if sale.vat_amount and sale.vat_amount > 0 %}
   <div class="total-row"><span>+ VAT:</span><span>{{ "%.2f"|format(sale.vat_amount) }}</span></div>
+  {% endif %}
   <div class="total-row" style="font-weight:bold; font-size:12px; margin-top:3px;">
     <span>Net Payable:</span><span>{{ "%.2f"|format(sale.rounded_total) }}</span>
   </div>

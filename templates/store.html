@@ -4101,10 +4101,21 @@
         handleDistrictChange(distSelect.value);
       }
 
+      const btn = document.getElementById('btnPlaceOrder');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Order';
+      }
+
       document.getElementById('checkoutModal').style.display = 'flex';
     }
 
     function closeCheckoutModal() {
+      const btn = document.getElementById('btnPlaceOrder');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm Order';
+      }
       document.getElementById('checkoutModal').style.display = 'none';
     }
 
@@ -4248,6 +4259,8 @@
         if (res.ok && data.success) {
           cart = {};
           saveCart();
+          btn.disabled = false;
+          btn.textContent = 'Confirm Order';
           closeCheckoutModal();
           alert(`🎉 Order Placed Successfully!\n\nOrder Number: ${data.order_number}\nTotal Payable: TK ${data.total_amount}\n\nThank you! Our representative will contact you shortly.`);
           switchView('profile');

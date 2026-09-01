@@ -156,6 +156,9 @@
           {% if off_badge %}
             <br><small style="color: #2563eb; font-weight: bold;">🏷️ Offer: {{ off_badge }}</small>
           {% endif %}
+          {% if item.free_qty and item.free_qty > 0 %}
+            <br><small style="color: #15803d; font-weight: bold;">🎁 Free: {{ item.free_qty }} pcs (Paid: {{ item.paid_qty }})</small>
+          {% endif %}
         </td>
         <td style="text-align: center;"><strong>{{ item.quantity }}</strong></td>
         <td style="text-align: right;">TK {{ "%.2f"|format(item.unit_price) }}</td>

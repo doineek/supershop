@@ -1467,22 +1467,122 @@ def delete_sale(sale_id):
     return redirect(url_for("sales_history"))
 
 
-@app.route("/sales/<int:sale_id>")
-@login_required
-def sale_receipt(sale_id):
-    conn = get_connection()
+def prepare_receipt_data(conn, sale_id):
     sale = conn.execute("""
         SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
         FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
         WHERE s.id = ?
     """, (sale_id,)).fetchone()
-    items = conn.execute("""
-        SELECT si.*, p.name AS product_name, p.sku, p.offer_type, p.offer_value, p.offer_title
-        FROM sale_items si JOIN products p ON si.product_id = p.id
+    if not sale:
+        return None, [], {}
+
+    sale_dict = dict(sale)
+    inv_num = str(sale_dict.get("invoice_number") or "")
+    online_items_map = {}
+    delivery_charge = 0.0
+    if inv_num.startswith("INV-ONLINE-"):
+        ord_num = inv_num.replace("INV-ONLINE-", "").strip()
+        ord_row = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (ord_num,)).fetchone()
+        if ord_row:
+            delivery_charge = float(ord_row["delivery_charge"] or 0)
+            sale_dict["delivery_charge"] = delivery_charge
+            sale_dict["order_status"] = ord_row["order_status"]
+            sale_dict["area"] = ord_row["area"]
+            sale_dict["district"] = ord_row["district"]
+            sale_dict["address_details"] = ord_row["address_details"]
+            sale_dict["delivery_otp"] = ord_row["delivery_otp"]
+            sale_dict["payment_method"] = ord_row["payment_method"]
+            o_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+            for oi in o_items:
+                online_items_map[oi["product_id"]] = {
+                    "product_name": oi["product_name"],
+                    "total_price": float(oi["total_price"] or 0),
+                    "quantity": int(oi["quantity"] or 1)
+                }
+
+    raw_items = conn.execute("""
+        SELECT si.*, COALESCE(p.name, '') AS prod_name_tbl, COALESCE(p.sku, '') AS prod_sku, p.offer_type, p.offer_value, p.offer_title
+        FROM sale_items si LEFT JOIN products p ON si.product_id = p.id
         WHERE si.sale_id = ?
     """, (sale_id,)).fetchall()
+    
+    items = []
+    for r in raw_items:
+        i_dict = dict(r)
+        pid = i_dict["product_id"]
+        
+        if pid in online_items_map and online_items_map[pid].get("product_name"):
+            i_dict["product_name"] = online_items_map[pid]["product_name"]
+            i_dict["sku"] = "ONLINE"
+        else:
+            is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone()
+            pkg = None
+            if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (pid,)).fetchone()
+
+            if pkg:
+                p_items = conn.execute("""
+                    SELECT pi.*, p.sku, p.name AS product_name
+                    FROM package_items pi JOIN products p ON pi.product_id = p.id
+                    WHERE pi.package_id = ?
+                """, (pkg["id"],)).fetchall()
+                details = []
+                sl = 1
+                for pi in p_items:
+                    details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                    sl += 1
+                i_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
+                i_dict["sku"] = "COMBO"
+            else:
+                i_dict["product_name"] = i_dict.get("prod_name_tbl") or "Item"
+                i_dict["sku"] = i_dict.get("prod_sku") or ""
+
+        qty = int(i_dict.get("quantity") or 1)
+        unit_price = float(i_dict.get("unit_price") or 0.0)
+        offer_type = i_dict.get("offer_type") or ""
+        offer_title = i_dict.get("offer_title") or ""
+        offer_value = i_dict.get("offer_value") or ""
+        p_name = i_dict.get("product_name") or ""
+
+        paid_qty = qty
+        free_qty = 0
+        is_bogo = (offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or 
+                   'buy' in offer_title.lower() or 
+                   'buy' in offer_value.lower() or 
+                   'buy' in p_name.lower())
+        
+        if is_bogo:
+            b_qty, f_qty = parse_bogo_quantities(offer_value, offer_title, p_name)
+            tot_set = b_qty + f_qty
+            if tot_set > 0:
+                sets = qty // tot_set
+                rem = qty % tot_set
+                paid_qty = (sets * b_qty) + min(rem, b_qty)
+                free_qty = qty - paid_qty
+
+        line_total = round(unit_price * paid_qty, 2)
+        bogo_disc = round(unit_price * free_qty, 2)
+
+        i_dict["paid_qty"] = paid_qty
+        i_dict["free_qty"] = free_qty
+        i_dict["line_total"] = line_total
+        i_dict["bogo_discount"] = bogo_disc
+        i_dict["is_bogo"] = is_bogo
+        items.append(i_dict)
+
     settings = get_all_settings(conn)
+    return sale_dict, items, settings
+
+
+@app.route("/sales/<int:sale_id>")
+@login_required
+def sale_receipt(sale_id):
+    conn = get_connection()
+    sale, items, settings = prepare_receipt_data(conn, sale_id)
     conn.close()
+    if not sale:
+        flash("Sale not found.", "error")
+        return redirect(url_for("sales_history"))
 
     total_words = number_to_words(int(round_to_whole(sale["rounded_total"] or sale["total_amount"])))
     return render_template("sale_receipt.html", sale=sale, items=items, total_words=total_words, shop=settings)
@@ -2219,75 +2319,16 @@ def check_customer_block(conn, phone):
 @login_required
 def sale_receipt_print(sale_id):
     conn = get_connection()
-    sale = conn.execute("""
-        SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
-        FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
-        WHERE s.id = ?
-    """, (sale_id,)).fetchone()
-    
-    if sale:
-        conn.execute("UPDATE sales SET print_count = print_count + 1 WHERE id = ?", (sale_id,))
-        conn.commit()
-        sale = conn.execute("""
-            SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
-            FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
-            WHERE s.id = ?
-        """, (sale_id,)).fetchone()
-    else:
+    sale = conn.execute("SELECT id FROM sales WHERE id = ?", (sale_id,)).fetchone()
+    if not sale:
         conn.close()
         flash("Sale not found.", "error")
         return redirect(url_for("sales_history"))
 
-    inv_num = str(sale["invoice_number"] or "")
-    online_items_map = {}
-    if inv_num.startswith("INV-ONLINE-"):
-        ord_num = inv_num.replace("INV-ONLINE-", "").strip()
-        ord_row = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (ord_num,)).fetchone()
-        if ord_row:
-            o_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
-            for oi in o_items:
-                online_items_map[oi["product_id"]] = oi["product_name"]
+    conn.execute("UPDATE sales SET print_count = print_count + 1 WHERE id = ?", (sale_id,))
+    conn.commit()
 
-    raw_items = conn.execute("""
-        SELECT si.*, COALESCE(p.name, '') AS prod_name_tbl, COALESCE(p.sku, '') AS prod_sku, p.offer_type, p.offer_value, p.offer_title
-        FROM sale_items si LEFT JOIN products p ON si.product_id = p.id
-        WHERE si.sale_id = ?
-    """, (sale_id,)).fetchall()
-    
-    items = []
-    for r in raw_items:
-        i_dict = dict(r)
-        pid = i_dict["product_id"]
-        
-        if pid in online_items_map and online_items_map[pid]:
-            i_dict["product_name"] = online_items_map[pid]
-            i_dict["sku"] = "ONLINE"
-        else:
-            is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone()
-            pkg = None
-            if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
-                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (pid,)).fetchone()
-
-            if pkg:
-                p_items = conn.execute("""
-                    SELECT pi.*, p.sku, p.name AS product_name
-                    FROM package_items pi JOIN products p ON pi.product_id = p.id
-                    WHERE pi.package_id = ?
-                """, (pkg["id"],)).fetchall()
-                details = []
-                sl = 1
-                for pi in p_items:
-                    details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
-                    sl += 1
-                i_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
-                i_dict["sku"] = "COMBO"
-            else:
-                i_dict["product_name"] = i_dict["prod_name_tbl"] or "Item"
-                i_dict["sku"] = i_dict["prod_sku"] or ""
-
-        items.append(i_dict)
-
-    settings = get_all_settings(conn)
+    sale, items, settings = prepare_receipt_data(conn, sale_id)
     conn.close()
 
     total_words = number_to_words(int(round_to_whole(sale["rounded_total"] or sale["total_amount"])))
