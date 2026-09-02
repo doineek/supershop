@@ -15,6 +15,9 @@ import os
 import re
 import sys
 import sqlite3
+import base64
+import urllib.request
+import urllib.parse
 
 # Fix Windows console encoding for Bengali/Unicode characters with real-time line buffering
 if sys.platform == "win32":
@@ -1563,6 +1566,14 @@ def api_ai_generate_banner_image():
         except Exception as e:
             print("Banner AI Generation Error:", e)
 
+    if not generated_images:
+        for idx, s in enumerate(seeds):
+            ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
+            generated_images.append({
+                "url": ai_url,
+                "label": f"Banner Option {idx + 1}"
+            })
+
     return jsonify({
         "success": True,
         "images": generated_images,
@@ -1596,7 +1607,7 @@ def api_ai_generate_combo_image():
         ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
         try:
             req = urllib.request.Request(ai_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=8) as response:
                 img_data = response.read()
                 if len(img_data) > 1000:
                     b64 = base64.b64encode(img_data).decode("utf-8")
@@ -1606,6 +1617,14 @@ def api_ai_generate_combo_image():
                     })
         except Exception as e:
             print("Combo AI Generation Error:", e)
+
+    if not generated_images:
+        for idx, s in enumerate(seeds):
+            ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
+            generated_images.append({
+                "url": ai_url,
+                "label": f"Combo Hamper Option {idx + 1}"
+            })
 
     return jsonify({
         "success": True,
