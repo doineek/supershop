@@ -276,7 +276,7 @@ let selectedPkgMap = new Map(); // id -> { name, sku, price, qty, image }
     sku: {{ it.sku|tojson }},
     price: parseFloat('{{ it.sell_price }}') || 0,
     qty: parseInt('{{ it.quantity }}') || 1,
-    image: ''
+    image: {% if it.image_url and not it.image_url.startswith('data:') %}{{ it.image_url|tojson }}{% else %}''{% endif %}
   });
   {% endfor %}
 {% endif %}

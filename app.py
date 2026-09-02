@@ -1814,35 +1814,63 @@ def api_ai_generate_combo_image():
     for raw_img in raw_images:
         if not raw_img or not isinstance(raw_img, str):
             continue
-        # If multiple images in product, take the first one
-        img_entry = split_image_urls(raw_img)[0] if split_image_urls(raw_img) else raw_img.strip()
+        # Base64 data URIs contain commas — must NOT be split; take as-is
+        if raw_img.strip().startswith("data:image/"):
+            img_entry = raw_img.strip()
+        else:
+            # For URL/path strings, take the first entry (split on ' || ' or ',')
+            parts = split_image_urls(raw_img)
+            img_entry = parts[0] if parts else raw_img.strip()
         if not img_entry:
             continue
         try:
             if img_entry.startswith("data:image/"):
-                header, b64 = img_entry.split(",", 1)
+                # base64 encoded image
+                _, b64 = img_entry.split(",", 1)
                 img_bytes = base64.b64decode(b64)
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
                 pil_images.append(im)
             elif img_entry.startswith("http://") or img_entry.startswith("https://"):
-                req = urllib.request.Request(
-                    img_entry,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Referer": "https://www.google.com/"
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=8) as response:
-                    im = Image.open(io.BytesIO(response.read())).convert("RGB")
-                    pil_images.append(im)
-            elif img_entry.startswith("/") or img_entry.startswith("static/"):
+                # Try to load from local filesystem first if it's our own server URL
+                own_domains = ["doineek.onrender.com", "127.0.0.1", "localhost"]
+                loaded_local = False
+                for own_domain in own_domains:
+                    if own_domain in img_entry:
+                        # Extract the path after the domain
+                        try:
+                            from urllib.parse import urlparse
+                            parsed = urlparse(img_entry)
+                            local_path = parsed.path.lstrip("/")
+                            full_path = os.path.join(app.root_path, local_path)
+                            if os.path.exists(full_path):
+                                im = Image.open(full_path).convert("RGB")
+                                pil_images.append(im)
+                                loaded_local = True
+                                break
+                        except Exception:
+                            pass
+                if not loaded_local:
+                    req = urllib.request.Request(
+                        img_entry,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Referer": "https://www.google.com/"
+                        }
+                    )
+                    with urllib.request.urlopen(req, timeout=8) as response:
+                        im = Image.open(io.BytesIO(response.read())).convert("RGB")
+                        pil_images.append(im)
+            elif img_entry.startswith("/") or img_entry.startswith("static/") or img_entry.startswith("uploads/"):
                 clean_path = img_entry.lstrip("/")
                 full_path = os.path.join(app.root_path, clean_path)
+                if not os.path.exists(full_path):
+                    # Also try with 'static/' prefix
+                    full_path = os.path.join(app.root_path, "static", clean_path.removeprefix("static/"))
                 if os.path.exists(full_path):
                     im = Image.open(full_path).convert("RGB")
                     pil_images.append(im)
         except Exception as e:
-            print(f"Failed to load item image for combo collage ({img_entry[:40]}):", e)
+            print(f"Failed to load item image for combo collage ({img_entry[:60]}):", e)
 
     generated_images = []
 
