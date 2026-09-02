@@ -351,6 +351,7 @@ def init_db():
         "ALTER TABLE vouchers ADD COLUMN target_type TEXT NOT NULL DEFAULT 'product_discount'",
         "ALTER TABLE vouchers ADD COLUMN expiry_date TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE ledger_entries ADD COLUMN target_segment TEXT NOT NULL DEFAULT 'all'",
     ]
     for statement in migrations:
         try:

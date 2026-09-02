@@ -3194,7 +3194,7 @@ def reports():
         date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
         ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
 
-    # Offline POS counter sales summary
+    # 1. Offline POS counter sales summary
     offline_sales_summary = conn.execute(f"""
         SELECT 
             COALESCE(SUM(rounded_total), 0) AS revenue,
@@ -3204,7 +3204,7 @@ def reports():
         FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}
     """).fetchone()
 
-    # Online orders summary (direct from online_orders table)
+    # 2. Online orders summary
     online_orders_summary = conn.execute(f"""
         SELECT 
             COUNT(*) AS tx_count,
@@ -3212,7 +3212,7 @@ def reports():
         FROM online_orders WHERE {date_filter}
     """).fetchone()
 
-    # Offline COGS
+    # 3. Offline COGS
     offline_cogs_row = conn.execute(f"""
         SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs
         FROM sale_items si
@@ -3220,7 +3220,7 @@ def reports():
         WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}
     """).fetchone()
 
-    # Online COGS
+    # 4. Online COGS
     online_cogs_row = conn.execute(f"""
         SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs
         FROM online_order_items oi
@@ -3231,35 +3231,123 @@ def reports():
 
     pos_rev = float(offline_sales_summary["revenue"])
     online_rev = float(online_orders_summary["revenue"])
-    revenue = pos_rev + online_rev
-
     pos_cnt = int(offline_sales_summary["tx_count"])
     online_cnt = int(online_orders_summary["tx_count"])
-    tx_count = pos_cnt + online_cnt
+    pos_cogs = float(offline_cogs_row["total_cogs"])
+    online_cogs = float(online_cogs_row["total_cogs"])
 
-    cogs = float(offline_cogs_row["total_cogs"]) + float(online_cogs_row["total_cogs"])
-    gross_profit = revenue - cogs
-
-    income_row = conn.execute(f"""
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM ledger_entries WHERE entry_type='income' AND {ledger_filter}
+    # 5. Product Packages Sales (POS + Online)
+    pos_pkg = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
+            COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
+            COALESCE(SUM(si.quantity), 0) AS qty_sold,
+            COUNT(DISTINCT si.sale_id) AS tx_count
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN products p ON si.product_id = p.id
+        WHERE (p.unit LIKE '%package%' OR p.unit LIKE '%combo%' OR p.name LIKE '%📦%' OR p.name LIKE '%package%' OR p.name LIKE '%combo%')
+        AND {date_filter.replace('created_at', 's.created_at')}
     """).fetchone()
-    other_income = float(income_row["total"])
 
-    expense_row = conn.execute(f"""
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM ledger_entries WHERE entry_type='expense' AND {ledger_filter}
+    online_pkg = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
+            COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs,
+            COALESCE(SUM(oi.quantity), 0) AS qty_sold,
+            COUNT(DISTINCT oi.order_id) AS tx_count
+        FROM online_order_items oi
+        JOIN online_orders o ON oi.order_id = o.id
+        LEFT JOIN products p ON oi.product_id = p.id
+        WHERE (oi.product_name LIKE '📦%' OR oi.product_name LIKE '%package%' OR oi.product_name LIKE '%combo%' OR (p.unit IS NOT NULL AND (p.unit LIKE '%package%' OR p.unit LIKE '%combo%')))
+        AND {date_filter.replace('created_at', 'o.created_at')}
     """).fetchone()
-    other_expenses = float(expense_row["total"])
 
-    # Net profit calculation formula
-    net_profit = (gross_profit + other_income) - other_expenses
+    pkg_rev = float(pos_pkg["revenue"]) + float(online_pkg["revenue"])
+    pkg_cogs = float(pos_pkg["cogs"]) + float(online_pkg["cogs"])
+    pkg_tx = int(pos_pkg["tx_count"]) + int(online_pkg["tx_count"])
+    pkg_qty = int(pos_pkg["qty_sold"]) + int(online_pkg["qty_sold"])
 
+    # 6. Offers & Promotions Sales (POS + Online)
+    pos_off = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
+            COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
+            COALESCE(SUM(si.quantity), 0) AS qty_sold,
+            COUNT(DISTINCT si.sale_id) AS tx_count
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN products p ON si.product_id = p.id
+        WHERE (
+            p.is_offer = 1 OR p.is_promotion = 1 OR (p.offer_type != '' AND p.offer_type IS NOT NULL)
+        )
+        AND {date_filter.replace('created_at', 's.created_at')}
+    """).fetchone()
+
+    online_off = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
+            COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs,
+            COALESCE(SUM(oi.quantity), 0) AS qty_sold,
+            COUNT(DISTINCT oi.order_id) AS tx_count
+        FROM online_order_items oi
+        JOIN online_orders o ON oi.order_id = o.id
+        JOIN products p ON oi.product_id = p.id
+        WHERE (
+            p.is_offer = 1 OR p.is_promotion = 1 OR (p.offer_type != '' AND p.offer_type IS NOT NULL)
+        )
+        AND {date_filter.replace('created_at', 'o.created_at')}
+    """).fetchone()
+
+    off_rev = float(pos_off["revenue"]) + float(online_off["revenue"])
+    off_cogs = float(pos_off["cogs"]) + float(online_off["cogs"])
+    off_tx = int(pos_off["tx_count"]) + int(online_off["tx_count"])
+    off_qty = int(pos_off["qty_sold"]) + int(online_off["qty_sold"])
+
+    # Ledger entries for this period
     ledger_entries = conn.execute(f"""
         SELECT * FROM ledger_entries
         WHERE {ledger_filter}
         ORDER BY entry_date DESC, id DESC
     """).fetchall()
+
+    def get_ledger_sums(segment_name):
+        if segment_name == 'all':
+            inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income')
+            exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense')
+        else:
+            inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income' and (r['target_segment'] or 'all') == segment_name)
+            exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense' and (r['target_segment'] or 'all') == segment_name)
+        return inc, exp
+
+    all_inc, all_exp = get_ledger_sums('all')
+    on_inc, on_exp = get_ledger_sums('online')
+    pos_inc, pos_exp = get_ledger_sums('offline')
+    pkg_inc, pkg_exp = get_ledger_sums('packages')
+    off_inc, off_exp = get_ledger_sums('offers')
+
+    # Overall Summary
+    total_rev = pos_rev + online_rev
+    total_cogs = pos_cogs + online_cogs
+    total_tx = pos_cnt + online_cnt
+    overall_gross = total_rev - total_cogs
+    overall_net = (overall_gross + all_inc) - all_exp
+
+    # Online Summary
+    online_gross = online_rev - online_cogs
+    online_net = (online_gross + on_inc) - on_exp
+
+    # Offline Summary
+    offline_gross = pos_rev - pos_cogs
+    offline_net = (offline_gross + pos_inc) - pos_exp
+
+    # Packages Summary
+    pkg_gross = pkg_rev - pkg_cogs
+    pkg_net = (pkg_gross + pkg_inc) - pkg_exp
+
+    # Offers Summary
+    off_gross = off_rev - off_cogs
+    off_net = (off_gross + off_inc) - off_exp
 
     sold_subquery = f"""
         SELECT si.product_id AS product_id,
@@ -3296,22 +3384,238 @@ def reports():
     return render_template(
         "reports.html",
         period=period,
-        revenue=revenue,
-        cogs=cogs,
-        gross_profit=gross_profit,
-        other_income=other_income,
-        other_expenses=other_expenses,
-        net_profit=net_profit,
+        revenue=total_rev,
+        cogs=total_cogs,
+        gross_profit=overall_gross,
+        other_income=all_inc,
+        other_expenses=all_exp,
+        net_profit=overall_net,
         ledger_entries=ledger_entries,
         top_products=top_products,
         slow_movers=slow_movers,
         dead_stock=dead_stock,
         total_units_sold=total_units_sold,
         max_qty_sold=max_qty_sold,
-        tx_count=tx_count,
-        online_summary={"tx_count": online_cnt, "revenue": online_rev},
-        offline_summary={"tx_count": pos_cnt, "revenue": pos_rev}
+        tx_count=total_tx,
+        online_summary={
+            "tx_count": online_cnt,
+            "revenue": online_rev,
+            "cogs": online_cogs,
+            "gross_profit": online_gross,
+            "income": on_inc,
+            "expense": on_exp,
+            "net_profit": online_net
+        },
+        offline_summary={
+            "tx_count": pos_cnt,
+            "revenue": pos_rev,
+            "cogs": pos_cogs,
+            "gross_profit": offline_gross,
+            "income": pos_inc,
+            "expense": pos_exp,
+            "net_profit": offline_net
+        },
+        packages_summary={
+            "tx_count": pkg_tx,
+            "qty_sold": pkg_qty,
+            "revenue": pkg_rev,
+            "cogs": pkg_cogs,
+            "gross_profit": pkg_gross,
+            "income": pkg_inc,
+            "expense": pkg_exp,
+            "net_profit": pkg_net
+        },
+        offers_summary={
+            "tx_count": off_tx,
+            "qty_sold": off_qty,
+            "revenue": off_rev,
+            "cogs": off_cogs,
+            "gross_profit": off_gross,
+            "income": off_inc,
+            "expense": off_exp,
+            "net_profit": off_net
+        }
     )
+
+
+@app.route("/reports/api/product_search")
+@login_required
+@admin_required
+def reports_api_product_search():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+    conn = get_connection()
+    like = f"%{q}%"
+    rows = conn.execute("""
+        SELECT p.id, p.name, p.sku, p.image_url, p.stock_qty, p.sell_price, p.cost_price, p.unit, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.name LIKE ? OR p.sku LIKE ? OR p.id = ?
+        ORDER BY p.name ASC LIMIT 15
+    """, (like, like, q if q.isdigit() else -1)).fetchall()
+    conn.close()
+    
+    result = []
+    for r in rows:
+        img_parts = split_image_urls(r["image_url"])
+        thumb = img_parts[0] if img_parts else "/static/images/logo.png"
+        result.append({
+            "id": r["id"],
+            "name": r["name"],
+            "sku": r["sku"],
+            "category": r["category_name"] or "General",
+            "stock_qty": r["stock_qty"],
+            "sell_price": float(r["sell_price"] or 0),
+            "cost_price": float(r["cost_price"] or 0),
+            "unit": r["unit"] or "Piece",
+            "image": thumb
+        })
+    return jsonify(result)
+
+
+@app.route("/reports/api/product_analysis")
+@login_required
+@admin_required
+def reports_api_product_analysis():
+    product_id = request.args.get("product_id", type=int)
+    period = request.args.get("period", "monthly")
+    if not product_id:
+        return jsonify({"error": "Product ID required"}), 400
+
+    conn = get_connection()
+    prod = conn.execute("""
+        SELECT p.*, c.name AS category_name, b.name AS brand_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN brands b ON p.brand = b.name
+        WHERE p.id = ?
+    """, (product_id,)).fetchone()
+    if not prod:
+        conn.close()
+        return jsonify({"error": "Product not found"}), 404
+
+    today = date.today()
+    today_str = today.isoformat()
+
+    if period == "daily":
+        date_filter = f"date(created_at) = '{today_str}'"
+        prev_filter = f"date(created_at) = '{(today - timedelta(days=1)).isoformat()}'"
+    elif period == "weekly":
+        start = (today - timedelta(days=6)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        prev_filter = f"date(created_at) >= '{(today - timedelta(days=13)).isoformat()}' AND date(created_at) < '{start}'"
+    elif period == "3_monthly":
+        start = (today - timedelta(days=89)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        prev_filter = f"date(created_at) >= '{(today - timedelta(days=179)).isoformat()}' AND date(created_at) < '{start}'"
+    elif period == "yearly":
+        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
+        prev_filter = f"strftime('%Y', created_at) = '{str(today.year - 1)}'"
+    elif period == "all":
+        date_filter = "1=1"
+        prev_filter = "1=0"
+    else:  # monthly
+        period = "monthly"
+        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
+        prev_month = (today.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
+        prev_filter = f"strftime('%Y-%m', created_at) = '{prev_month}'"
+
+    # POS Sales for this product
+    pos_data = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(si.quantity), 0) AS qty_sold,
+            COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
+            COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
+            COUNT(DISTINCT si.sale_id) AS tx_count
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE si.product_id = ? AND (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}
+    """, (product_id,)).fetchone()
+
+    # Online Sales for this product
+    online_data = conn.execute(f"""
+        SELECT 
+            COALESCE(SUM(oi.quantity), 0) AS qty_sold,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
+            COALESCE(SUM(oi.quantity * COALESCE(?, oi.unit_price * 0.7)), 0) AS cogs,
+            COUNT(DISTINCT oi.order_id) AS tx_count
+        FROM online_order_items oi
+        JOIN online_orders o ON oi.order_id = o.id
+        WHERE oi.product_id = ? AND {date_filter.replace('created_at', 'o.created_at')}
+    """, (prod["cost_price"], product_id)).fetchone()
+
+    pos_qty = int(pos_data["qty_sold"])
+    online_qty = int(online_data["qty_sold"])
+    total_qty = pos_qty + online_qty
+
+    pos_rev = float(pos_data["revenue"])
+    online_rev = float(online_data["revenue"])
+    total_rev = pos_rev + online_rev
+
+    pos_cogs = float(pos_data["cogs"])
+    online_cogs = float(online_data["cogs"])
+    total_cogs = pos_cogs + online_cogs
+
+    gross_profit = total_rev - total_cogs
+    profit_margin_pct = round((gross_profit / total_rev * 100), 1) if total_rev > 0 else 0.0
+    profit_factor = round((total_rev / total_cogs), 2) if total_cogs > 0 else (round(total_rev, 2) if total_rev > 0 else 1.0)
+    roi_pct = round((gross_profit / total_cogs * 100), 1) if total_cogs > 0 else 0.0
+
+    # Daily trends (last 7 data points)
+    daily_trends = conn.execute("""
+        SELECT date(s.created_at) as sale_date,
+               SUM(si.quantity) as qty,
+               SUM(si.quantity * si.unit_price) as rev,
+               (SUM(si.quantity * si.unit_price) - SUM(si.quantity * si.cost_price)) as prof
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE si.product_id = ? AND s.created_at >= date('now', '-30 days')
+        GROUP BY date(s.created_at)
+        ORDER BY sale_date ASC LIMIT 30
+    """, (product_id,)).fetchall()
+
+    trends_list = [
+        {"date": r["sale_date"], "qty": r["qty"], "revenue": float(r["rev"]), "profit": float(r["prof"])}
+        for r in daily_trends
+    ]
+
+    img_parts = split_image_urls(prod["image_url"])
+    thumb = img_parts[0] if img_parts else "/static/images/logo.png"
+
+    conn.close()
+    return jsonify({
+        "product": {
+            "id": prod["id"],
+            "name": prod["name"],
+            "sku": prod["sku"],
+            "brand": prod["brand_name"] or prod["brand"] or "Generic",
+            "category": prod["category_name"] or "General",
+            "unit": prod["unit"] or "Piece",
+            "stock_qty": prod["stock_qty"],
+            "stock_value": round(prod["stock_qty"] * (prod["cost_price"] or 0), 2),
+            "sell_price": float(prod["sell_price"] or 0),
+            "cost_price": float(prod["cost_price"] or 0),
+            "mrp": float(prod["mrp"] or 0),
+            "image": thumb
+        },
+        "metrics": {
+            "period": period,
+            "total_qty_sold": total_qty,
+            "pos_qty_sold": pos_qty,
+            "online_qty_sold": online_qty,
+            "total_revenue": total_rev,
+            "pos_revenue": pos_rev,
+            "online_revenue": online_rev,
+            "total_cogs": total_cogs,
+            "gross_profit": gross_profit,
+            "profit_margin_pct": profit_margin_pct,
+            "profit_factor": profit_factor,
+            "roi_pct": roi_pct,
+            "total_invoices": int(pos_data["tx_count"]) + int(online_data["tx_count"])
+        },
+        "trends": trends_list
+    })
 
 
 @app.route("/reports/entry/new", methods=["POST"])
@@ -3322,11 +3626,12 @@ def add_ledger_entry():
     entry_type = request.form["entry_type"]
     amount = float(request.form.get("amount") or 0)
     entry_date = request.form["entry_date"] or date.today().isoformat()
+    target_segment = request.form.get("target_segment", "all").strip()
 
     conn = get_connection()
     conn.execute(
-        "INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at) VALUES (?, ?, ?, ?, ?)",
-        (entry_type, title, amount, entry_date, datetime.now().isoformat())
+        "INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment) VALUES (?, ?, ?, ?, ?, ?)",
+        (entry_type, title, amount, entry_date, datetime.now().isoformat(), target_segment)
     )
     conn.commit()
     conn.close()
@@ -3342,11 +3647,12 @@ def edit_ledger_entry(entry_id):
     entry_type = request.form["entry_type"]
     amount = float(request.form.get("amount") or 0)
     entry_date = request.form["entry_date"]
+    target_segment = request.form.get("target_segment", "all").strip()
 
     conn = get_connection()
     conn.execute(
-        "UPDATE ledger_entries SET title=?, entry_type=?, amount=?, entry_date=? WHERE id=?",
-        (title, entry_type, amount, entry_date, entry_id)
+        "UPDATE ledger_entries SET title=?, entry_type=?, amount=?, entry_date=?, target_segment=? WHERE id=?",
+        (title, entry_type, amount, entry_date, target_segment, entry_id)
     )
     conn.commit()
     conn.close()
