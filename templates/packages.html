@@ -8,16 +8,40 @@
   </div>
 </div>
 
-<div class="responsive-split-layout">
-  <!-- Create / Edit Package Form -->
-  <div style="flex:1;">
+<style>
+.packages-split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .packages-split-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+.pkg-edit-highlight {
+  animation: editPulse 1s ease-in-out;
+  border: 2px solid #16a34a !important;
+  box-shadow: 0 0 15px rgba(22, 163, 74, 0.3) !important;
+}
+@keyframes editPulse {
+  0% { transform: scale(0.99); }
+  50% { transform: scale(1.01); }
+  100% { transform: scale(1); }
+}
+</style>
+
+<div class="packages-split-grid">
+  <!-- Create / Edit Package Form (50%) -->
+  <div>
     <div class="card" id="pkgFormCard">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <h3 id="pkgFormHeading" style="margin:0; color:#15803d; font-size:16px;">+ Create New Combo Package</h3>
         <button type="button" id="cancelPkgEditBtn" onclick="resetPkgForm()" style="display:none; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:bold;">Cancel Edit</button>
       </div>
 
-      <form method="POST" id="pkgForm" action="{{ url_for('packages_page') }}" enctype="multipart/form-data" onsubmit="return validateAndConfirmPackage(event);">
+      <form method="POST" id="pkgForm" action="{{ url_for('packages_page') }}" enctype="multipart/form-data" onsubmit="return confirmPackageSave(event);">
         <input type="hidden" id="pkgEditId" value="">
 
         <div style="margin-bottom:12px;">
@@ -100,8 +124,8 @@
     </div>
   </div>
 
-  <!-- Existing Packages List -->
-  <div style="flex:1.5;">
+  <!-- Existing Packages List (50%) -->
+  <div>
     <div class="card">
       <h3 style="margin-top:0; color:#0f172a; font-size:16px;">Active Combo Packages</h3>
       <div class="table-responsive">
@@ -164,7 +188,7 @@
                   </button>
                   {% endif %}
                 </form>
-                <button type="button" class="btn btn-outline btn-small" onclick="loadPkgById({{ pkg.id }})" style="margin-right:4px;">✏️ Edit</button>
+                <button type="button" class="btn btn-outline btn-small" onclick="loadPkgById({{ pkg.id }})" style="margin-right:4px; font-weight:700;">✏️ Edit</button>
                 <form method="POST" action="{{ url_for('delete_package', package_id=pkg.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete combo package {{ pkg.name }}? This cannot be undone.');">
                   <button class="btn btn-danger btn-small" type="submit">Delete</button>
                 </form>
@@ -216,17 +240,36 @@
   </div>
 </div>
 
+<script type="application/json" id="all_packages_json">
+{{ packages|tojson|safe }}
+</script>
+
 <script>
-const ALL_PACKAGES_DATA = {{ packages|tojson|safe }};
-const ALL_PACKAGES_MAP = new Map();
-ALL_PACKAGES_DATA.forEach(p => ALL_PACKAGES_MAP.set(Number(p.id), p));
+let ALL_PACKAGES_MAP = new Map();
+
+function initPackagesMap() {
+  try {
+    const rawEl = document.getElementById('all_packages_json');
+    if (rawEl && rawEl.textContent) {
+      const arr = JSON.parse(rawEl.textContent);
+      arr.forEach(p => ALL_PACKAGES_MAP.set(Number(p.id), p));
+    }
+  } catch (err) {
+    console.error("Failed to parse packages JSON:", err);
+  }
+}
+initPackagesMap();
 
 function loadPkgById(pkgId) {
+  if (ALL_PACKAGES_MAP.size === 0) {
+    initPackagesMap();
+  }
   const pkg = ALL_PACKAGES_MAP.get(Number(pkgId));
   if (pkg) {
     loadPkgForEdit(pkg);
   } else {
     console.error("Package not found for ID:", pkgId);
+    alert("Could not load package #" + pkgId + ". Please refresh the page.");
   }
 }
 
@@ -358,7 +401,16 @@ function loadPkgForEdit(pkg) {
       addPkgProductRow(it.product_id, it.product_name, it.sku || 'SKU', it.sell_price, it.quantity, it.image_url || '');
     });
   }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const card = document.getElementById('pkgFormCard');
+  if (card) {
+    card.classList.remove('pkg-edit-highlight');
+    void card.offsetWidth;
+    card.classList.add('pkg-edit-highlight');
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }
 
 function resetPkgForm() {
