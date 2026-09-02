@@ -2420,6 +2420,23 @@
     </div>
   </div>
 
+  <!-- Package Detail Modal -->
+  <div class="modal-backdrop" id="packageDetailModal" style="display:none; z-index:100000; align-items:center; justify-content:center;" onclick="if(event.target === this) closePackageDetailModal()">
+    <div class="modal-box" style="max-width:580px; width:95%; max-height:85vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.3rem;">🎁</span>
+          <h3 id="pkgModalTitle" style="font-size:1.15rem; font-weight:800; color:var(--primary); margin:0;">Package Details</h3>
+        </div>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closePackageDetailModal()">✕</button>
+      </div>
+
+      <div id="pkgModalBody" style="font-size:0.9rem;">
+        <!-- Injected by JavaScript -->
+      </div>
+    </div>
+  </div>
+
   <!-- Slide-Out Cart Drawer -->
   <div class="drawer-overlay" id="drawerOverlay" onclick="closeCartDrawer()"></div>
   <div class="cart-drawer-panel" id="cartDrawerPanel">
@@ -3311,9 +3328,15 @@
       document.getElementById('productDetailModal').style.display = 'flex';
     }
 
+    let returnToOrderHistoryOnDetailClose = false;
+
     function closeProductDetailModal() {
       document.getElementById('productDetailModal').style.display = 'none';
       currentDetailProduct = null;
+      if (returnToOrderHistoryOnDetailClose) {
+        returnToOrderHistoryOnDetailClose = false;
+        document.getElementById('orderHistoryModal').style.display = 'flex';
+      }
     }
 
     function renderDetailImage() {
@@ -3897,6 +3920,8 @@
       }
     }
 
+    let lastFetchedMyOrders = [];
+
     // Fetch My Orders History
     async function fetchMyOrdersHistory() {
       if (!currentCustomer || !currentCustomer.phone) return;
@@ -3904,29 +3929,30 @@
       try {
         const res = await fetch('/api/orders/my-orders?phone=' + encodeURIComponent(currentCustomer.phone));
         const orders = await res.json();
-        if (Array.isArray(orders) && orders.length > 0) {
-          container.innerHTML = orders.map((o, oIdx) => {
+        lastFetchedMyOrders = Array.isArray(orders) ? orders : [];
+        if (lastFetchedMyOrders.length > 0) {
+          container.innerHTML = lastFetchedMyOrders.map((o, oIdx) => {
             const items = o.items || [];
             
             // 1. Initial summary preview line of all products in order
             const prodSummaryNames = items.map(it => {
-              const cleanName = (it.product_name || 'Product').split('(')[0].trim();
+              const cleanName = (it.product_name || 'Product').split('(')[0].replace('📦', '').trim();
               return `${cleanName} (×${it.quantity})`;
             }).join(', ');
 
             // 2. Render each item in a professionally divided card
             const itemsCardsHtml = items.map((it, itIdx) => {
-              const itImg = getFirstImageJS(it.image_url) || '/static/images/logo.png';
-              const isPkg = (it.product_name || '').includes('📦') || (it.product_name || '').toLowerCase().includes('package');
+              const itImg = getFirstImageJS(it.image_url || it.package_image) || '/static/images/logo.png';
+              const isPkg = it.is_package || (it.product_name || '').includes('📦') || (it.product_name || '').toLowerCase().includes('package') || it.package_items;
               const cleanTitle = it.product_name || 'Product';
-              const uPrice = parseFloat(it.unit_price || 0);
+              const uPrice = parseFloat(it.unit_price || it.package_price || 0);
               const lTotal = parseFloat(it.total_price || (uPrice * it.quantity));
 
               return `
-                <div class="order-product-card" onclick="openProductFromOrder('${it.product_id}')" style="display:flex; align-items:center; gap:12px; padding:10px 12px; background:#ffffff; border:1.5px solid #e2e8f0; border-radius:10px; margin-bottom:8px; cursor:pointer; transition:all 0.2s ease; box-shadow:0 1px 3px rgba(0,0,0,0.04);" onmouseover="this.style.borderColor='#3b82f6'; this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='#ffffff';">
-                  <div style="width:48px; height:48px; border-radius:8px; overflow:hidden; background:#f1f5f9; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #e2e8f0;">
-                    ${isPkg ? `
-                      <span style="font-size:24px;">🎁</span>
+                <div class="order-product-card" onclick="openProductFromOrder(${oIdx}, ${itIdx})" style="display:flex; align-items:center; gap:12px; padding:10px 12px; background:#ffffff; border:1.5px solid #e2e8f0; border-radius:10px; margin-bottom:8px; cursor:pointer; transition:all 0.2s ease; box-shadow:0 1px 3px rgba(0,0,0,0.04);" onmouseover="this.style.borderColor='#3b82f6'; this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='#ffffff';">
+                  <div style="width:50px; height:50px; border-radius:8px; overflow:hidden; background:#f1f5f9; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #e2e8f0;">
+                    ${isPkg && !it.package_image ? `
+                      <span style="font-size:26px;">🎁</span>
                     ` : `
                       <img src="${itImg}" alt="${cleanTitle}" style="width:100%; height:100%; object-fit:contain;" onerror="this.src='/static/images/logo.png'">
                     `}
@@ -3936,14 +3962,18 @@
                       ${cleanTitle}
                     </div>
                     <div style="display:flex; align-items:center; gap:8px; margin-top:3px; font-size:0.78rem; color:#64748b;">
-                      <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-weight:700;">Qty: ${it.quantity}</span>
+                      <span style="background:${isPkg ? '#fef3c7; color:#92400e' : '#e0f2fe; color:#0369a1'}; padding:1px 6px; border-radius:4px; font-weight:700;">
+                        ${isPkg ? '🎁 Combo Deal' : `Qty: ${it.quantity}`}
+                      </span>
                       <span>× TK ${uPrice.toFixed(2)}</span>
                       ${it.unit ? `<span style="color:#94a3b8;">• ${it.unit}</span>` : ''}
                     </div>
                   </div>
                   <div style="text-align:right; flex-shrink:0;">
                     <div style="font-weight:800; font-size:0.92rem; color:#16a34a;">TK ${lTotal.toFixed(2)}</div>
-                    <div style="font-size:0.70rem; color:#3b82f6; font-weight:700; margin-top:2px;">View Product ➔</div>
+                    <div style="font-size:0.72rem; color:#3b82f6; font-weight:700; margin-top:2px;">
+                      ${isPkg ? 'View Package ➔' : 'View Product ➔'}
+                    </div>
                   </div>
                 </div>
               `;
@@ -3984,7 +4014,7 @@
                 <div id="orderDetailBox_${o.id}" style="display:none; margin-top:12px; padding-top:12px; border-top:1.5px dashed #cbd5e1;">
                   <div style="font-size:0.82rem; font-weight:800; color:#1e293b; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
                     <span>📦 Ordered Items (${items.length} Products):</span>
-                    <span style="font-size:0.74rem; color:#64748b; font-weight:600;">(Click item to view product)</span>
+                    <span style="font-size:0.74rem; color:#64748b; font-weight:600;">(Click item to view details)</span>
                   </div>
 
                   <div class="order-items-separated-list">
@@ -3999,7 +4029,7 @@
                     </div>
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                       <span>Delivery Charge:</span>
-                      <strong>TK ${(o.delivery_charge || 0).toFixed(2)}</strong>
+                      <strong>${(o.delivery_charge === 0 || o.delivery_charge === 0.0) ? '<span style="color:#16a34a; font-weight:800;">FREE (৳০)</span>' : 'TK ' + (o.delivery_charge || 0).toFixed(2)}</strong>
                     </div>
                     <div style="display:flex; justify-content:space-between; font-weight:800; color:#0f172a; border-top:1px solid #cbd5e1; padding-top:4px; margin-top:4px;">
                       <span>Total Amount:</span>
@@ -4040,16 +4070,132 @@
       }
     }
 
-    function openProductFromOrder(productId) {
-      productId = parseInt(productId) || productId;
-      const prod = allProducts.find(p => p.id === productId || p.id === parseInt(productId));
-      if (prod) {
-        closeOrderHistoryModal();
-        openProductDetailModal(prod.id);
+    function openProductFromOrder(oIdx, itIdx) {
+      const order = lastFetchedMyOrders[oIdx];
+      if (!order || !order.items || !order.items[itIdx]) return;
+      const item = order.items[itIdx];
+      const pName = item.product_name || '';
+      const isPkg = item.is_package || pName.includes('📦') || pName.toLowerCase().includes('package') || pName.toLowerCase().includes('combo') || item.package_items;
+
+      returnToOrderHistoryOnDetailClose = true;
+      document.getElementById('orderHistoryModal').style.display = 'none';
+
+      if (isPkg) {
+        openPackageDetailModal(item);
       } else {
-        // Find if in categories or packages
-        closeOrderHistoryModal();
-        switchView('home');
+        const prod = allProducts.find(p => p.id === item.product_id || p.id === parseInt(item.product_id));
+        if (prod) {
+          openProductDetailModal(prod.id);
+        } else {
+          const fakeProd = {
+            id: item.product_id,
+            name: item.product_name,
+            sell_price: item.unit_price,
+            mrp: item.mrp_price || item.unit_price,
+            image_url: item.image_url || '',
+            unit: item.unit || '',
+            brand: item.brand || '',
+            sku: item.sku || 'ONLINE',
+            stock_qty: 10,
+            description: item.description || 'High quality grocery item.'
+          };
+          allProducts.push(fakeProd);
+          openProductDetailModal(fakeProd.id);
+        }
+      }
+    }
+
+    function openPackageDetailModal(pkgItem) {
+      const modal = document.getElementById('packageDetailModal');
+      const titleEl = document.getElementById('pkgModalTitle');
+      const bodyEl = document.getElementById('pkgModalBody');
+      if (!modal || !titleEl || !bodyEl) return;
+
+      const rawName = pkgItem.product_name || pkgItem.package_name || 'Combo Package';
+      const cleanTitle = rawName.split('(')[0].replace('📦', '').trim();
+      titleEl.textContent = cleanTitle || 'Combo Package Deal';
+
+      const pkgPrice = parseFloat(pkgItem.unit_price || pkgItem.package_price || 0);
+      const pkgImg = getFirstImageJS(pkgItem.package_image || pkgItem.image_url);
+
+      let itemsHtml = '';
+      if (pkgItem.package_items && pkgItem.package_items.length > 0) {
+        itemsHtml = pkgItem.package_items.map((pi, idx) => {
+          const piImg = getFirstImageJS(pi.image_url) || '/static/images/logo.png';
+          return `
+            <div class="pkg-sub-item-card" onclick="openIncludedProductFromPkg(${pi.product_id})" style="display:flex; align-items:center; gap:12px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:8px; cursor:pointer; transition:all 0.2s ease;" onmouseover="this.style.borderColor='#3b82f6'; this.style.background='#ffffff';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';">
+              <div style="width:44px; height:44px; border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:center;">
+                <img src="${piImg}" alt="${pi.prod_name}" style="width:100%; height:100%; object-fit:contain;" onerror="this.src='/static/images/logo.png'">
+              </div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:700; font-size:0.86rem; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                  ${pi.prod_name}
+                </div>
+                <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">
+                  <span style="background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:3px; font-weight:700;">Qty: ${pi.item_qty || 1}</span>
+                  ${pi.unit ? `• ${pi.unit}` : ''} ${pi.sku ? `• SKU: ${pi.sku}` : ''}
+                </div>
+              </div>
+              <div style="text-align:right; flex-shrink:0;">
+                <div style="font-size:0.82rem; font-weight:700; color:#16a34a;">TK ${parseFloat(pi.sell_price || 0).toFixed(2)}</div>
+                <div style="font-size:0.68rem; color:#3b82f6; font-weight:700;">View ➔</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else if (rawName.includes('(')) {
+        const insideStr = rawName.substring(rawName.indexOf('(') + 1, rawName.lastIndexOf(')'));
+        const parts = insideStr.split(',').map(s => s.trim()).filter(Boolean);
+        itemsHtml = parts.map((part, idx) => `
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:6px;">
+            <span style="font-size:1.1rem;">📦</span>
+            <div style="font-size:0.84rem; font-weight:600; color:#1e293b; flex:1;">${part}</div>
+          </div>
+        `).join('');
+      }
+
+      bodyEl.innerHTML = `
+        ${pkgImg ? `
+          <div style="text-align:center; margin-bottom:14px; background:#f8fafc; border-radius:12px; padding:12px; border:1px solid #e2e8f0;">
+            <img src="${pkgImg}" alt="${cleanTitle}" style="max-height:160px; max-width:100%; object-fit:contain; border-radius:8px;">
+          </div>
+        ` : ''}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
+          <div>
+            <div style="font-size:0.75rem; color:#065f46; font-weight:700; text-transform:uppercase;">Package Price</div>
+            <div style="font-size:1.25rem; font-weight:900; color:#047857;">TK ${pkgPrice.toFixed(2)}</div>
+          </div>
+          <span style="background:#10b981; color:#ffffff; padding:4px 10px; border-radius:20px; font-size:0.78rem; font-weight:800;">
+            🎁 All-in-One Bundle
+          </span>
+        </div>
+
+        <div style="font-weight:800; font-size:0.88rem; color:#1e293b; margin-bottom:10px;">
+          📋 Included Products in this Package:
+        </div>
+
+        <div class="pkg-included-items-list" style="max-height:300px; overflow-y:auto; padding-right:2px;">
+          ${itemsHtml || '<div style=\"color:#64748b; font-size:0.82rem;\">Package items included.</div>'}
+        </div>
+      `;
+
+      modal.style.display = 'flex';
+    }
+
+    function openIncludedProductFromPkg(prodId) {
+      const prod = allProducts.find(p => p.id === prodId || p.id === parseInt(prodId));
+      if (prod) {
+        document.getElementById('packageDetailModal').style.display = 'none';
+        openProductDetailModal(prod.id);
+      }
+    }
+
+    function closePackageDetailModal() {
+      document.getElementById('packageDetailModal').style.display = 'none';
+      if (returnToOrderHistoryOnDetailClose) {
+        returnToOrderHistoryOnDetailClose = false;
+        document.getElementById('orderHistoryModal').style.display = 'flex';
       }
     }
 

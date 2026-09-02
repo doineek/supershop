@@ -109,6 +109,8 @@
   <div class="total-row"><span>Sub-Total:</span><span>{{ "%.2f"|format(sale.total_amount) }}</span></div>
   {% if sale.delivery_charge and sale.delivery_charge > 0 %}
   <div class="total-row"><span>+ Delivery Charge:</span><span>{{ "%.2f"|format(sale.delivery_charge) }}</span></div>
+  {% elif (sale.channel == 'Online') or (sale.delivery_charge is defined and sale.delivery_charge == 0 and sale.invoice_number and 'ONLINE' in sale.invoice_number) %}
+  <div class="total-row"><span>+ Delivery Charge:</span><span style="font-weight:bold; color:#16a34a;">FREE (৳০)</span></div>
   {% endif %}
   {% if sale.vat_amount and sale.vat_amount > 0 %}
   <div class="total-row"><span>+ VAT:</span><span>{{ "%.2f"|format(sale.vat_amount) }}</span></div>

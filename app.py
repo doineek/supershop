@@ -1987,6 +1987,9 @@ def prepare_receipt_data(conn, sale_id):
         if ord_row:
             delivery_charge = float(ord_row["delivery_charge"] or 0)
             sale_dict["delivery_charge"] = delivery_charge
+            sale_dict["subtotal"] = float(ord_row["subtotal"] or 0)
+            sale_dict["total_amount"] = float(ord_row["subtotal"] or ord_row["total_amount"])
+            sale_dict["rounded_total"] = float(ord_row["total_amount"] or 0)
             sale_dict["order_status"] = ord_row["order_status"]
             sale_dict["area"] = ord_row["area"]
             sale_dict["district"] = ord_row["district"]
@@ -1996,11 +1999,14 @@ def prepare_receipt_data(conn, sale_id):
             o_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
             for oi in o_items:
                 oi_dict = dict(oi)
-                p_row = conn.execute("SELECT sku, offer_type, offer_value, offer_title FROM products WHERE id = ?", (oi_dict["product_id"],)).fetchone()
-                sku = p_row["sku"] if p_row else "ONLINE"
                 p_name = oi_dict.get("product_name") or "Product"
-                if "📦" in p_name or "Package" in p_name or "Combo" in p_name:
-                    sku = "COMBO"
+                is_pkg_item = ("📦" in p_name) or ("Package" in p_name) or ("Combo" in p_name) or (oi_dict.get("product_id") == 0)
+
+                p_row = None
+                if not is_pkg_item:
+                    p_row = conn.execute("SELECT sku, offer_type, offer_value, offer_title FROM products WHERE id = ?", (oi_dict["product_id"],)).fetchone()
+                
+                sku = "COMBO" if is_pkg_item else (p_row["sku"] if p_row else "ONLINE")
                 
                 qty = int(oi_dict.get("quantity") or 1)
                 unit_price = float(oi_dict.get("unit_price") or 0.0)
@@ -2008,6 +2014,20 @@ def prepare_receipt_data(conn, sale_id):
                 line_total = float(oi_dict.get("total_price") or (unit_price * qty))
                 paid_qty = qty
                 free_qty = 0
+
+                # Only regular standalone products can have offer badges, NEVER combo packages!
+                offer_type = "" if is_pkg_item else (p_row["offer_type"] if p_row else "")
+                offer_title = "" if is_pkg_item else (p_row["offer_title"] if p_row else "")
+                offer_value = "" if is_pkg_item else (p_row["offer_value"] if p_row else "")
+
+                if not is_pkg_item and (offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in (offer_title or '').lower()) or ('buy' in (offer_value or '').lower()) or ('buy' in p_name.lower())):
+                    b_qty, f_qty = parse_bogo_quantities(offer_value, offer_title, p_name)
+                    tot_set = b_qty + f_qty
+                    if tot_set > 0:
+                        sets = qty // tot_set
+                        rem = qty % tot_set
+                        paid_qty = (sets * b_qty) + rem
+                        free_qty = sets * f_qty
 
                 items.append({
                     "id": oi_dict.get("id"),
@@ -2023,9 +2043,9 @@ def prepare_receipt_data(conn, sale_id):
                     "total_price": line_total,
                     "vat_amount": 0.0,
                     "discount": 0.0,
-                    "offer_type": p_row["offer_type"] if p_row else "",
-                    "offer_title": p_row["offer_title"] if p_row else "",
-                    "offer_value": p_row["offer_value"] if p_row else ""
+                    "offer_type": offer_type,
+                    "offer_title": offer_title,
+                    "offer_value": offer_value
                 })
     else:
         raw_items = conn.execute("""
@@ -2054,8 +2074,11 @@ def prepare_receipt_data(conn, sale_id):
                 for pi in p_items:
                     details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
                     sl += 1
-                i_dict["product_name"] = f"{pkg['name']} ({', '.join(details)})"
+                i_dict["product_name"] = f"📦 {pkg['name']} ({', '.join(details)})"
                 i_dict["sku"] = "COMBO"
+                i_dict["offer_type"] = ""
+                i_dict["offer_title"] = ""
+                i_dict["offer_value"] = ""
             else:
                 i_dict["product_name"] = i_dict.get("prod_name_tbl") or "Item"
                 i_dict["sku"] = i_dict.get("prod_sku") or ""
@@ -5407,8 +5430,34 @@ def api_my_orders():
             LEFT JOIN products p ON oi.product_id = p.id
             WHERE oi.order_id = ?
         """, (ord_row["id"],)).fetchall()
+
+        processed_items = []
+        for i in items:
+            i_dict = dict(i)
+            p_name = i_dict.get("product_name") or ""
+            if "📦" in p_name or "Package" in p_name or "Combo" in p_name or i_dict.get("product_id") == 0:
+                clean_pkg_name = p_name.replace("📦", "").split("(")[0].strip()
+                pkg = conn.execute(
+                    "SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0",
+                    (clean_pkg_name, clean_pkg_name, clean_pkg_name)
+                ).fetchone()
+                if pkg:
+                    i_dict["is_package"] = True
+                    i_dict["package_id"] = pkg["id"]
+                    i_dict["package_name"] = pkg["name"]
+                    i_dict["package_price"] = pkg["package_price"]
+                    i_dict["package_image"] = pkg["image_url"] or ""
+                    i_dict["package_description"] = pkg["description"] or ""
+                    pkg_items = conn.execute("""
+                        SELECT pi.quantity as item_qty, p.id as product_id, p.name as prod_name, p.sku, p.unit, p.sell_price, p.mrp, p.image_url, p.brand
+                        FROM package_items pi JOIN products p ON pi.product_id = p.id
+                        WHERE pi.package_id = ?
+                    """, (pkg["id"],)).fetchall()
+                    i_dict["package_items"] = [dict(pi) for pi in pkg_items]
+            processed_items.append(i_dict)
+
         o_dict = dict(ord_row)
-        o_dict["items"] = [dict(i) for i in items]
+        o_dict["items"] = processed_items
         result.append(o_dict)
 
     conn.close()

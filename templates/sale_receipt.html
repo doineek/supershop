@@ -71,6 +71,11 @@
     <span>Delivery Charge</span>
     <span>TK {{ "%.2f"|format(sale.delivery_charge) }}</span>
   </div>
+  {% elif (sale.channel == 'Online') or (sale.delivery_charge is defined and sale.delivery_charge == 0 and sale.invoice_number and 'ONLINE' in sale.invoice_number) %}
+  <div class="receipt-line" style="border-bottom:none;">
+    <span>Delivery Charge</span>
+    <span style="font-weight:bold; color:#16a34a;">FREE (৳০)</span>
+  </div>
   {% endif %}
   {% if sale.vat_amount and sale.vat_amount > 0 %}
   <div class="receipt-line" style="border-bottom:none;">
