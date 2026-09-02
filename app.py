@@ -1303,69 +1303,61 @@ def overlay_product_label(img, product_name, brand_name="", category=""):
     try:
         import re
         from PIL import Image, ImageDraw
-        img = img.convert("RGBA")
-        w, h = img.size
         
-        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
+        w, h = 600, 600
+        card = Image.new("RGB", (w, h), (255, 255, 255))
+        draw = ImageDraw.Draw(card)
+        
+        # 1. Top Header Bar (Outside Photo)
+        header_h = 44 if brand_name else 36
+        draw.rectangle([0, 0, w, header_h], fill=(248, 250, 252))
+        draw.line([0, header_h, w, header_h], fill=(226, 232, 240), width=2)
+        
+        font_brand = get_font_helper(size=14, bold=True)
+        brand_display = brand_name.upper() if brand_name else "SUPERMARKET PREMIUM"
+        draw.text((16, header_h // 2), f"★ {brand_display}", fill=(79, 70, 229), anchor="lm", font=font_brand)
+        
+        font_cat = get_font_helper(size=12, bold=True)
+        if category:
+            draw.text((w - 16, header_h // 2), category.upper(), fill=(100, 116, 139), anchor="rm", font=font_cat)
+        else:
+            draw.text((w - 16, header_h // 2), "✓ 100% ORIGINAL", fill=(22, 163, 74), anchor="rm", font=font_cat)
+
+        # 2. Bottom Section (Outside Photo)
+        bottom_h = 78
+        bottom_y0 = h - bottom_h
+        draw.rectangle([0, bottom_y0, w, h], fill=(248, 250, 252))
+        draw.line([0, bottom_y0, w, bottom_y0], fill=(226, 232, 240), width=2)
         
         weight_match = re.search(r'(\d+(?:\.\d+)?\s*(?:kg|g|gm|ltr|litre|l|ml|pcs|pack|packet|টি|কেজি|গ্রাম|লিটার))', product_name, re.IGNORECASE)
         weight_str = weight_match.group(1).upper() if weight_match else ""
 
-        # 1. Compact Ultra-Professional Floating Header
-        pill_w, pill_h = int(w * 0.88), int(h * 0.125)
-        pill_x0 = (w - pill_w) // 2
-        pill_y0 = int(h * 0.03)
-        pill_x1 = pill_x0 + pill_w
-        pill_y1 = pill_y0 + pill_h
+        font_title = get_font_helper(size=26, bold=True)
+        font_badge = get_font_helper(size=14, bold=True)
 
-        # Subtle drop shadow
-        for offset in range(1, 4):
-            draw.rounded_rectangle([pill_x0 - offset, pill_y0 - offset + 2, pill_x1 + offset, pill_y1 + offset + 2], radius=16, fill=(0, 0, 0, 30))
+        draw.text((16, bottom_y0 + (bottom_h // 2)), product_name[:32], fill=(15, 23, 42), anchor="lm", font=font_title)
         
-        # Premium Dark Slate Header with Gold Accent Border
-        draw.rounded_rectangle([pill_x0, pill_y0, pill_x1, pill_y1], radius=16, fill=(15, 23, 42, 245), outline=(245, 158, 11, 240), width=2)
-
-        font_title = get_font_helper(size=int(h * 0.052), bold=True)
-        font_brand = get_font_helper(size=int(h * 0.024), bold=True)
-        font_badge = get_font_helper(size=int(h * 0.034), bold=True)
-
-        # Title text
-        title_text = product_name[:34]
-        title_y = pill_y0 + (pill_h // 2) - (8 if brand_name else 0)
-        
-        draw.text((w // 2 + 1, title_y + 1), title_text, fill=(0, 0, 0, 220), anchor="mm", font=font_title)
-        draw.text((w // 2, title_y), title_text, fill=(255, 255, 255, 255), anchor="mm", font=font_title)
-
-        if brand_name:
-            brand_y = pill_y0 + pill_h - 13
-            brand_text = f"{brand_name.upper()}  |  PREMIUM QUALITY"
-            draw.text((w // 2, brand_y), brand_text, fill=(253, 224, 71, 255), anchor="mm", font=font_brand)
-
-        # 2. Compact Bottom Right Net Weight Badge
         if weight_str:
-            bw, bh = int(w * 0.32), int(h * 0.075)
-            bx0 = w - bw - int(w * 0.035)
-            by0 = h - bh - int(h * 0.035)
-            bx1 = bx0 + bw
-            by1 = by0 + bh
-            
-            draw.rounded_rectangle([bx0 + 2, by0 + 2, bx1 + 2, by1 + 2], radius=12, fill=(0, 0, 0, 80))
-            draw.rounded_rectangle([bx0, by0, bx1, by1], radius=12, fill=(22, 163, 74, 250), outline=(255, 255, 255, 220), width=2)
-            draw.text(((bx0 + bx1) // 2, (by0 + by1) // 2), f"NET {weight_str}", fill=(255, 255, 255, 255), anchor="mm", font=font_badge)
+            bw, bh = 120, 36
+            bx0 = w - bw - 16
+            by0 = bottom_y0 + (bottom_h - bh) // 2
+            draw.rounded_rectangle([bx0, by0, bx0 + bw, by0 + bh], radius=8, fill=(22, 163, 74))
+            draw.text((bx0 + bw // 2, by0 + bh // 2), f"NET {weight_str}", fill=(255, 255, 255), anchor="mm", font=font_badge)
 
-        # 3. Compact Bottom Left 100% Pure Badge
-        qw, qh = int(w * 0.34), int(h * 0.075)
-        qx0 = int(w * 0.035)
-        qy0 = h - qh - int(h * 0.035)
-        qx1 = qx0 + qw
-        qy1 = qy0 + qh
+        # 3. Center Area (Pure Product Photo - Completely Clean, NO text on top!)
+        photo_y0 = header_h + 6
+        photo_h = bottom_y0 - photo_y0 - 6
         
-        draw.rounded_rectangle([qx0 + 2, qy0 + 2, qx1 + 2, qy1 + 2], radius=12, fill=(0, 0, 0, 80))
-        draw.rounded_rectangle([qx0, qy0, qx1, qy1], radius=12, fill=(79, 70, 229, 250), outline=(255, 255, 255, 220), width=2)
-        draw.text(((qx0 + qx1) // 2, (qy0 + qy1) // 2), "100% ORIGINAL", fill=(255, 255, 255, 255), anchor="mm", font=font_badge)
-
-        return Image.alpha_composite(img, overlay).convert("RGB")
+        resized_img = img.copy().convert("RGB")
+        resized_img.thumbnail((w - 24, photo_h), Image.Resampling.LANCZOS)
+        
+        px = (w - resized_img.width) // 2
+        py = photo_y0 + (photo_h - resized_img.height) // 2
+        card.paste(resized_img, (px, py))
+        
+        # Outer Card Border
+        draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
+        return card
     except Exception as e:
         print("Overlay Error:", e)
         return img.convert("RGB")

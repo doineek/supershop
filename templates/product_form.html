@@ -627,174 +627,173 @@ function redrawStudioCanvas() {
   canvas.width = w;
   canvas.height = h;
 
-  // 1. Draw Base Image
-  if (studioBaseImage.complete && studioBaseImage.naturalWidth > 0) {
-    ctx.drawImage(studioBaseImage, 0, 0, w, h);
-  } else {
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, w, h);
-  }
-
   const titleText = (document.getElementById('studioTitleInput')?.value || '').trim();
   const brandText = (document.getElementById('studioBrandInput')?.value || '').trim();
   const weightText = (document.getElementById('studioWeightInput')?.value || '').trim();
   
-  const fontSize = parseInt(document.getElementById('studioTitleSize')?.value || '34', 10);
+  const fontSize = parseInt(document.getElementById('studioTitleSize')?.value || '28', 10);
   const sizeBadge = document.getElementById('studioTitleSizeVal');
   if (sizeBadge) sizeBadge.textContent = fontSize + 'px';
 
   const fontFam = document.getElementById('studioFontFam')?.value || 'Arial Black, Impact, sans-serif';
-  const textColor = document.getElementById('studioTitleColor')?.value || '#ffffff';
-  const boxTheme = document.getElementById('studioBoxTheme')?.value || 'dark_gold';
-  const boxPos = document.getElementById('studioBoxPos')?.value || 'top';
+  const textColor = document.getElementById('studioTitleColor')?.value || '#0f172a';
+  const layoutMode = document.getElementById('studioLayoutMode')?.value || 'outside_card';
   const showWeight = document.getElementById('studioShowWeight')?.checked ?? true;
   const showPure = document.getElementById('studioShowOriginal')?.checked ?? true;
 
-  if (!titleText) return;
+  // ================= MODE 1: SHOWCASE CARD (TEXT OUTSIDE PHOTO) =================
+  if (layoutMode === 'outside_card') {
+    // 1. White Card Canvas Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
 
-  // 2. Render Banner Box
-  let pillW = Math.floor(w * 0.90);
-  let pillH = brandText ? Math.max(72, fontSize + 36) : Math.max(54, fontSize + 20);
-  let pillX = (w - pillW) / 2;
-  let pillY = 18;
-
-  if (boxPos === 'bottom') {
-    pillY = h - pillH - 58;
-  } else if (boxPos === 'center') {
-    pillY = (h - pillH) / 2;
-  }
-
-  // Draw Box Background
-  if (boxTheme !== 'none') {
-    ctx.save();
-    // Drop Shadow
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 4;
-
+    // 2. Top Header Bar (Outside Photo)
+    const headerH = brandText ? 44 : 36;
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, w, headerH);
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.roundRect(pillX, pillY, pillW, pillH, 16);
-
-    if (boxTheme === 'dark_gold') {
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
-      ctx.fill();
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    } else if (boxTheme === 'royal_blue') {
-      ctx.fillStyle = 'rgba(30, 58, 138, 0.94)';
-      ctx.fill();
-      ctx.strokeStyle = '#93c5fd';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    } else if (boxTheme === 'emerald_green') {
-      ctx.fillStyle = 'rgba(6, 78, 59, 0.94)';
-      ctx.fill();
-      ctx.strokeStyle = '#86efac';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    } else if (boxTheme === 'crimson_red') {
-      ctx.fillStyle = 'rgba(153, 27, 27, 0.94)';
-      ctx.fill();
-      ctx.strokeStyle = '#fca5a5';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    } else if (boxTheme === 'golden_glass') {
-      ctx.fillStyle = 'rgba(217, 119, 6, 0.94)';
-      ctx.fill();
-      ctx.strokeStyle = '#fef08a';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    } else if (boxTheme === 'transparent_outline') {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // 3. Draw Title Typography
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `bold ${fontSize}px ${fontFam}`;
-  ctx.fillStyle = textColor;
-
-  // Text Shadow
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetX = 1;
-  ctx.shadowOffsetY = 2;
-
-  const titleY = pillY + (brandText ? (pillH * 0.40) : (pillH * 0.50));
-  ctx.fillText(titleText, w / 2, titleY);
-
-  // 4. Draw Brand Subtitle
-  if (brandText) {
-    ctx.font = `bold ${Math.max(13, Math.floor(fontSize * 0.44))}px ${fontFam}`;
-    ctx.fillStyle = '#fde047';
-    ctx.shadowBlur = 4;
-    ctx.fillText(brandText, w / 2, pillY + pillH - 14);
-  }
-  ctx.restore();
-
-  // 5. Draw Net Weight Badge (Bottom Right)
-  if (showWeight && weightText) {
-    ctx.save();
-    const bw = 180;
-    const bh = 42;
-    const bx = w - bw - 20;
-    const by = h - bh - 20;
-
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-
-    ctx.beginPath();
-    ctx.roundRect(bx, by, bw, bh, 12);
-    ctx.fillStyle = '#16a34a';
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.moveTo(0, headerH);
+    ctx.lineTo(w, headerH);
     ctx.stroke();
 
-    ctx.textAlign = 'center';
+    // Brand on Top Left
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.font = `bold 18px ${fontFam}`;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(`NET ${weightText}`, bx + (bw / 2), by + (bh / 2));
-    ctx.restore();
-  }
-
-  // 6. Draw 100% Original Badge (Bottom Left)
-  if (showPure) {
-    ctx.save();
-    const qw = 180;
-    const qh = 42;
-    const qx = 20;
-    const qy = h - qh - 20;
-
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-
-    ctx.beginPath();
-    ctx.roundRect(qx, qy, qw, qh, 12);
+    ctx.font = `bold 14px ${fontFam}`;
     ctx.fillStyle = '#4f46e5';
+    ctx.fillText(brandText ? `★ ${brandText.toUpperCase()}` : '★ SUPERMARKET PREMIUM', 16, headerH / 2);
+
+    // Quality Badge on Top Right
+    if (showPure) {
+      ctx.textAlign = 'right';
+      ctx.font = `bold 12px ${fontFam}`;
+      ctx.fillStyle = '#16a34a';
+      ctx.fillText('✓ 100% ORIGINAL', w - 16, headerH / 2);
+    }
+
+    // 3. Bottom Section (Outside Photo)
+    const bottomH = Math.max(76, fontSize + 42);
+    const bottomY0 = h - bottomH;
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, bottomY0, w, bottomH);
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, bottomY0);
+    ctx.lineTo(w, bottomY0);
+    ctx.stroke();
+
+    // Product Title on Bottom Left
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${fontSize}px ${fontFam}`;
+    ctx.fillStyle = textColor;
+    const maxTitleW = showWeight && weightText ? w - 180 : w - 32;
+    ctx.fillText(titleText, 16, bottomY0 + (bottomH / 2), maxTitleW);
+
+    // Net Weight Badge on Bottom Right
+    if (showWeight && weightText) {
+      const bw = 130;
+      const bh = 36;
+      const bx = w - bw - 16;
+      const by = bottomY0 + (bottomH - bh) / 2;
+
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 8);
+      ctx.fillStyle = '#16a34a';
+      ctx.fill();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold 15px ${fontFam}`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`NET ${weightText}`, bx + (bw / 2), by + (bh / 2));
+    }
+
+    // 4. Center Area (Pure Clean Product Photo, NO text overlapping!)
+    const photoY0 = headerH + 6;
+    const photoH = bottomY0 - photoY0 - 6;
+
+    if (studioBaseImage.complete && studioBaseImage.naturalWidth > 0) {
+      const nw = studioBaseImage.naturalWidth;
+      const nh = studioBaseImage.naturalHeight;
+      const scale = Math.min((w - 24) / nw, photoH / nh);
+      const dw = nw * scale;
+      const dh = nh * scale;
+      const dx = (w - dw) / 2;
+      const dy = photoY0 + (photoH - dh) / 2;
+      ctx.drawImage(studioBaseImage, dx, dy, dw, dh);
+    }
+
+    // Outer Card Border
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, w, h);
+  }
+
+  // ================= MODE 2: OVERLAY BANNER (FLOATING ON PHOTO) =================
+  else if (layoutMode === 'overlay_banner') {
+    if (studioBaseImage.complete && studioBaseImage.naturalWidth > 0) {
+      ctx.drawImage(studioBaseImage, 0, 0, w, h);
+    } else {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    let pillW = Math.floor(w * 0.90);
+    let pillH = brandText ? Math.max(70, fontSize + 34) : Math.max(50, fontSize + 18);
+    let pillX = (w - pillW) / 2;
+    let pillY = 18;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillW, pillH, 14);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 2;
     ctx.stroke();
+    ctx.restore();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `bold 18px ${fontFam}`;
+    ctx.font = `bold ${fontSize}px ${fontFam}`;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`100% ORIGINAL`, qx + (qw / 2), qy + (qh / 2));
-    ctx.restore();
+    const titleY = pillY + (brandText ? (pillH * 0.38) : (pillH * 0.50));
+    ctx.fillText(titleText, w / 2, titleY);
+
+    if (brandText) {
+      ctx.font = `bold 13px ${fontFam}`;
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(brandText.toUpperCase(), w / 2, pillY + pillH - 14);
+    }
+
+    if (showWeight && weightText) {
+      const bw = 140, bh = 36, bx = w - bw - 20, by = h - bh - 20;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 10);
+      ctx.fillStyle = '#16a34a';
+      ctx.fill();
+      ctx.font = `bold 16px ${fontFam}`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`NET ${weightText}`, bx + (bw / 2), by + (bh / 2));
+    }
+  }
+
+  // ================= MODE 3: PURE PHOTO ONLY =================
+  else {
+    if (studioBaseImage.complete && studioBaseImage.naturalWidth > 0) {
+      ctx.drawImage(studioBaseImage, 0, 0, w, h);
+    } else {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, w, h);
+    }
   }
 }
 
@@ -938,77 +937,64 @@ function applyCustomStudioImage(asCover = true) {
             </div>
 
             <!-- Font Size & Font Family Row -->
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+            <!-- Layout Mode & Font Style Row -->
+            <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:8px; margin-bottom:10px;">
               <div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
-                  <label style="font-size:0.78rem; font-weight:700; color:#475569;">Font Size</label>
-                  <span id="studioTitleSizeVal" style="font-size:0.75rem; font-weight:800; color:#4f46e5;">34px</span>
-                </div>
-                <input type="range" id="studioTitleSize" min="22" max="52" value="34" oninput="redrawStudioCanvas()" style="width:100%; cursor:pointer;">
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Layout Mode / লেখার স্থান</label>
+                <select id="studioLayoutMode" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1.5px solid #4f46e5; font-size:0.80rem; font-weight:700; background:#f5f3ff; color:#4338ca;">
+                  <option value="outside_card" selected>🛍️ Text Outside Photo (ছবির বাইরে লেখা)</option>
+                  <option value="overlay_banner">✨ Floating Banner on Photo (ছবির উপর ব্যানার)</option>
+                  <option value="clean_photo_only">📸 Pure Clean Photo (শুধু ছবি)</option>
+                </select>
               </div>
 
               <div>
-                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Font Style</label>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">English Font Style</label>
                 <select id="studioFontFam" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
                   <option value="Arial Black, Impact, sans-serif" selected>Impact Ultra-Bold</option>
                   <option value="Segoe UI, Inter, sans-serif">Modern Sans Bold</option>
                   <option value="Trebuchet MS, sans-serif">Prominent Retail</option>
+                  <option value="Montserrat, sans-serif">Montserrat Minimal</option>
                   <option value="Georgia, serif">Classic Serif</option>
-                  <option value="SolaimanLipi, Kalpurush, sans-serif">Bangla & English</option>
                 </select>
               </div>
             </div>
 
-            <!-- Text Color & Box Theme Row -->
+            <!-- Font Size & Text Color Row -->
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                  <label style="font-size:0.78rem; font-weight:700; color:#475569;">Title Size</label>
+                  <span id="studioTitleSizeVal" style="font-size:0.75rem; font-weight:800; color:#4f46e5;">28px</span>
+                </div>
+                <input type="range" id="studioTitleSize" min="18" max="44" value="28" oninput="redrawStudioCanvas()" style="width:100%; cursor:pointer;">
+              </div>
+
               <div>
                 <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Title Color</label>
                 <div style="display:flex; align-items:center; gap:6px;">
-                  <input type="color" id="studioTitleColor" value="#ffffff" oninput="redrawStudioCanvas()" style="width:36px; height:32px; border:none; border-radius:6px; cursor:pointer;">
+                  <input type="color" id="studioTitleColor" value="#0f172a" oninput="redrawStudioCanvas()" style="width:36px; height:30px; border:none; border-radius:6px; cursor:pointer;">
                   <div style="display:flex; gap:3px;">
-                    <span onclick="document.getElementById('studioTitleColor').value='#ffffff'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#fff; border:1px solid #cbd5e1; cursor:pointer;" title="White"></span>
-                    <span onclick="document.getElementById('studioTitleColor').value='#fde047'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#fde047; border:1px solid #cbd5e1; cursor:pointer;" title="Gold"></span>
-                    <span onclick="document.getElementById('studioTitleColor').value='#86efac'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#86efac; border:1px solid #cbd5e1; cursor:pointer;" title="Lime"></span>
-                    <span onclick="document.getElementById('studioTitleColor').value='#67e8f9'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#67e8f9; border:1px solid #cbd5e1; cursor:pointer;" title="Cyan"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#0f172a'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#0f172a; cursor:pointer;" title="Dark Slate"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#1e3a8a'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#1e3a8a; cursor:pointer;" title="Navy"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#15803d'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#15803d; cursor:pointer;" title="Green"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#b91c1c'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#b91c1c; cursor:pointer;" title="Red"></span>
                   </div>
                 </div>
               </div>
-
-              <div>
-                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Banner Box Theme</label>
-                <select id="studioBoxTheme" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
-                  <option value="dark_gold" selected>🖤 Dark Slate + Gold</option>
-                  <option value="royal_blue">🔷 Royal Navy Blue</option>
-                  <option value="emerald_green">🟢 Emerald Green</option>
-                  <option value="crimson_red">🔴 Crimson Red</option>
-                  <option value="golden_glass">🟡 Golden Ribbon</option>
-                  <option value="transparent_outline">🔲 Minimal Outline</option>
-                  <option value="none">🚫 No Box (Text Only)</option>
-                </select>
-              </div>
             </div>
 
-            <!-- Position & Badge Toggles -->
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <div>
-                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Banner Position</label>
-                <select id="studioBoxPos" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
-                  <option value="top" selected>⬆️ Top Floating</option>
-                  <option value="bottom">⬇️ Bottom Banner</option>
-                  <option value="center">🎯 Center Label</option>
-                </select>
-              </div>
-
-              <div style="display:flex; flex-direction:column; gap:4px; justify-content:center; padding-top:10px;">
-                <label style="font-size:0.75rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:4px; cursor:pointer;">
-                  <input type="checkbox" id="studioShowWeight" checked onchange="redrawStudioCanvas()">
-                  ⚖️ Weight Badge
-                </label>
-                <label style="font-size:0.75rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:4px; cursor:pointer;">
-                  <input type="checkbox" id="studioShowOriginal" checked onchange="redrawStudioCanvas()">
-                  🛡️ 100% Pure Seal
-                </label>
-              </div>
+            <!-- Badges Toggles -->
+            <div style="display:flex; gap:16px; align-items:center; background:#f1f5f9; padding:8px 12px; border-radius:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                <input type="checkbox" id="studioShowWeight" checked onchange="redrawStudioCanvas()">
+                ⚖️ Show Weight Badge
+              </label>
+              <label style="font-size:0.78rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                <input type="checkbox" id="studioShowOriginal" checked onchange="redrawStudioCanvas()">
+                🛡️ Show 100% Original Badge
+              </label>
+            </div>
             </div>
 
           </div>
