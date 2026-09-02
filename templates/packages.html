@@ -643,23 +643,15 @@ function redrawPkgCanvas() {
   const chosen = pkgAiImages[selectedPkgIdx];
 
   if (chosen && chosen.url) {
-    pkgAiBaseImg.crossOrigin = 'anonymous';
-    pkgAiBaseImg.onload = function() {
+    const img = new Image();
+    img.onload = function() {
       ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(pkgAiBaseImg, 0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 2;
       ctx.strokeRect(0, 0, w, h);
     };
-    if (pkgAiBaseImg.src !== chosen.url) {
-      pkgAiBaseImg.src = chosen.url;
-    } else if (pkgAiBaseImg.complete && pkgAiBaseImg.naturalWidth > 0) {
-      ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(pkgAiBaseImg, 0, 0, w, h);
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(0, 0, w, h);
-    }
+    img.src = chosen.url;
   } else {
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, w, h);

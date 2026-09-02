@@ -1715,72 +1715,185 @@ def api_ai_generate_banner_image():
     })
 
 
-def create_combo_package_collage(package_name: str, package_price: float, item_images: list, item_names: list) -> Image.Image:
-    """Creates a clean, attractive multi-product collage image for Combo Packages."""
+def create_combo_package_collage(package_name: str, package_price: float, items_data: list) -> Image.Image:
+    """
+    Creates a clean, attractive multi-product grid collage card from actual product photos.
+    items_data: list of dicts [{'name': '...', 'image': PIL.Image, 'qty': 1}]
+    """
     w, h = 600, 600
     card = Image.new("RGB", (w, h), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    
-    # 1. Top Header Badge
-    header_h = 56
+
+    # 1. Top Header Banner
+    header_h = 58
     draw.rectangle([0, 0, w, header_h], fill=(240, 253, 244))
     draw.line([0, header_h, w, header_h], fill=(187, 247, 208), width=2)
-    
-    font_badge = get_font_helper(size=14, bold=True)
-    draw.text((16, header_h // 2), "🎁 SPECIAL COMBO DEAL", fill=(21, 128, 61), anchor="lm", font=font_badge)
-    
-    font_price = get_font_helper(size=18, bold=True)
-    draw.text((w - 16, header_h // 2), f"TK {package_price:,.2f}", fill=(22, 163, 74), anchor="rm", font=font_price)
-    
+
+    font_badge = get_font_helper(size=15, bold=True)
+    draw.text((20, header_h // 2), "🎁 SPECIAL COMBO DEAL", fill=(21, 128, 61), anchor="lm", font=font_badge)
+
+    font_price = get_font_helper(size=19, bold=True)
+    draw.text((w - 20, header_h // 2), f"TK {package_price:,.2f}", fill=(22, 163, 74), anchor="rm", font=font_price)
+
     # 2. Bottom Title Banner
     bottom_h = 60
     bottom_y0 = h - bottom_h
     draw.rectangle([0, bottom_y0, w, h], fill=(248, 250, 252))
     draw.line([0, bottom_y0, w, bottom_y0], fill=(226, 232, 240), width=2)
-    
-    font_title = get_font_helper(size=20, bold=True)
-    draw.text((16, bottom_y0 + (bottom_h // 2)), str(package_name)[:34], fill=(15, 23, 42), anchor="lm", font=font_title)
-    
-    # 3. Center Collage Area
-    center_y0 = header_h + 8
-    center_h = bottom_y0 - center_y0 - 8
-    
-    num_items = len(item_images)
-    if num_items == 0:
-        draw.text((w // 2, center_y0 + center_h // 2), "Assorted Combo Items", fill=(148, 163, 184), anchor="mm", font=font_badge)
-    elif num_items == 1:
-        img = item_images[0].convert("RGB")
-        img.thumbnail((w - 32, center_h), Image.Resampling.LANCZOS)
-        card.paste(img, ((w - img.width) // 2, center_y0 + (center_h - img.height) // 2))
-    elif num_items == 2:
+
+    font_title = get_font_helper(size=18, bold=True)
+    title_str = str(package_name)[:34]
+    draw.text((20, bottom_y0 + (bottom_h // 2)), title_str, fill=(15, 23, 42), anchor="lm", font=font_title)
+
+    font_sub = get_font_helper(size=12, bold=False)
+    draw.text((w - 20, bottom_y0 + (bottom_h // 2)), f"{len(items_data)} Products Included", fill=(100, 116, 139), anchor="rm", font=font_sub)
+
+    # 3. Center Collage Canvas
+    center_y0 = header_h + 10
+    center_h = bottom_y0 - center_y0 - 10
+    num = len(items_data)
+
+    if num == 0:
+        draw.text((w // 2, center_y0 + center_h // 2), "Combo Grocery Bundle", fill=(148, 163, 184), anchor="mm", font=font_badge)
+    elif num == 1:
+        it = items_data[0]
+        img = it['image'].convert("RGB")
+        max_w = w - 40
+        max_h = center_h - 20
+        img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+        cx = (w - img.width) // 2
+        cy = center_y0 + (center_h - img.height) // 2
+        card.paste(img, (cx, cy))
+    elif num == 2:
         cell_w = (w - 36) // 2
-        for i in range(2):
-            img = item_images[i].convert("RGB")
-            img.thumbnail((cell_w, center_h), Image.Resampling.LANCZOS)
-            cx = 16 + i * (cell_w + 4) + (cell_w - img.width) // 2
+        cell_h = center_h
+        for i, it in enumerate(items_data[:2]):
+            x0 = 14 + i * (cell_w + 8)
+            y0 = center_y0
+            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=10, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 24, cell_h - 40), Image.Resampling.LANCZOS)
+            card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 10 + (cell_h - 45 - img.height) // 2))
+            lbl = it['name'][:18]
+            font_lbl = get_font_helper(size=11, bold=True)
+            draw.text((x0 + cell_w // 2, y0 + cell_h - 16), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
+    elif num in (3, 4):
+        cols = 2
+        cell_w = (w - 36) // 2
+        cell_h = (center_h - 10) // 2
+        for i, it in enumerate(items_data[:4]):
+            r = i // cols
+            c = i % cols
+            if num == 3 and i == 2:
+                x0 = (w - cell_w) // 2
+            else:
+                x0 = 14 + c * (cell_w + 8)
+            y0 = center_y0 + r * (cell_h + 10)
+            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 20, cell_h - 32), Image.Resampling.LANCZOS)
+            card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 36 - img.height) // 2))
+            lbl = it['name'][:20]
+            font_lbl = get_font_helper(size=11, bold=True)
+            draw.text((x0 + cell_w // 2, y0 + cell_h - 12), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
+    else:
+        cols = 3
+        cell_w = (w - 40) // 3
+        cell_h = (center_h - 10) // 2
+        for i, it in enumerate(items_data[:6]):
+            r = i // cols
+            c = i % cols
+            x0 = 12 + c * (cell_w + 8)
+            y0 = center_y0 + r * (cell_h + 10)
+            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 16, cell_h - 28), Image.Resampling.LANCZOS)
+            card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 32 - img.height) // 2))
+            lbl = it['name'][:14]
+            font_lbl = get_font_helper(size=10, bold=True)
+            draw.text((x0 + cell_w // 2, y0 + cell_h - 10), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
+
+    draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
+    return card
+
+
+def create_showcase_combo_collage(package_name: str, package_price: float, items_data: list) -> Image.Image:
+    """
+    Creates a clean showcase layout where actual product photos are displayed together on a clean white background
+    with a badge and price tag, similar to high-end eCommerce bundle covers.
+    """
+    w, h = 600, 600
+    card = Image.new("RGB", (w, h), (255, 255, 255))
+    draw = ImageDraw.Draw(card)
+
+    # Top Green Badge Header
+    draw.rectangle([0, 0, w, 64], fill=(21, 128, 61))
+    font_badge = get_font_helper(size=18, bold=True)
+    draw.text((20, 32), str(package_name)[:30], fill=(255, 255, 255), anchor="lm", font=font_badge)
+
+    font_price = get_font_helper(size=20, bold=True)
+    draw.text((w - 20, 32), f"TK {package_price:,.2f}", fill=(254, 240, 138), anchor="rm", font=font_price)
+
+    # Bottom footer
+    draw.rectangle([0, h - 44, w, h], fill=(241, 245, 249))
+    draw.line([0, h - 44, w, h - 44], fill=(203, 213, 225), width=1)
+    font_ft = get_font_helper(size=13, bold=True)
+    draw.text((w // 2, h - 22), f"🎁 Special Combo Bundle • {len(items_data)} Items Included", fill=(71, 85, 105), anchor="mm", font=font_ft)
+
+    # Center area
+    center_y0 = 64
+    center_h = (h - 44) - center_y0
+    num = len(items_data)
+
+    if num == 1:
+        img = items_data[0]['image'].convert("RGB")
+        img.thumbnail((w - 60, center_h - 40), Image.Resampling.LANCZOS)
+        card.paste(img, ((w - img.width) // 2, center_y0 + (center_h - img.height) // 2))
+    elif num == 2:
+        cell_w = (w - 40) // 2
+        for i, it in enumerate(items_data[:2]):
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 20, center_h - 40), Image.Resampling.LANCZOS)
+            cx = 20 + i * cell_w + (cell_w - img.width) // 2
             cy = center_y0 + (center_h - img.height) // 2
             card.paste(img, (cx, cy))
-    elif num_items <= 4:
-        cell_w = (w - 36) // 2
-        cell_h = (center_h - 12) // 2
-        for i in range(min(4, num_items)):
-            row = i // 2
-            col = i % 2
-            img = item_images[i].convert("RGB")
-            img.thumbnail((cell_w - 8, cell_h - 8), Image.Resampling.LANCZOS)
-            cx = 16 + col * cell_w + (cell_w - img.width) // 2
-            cy = center_y0 + row * cell_h + (cell_h - img.height) // 2
+    elif num == 3:
+        top_w = (w - 40) // 2
+        top_h = (center_h - 20) // 2
+        img0 = items_data[0]['image'].convert("RGB")
+        img0.thumbnail((top_w - 20, top_h - 10), Image.Resampling.LANCZOS)
+        card.paste(img0, (20 + (top_w - img0.width) // 2, center_y0 + 10 + (top_h - img0.height) // 2))
+        
+        img1 = items_data[1]['image'].convert("RGB")
+        img1.thumbnail((top_w - 20, top_h - 10), Image.Resampling.LANCZOS)
+        card.paste(img1, (20 + top_w + (top_w - img1.width) // 2, center_y0 + 10 + (top_h - img1.height) // 2))
+        
+        img2 = items_data[2]['image'].convert("RGB")
+        img2.thumbnail((w - 100, top_h - 10), Image.Resampling.LANCZOS)
+        card.paste(img2, ((w - img2.width) // 2, center_y0 + top_h + 10 + (top_h - img2.height) // 2))
+    elif num <= 4:
+        cols = 2
+        cell_w = (w - 40) // 2
+        cell_h = (center_h - 20) // 2
+        for i, it in enumerate(items_data[:4]):
+            r = i // cols
+            c = i % cols
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 20, cell_h - 20), Image.Resampling.LANCZOS)
+            cx = 20 + c * cell_w + (cell_w - img.width) // 2
+            cy = center_y0 + 10 + r * cell_h + (cell_h - img.height) // 2
             card.paste(img, (cx, cy))
     else:
+        cols = 3
         cell_w = (w - 40) // 3
-        cell_h = (center_h - 12) // 2
-        for i in range(min(6, num_items)):
-            row = i // 3
-            col = i % 3
-            img = item_images[i].convert("RGB")
-            img.thumbnail((cell_w - 6, cell_h - 6), Image.Resampling.LANCZOS)
-            cx = 14 + col * cell_w + (cell_w - img.width) // 2
-            cy = center_y0 + row * cell_h + (cell_h - img.height) // 2
+        cell_h = (center_h - 20) // 2
+        for i, it in enumerate(items_data[:6]):
+            r = i // cols
+            c = i % cols
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 14, cell_h - 14), Image.Resampling.LANCZOS)
+            cx = 20 + c * cell_w + (cell_w - img.width) // 2
+            cy = center_y0 + 10 + r * cell_h + (cell_h - img.height) // 2
             card.paste(img, (cx, cy))
 
     draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
@@ -1798,8 +1911,8 @@ def api_ai_generate_combo_image():
     raw_images = list(data.get("item_images", []))
     product_ids = data.get("product_ids", [])
 
-    # Always fetch images from DB using product_ids (most reliable source)
-    # This ensures base64 data URIs and all image types are correctly retrieved
+    # 1. Fetch products info & images directly from SQLite DB (most complete source)
+    resolved_products = []  # list of {'id': ..., 'name': ..., 'image_url': ...}
     if product_ids:
         try:
             conn = get_connection()
@@ -1809,94 +1922,135 @@ def api_ai_generate_combo_image():
                 [int(pid) for pid in product_ids]
             ).fetchall()
             conn.close()
-            # Use DB images as primary source (they're the most complete/correct)
-            db_images = [r["image_url"] for r in p_rows if r["image_url"]]
-            if db_images:
-                raw_images = db_images  # DB images override JS-sent images
+            # Preserve the ordering of product_ids requested
+            row_map = {int(r["id"]): r for r in p_rows}
+            for pid in product_ids:
+                r = row_map.get(int(pid))
+                if r:
+                    resolved_products.append({
+                        "id": r["id"],
+                        "name": r["name"],
+                        "image_url": r["image_url"] or ""
+                    })
         except Exception as e:
             print("Error fetching product images for combo:", e)
 
-    # 1. Build Smart Multi-Item Collage from actual product photos
-    pil_images = []
-    for raw_img in raw_images:
-        if not raw_img or not isinstance(raw_img, str):
-            continue
-        # Base64 data URIs contain commas — must NOT be split; take as-is
-        if raw_img.strip().startswith("data:image/"):
-            img_entry = raw_img.strip()
-        else:
-            # For URL/path strings, take the first entry (split on ' || ' or ',')
-            parts = split_image_urls(raw_img)
-            img_entry = parts[0] if parts else raw_img.strip()
-        if not img_entry:
-            continue
-        try:
-            if img_entry.startswith("data:image/"):
-                # base64 encoded image
-                _, b64 = img_entry.split(",", 1)
-                img_bytes = base64.b64decode(b64)
-                im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                pil_images.append(im)
-            elif img_entry.startswith("http://") or img_entry.startswith("https://"):
-                # Try to load from local filesystem first if it's our own server URL
-                own_domains = ["doineek.onrender.com", "127.0.0.1", "localhost"]
-                loaded_local = False
-                for own_domain in own_domains:
-                    if own_domain in img_entry:
-                        # Extract the path after the domain
-                        try:
-                            from urllib.parse import urlparse
-                            parsed = urlparse(img_entry)
-                            local_path = parsed.path.lstrip("/")
-                            full_path = os.path.join(app.root_path, local_path)
-                            if os.path.exists(full_path):
-                                im = Image.open(full_path).convert("RGB")
-                                pil_images.append(im)
-                                loaded_local = True
-                                break
-                        except Exception:
-                            pass
-                if not loaded_local:
-                    req = urllib.request.Request(
-                        img_entry,
-                        headers={
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                            "Referer": "https://www.google.com/"
-                        }
-                    )
-                    with urllib.request.urlopen(req, timeout=8) as response:
-                        im = Image.open(io.BytesIO(response.read())).convert("RGB")
-                        pil_images.append(im)
-            elif img_entry.startswith("/") or img_entry.startswith("static/") or img_entry.startswith("uploads/"):
-                clean_path = img_entry.lstrip("/")
-                full_path = os.path.join(app.root_path, clean_path)
-                if not os.path.exists(full_path):
-                    # Also try with 'static/' prefix
-                    full_path = os.path.join(app.root_path, "static", clean_path.removeprefix("static/"))
-                if os.path.exists(full_path):
-                    im = Image.open(full_path).convert("RGB")
-                    pil_images.append(im)
-        except Exception as e:
-            print(f"Failed to load item image for combo collage ({img_entry[:60]}):", e)
+    # If product_ids query returned nothing, use raw_images and items_list as fallback
+    if not resolved_products and (raw_images or items_list):
+        for idx, raw_img in enumerate(raw_images):
+            name = items_list[idx] if idx < len(items_list) else f"Item {idx+1}"
+            resolved_products.append({
+                "id": idx,
+                "name": name,
+                "image_url": raw_img or ""
+            })
+
+    # 2. Robustly Load Real PIL Images from actual product photos
+    items_data = []  # list of {'name': str, 'image': PIL.Image, 'qty': int}
+    for p_info in resolved_products:
+        raw_img = p_info.get("image_url") or ""
+        name = p_info.get("name") or "Product"
+        im = None
+
+        if raw_img and isinstance(raw_img, str):
+            raw_img = raw_img.strip()
+            # Handle multi-images separator if not base64
+            if not raw_img.startswith("data:image/"):
+                parts = split_image_urls(raw_img)
+                raw_img = parts[0] if parts else raw_img
+
+            try:
+                if raw_img.startswith("data:image/"):
+                    # Decode base64 data URI
+                    _, b64 = raw_img.split(",", 1)
+                    im = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+                elif raw_img.startswith("http://") or raw_img.startswith("https://"):
+                    # Check if it's our own server URL to load from disk
+                    own_domains = ["doineek.onrender.com", "127.0.0.1", "localhost"]
+                    for own_domain in own_domains:
+                        if own_domain in raw_img:
+                            try:
+                                from urllib.parse import urlparse
+                                parsed = urlparse(raw_img)
+                                local_path = parsed.path.lstrip("/")
+                                full_path = os.path.join(app.root_path, local_path)
+                                if os.path.exists(full_path):
+                                    im = Image.open(full_path).convert("RGB")
+                                    break
+                            except Exception:
+                                pass
+                    if im is None:
+                        # Download external URL with browser headers and SSL
+                        cached_uri = download_and_cache_external_image(raw_img)
+                        if cached_uri and cached_uri.startswith("data:image/"):
+                            _, b64 = cached_uri.split(",", 1)
+                            im = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+                        else:
+                            req = urllib.request.Request(
+                                raw_img,
+                                headers={
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                    "Referer": "https://www.google.com/"
+                                }
+                            )
+                            with urllib.request.urlopen(req, timeout=8) as response:
+                                im = Image.open(io.BytesIO(response.read())).convert("RGB")
+                elif raw_img.startswith("/") or raw_img.startswith("static/") or raw_img.startswith("uploads/"):
+                    clean_path = raw_img.lstrip("/")
+                    full_path = os.path.join(app.root_path, clean_path)
+                    if not os.path.exists(full_path):
+                        full_path = os.path.join(app.root_path, "static", clean_path.removeprefix("static/"))
+                    if os.path.exists(full_path):
+                        im = Image.open(full_path).convert("RGB")
+            except Exception as e:
+                print(f"Could not load image for {name} ({raw_img[:40]}):", e)
+
+        # If product has no image or failed to load, create a clean placeholder card
+        if im is None:
+            im = Image.new("RGB", (300, 300), (241, 245, 249))
+            d = ImageDraw.Draw(im)
+            font_ph = get_font_helper(size=14, bold=True)
+            d.text((150, 140), "🛍️", fill=(100, 116, 139), anchor="mm", font=get_font_helper(size=36))
+            d.text((150, 190), name[:18], fill=(71, 85, 105), anchor="mm", font=font_ph)
+
+        items_data.append({
+            "name": name,
+            "image": im,
+            "qty": 1
+        })
 
     generated_images = []
 
-    # If we have loaded product images, generate the smart collage as Option 1
-    if pil_images:
+    # Option 1: 🎁 Smart Multi-Item Grid Collage (from actual product photos)
+    if items_data:
         try:
-            collage_card = create_combo_package_collage(package_name, package_price, pil_images, items_list)
+            grid_card = create_combo_package_collage(package_name, package_price, items_data)
             buf = io.BytesIO()
-            collage_card.save(buf, format="JPEG", quality=90, optimize=True)
+            grid_card.save(buf, format="JPEG", quality=92, optimize=True)
             b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
             generated_images.append({
                 "url": f"data:image/jpeg;base64,{b64_str}",
-                "label": "🎁 Smart Multi-Item Collage (সকল পণ্যের কোলাজ)"
+                "label": "🎁 Smart Product Grid Collage (সকল আসল পণ্যের গ্রিড কোলাজ)"
             })
         except Exception as e:
-            print("Error rendering combo collage card:", e)
+            print("Error rendering grid collage card:", e)
 
-    # 2. AI 3D Hamper generation (Pollinations AI)
-    items_str = ", ".join([str(it) for it in items_list[:5]]) if items_list else "assorted supermarket daily groceries"
+    # Option 2: 🛍️ Clean Showcase Collage (from actual product photos)
+    if items_data:
+        try:
+            showcase_card = create_showcase_combo_collage(package_name, package_price, items_data)
+            buf2 = io.BytesIO()
+            showcase_card.save(buf2, format="JPEG", quality=92, optimize=True)
+            b64_str2 = base64.b64encode(buf2.getvalue()).decode("utf-8")
+            generated_images.append({
+                "url": f"data:image/jpeg;base64,{b64_str2}",
+                "label": "🛍️ Clean Product Showcase (হোয়াইট ব্যাকগ্রাউন্ড শোকেস)"
+            })
+        except Exception as e:
+            print("Error rendering showcase collage card:", e)
+
+    # Option 3: ✨ 3D AI Studio Hamper (Pollinations AI)
+    items_str = ", ".join([it["name"] for it in items_data[:5]]) if items_data else "assorted supermarket daily groceries"
     full_prompt = (
         f'Award-winning commercial studio product photography of supermarket combo package bundle "{package_name}". '
         f'The combo bundle contains neatly arranged products: {items_str}. '
@@ -1906,29 +2060,21 @@ def api_ai_generate_combo_image():
     encoded_prompt = urllib.parse.quote(full_prompt)
     width, height = 600, 600
     
-    seeds = [303, 404]
+    seeds = [303]
     for idx, s in enumerate(seeds):
         ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
         try:
             req = urllib.request.Request(ai_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=7) as response:
+            with urllib.request.urlopen(req, timeout=6) as response:
                 img_data = response.read()
                 if len(img_data) > 1000:
                     b64 = base64.b64encode(img_data).decode("utf-8")
                     generated_images.append({
                         "url": f"data:image/jpeg;base64,{b64}",
-                        "label": f"✨ 3D AI Hamper Studio Option {idx + 1}"
+                        "label": "✨ 3D AI Gift Hamper (এআই ফটো)"
                     })
         except Exception as e:
             print("Combo AI Generation Error:", e)
-
-    if not generated_images:
-        for idx, s in enumerate(seeds):
-            ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
-            generated_images.append({
-                "url": ai_url,
-                "label": f"✨ 3D AI Hamper Option {idx + 1}"
-            })
 
     return jsonify({
         "success": True,
