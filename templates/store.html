@@ -1965,10 +1965,10 @@
 
           <!-- Dual Action Buttons: Add to Cart & Buy Now -->
           <div class="card-actions-row" id="btnWrap-{{ p.id }}" onclick="event.stopPropagation()">
-            <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '', 0, '', '', '', '', this)">
+            <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '', {{ p.sell_price }}, '', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}', this)">
               + Add
             </button>
-            <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}')">
+            <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '', {{ p.sell_price }})">
               Buy Now
             </button>
           </div>
@@ -3114,6 +3114,27 @@
 
       try { initDynamicBanner(); } catch (e) {}
       try { refreshAuthState(); } catch (e) {}
+      
+      // Auto-repair any existing cart items that had 0 or missing price/name
+      try {
+        let cartChanged = false;
+        Object.keys(cart).forEach(id => {
+          const item = cart[id];
+          if (!item.is_pkg && (!item.price || item.price === 0 || !item.name)) {
+            const prod = allProducts.find(p => String(p.id) === String(id));
+            if (prod) {
+              item.name = prod.name;
+              item.price = parseFloat(prod.sell_price) || 0;
+              item.img = getFirstImageJS(prod.image_url);
+              cartChanged = true;
+            }
+          }
+        });
+        if (cartChanged) {
+          localStorage.setItem('supershop_cart_en', JSON.stringify(cart));
+        }
+      } catch (e) {}
+
       try { refreshCartDisplay(); } catch (e) {}
       
       const distSelect = document.getElementById('orderDistrictSelect');
@@ -3944,16 +3965,27 @@
     }
 
     function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '', btnEl = null) {
-      const prod = allProducts.find(p => p.id == id || p.id == parseInt(id));
+      const prod = allProducts.find(p => String(p.id) === String(id));
       if (prod) {
+        if (!name || name === '') name = prod.name;
+        if (!price || parseFloat(price) === 0) price = parseFloat(prod.sell_price) || 0;
+        if (!img || img === '') img = getFirstImageJS(prod.image_url);
         if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
       }
+      
+      const numPrice = parseFloat(price) || (prod ? parseFloat(prod.sell_price) || 0 : 0);
+      const strName = name || (prod ? prod.name : 'Product');
+      const strImg = img || (prod ? getFirstImageJS(prod.image_url) : '/static/images/logo.png');
+
       if (!cart[id]) {
-        cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
+        cart[id] = { id, name: strName, price: numPrice, img: strImg, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
       } else {
         cart[id].quantity += 1;
+        if (numPrice > 0) cart[id].price = numPrice;
+        if (strName) cart[id].name = strName;
+        if (strImg) cart[id].img = strImg;
         if (offer_type) cart[id].offer_type = offer_type;
         if (offer_value) cart[id].offer_value = offer_value;
         if (offer_title) cart[id].offer_title = offer_title;
@@ -3962,7 +3994,7 @@
       saveCart();
 
       const totalItems = Object.values(cart).reduce((sum, it) => sum + it.quantity, 0);
-      showCartToast(`✓ "${name}" added to cart!`, totalItems);
+      showCartToast(`✓ "${cart[id].name}" added to cart!`, totalItems);
 
       const targetBtn = btnEl || document.getElementById(`btnAdd-${id}`);
       if (targetBtn) {
@@ -3976,15 +4008,26 @@
     }
 
     function buyProductNow(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
-      const prod = allProducts.find(p => p.id == id || p.id == parseInt(id));
+      const prod = allProducts.find(p => String(p.id) === String(id));
       if (prod) {
+        if (!name || name === '') name = prod.name;
+        if (!price || parseFloat(price) === 0) price = parseFloat(prod.sell_price) || 0;
+        if (!img || img === '') img = getFirstImageJS(prod.image_url);
         if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
       }
+
+      const numPrice = parseFloat(price) || (prod ? parseFloat(prod.sell_price) || 0 : 0);
+      const strName = name || (prod ? prod.name : 'Product');
+      const strImg = img || (prod ? getFirstImageJS(prod.image_url) : '/static/images/logo.png');
+
       if (!cart[id]) {
-        cart[id] = { id, name, price: parseFloat(price), img, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
+        cart[id] = { id, name: strName, price: numPrice, img: strImg, quantity: 1, is_pkg: false, offer_type, offer_value, offer_title };
       } else {
+        if (numPrice > 0) cart[id].price = numPrice;
+        if (strName) cart[id].name = strName;
+        if (strImg) cart[id].img = strImg;
         if (offer_type) cart[id].offer_type = offer_type;
         if (offer_value) cart[id].offer_value = offer_value;
         if (offer_title) cart[id].offer_title = offer_title;
