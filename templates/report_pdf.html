@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="{{ 'bn' if lang == 'bn' else 'en' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ ai_report.title }} - {{ period|capitalize }}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Hind+Siliguri:wght@400;600;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', 'Hind Siliguri', 'Segoe UI', Tahoma, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 900;
+      color: #1e1b4b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header .meta {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: #f8fafc;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .kpi-card.profit {
+      background: #f0fdf4;
+      border-color: #86efac;
+    }
+    .kpi-card.loss {
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+    .kpi-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-val {
+      font-size: 20px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 6px 0;
+    }
+    .kpi-card.profit .kpi-val {
+      color: #15803d;
+    }
+    .kpi-card.loss .kpi-val {
+      color: #b91c1c;
+    }
+
+    /* AI Executive Section */
+    .ai-section {
+      background: #f5f3ff;
+      border: 2px solid #818cf8;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 28px;
+    }
+    .ai-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1.5px solid #c7d2fe;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+    .ai-header h2 {
+      font-size: 18px;
+      font-weight: 800;
+      color: #3730a3;
+    }
+    .pillar-card {
+      background: #ffffff;
+      border: 1px solid #e0e7ff;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .pillar-title {
+      font-size: 14px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pillar-list {
+      list-style: none;
+      padding-left: 0;
+    }
+    .pillar-list li {
+      position: relative;
+      padding-left: 20px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: #334155;
+      line-height: 1.5;
+    }
+    .pillar-list li::before {
+      content: "•";
+      position: absolute;
+      left: 6px;
+      font-weight: 900;
+    }
+    .pillar-list.green li::before { color: #16a34a; }
+    .pillar-list.blue li::before { color: #2563eb; }
+    .pillar-list.red li::before { color: #dc2626; }
+    .pillar-list.amber li::before { color: #d97706; }
+    .pillar-list.purple li::before { color: #7c3aed; }
+
+    /* Tables */
+    .table-container {
+      margin-bottom: 24px;
+    }
+    .table-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #1e293b;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    th {
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 800;
+      text-align: left;
+      padding: 9px 12px;
+      border-bottom: 2px solid #cbd5e1;
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #1e293b;
+    }
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    /* Print Specific Styles */
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .pillar-card {
+        page-break-inside: avoid;
+      }
+      table {
+        page-break-inside: auto;
+      }
+      tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  
+  <!-- Print & Language Actions Toolbar -->
+  <div class="no-print" style="display:flex; justify-content:space-between; align-items:center; background:#1e293b; color:#fff; padding:12px 20px; border-radius:10px; margin-bottom:24px;">
+    <div style="font-weight:700; font-size:14px; display:flex; align-items:center; gap:8px;">
+      <span>🖨️ {{ "প্রিন্ট বা PDF হিসেবে সংরক্ষণ করুন" if lang == 'bn' else "Print or Save as PDF" }}</span>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <a href="{{ url_for('reports_export_pdf', period=period, lang='bn') }}" style="background:{{ '#4f46e5' if lang == 'bn' else '#334155' }}; color:#fff; text-decoration:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:700;">
+        🇧🇩 বাংলা
+      </a>
+      <a href="{{ url_for('reports_export_pdf', period=period, lang='en') }}" style="background:{{ '#4f46e5' if lang == 'en' else '#334155' }}; color:#fff; text-decoration:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:700;">
+        🇬🇧 English
+      </a>
+      <button onclick="window.print()" style="background:#16a34a; color:#fff; border:none; padding:7px 18px; border-radius:6px; font-weight:800; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+        📄 {{ "PDF প্রিন্ট / ডাউনলোড" if lang == 'bn' else "Print / Save PDF" }}
+      </button>
+      <a href="{{ url_for('reports', period=period) }}" style="background:#475569; color:#fff; text-decoration:none; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700;">
+        ✕ {{ "বন্ধ করুন" if lang == 'bn' else "Close" }}
+      </a>
+    </div>
+  </div>
+
+  <!-- Document Header -->
+  <div class="header">
+    <div>
+      <h1>🛍️ DOINEEK SUPERSHOP</h1>
+      <div class="meta">
+        {{ "ব্যবসায়িক পারফরম্যান্স ও এআই এক্সিকিউটিভ রিপোর্ট" if lang == 'bn' else "Business Performance & AI Executive Report" }} | 
+        <strong>{{ period|upper }} PERIOD</strong>
+      </div>
+      <div style="font-size:11px; color:#94a3b8; margin-top:2px;">
+        Generated: {{ generated_at }} | Store: DOINEEK Main Branch
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <span class="badge" style="background:#e0e7ff; color:#4338ca;">
+        {{ tx_count }} {{ "টি ইনভয়েস/অর্ডার" if lang == 'bn' else "Total Orders" }}
+      </span>
+      <div style="margin-top:6px; font-size:13px; font-weight:800; color:{{ '#15803d' if net_profit >= 0 else '#b91c1c' }};">
+        {{ "নিট লাভ:" if lang == 'bn' else "Net Profit:" }} TK {{ "%.2f"|format(net_profit) }}
+      </div>
+    </div>
+  </div>
+
+  <!-- 1. Executive Summary KPI Grid -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-title">{{ "১. বিক্রয় আয় (Revenue)" if lang == 'bn' else "1. Sales Revenue" }}</div>
+      <div class="kpi-val">TK {{ "%.2f"|format(revenue) }}</div>
+      <small style="color:#64748b; font-size:11px;">{{ tx_count }} {{ "টি মোট অর্ডার" if lang == 'bn' else "Total customer orders" }}</small>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-title">{{ "২. পণ্যের ক্রয়মূল্য (COGS)" if lang == 'bn' else "2. Cost of Goods (COGS)" }}</div>
+      <div class="kpi-val" style="color:#475569;">TK {{ "%.2f"|format(cogs) }}</div>
+      <small style="color:#64748b; font-size:11px;">{{ "মোট ইনভেন্টরি খরচ" if lang == 'bn' else "Total product cost" }}</small>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-title">{{ "৩. গ্রস প্রফিট (Gross Margin)" if lang == 'bn' else "3. Gross Profit" }}</div>
+      <div class="kpi-val" style="color:#2563eb;">TK {{ "%.2f"|format(gross_profit) }}</div>
+      <small style="color:#2563eb; font-weight:700; font-size:11px;">
+        {{ "মার্জিন:" if lang == 'bn' else "Margin:" }} {{ "%.1f"|format((gross_profit / revenue * 100) if revenue > 0 else 0) }}%
+      </small>
+    </div>
+
+    <div class="kpi-card {{ 'profit' if net_profit >= 0 else 'loss' }}">
+      <div class="kpi-title">{{ "৪. নিট মুনাফা (Net Profit)" if lang == 'bn' else "4. Net Profit / Loss" }}</div>
+      <div class="kpi-val">
+        {{ "+" if net_profit >= 0 else "-" }}TK {{ "%.2f"|format(net_profit|abs) }}
+      </div>
+      <small style="font-weight:700; font-size:11px;">
+        {{ "মার্জিন:" if lang == 'bn' else "Margin:" }} {{ "%.1f"|format((net_profit / revenue * 100) if revenue > 0 else 0) }}%
+      </small>
+    </div>
+  </div>
+
+  <!-- 2. AI Executive Business Intelligence & Advisory Section -->
+  <div class="ai-section">
+    <div class="ai-header">
+      <h2>{{ ai_report.title }}</h2>
+      <span class="badge" style="background:#4338ca; color:#fff;">⚡ AI Advisor Engine</span>
+    </div>
+
+    <!-- Pillar 1: Current State -->
+    <div class="pillar-card">
+      <div class="pillar-title" style="color:#1e3a8a;">
+        <span>📊 {{ "১. বর্তমানে কি কি হচ্ছে (Current Performance State)" if lang == 'bn' else "1. What is Happening (Current State Analysis)" }}</span>
+      </div>
+      <ul class="pillar-list blue">
+        {% for item in ai_report.current_state %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Pillar 2: What Should Be Done -->
+    <div class="pillar-card">
+      <div class="pillar-title" style="color:#15803d;">
+        <span>🚀 {{ "২. লাভ বৃদ্ধির জন্য কি কি করা উচিত (What Should Be Done For Profit)" if lang == 'bn' else "2. Strategic Growth Actions (What Should Be Done)" }}</span>
+      </div>
+      <ul class="pillar-list green">
+        {% for item in ai_report.should_do %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Pillar 3: What Should Be Dropped -->
+    <div class="pillar-card">
+      <div class="pillar-title" style="color:#b91c1c;">
+        <span>🛑 {{ "৩. ক্ষতি রোধে কি কি বাদ দিতে হবে (What Should Be Dropped / Eliminated)" if lang == 'bn' else "3. Loss Elimination (What Should Be Dropped)" }}</span>
+      </div>
+      <ul class="pillar-list red">
+        {% for item in ai_report.should_drop %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Pillar 4: Where Changes Are Needed -->
+    <div class="pillar-card">
+      <div class="pillar-title" style="color:#b45309;">
+        <span>⚙️ {{ "৪. কোথায় কোথায় পরিবর্তন আনতে হবে (Where Changes Are Needed)" if lang == 'bn' else "4. Operational Adjustments (Where Changes Are Needed)" }}</span>
+      </div>
+      <ul class="pillar-list amber">
+        {% for item in ai_report.where_to_change %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Pillar 5: Profit Roadmap -->
+    <div class="pillar-card" style="background:#faf5ff; border-color:#d8b4fe;">
+      <div class="pillar-title" style="color:#6b21a8;">
+        <span>📈 {{ "৫. প্রফিট বৃদ্ধির সুনির্দিষ্ট পথরেখা (Profit Maximization Roadmap)" if lang == 'bn' else "5. Profit Maximization Roadmap & Projections" }}</span>
+      </div>
+      <ul class="pillar-list purple">
+        {% for item in ai_report.profit_roadmap %}
+        <li><strong>{{ item }}</strong></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- 3. Channel Breakdown Table -->
+  <div class="table-container">
+    <div class="table-title">
+      <span>📱🛒 {{ "চ্যানেল ভিত্তিক বিক্রয় ও মুনাফা বিবরণী" if lang == 'bn' else "Sales Channel & Segment Breakdown" }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ "চ্যানেল / সেগমেন্ট" if lang == 'bn' else "Channel / Segment" }}</th>
+          <th>{{ "অর্ডার সংখ্যা" if lang == 'bn' else "Orders" }}</th>
+          <th>{{ "বিক্রয় আয় (Revenue)" if lang == 'bn' else "Revenue" }}</th>
+          <th>{{ "পণ্যের খরচ (COGS)" if lang == 'bn' else "COGS" }}</th>
+          <th>{{ "গ্রস লাভ" if lang == 'bn' else "Gross Profit" }}</th>
+          <th>{{ "নিট লাভ" if lang == 'bn' else "Net Profit" }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>🛒 POS Counter (ইন-স্টোর কাউন্টার)</strong></td>
+          <td>{{ offline_summary.tx_count }}</td>
+          <td>TK {{ "%.2f"|format(offline_summary.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(offline_summary.cogs) }}</td>
+          <td>TK {{ "%.2f"|format(offline_summary.gross_profit) }}</td>
+          <td style="font-weight:700; color:{{ '#15803d' if offline_summary.net_profit >= 0 else '#b91c1c' }};">
+            TK {{ "%.2f"|format(offline_summary.net_profit) }}
+          </td>
+        </tr>
+        <tr>
+          <td><strong>📱 Online Mobile App & Web (অনলাইন অর্ডার)</strong></td>
+          <td>{{ online_summary.tx_count }}</td>
+          <td>TK {{ "%.2f"|format(online_summary.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(online_summary.cogs) }}</td>
+          <td>TK {{ "%.2f"|format(online_summary.gross_profit) }}</td>
+          <td style="font-weight:700; color:{{ '#15803d' if online_summary.net_profit >= 0 else '#b91c1c' }};">
+            TK {{ "%.2f"|format(online_summary.net_profit) }}
+          </td>
+        </tr>
+        <tr>
+          <td><strong>📦 Combo Packages (কম্বো প্যাকেজ)</strong></td>
+          <td>{{ packages_summary.tx_count }}</td>
+          <td>TK {{ "%.2f"|format(packages_summary.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(packages_summary.cogs) }}</td>
+          <td>TK {{ "%.2f"|format(packages_summary.gross_profit) }}</td>
+          <td style="font-weight:700; color:{{ '#15803d' if packages_summary.net_profit >= 0 else '#b91c1c' }};">
+            TK {{ "%.2f"|format(packages_summary.net_profit) }}
+          </td>
+        </tr>
+        <tr>
+          <td><strong>🎁 Offers & Promotions (অফার ও ছাড়)</strong></td>
+          <td>{{ offers_summary.tx_count }}</td>
+          <td>TK {{ "%.2f"|format(offers_summary.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(offers_summary.cogs) }}</td>
+          <td>TK {{ "%.2f"|format(offers_summary.gross_profit) }}</td>
+          <td style="font-weight:700; color:{{ '#15803d' if offers_summary.net_profit >= 0 else '#b91c1c' }};">
+            TK {{ "%.2f"|format(offers_summary.net_profit) }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 4. Top Selling Products -->
+  <div class="table-container">
+    <div class="table-title">
+      <span>🔥 {{ "সর্বোচ্চ বিক্রিত পণ্য (Top Selling Products)" if lang == 'bn' else "Top Selling Products" }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ "পণ্য" if lang == 'bn' else "Product" }}</th>
+          <th>{{ "বিক্রিত পরিমাণ" if lang == 'bn' else "Qty Sold" }}</th>
+          <th>{{ "বিক্রয় মূল্য" if lang == 'bn' else "Revenue" }}</th>
+          <th>{{ "ক্রয় খরচ" if lang == 'bn' else "Cost (COGS)" }}</th>
+          <th>{{ "মুনাফা" if lang == 'bn' else "Profit" }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in top_products %}
+        <tr>
+          <td><strong>{{ p.name }}</strong></td>
+          <td>{{ p.qty_sold }}</td>
+          <td>TK {{ "%.2f"|format(p.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(p.cogs_amt) }}</td>
+          <td style="color:#16a34a; font-weight:700;">TK {{ "%.2f"|format(p.profit) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" style="text-align:center; color:#94a3b8;">{{ "কোনো বিক্রয় তথ্য পাওয়া যায়নি" if lang == 'bn' else "No sales data found for this period" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div style="border-top:1.5px solid #e2e8f0; padding-top:16px; margin-top:32px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8;">
+    <div>DOINEEK Supershop ERP • Confidential Executive Business Report</div>
+    <div>Page 1 of 1</div>
+  </div>
+
+</div>
+
+</body>
+</html>

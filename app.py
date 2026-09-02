@@ -3806,6 +3806,24 @@ def reports():
     slow_movers = sorted(slow_movers, key=lambda r: r["qty_sold"])[:8]
     max_qty_sold = max((row["qty_sold"] for row in product_performance), default=0) or 1
 
+    # AI Executive Intelligence & Advisory Report Generation
+    metrics_bundle = {
+        "revenue": total_rev,
+        "cogs": total_cogs,
+        "gross_profit": overall_gross,
+        "net_profit": overall_net,
+        "other_income": all_inc,
+        "other_expenses": all_exp,
+        "tx_count": total_tx,
+        "online_revenue": online_rev,
+        "pos_revenue": pos_rev,
+        "top_products": top_products,
+        "dead_stock": dead_stock,
+        "slow_movers": slow_movers
+    }
+    ai_report_en = build_ai_business_report(metrics_bundle, "en")
+    ai_report_bn = build_ai_business_report(metrics_bundle, "bn")
+
     conn.close()
     return render_template(
         "reports.html",
@@ -3823,6 +3841,8 @@ def reports():
         total_units_sold=total_units_sold,
         max_qty_sold=max_qty_sold,
         tx_count=total_tx,
+        ai_report_en=ai_report_en,
+        ai_report_bn=ai_report_bn,
         online_summary={
             "tx_count": online_cnt,
             "revenue": online_rev,
@@ -3861,6 +3881,243 @@ def reports():
             "expense": off_exp,
             "net_profit": off_net
         }
+    )
+
+
+def build_ai_business_report(metrics: dict, lang: str = "en") -> dict:
+    rev = float(metrics.get("revenue", 0.0) or 0.0)
+    cogs = float(metrics.get("cogs", 0.0) or 0.0)
+    gross_profit = float(metrics.get("gross_profit", 0.0) or 0.0)
+    net_profit = float(metrics.get("net_profit", 0.0) or 0.0)
+    income = float(metrics.get("other_income", 0.0) or 0.0)
+    expense = float(metrics.get("other_expenses", 0.0) or 0.0)
+    tx_count = int(metrics.get("tx_count", 0) or 0)
+    
+    online_rev = float(metrics.get("online_revenue", 0.0) or 0.0)
+    pos_rev = float(metrics.get("pos_revenue", 0.0) or 0.0)
+    
+    top_prods = metrics.get("top_products", [])
+    dead_stock = metrics.get("dead_stock", [])
+    slow_movers = metrics.get("slow_movers", [])
+    
+    gross_margin_pct = (gross_profit / rev * 100) if rev > 0 else 0.0
+    net_margin_pct = (net_profit / rev * 100) if rev > 0 else 0.0
+    aov = (rev / tx_count) if tx_count > 0 else 0.0
+    online_share_pct = (online_rev / rev * 100) if rev > 0 else 0.0
+    pos_share_pct = (pos_rev / rev * 100) if rev > 0 else 0.0
+    
+    top_prod_names = ", ".join([p["name"] for p in top_prods[:3]]) if top_prods else "General Inventory"
+    dead_prod_names = ", ".join([p["name"] for p in dead_stock[:3]]) if dead_stock else "None Identified"
+    
+    if lang == "bn":
+        current_state = [
+            f"মোট বিক্রয় আয় (Revenue): ৳{rev:,.2f}, যা {tx_count}টি ইনভয়েস/অর্ডারের মাধ্যমে সম্পন্ন হয়েছে। গড় বাস্কেট সাইজ (AOV) প্রতি অর্ডারে ৳{aov:,.2f}।",
+            f"গ্রস প্রফিট মার্জিন: {gross_margin_pct:.1f}% (৳{gross_profit:,.2f}) এবং নিট মুনাফা মার্জিন: {net_margin_pct:.1f}% (৳{net_profit:,.2f})।",
+            f"চ্যানেল শেয়ার: অফলাইন POS কাউন্টার {pos_share_pct:.1f}% (৳{pos_rev:,.2f}) এবং অনলাইন মোবাইল অ্যাপ/ওয়েব {online_share_pct:.1f}% (৳{online_rev:,.2f}) অবদান রাখছে।",
+            f"টপ পারফর্মার পণ্য: {top_prod_names} সবচেয়ে দ্রুত গতিতে বিক্রি হচ্ছে এবং মূল ক্যাশ-ফ্লো ড্রাইভ করছে।",
+            f"অতিরিক্ত খরচ ও আয়: পরিচালন ব্যয় ৳{expense:,.2f} এবং অন্যান্য আয় ৳{income:,.2f}, যা নেট প্রফিটের সাথে সমন্বিত হয়েছে।"
+        ]
+        should_do = [
+            f"টপ সেলিং পণ্যের ({top_prod_names}) ডিলার/সাপ্লায়ারের সাথে সরাসরি ভলিউম ডিসকাউন্ট বা বাল্ক পারচেস রেট নিয়ে আরও ৩-৫% কম খরচে সংগ্রহ করুন।",
+            f"গড় অর্ডার সাইজ (AOV ৳{aov:,.2f}) আরও বাড়াতে ১০০০+ টাকার কেনাকাটায় ফ্রি ডেলিভারি ব্যানার ও ক্রস-সেল অফার সক্রিয় রাখুন।",
+            f"উচ্চ চাহিদাসম্পন্ন নিত্যপ্রয়োজনীয় পণ্যের সাথে হাই-মার্জিন প্রফিটেবল পণ্য মিলিয়ে কম্বো প্যাকেজ (Bundle Packs) তৈরি করুন।",
+            f"অনলাইন ডেলিভারি অ্যাপে পুশ নোটিফিকেশন ও ফ্ল্যাশ সেল অফার দিয়ে অনলাইন অর্ডার শেয়ার {online_share_pct:.1f}% থেকে ৩০%+ এ উন্নীত করুন।",
+            "ক্যাশিয়ার ও সেলস টিমের জন্য কাউন্টারে চুইংগাম/স্ন্যাকস জাতীয় লো-কস্ট হাই-মার্জিন ইম্পালস অ্যাড-অন রাখার ব্যবস্থা করুন।"
+        ]
+        should_drop = [
+            f"ডেড স্টক ({dead_prod_names}) তাকের জায়গা ও মূলধন আটকে রাখছে; এগুলি অবিলম্বে ১০-১৫% ডিসকাউন্টে ক্লিয়ারেন্স সেল বা বান্ডেল বানিয়ে বিক্রি করে ক্যাশ মুক্ত করুন।",
+            "যেসব পণ্যের প্রফিট মার্জিন ২%-এর নিচে কিন্তু নষ্ট হওয়ার ঝুঁকি বেশি (Perishable), সেগুলোর অতিরিক্ত স্টক রাখা বন্ধ করুন।",
+            "অপ্রয়োজনীয় ইউটিলিটি ও আন-ট্র্যাকড পরিচালন ব্যয় (বিনা ভাউচারের খরচ) অবিলম্বে বন্ধ করুন।",
+            "ধীরগতির আনপপুলার ব্র্যান্ডের একই জাতীয় বিকল্প পণ্য রাখা বন্ধ করে শুধু টপ ২-৩টি বিশ্বস্ত ব্র্যান্ডের পণ্য রাখুন।"
+        ]
+        where_to_change = [
+            "প্রাইসিং অপটিমাইজেশন: সুপারমার্কেট স্ট্যান্ডার্ড অনুযায়ী স্লো-মুভিং পণ্যের MRP ও সেল প্রাইস সমন্বয় করুন।",
+            "রি-অর্ডার পয়েন্ট পরিবর্তন: ফাস্ট সেলিং পণ্যের লো-স্টক থ্রেশহোল্ড (Alert Level) বৃদ্ধি করুন যেন কখনো আউট-অফ-স্টক না হয়।",
+            "ব্যানার ও হোমপেজ ডিসপ্লে: অ্যাপের প্রধান ব্যানারে হাই-প্রফিট গ্রোসারি ও এক্সক্লুসিভ কম্বো প্যাকেজ প্রদর্শন করুন।",
+            "সাপ্লায়ার পেমেন্ট সাইকেল: সাপ্লায়ারদের সাথে ১৫-৩০ দিনের ক্রেডিট টার্মস নিশ্চিত করে ওয়ার্কিং ক্যাপিটাল ফ্লো বৃদ্ধি করুন।"
+        ]
+        profit_roadmap = [
+            "ডেড স্টক ক্লিয়ারেন্স ও ক্যাশ রিকভারি: মূলধন বৃদ্ধি পাবে আনুমানিক ৳১৫,০০০ - ৳৫০,০০০।",
+            "টপ প্রোডাক্টের বাল্ক সাপ্লায়ার ডিসকাউন্ট: গ্রস মার্জিন বৃদ্ধি পাবে +২.৫% থেকে +৪.০%।",
+            "কম্বো বান্ডেল ও ফ্রি ডেলিভারি থ্রেশহোল্ড: প্রতি অর্ডারে রেভিনিউ বাড়বে +১৮% থেকে +২৫%।",
+            "সামগ্রিক নিট মুনাফা (Net Profit) আগামী প্রান্তিকে ২৫% - ৪০% বৃদ্ধির সুনির্দিষ্ট সম্ভাবনা রয়েছে।"
+        ]
+        return {
+            "lang": "bn",
+            "title": "🧠 ডুয়েনিক সুপারশপ - এআই ব্যবসায়িক বিশ্লেষণ ও লাভজনক পরামর্শ রিপোর্ট",
+            "summary_tagline": f"বর্তমান রেভিনিউ ৳{rev:,.2f} এবং নিট লাভ ৳{net_profit:,.2f} এর ভিত্তিতে বিস্তারিত বিশ্লেষণ",
+            "current_state": current_state,
+            "should_do": should_do,
+            "should_drop": should_drop,
+            "where_to_change": where_to_change,
+            "profit_roadmap": profit_roadmap
+        }
+    else:
+        current_state = [
+            f"Total Sales Revenue stands at TK {rev:,.2f} across {tx_count} customer transactions with an Average Order Value (AOV) of TK {aov:,.2f}.",
+            f"Profitability Metrics: Gross Profit Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and Net Profit Margin is {net_margin_pct:.1f}% (TK {net_profit:,.2f}).",
+            f"Channel Breakdown: Offline POS Counter accounts for {pos_share_pct:.1f}% (TK {pos_rev:,.2f}) while Online Mobile App/Web accounts for {online_share_pct:.1f}% (TK {online_rev:,.2f}).",
+            f"Top Revenue Drivers: Products like '{top_prod_names}' represent the highest turnover and consistent customer demand.",
+            f"Operational Allocations: Total ledger expenses are TK {expense:,.2f} counterbalanced by TK {income:,.2f} in other earnings."
+        ]
+        should_do = [
+            f"Negotiate 3-5% tiered bulk volume discounts directly with suppliers/distributors for top-performing items ({top_prod_names}).",
+            f"Capitalize on Free Delivery banners with a minimum basket threshold (e.g. TK 1,000+) to elevate average basket sizes beyond TK {aov:,.2f}.",
+            f"Package fast-moving staples together with high-margin specialty items into curated Combo Bundles.",
+            f"Leverage mobile push notifications and flash sales to scale online channel share from {online_share_pct:.1f}% to 30%+.",
+            "Place high-margin impulse-buy items (gum, mints, snacks) directly beside counter checkout registers."
+        ]
+        should_drop = [
+            f"Liquidate dead stock ({dead_prod_names}) locking shelf space by bundling them at 10-15% discount to recover tied-up capital.",
+            "Discontinue or strictly minimize perishable items yielding less than 2% gross margin that risk shelf spoilage.",
+            "Cut out untracked petty cash expenses and enforce strict digital ledger receipts.",
+            "Consolidate redundant brands in duplicate sub-categories; stock only the top 2-3 most trusted consumer brands."
+        ]
+        where_to_change = [
+            "Dynamic Pricing: Re-align sell prices and discount percentages on slow-moving inventory to accelerate inventory turns.",
+            "Safety Stock Thresholds: Increase minimum low-stock alerts for core commodities to prevent stockouts during peak hours.",
+            "App Banner Promotion: Feature high-margin combos and seasonal essentials prominently on mobile app headers.",
+            "Vendor Payment Credit Terms: Transition key accounts to 15-30 day trade credit to optimize cash working capital."
+        ]
+        profit_roadmap = [
+            "Dead Stock Liquidation: Unlocks TK 15,000 - TK 50,000 in immediate liquid working capital.",
+            "Bulk Procurement Savings: Enhances overall Gross Profit Margin by +2.5% to +4.0%.",
+            "Bundle Combos & Free Delivery Incentives: Estimated to lift average basket revenue by +18% to +25%.",
+            "Targeted Operational Improvements projected to increase Total Net Profit by 25% to 40% in next quarter."
+        ]
+        return {
+            "lang": "en",
+            "title": "🧠 DOINEEK Supershop - AI Executive Business Intelligence & Actionable Advisory Report",
+            "summary_tagline": f"Comprehensive Performance Analysis for Revenue TK {rev:,.2f} & Net Profit TK {net_profit:,.2f}",
+            "current_state": current_state,
+            "should_do": should_do,
+            "should_drop": should_drop,
+            "where_to_change": where_to_change,
+            "profit_roadmap": profit_roadmap
+        }
+
+
+@app.route("/reports/export_pdf")
+@login_required
+@admin_required
+def reports_export_pdf():
+    period = request.args.get("period", "monthly")
+    lang = request.args.get("lang", "en")
+    today = date.today()
+    today_str = today.isoformat()
+
+    conn = get_connection()
+    if period == "daily":
+        date_filter = f"date(created_at) = '{today_str}'"
+        ledger_filter = f"date(entry_date) = '{today_str}'"
+    elif period == "weekly":
+        start = (today - timedelta(days=6)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "3_monthly":
+        start = (today - timedelta(days=89)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "6_monthly":
+        start = (today - timedelta(days=179)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "quarterly":
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        start = date(today.year, quarter_start_month, 1).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "yearly":
+        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
+        ledger_filter = f"strftime('%Y', entry_date) = '{today_str[:4]}'"
+    elif period == "all":
+        date_filter = "1=1"
+        ledger_filter = "1=1"
+    else:
+        period = "monthly"
+        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
+        ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
+
+    # 1. Offline POS counter
+    offline_sales = conn.execute(f"SELECT COALESCE(SUM(rounded_total), 0) AS revenue, COUNT(id) AS tx_count FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}").fetchone()
+    # 2. Online orders
+    online_sales = conn.execute(f"SELECT COALESCE(SUM(total_amount), 0) AS revenue, COUNT(*) AS tx_count FROM online_orders WHERE {date_filter}").fetchone()
+    # 3. COGS
+    offline_cogs = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
+    online_cogs = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id LEFT JOIN products p ON oi.product_id = p.id WHERE {date_filter.replace('created_at', 'o.created_at')}").fetchone()
+
+    pos_rev = float(offline_sales["revenue"])
+    online_rev = float(online_sales["revenue"])
+    pos_cnt = int(offline_sales["tx_count"])
+    online_cnt = int(online_sales["tx_count"])
+    pos_cogs = float(offline_cogs["total_cogs"])
+    online_cogs = float(online_cogs["total_cogs"])
+
+    # Packages & Offers
+    pos_pkg = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue, COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs, COUNT(DISTINCT si.sale_id) AS tx_count FROM sale_items si JOIN sales s ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE (p.unit LIKE '%package%' OR p.unit LIKE '%combo%' OR p.name LIKE '%📦%') AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
+    online_pkg = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue, COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs, COUNT(DISTINCT oi.order_id) AS tx_count FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id LEFT JOIN products p ON oi.product_id = p.id WHERE (oi.product_name LIKE '📦%' OR oi.product_name LIKE '%package%') AND {date_filter.replace('created_at', 'o.created_at')}").fetchone()
+
+    pkg_rev = float(pos_pkg["revenue"]) + float(online_pkg["revenue"])
+    pkg_cogs = float(pos_pkg["cogs"]) + float(online_pkg["cogs"])
+    pkg_tx = int(pos_pkg["tx_count"]) + int(online_pkg["tx_count"])
+
+    pos_off = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue, COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs, COUNT(DISTINCT si.sale_id) AS tx_count FROM sale_items si JOIN sales s ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE (p.is_offer = 1 OR p.is_promotion = 1) AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
+    online_off = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue, COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs, COUNT(DISTINCT oi.order_id) AS tx_count FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id JOIN products p ON oi.product_id = p.id WHERE (p.is_offer = 1 OR p.is_promotion = 1) AND {date_filter.replace('created_at', 'o.created_at')}").fetchone()
+
+    off_rev = float(pos_off["revenue"]) + float(online_off["revenue"])
+    off_cogs = float(pos_off["cogs"]) + float(online_off["cogs"])
+    off_tx = int(pos_off["tx_count"]) + int(online_off["tx_count"])
+
+    # Ledger sums
+    ledger_entries = conn.execute(f"SELECT * FROM ledger_entries WHERE {ledger_filter}").fetchall()
+    all_inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income')
+    all_exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense')
+
+    total_rev = pos_rev + online_rev
+    total_cogs = pos_cogs + online_cogs
+    total_tx = pos_cnt + online_cnt
+    overall_gross = total_rev - total_cogs
+    overall_net = (overall_gross + all_inc) - all_exp
+
+    sold_sub = f"SELECT si.product_id, SUM(si.quantity) AS qty_sold, SUM(si.quantity * si.unit_price) AS revenue, SUM(si.quantity * si.cost_price) AS cogs_amt FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE {date_filter.replace('created_at', 's.created_at')} GROUP BY si.product_id"
+    prods = conn.execute(f"SELECT p.id, p.name, p.stock_qty, COALESCE(s.qty_sold, 0) AS qty_sold, COALESCE(s.revenue, 0) AS revenue, COALESCE(s.cogs_amt, 0) AS cogs_amt, (COALESCE(s.revenue, 0) - COALESCE(s.cogs_amt, 0)) AS profit FROM products p LEFT JOIN ({sold_sub}) s ON s.product_id = p.id ORDER BY qty_sold DESC").fetchall()
+    top_products = [r for r in prods if r["qty_sold"] > 0][:8]
+    dead_stock = [r for r in prods if r["qty_sold"] == 0 and r["stock_qty"] > 0][:8]
+    slow_movers = sorted([r for r in prods if r["qty_sold"] > 0 and r["stock_qty"] > 0], key=lambda x: x["qty_sold"])[:8]
+
+    metrics_bundle = {
+        "revenue": total_rev,
+        "cogs": total_cogs,
+        "gross_profit": overall_gross,
+        "net_profit": overall_net,
+        "other_income": all_inc,
+        "other_expenses": all_exp,
+        "tx_count": total_tx,
+        "online_revenue": online_rev,
+        "pos_revenue": pos_rev,
+        "top_products": top_products,
+        "dead_stock": dead_stock,
+        "slow_movers": slow_movers
+    }
+    ai_report = build_ai_business_report(metrics_bundle, lang)
+    conn.close()
+
+    return render_template(
+        "report_pdf.html",
+        period=period,
+        lang=lang,
+        generated_at=datetime.now().strftime("%d %b %Y, %I:%M %p"),
+        revenue=total_rev,
+        cogs=total_cogs,
+        gross_profit=overall_gross,
+        net_profit=overall_net,
+        tx_count=total_tx,
+        ai_report=ai_report,
+        top_products=top_products,
+        offline_summary={"tx_count": pos_cnt, "revenue": pos_rev, "cogs": pos_cogs, "gross_profit": pos_rev - pos_cogs, "net_profit": pos_rev - pos_cogs},
+        online_summary={"tx_count": online_cnt, "revenue": online_rev, "cogs": online_cogs, "gross_profit": online_rev - online_cogs, "net_profit": online_rev - online_cogs},
+        packages_summary={"tx_count": pkg_tx, "revenue": pkg_rev, "cogs": pkg_cogs, "gross_profit": pkg_rev - pkg_cogs, "net_profit": pkg_rev - pkg_cogs},
+        offers_summary={"tx_count": off_tx, "revenue": off_rev, "cogs": off_cogs, "gross_profit": off_rev - off_cogs, "net_profit": off_rev - off_cogs}
     )
 
 

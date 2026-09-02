@@ -6,9 +6,18 @@
     <h1 style="margin:0; font-size:1.6rem; color:#0f172a;">📊 Financial Overview & Analytics Reports</h1>
     <p class="subtitle" style="margin:4px 0 0 0; color:#64748b;">Comprehensive Sales Revenue, COGS, Ledger Allocations & Net Profit across all channels.</p>
   </div>
-  <div>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <!-- PDF Export Buttons -->
+    <a href="{{ url_for('reports_export_pdf', period=period, lang='en') }}" target="_blank" style="background:#4338ca; color:#ffffff; text-decoration:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(67,56,202,0.25);">
+      <span>📄 Download PDF (English)</span>
+    </a>
+    <a href="{{ url_for('reports_export_pdf', period=period, lang='bn') }}" target="_blank" style="background:#059669; color:#ffffff; text-decoration:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(5,150,105,0.25);">
+      <span>📄 PDF ডাউনলোড (বাংলা)</span>
+    </a>
+
+    <!-- Period Select -->
     <select id="periodSelect" onchange="window.location.href='{{ url_for('reports') }}?period=' + this.value"
-            style="padding:10px 18px; font-size:14px; font-weight:700; border:2px solid #6366f1; border-radius:10px; background:#fff; color:#4338ca; cursor:pointer; box-shadow:0 2px 6px rgba(99,102,241,0.15);">
+            style="padding:9px 16px; font-size:14px; font-weight:700; border:2px solid #6366f1; border-radius:8px; background:#fff; color:#4338ca; cursor:pointer; box-shadow:0 2px 6px rgba(99,102,241,0.15);">
       <option value="daily" {{ 'selected' if period=='daily' }}>📅 Daily (Today)</option>
       <option value="weekly" {{ 'selected' if period=='weekly' }}>📆 Weekly (Last 7 Days)</option>
       <option value="monthly" {{ 'selected' if period=='monthly' }}>🗓️ Monthly (This Month)</option>
@@ -20,6 +29,191 @@
     </select>
   </div>
 </div>
+
+<!-- ================= 0. AI EXECUTIVE BUSINESS INTELLIGENCE & ACTIONABLE REPORT ================= -->
+<div style="background:linear-gradient(135deg, #1e1b4b, #312e81); border:2px solid #6366f1; border-radius:16px; padding:24px; margin-bottom:24px; color:#ffffff; box-shadow:0 8px 24px rgba(49,46,129,0.25);">
+  <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.18); padding-bottom:14px; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:1.4rem;">🧠</span>
+        <h2 style="margin:0; font-size:1.3rem; font-weight:900; color:#ffffff;">AI Executive Business Intelligence & Advisory Report</h2>
+      </div>
+      <p style="margin:4px 0 0 0; font-size:0.85rem; color:#cbd5e1;">
+        বিস্তারিত ব্যবসায়িক বিশ্লেষণ: কি কি হচ্ছে, কি কি করা উচিত, কি কি বাদ দিতে হবে এবং প্রফিট বৃদ্ধির সুনির্দিষ্ট পথরেখা।
+      </p>
+    </div>
+
+    <div style="display:flex; gap:8px; align-items:center;">
+      <!-- Language Switcher Tabs -->
+      <button type="button" id="aiTabBtnEn" onclick="switchAiReportLang('en')" style="background:#6366f1; color:#fff; border:none; padding:6px 14px; border-radius:20px; font-size:0.82rem; font-weight:800; cursor:pointer;">
+        🇬🇧 English Analysis
+      </button>
+      <button type="button" id="aiTabBtnBn" onclick="switchAiReportLang('bn')" style="background:rgba(255,255,255,0.15); color:#fff; border:none; padding:6px 14px; border-radius:20px; font-size:0.82rem; font-weight:800; cursor:pointer;">
+        🇧🇩 বাংলা রিপোর্ট
+      </button>
+    </div>
+  </div>
+
+  <!-- ENGLISH AI REPORT CONTENT -->
+  <div id="aiReportContentEn" style="display:block;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
+      
+      <!-- 1. What is Happening -->
+      <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#93c5fd; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>📊 1. Current State (What is Happening)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_en.current_state %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 2. What Should Be Done -->
+      <div style="background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.30); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#86efac; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>🚀 2. Strategic Growth (What Should Be Done)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_en.should_do %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 3. What Should Be Dropped -->
+      <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.30); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#fca5a5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>🛑 3. Loss Elimination (What Should Be Dropped)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_en.should_drop %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 4. Where Changes Are Needed -->
+      <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#fde047; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>⚙️ 4. Key Adjustments (Where Changes Are Needed)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_en.where_to_change %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- 5. Profit Maximization Roadmap -->
+    <div style="background:rgba(168,85,247,0.14); border:1.5px solid rgba(192,132,252,0.40); border-radius:12px; padding:16px; margin-top:14px;">
+      <div style="font-weight:800; font-size:0.98rem; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+        <span>📈 5. Profit Maximization Roadmap & Projections</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+        {% for item in ai_report_en.profit_roadmap %}
+        <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
+          {{ item }}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- BENGALI AI REPORT CONTENT -->
+  <div id="aiReportContentBn" style="display:none;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
+      
+      <!-- 1. কি কি হচ্ছে -->
+      <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#93c5fd; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>📊 ১. বর্তমানে কি কি হচ্ছে (Current State)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_bn.current_state %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 2. কি কি করা উচিত -->
+      <div style="background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.30); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#86efac; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>🚀 ২. লাভ বৃদ্ধির জন্য কি কি করা উচিত (Should Do)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_bn.should_do %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 3. কি কি বাদ দিতে হবে -->
+      <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.30); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#fca5a5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>🛑 ৩. ক্ষতি রোধে কি কি বাদ দিতে হবে (Should Drop)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_bn.should_drop %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 4. কোথায় কি কি পরিবর্তন আনতে হবে -->
+      <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30); border-radius:12px; padding:16px;">
+        <div style="font-weight:800; font-size:0.95rem; color:#fde047; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>⚙️ ৪. কোথায় কি কি পরিবর্তন আনতে হবে (Where to Change)</span>
+        </div>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+          {% for item in ai_report_bn.where_to_change %}
+          <li style="margin-bottom:6px;">{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- 5. প্রফিট বৃদ্ধির রোডম্যাপ -->
+    <div style="background:rgba(168,85,247,0.14); border:1.5px solid rgba(192,132,252,0.40); border-radius:12px; padding:16px; margin-top:14px;">
+      <div style="font-weight:800; font-size:0.98rem; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+        <span>📈 ৫. প্রফিট বৃদ্ধির সুনির্দিষ্ট পথরেখা (Profit Roadmap)</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+        {% for item in ai_report_bn.profit_roadmap %}
+        <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
+          {{ item }}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function switchAiReportLang(lang) {
+  const enDiv = document.getElementById('aiReportContentEn');
+  const bnDiv = document.getElementById('aiReportContentBn');
+  const enBtn = document.getElementById('aiTabBtnEn');
+  const bnBtn = document.getElementById('aiTabBtnBn');
+
+  if (lang === 'bn') {
+    enDiv.style.display = 'none';
+    bnDiv.style.display = 'block';
+    bnBtn.style.background = '#059669';
+    enBtn.style.background = 'rgba(255,255,255,0.15)';
+  } else {
+    bnDiv.style.display = 'none';
+    enDiv.style.display = 'block';
+    enBtn.style.background = '#6366f1';
+    bnBtn.style.background = 'rgba(255,255,255,0.15)';
+  }
+}
+</script>
 
 <!-- 1. TOTAL ORDERS & OVERALL SALES REPORT -->
 <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:20px; margin-bottom:24px; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
