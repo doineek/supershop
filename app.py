@@ -1283,44 +1283,56 @@ def overlay_product_label(img, product_name, brand_name="", category=""):
         overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
+        # Extract weight/quantity if present (e.g. 5kg, 1L, 200g, 500ml)
         weight_match = re.search(r'(\d+(?:\.\d+)?\s*(?:kg|g|gm|ltr|litre|l|ml|pcs|pack|packet|টি|কেজি|গ্রাম|লিটার))', product_name, re.IGNORECASE)
         weight_str = weight_match.group(1).upper() if weight_match else ""
 
-        # 1. Top Ribbon / Brand Pill
-        pill_w, pill_h = int(w * 0.82), int(h * 0.15)
-        pill_x0 = (w - pill_w) // 2
-        pill_y0 = int(h * 0.04)
-        pill_x1 = pill_x0 + pill_w
-        pill_y1 = pill_y0 + pill_h
-
-        draw.rounded_rectangle([pill_x0 + 3, pill_y0 + 3, pill_x1 + 3, pill_y1 + 3], radius=16, fill=(0, 0, 0, 70))
-        draw.rounded_rectangle([pill_x0, pill_y0, pill_x1, pill_y1], radius=16, fill=(15, 23, 42, 235), outline=(255, 255, 255, 220), width=2)
-        
-        draw.text((w // 2, pill_y0 + pill_h // 2 - (8 if brand_name else 0)), product_name[:34], fill=(255, 255, 255, 255), anchor="mm")
-        if brand_name:
-            draw.text((w // 2, pill_y0 + pill_h - 12), f"★ {brand_name.upper()} • PREMIUM QUALITY ★", fill=(253, 224, 71, 240), anchor="mm")
-
-        # 2. Weight Badge in Bottom Right
+        clean_title = product_name
         if weight_str:
-            bw, bh = int(w * 0.30), int(h * 0.08)
-            bx0 = w - bw - int(w * 0.05)
-            by0 = h - bh - int(h * 0.05)
-            bx1 = bx0 + bw
-            by1 = by0 + bh
-            
-            draw.rounded_rectangle([bx0 + 2, by0 + 2, bx1 + 2, by1 + 2], radius=10, fill=(0, 0, 0, 60))
-            draw.rounded_rectangle([bx0, by0, bx1, by1], radius=10, fill=(22, 163, 74, 240), outline=(255, 255, 255, 210), width=2)
-            draw.text(((bx0 + bx1) // 2, (by0 + by1) // 2), f"NET {weight_str}", fill=(255, 255, 255, 255), anchor="mm")
+            clean_title = re.sub(re.escape(weight_match.group(1)), '', clean_title, flags=re.IGNORECASE).strip(' -_,()')
 
-        # 3. 100% Quality Guaranteed Badge Bottom Left
-        qw, qh = int(w * 0.36), int(h * 0.07)
-        qx0 = int(w * 0.05)
-        qy0 = h - qh - int(h * 0.05)
-        qx1 = qx0 + qw
-        qy1 = qy0 + qh
-        draw.rounded_rectangle([qx0 + 2, qy0 + 2, qx1 + 2, qy1 + 2], radius=10, fill=(0, 0, 0, 60))
-        draw.rounded_rectangle([qx0, qy0, qx1, qy1], radius=10, fill=(79, 70, 229, 235), outline=(255, 255, 255, 210), width=2)
-        draw.text(((qx0 + qx1) // 2, (qy0 + qy1) // 2), "✓ 100% ORIGINAL", fill=(255, 255, 255, 255), anchor="mm")
+        # Position label directly ON THE PACKAGE FRONT (centered in middle-lower section of package body)
+        label_w = int(w * 0.70)
+        label_h = int(h * 0.25)
+        lx0 = (w - label_w) // 2
+        ly0 = int(h * 0.32)
+        lx1 = lx0 + label_w
+        ly1 = ly0 + label_h
+
+        # 1. Subtle drop shadow on package surface
+        draw.rounded_rectangle([lx0 + 2, ly0 + 3, lx1 + 2, ly1 + 3], radius=14, fill=(0, 0, 0, 50))
+        
+        # 2. Package Label Plaque (Authentic grocery packaging front sticker with gold trim)
+        draw.rounded_rectangle([lx0, ly0, lx1, ly1], radius=14, fill=(255, 255, 255, 245), outline=(217, 119, 6), width=3)
+        # Inner gold border
+        draw.rounded_rectangle([lx0 + 4, ly0 + 4, lx1 - 4, ly1 - 4], radius=10, outline=(251, 191, 36), width=1)
+
+        # 3. Brand Header on Label
+        brand_display = (brand_name or "PREMIUM").upper()
+        draw.text((w // 2, ly0 + 16), f"• {brand_display} •", fill=(180, 83, 9), anchor="mm")
+
+        # 4. Main Product Name printed boldly on package label
+        words = clean_title.split()
+        line1 = ""
+        line2 = ""
+        if len(clean_title) <= 18:
+            line1 = clean_title
+        else:
+            half = len(words) // 2
+            line1 = " ".join(words[:half]) if half > 0 else words[0]
+            line2 = " ".join(words[half:]) if half > 0 else " ".join(words[1:])
+
+        if line2:
+            draw.text((w // 2, ly0 + label_h // 2 - 4), line1, fill=(15, 23, 42), anchor="mm")
+            draw.text((w // 2, ly0 + label_h // 2 + 18), line2, fill=(15, 23, 42), anchor="mm")
+        else:
+            draw.text((w // 2, ly0 + label_h // 2 + 6), line1, fill=(15, 23, 42), anchor="mm")
+
+        # 5. Bottom Net Weight & Seal strip on label
+        strip_h = 24
+        draw.rounded_rectangle([lx0 + 6, ly1 - strip_h - 6, lx1 - 6, ly1 - 6], radius=6, fill=(22, 163, 74))
+        badge_text = f"NET WT. {weight_str}  |  100% PURE" if weight_str else "PREMIUM SELECTED QUALITY"
+        draw.text((w // 2, ly1 - 6 - strip_h // 2), badge_text, fill=(255, 255, 255), anchor="mm")
 
         return Image.alpha_composite(img, overlay).convert("RGB")
     except Exception as e:

@@ -514,7 +514,7 @@ function renderAiImagesGrid() {
     const isSel = idx === selectedAiImageIdx;
     const imgSrc = typeof imgItem === 'string' ? imgItem : (imgItem.url || '');
     const imgLabel = typeof imgItem === 'object' && imgItem.label ? imgItem.label : `Option ${idx + 1}`;
-    const isOverlay = imgLabel.includes('Banner') || imgLabel.includes('ব্যানার');
+    const isOverlay = imgLabel.includes('Label') || imgLabel.includes('লেবেল');
 
     return `
       <div onclick="selectAiImg(${idx})" style="position:relative; cursor:pointer; border-radius:12px; overflow:hidden; border: 3px solid ${isSel ? '#6366f1' : '#cbd5e1'}; box-shadow: ${isSel ? '0 0 0 4px rgba(99,102,241,0.25), 0 4px 12px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.06)'}; transition:all 0.2s; background:#fff;">
@@ -526,7 +526,7 @@ function renderAiImagesGrid() {
         ` : ''}
         ${isOverlay ? `
           <div style="position:absolute; top:8px; left:8px; background:#16a34a; color:#fff; font-size:0.70rem; font-weight:800; padding:2px 8px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.3);">
-            ⭐ নাম স্পষ্ট
+            ⭐ প্যাকেটের গায়ে নাম
           </div>
         ` : ''}
         <div style="padding:8px; font-size:0.76rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155; border-top:1px solid #e2e8f0; line-height:1.3;">
