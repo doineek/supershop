@@ -18,6 +18,7 @@ import sqlite3
 import base64
 import urllib.request
 import urllib.parse
+from PIL import Image, ImageDraw, ImageFont
 
 # Fix Windows console encoding for Bengali/Unicode characters with real-time line buffering
 if sys.platform == "win32":
@@ -1714,17 +1715,153 @@ def api_ai_generate_banner_image():
     })
 
 
+def create_combo_package_collage(package_name: str, package_price: float, item_images: list, item_names: list) -> Image.Image:
+    """Creates a clean, attractive multi-product collage image for Combo Packages."""
+    w, h = 600, 600
+    card = Image.new("RGB", (w, h), (255, 255, 255))
+    draw = ImageDraw.Draw(card)
+    
+    # 1. Top Header Badge
+    header_h = 56
+    draw.rectangle([0, 0, w, header_h], fill=(240, 253, 244))
+    draw.line([0, header_h, w, header_h], fill=(187, 247, 208), width=2)
+    
+    font_badge = get_font_helper(size=14, bold=True)
+    draw.text((16, header_h // 2), "🎁 SPECIAL COMBO DEAL", fill=(21, 128, 61), anchor="lm", font=font_badge)
+    
+    font_price = get_font_helper(size=18, bold=True)
+    draw.text((w - 16, header_h // 2), f"TK {package_price:,.2f}", fill=(22, 163, 74), anchor="rm", font=font_price)
+    
+    # 2. Bottom Title Banner
+    bottom_h = 60
+    bottom_y0 = h - bottom_h
+    draw.rectangle([0, bottom_y0, w, h], fill=(248, 250, 252))
+    draw.line([0, bottom_y0, w, bottom_y0], fill=(226, 232, 240), width=2)
+    
+    font_title = get_font_helper(size=20, bold=True)
+    draw.text((16, bottom_y0 + (bottom_h // 2)), str(package_name)[:34], fill=(15, 23, 42), anchor="lm", font=font_title)
+    
+    # 3. Center Collage Area
+    center_y0 = header_h + 8
+    center_h = bottom_y0 - center_y0 - 8
+    
+    num_items = len(item_images)
+    if num_items == 0:
+        draw.text((w // 2, center_y0 + center_h // 2), "Assorted Combo Items", fill=(148, 163, 184), anchor="mm", font=font_badge)
+    elif num_items == 1:
+        img = item_images[0].convert("RGB")
+        img.thumbnail((w - 32, center_h), Image.Resampling.LANCZOS)
+        card.paste(img, ((w - img.width) // 2, center_y0 + (center_h - img.height) // 2))
+    elif num_items == 2:
+        cell_w = (w - 36) // 2
+        for i in range(2):
+            img = item_images[i].convert("RGB")
+            img.thumbnail((cell_w, center_h), Image.Resampling.LANCZOS)
+            cx = 16 + i * (cell_w + 4) + (cell_w - img.width) // 2
+            cy = center_y0 + (center_h - img.height) // 2
+            card.paste(img, (cx, cy))
+    elif num_items <= 4:
+        cell_w = (w - 36) // 2
+        cell_h = (center_h - 12) // 2
+        for i in range(min(4, num_items)):
+            row = i // 2
+            col = i % 2
+            img = item_images[i].convert("RGB")
+            img.thumbnail((cell_w - 8, cell_h - 8), Image.Resampling.LANCZOS)
+            cx = 16 + col * cell_w + (cell_w - img.width) // 2
+            cy = center_y0 + row * cell_h + (cell_h - img.height) // 2
+            card.paste(img, (cx, cy))
+    else:
+        cell_w = (w - 40) // 3
+        cell_h = (center_h - 12) // 2
+        for i in range(min(6, num_items)):
+            row = i // 3
+            col = i % 3
+            img = item_images[i].convert("RGB")
+            img.thumbnail((cell_w - 6, cell_h - 6), Image.Resampling.LANCZOS)
+            cx = 14 + col * cell_w + (cell_w - img.width) // 2
+            cy = center_y0 + row * cell_h + (cell_h - img.height) // 2
+            card.paste(img, (cx, cy))
+
+    draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
+    return card
+
+
 @app.route("/api/ai/generate_combo_image", methods=["POST"])
 @login_required
 @admin_required
 def api_ai_generate_combo_image():
     data = request.json or {}
     package_name = (data.get("package_name") or "Grocery Combo Deal").strip()
-    package_price = data.get("package_price", 0.0)
+    package_price = float(data.get("package_price") or 0.0)
     items_list = data.get("items", [])
+    raw_images = data.get("item_images", [])
+    product_ids = data.get("product_ids", [])
     
+    # If raw_images is empty but product_ids are given, fetch product images from DB
+    if not raw_images and product_ids:
+        try:
+            conn = get_connection()
+            placeholders = ",".join("?" for _ in product_ids)
+            p_rows = conn.execute(f"SELECT id, image_url, name FROM products WHERE id IN ({placeholders})", [int(pid) for pid in product_ids]).fetchall()
+            conn.close()
+            raw_images = [r["image_url"] for r in p_rows if r["image_url"]]
+        except Exception as e:
+            print("Error fetching product images for combo:", e)
+
+    # 1. Build Smart Multi-Item Collage from actual product photos
+    pil_images = []
+    for raw_img in raw_images:
+        if not raw_img or not isinstance(raw_img, str):
+            continue
+        # If multiple images in product, take the first one
+        img_entry = split_image_urls(raw_img)[0] if split_image_urls(raw_img) else raw_img.strip()
+        if not img_entry:
+            continue
+        try:
+            if img_entry.startswith("data:image/"):
+                header, b64 = img_entry.split(",", 1)
+                img_bytes = base64.b64decode(b64)
+                im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                pil_images.append(im)
+            elif img_entry.startswith("http://") or img_entry.startswith("https://"):
+                req = urllib.request.Request(
+                    img_entry,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Referer": "https://www.google.com/"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    im = Image.open(io.BytesIO(response.read())).convert("RGB")
+                    pil_images.append(im)
+            elif img_entry.startswith("/") or img_entry.startswith("static/"):
+                clean_path = img_entry.lstrip("/")
+                full_path = os.path.join(app.root_path, clean_path)
+                if os.path.exists(full_path):
+                    im = Image.open(full_path).convert("RGB")
+                    pil_images.append(im)
+        except Exception as e:
+            print(f"Failed to load item image for combo collage ({img_entry[:40]}):", e)
+
+    generated_images = []
+
+    # If we have loaded product images, generate the smart collage as Option 1
+    if pil_images:
+        try:
+            collage_card = create_combo_package_collage(package_name, package_price, pil_images, items_list)
+            buf = io.BytesIO()
+            collage_card.save(buf, format="JPEG", quality=90, optimize=True)
+            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+            generated_images.append({
+                "url": f"data:image/jpeg;base64,{b64_str}",
+                "label": "🎁 Smart Multi-Item Collage (সকল পণ্যের কোলাজ)"
+            })
+        except Exception as e:
+            print("Error rendering combo collage card:", e)
+
+    # 2. AI 3D Hamper generation (Pollinations AI)
     items_str = ", ".join([str(it) for it in items_list[:5]]) if items_list else "assorted supermarket daily groceries"
-    
     full_prompt = (
         f'Award-winning commercial studio product photography of supermarket combo package bundle "{package_name}". '
         f'The combo bundle contains neatly arranged products: {items_str}. '
@@ -1733,20 +1870,19 @@ def api_ai_generate_combo_image():
     )
     encoded_prompt = urllib.parse.quote(full_prompt)
     width, height = 600, 600
-    generated_images = []
     
     seeds = [303, 404]
-    for s in seeds:
+    for idx, s in enumerate(seeds):
         ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
         try:
             req = urllib.request.Request(ai_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=7) as response:
                 img_data = response.read()
                 if len(img_data) > 1000:
                     b64 = base64.b64encode(img_data).decode("utf-8")
                     generated_images.append({
                         "url": f"data:image/jpeg;base64,{b64}",
-                        "label": f"Combo Hamper Option {len(generated_images) + 1}"
+                        "label": f"✨ 3D AI Hamper Studio Option {idx + 1}"
                     })
         except Exception as e:
             print("Combo AI Generation Error:", e)
@@ -1756,7 +1892,7 @@ def api_ai_generate_combo_image():
             ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
             generated_images.append({
                 "url": ai_url,
-                "label": f"Combo Hamper Option {idx + 1}"
+                "label": f"✨ 3D AI Hamper Option {idx + 1}"
             })
 
     return jsonify({
@@ -6211,6 +6347,8 @@ def packages_page():
             else:
                 rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
                 image_url = f"/{rel_path}"
+        elif image_url:
+            image_url = download_and_cache_external_image(image_url)
 
         if name and package_price > 0 and prod_ids:
             cur = conn.cursor()
@@ -6241,7 +6379,7 @@ def packages_page():
     for pkg in pkg_rows:
         p_dict = dict(pkg)
         items = conn.execute("""
-            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
@@ -6284,6 +6422,8 @@ def edit_package(package_id):
         else:
             rel_path = os.path.relpath(file_path, app.root_path).replace("\\", "/")
             image_url = f"/{rel_path}"
+    elif image_url:
+        image_url = download_and_cache_external_image(image_url)
     elif not image_url and pkg:
         image_url = pkg["image_url"]
 

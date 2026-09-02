@@ -217,7 +217,7 @@
 </div>
 
 <script>
-let selectedPkgMap = new Map(); // id -> { name, sku, price, qty }
+let selectedPkgMap = new Map(); // id -> { name, sku, price, qty, image }
 
 function selectPkgProductOption(el) {
   if (!el) return;
@@ -225,7 +225,14 @@ function selectPkgProductOption(el) {
   const name = el.getAttribute('data-name');
   const sku = el.getAttribute('data-sku');
   const price = el.getAttribute('data-price');
-  const image = el.getAttribute('data-image');
+  let image = el.getAttribute('data-image') || '';
+  if (image) {
+    if (image.includes(' || ')) {
+      image = image.split(' || ')[0].trim();
+    } else if (image.includes(',')) {
+      image = image.split(',')[0].trim();
+    }
+  }
   addPkgProductRow(id, name, sku, price, 1, image);
 }
 
@@ -256,7 +263,14 @@ function addPkgProductRow(id, name, sku, price, qty = 1, image = '') {
     return;
   }
 
-  selectedPkgMap.set(id, { id, name, sku, price: parseFloat(price), qty: parseInt(qty), image: image || '' });
+  let cleanImg = image || '';
+  if (cleanImg.includes(' || ')) {
+    cleanImg = cleanImg.split(' || ')[0].trim();
+  } else if (cleanImg.includes(',') && !cleanImg.startsWith('data:image/')) {
+    cleanImg = cleanImg.split(',')[0].trim();
+  }
+
+  selectedPkgMap.set(id, { id, name, sku, price: parseFloat(price), qty: parseInt(qty), image: cleanImg });
   document.getElementById('emptyPkgRow')?.remove();
 
   const tbody = document.getElementById('selectedPkgBody');
@@ -305,9 +319,11 @@ function removePkgProductRow(id) {
 function loadPkgForEdit(pkg) {
   document.getElementById('pkgEditId').value = pkg.id;
   document.getElementById('pkgForm').action = "/packages/" + pkg.id + "/edit";
-  document.getElementById('pkgFormHeading').innerText = "✏️ Edit Combo Package (" + pkg.name + ")";
+  const heading = document.getElementById('pkgFormHeading');
+  if (heading) heading.innerText = "✏️ Edit Combo Package (" + pkg.name + ")";
   document.getElementById('pkgSubmitBtn').innerText = "Update Package";
-  document.getElementById('cancelPkgEditBtn').style.display = "inline-block";
+  const cancelBtn = document.getElementById('cancelPkgEditBtn');
+  if (cancelBtn) cancelBtn.style.display = "inline-block";
 
   document.getElementById('pkgNameInput').value = pkg.name || '';
   document.getElementById('pkgPriceInput').value = pkg.package_price || '';
@@ -321,7 +337,6 @@ function loadPkgForEdit(pkg) {
     if (wrapper) wrapper.style.display = 'flex';
   }
 
-  // Clear current selected products table
   selectedPkgMap.clear();
   document.getElementById('selectedPkgBody').innerHTML = '';
 
@@ -336,9 +351,11 @@ function loadPkgForEdit(pkg) {
 function resetPkgForm() {
   document.getElementById('pkgEditId').value = "";
   document.getElementById('pkgForm').action = "{{ url_for('packages_page') }}";
-  document.getElementById('pkgFormHeading').innerText = "+ Create New Combo Package";
+  const heading = document.getElementById('pkgFormHeading');
+  if (heading) heading.innerText = "+ Create New Combo Package";
   document.getElementById('pkgSubmitBtn').innerText = "+ Save Package";
-  document.getElementById('cancelPkgEditBtn').style.display = "none";
+  const cancelBtn = document.getElementById('cancelPkgEditBtn');
+  if (cancelBtn) cancelBtn.style.display = "none";
 
   document.getElementById('pkgForm').reset();
   selectedPkgMap.clear();
@@ -349,85 +366,80 @@ function resetPkgForm() {
   `;
 }
 
-let isPkgFormConfirmed = false;
+function confirmPackageSave(e) {
+  e.preventDefault();
+  const name = document.getElementById('pkgNameInput').value.trim();
+  const price = parseFloat(document.getElementById('pkgPriceInput').value) || 0;
 
-function validateAndConfirmPackage(e) {
-  if (isPkgFormConfirmed) return true;
-
+  if (!name) {
+    alert("Please enter a Package Name.");
+    return false;
+  }
+  if (price <= 0) {
+    alert("Please enter a valid Package Price (TK).");
+    return false;
+  }
   if (selectedPkgMap.size === 0) {
-    alert("Please search and select at least 1 product for this package.");
-    e.preventDefault();
+    alert("Please select at least 1 product to include in this combo package.");
     return false;
   }
 
-  const comboPrice = parseFloat(document.getElementById('pkgPriceInput').value) || 0;
-  let totalRegularPrice = 0.0;
-  let itemsListHtml = "";
+  let totalRegular = 0.0;
+  const listEl = document.getElementById('confPkgItemsList');
+  listEl.innerHTML = '';
 
   selectedPkgMap.forEach(item => {
-    const qtyInput = document.querySelector(`input[name="qty_${item.id}"]`);
-    if (qtyInput) item.qty = Math.max(1, parseInt(qtyInput.value) || 1);
-
-    const itemTotal = item.price * item.qty;
-    totalRegularPrice += itemTotal;
-    itemsListHtml += `<li><strong>${item.name}</strong> × ${item.qty} (TK ${item.price.toFixed(2)} each = TK ${itemTotal.toFixed(2)})</li>`;
+    const subtotal = item.price * item.qty;
+    totalRegular += subtotal;
+    const li = document.createElement('li');
+    li.style.marginBottom = '4px';
+    li.innerHTML = `<strong>${item.name}</strong> × ${item.qty} pcs <span style="color:#64748b; font-size:11px;">(TK ${subtotal.toFixed(2)})</span>`;
+    listEl.appendChild(li);
   });
 
-  if (comboPrice > totalRegularPrice) {
-    alert(`⛔ ERROR: Combo Special Price (TK ${comboPrice.toFixed(2)}) CANNOT be higher than the regular total price of included products (TK ${totalRegularPrice.toFixed(2)}).\n\nPlease lower the combo price or add more items to offer a real discount.`);
-    e.preventDefault();
-    return false;
+  const savings = Math.max(0, totalRegular - price);
+
+  document.getElementById('confPkgNameLabel').innerText = name;
+  document.getElementById('confRegularPrice').innerText = `TK ${totalRegular.toFixed(2)}`;
+  document.getElementById('confComboPrice').innerText = `TK ${price.toFixed(2)}`;
+  
+  const savingsEl = document.getElementById('confSavingsLabel');
+  if (savings > 0) {
+    savingsEl.style.display = 'block';
+    savingsEl.innerText = `🎁 Customer Savings / Discount: TK ${savings.toFixed(2)} OFF!`;
+  } else {
+    savingsEl.style.display = 'none';
   }
 
-  e.preventDefault();
-  const pkgName = document.getElementById('pkgNameInput').value.trim();
-  const savings = totalRegularPrice - comboPrice;
-
-  document.getElementById('confPkgNameLabel').innerHTML = 'Package Name: <strong>' + pkgName + '</strong>';
-  document.getElementById('confPkgItemsList').innerHTML = itemsListHtml;
-  document.getElementById('confRegularPrice').innerText = 'TK ' + totalRegularPrice.toFixed(2);
-  document.getElementById('confComboPrice').innerText = 'TK ' + comboPrice.toFixed(2);
-  document.getElementById('confSavingsLabel').innerText = 'Customer Discount: TK ' + savings.toFixed(2) + ' Saved!';
-  
   document.getElementById('confirmPkgModal').style.display = 'flex';
   return false;
-}
-
-function submitPkgFormConfirmed() {
-  isPkgFormConfirmed = true;
-  document.getElementById('confirmPkgModal').style.display = 'none';
-  document.getElementById('pkgForm').submit();
 }
 
 function closeConfirmPkgModal() {
   document.getElementById('confirmPkgModal').style.display = 'none';
 }
 
-document.addEventListener('click', function(e) {
-  const container = document.getElementById('pkgProductSearch')?.parentElement;
-  if (container && !container.contains(e.target)) {
-    document.getElementById('pkgDropdown').style.display = 'none';
-  }
-});
+function submitPkgFormConfirmed() {
+  document.getElementById('pkgForm').submit();
+}
 
-// ================= COMBO PACKAGE AI COLLAGE & 3D STUDIO ENGINE =================
 let pkgAiImages = [];
 let selectedPkgIdx = 0;
-let loadedItemImages = [];
+let pkgAiBaseImg = new Image();
 
 function openPkgAiModal() {
-  const pkgName = document.getElementById('pkgNameInput')?.value.trim() || 'Supermarket Combo Deal';
+  const pkgName = (document.getElementById('pkgNameInput')?.value || '').trim();
   const pkgPrice = parseFloat(document.getElementById('pkgPriceInput')?.value) || 0;
 
   if (selectedPkgMap.size === 0) {
-    alert('⚠️ Please search and add at least 1 product to the package first.');
+    alert("Please add at least 1 product to the combo first to generate unified AI images.");
     return;
   }
 
-  document.getElementById('pkgStudioTitle').value = pkgName;
-  document.getElementById('pkgStudioPrice').value = pkgPrice ? pkgPrice.toFixed(2) : '499.00';
-  document.getElementById('pkgAiModal').style.display = 'flex';
+  document.getElementById('pkgStudioTitle').value = pkgName || 'Special Combo Bundle';
+  document.getElementById('pkgStudioPrice').value = pkgPrice || 0;
 
+  document.getElementById('pkgAiModal').style.display = 'flex';
   triggerPkgAiGenerate();
 }
 
@@ -439,45 +451,26 @@ async function triggerPkgAiGenerate() {
   const pkgName = document.getElementById('pkgStudioTitle')?.value.trim() || 'Supermarket Combo Deal';
   const pkgPrice = parseFloat(document.getElementById('pkgStudioPrice')?.value) || 0;
   const items = Array.from(selectedPkgMap.values()).map(it => it.name + (it.qty > 1 ? ` (${it.qty} pcs)` : ''));
+  const rawImagesList = Array.from(selectedPkgMap.values()).map(it => it.image).filter(Boolean);
+  const productIds = Array.from(selectedPkgMap.keys());
 
   const spinner = document.getElementById('pkgAiLoading');
   if (spinner) spinner.style.display = 'flex';
 
-  // 1. Load actual item images for smart collage
-  loadedItemImages = [];
-  const rawImagesList = Array.from(selectedPkgMap.values()).map(it => it.image).filter(Boolean);
-  
-  for (const imgUrl of rawImagesList) {
-    try {
-      const img = new Image();
-      let safeSrc = imgUrl;
-      if (safeSrc.startsWith('http://') || safeSrc.startsWith('https://')) {
-        safeSrc = '/api/image_proxy?url=' + encodeURIComponent(safeSrc);
-      }
-      img.crossOrigin = 'anonymous';
-      await new Promise(resolve => {
-        img.onload = () => { loadedItemImages.push(img); resolve(); };
-        img.onerror = () => { resolve(); };
-        img.src = safeSrc;
-      });
-    } catch (e) {}
-  }
-
-  // 2. Fetch 3D AI generation
   try {
     const res = await fetch('/api/ai/generate_combo_image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ package_name: pkgName, package_price: pkgPrice, items: items })
+      body: JSON.stringify({
+        package_name: pkgName,
+        package_price: pkgPrice,
+        items: items,
+        item_images: rawImagesList,
+        product_ids: productIds
+      })
     });
     const data = await res.json();
     pkgAiImages = [];
-
-    // Prepend Collage Option
-    pkgAiImages.push({
-      type: 'collage',
-      label: '🎁 Smart Multi-Item Collage (সকল পণ্যের কোলাজ)'
-    });
 
     if (data.success && data.images && data.images.length > 0) {
       data.images.forEach(img => {
@@ -489,10 +482,7 @@ async function triggerPkgAiGenerate() {
       });
     }
   } catch (err) {
-    pkgAiImages = [{
-      type: 'collage',
-      label: '🎁 Smart Multi-Item Collage (সকল পণ্যের কোলাজ)'
-    }];
+    console.error("AI Combo Generation Error:", err);
   } finally {
     if (spinner) spinner.style.display = 'none';
     selectedPkgIdx = 0;
@@ -506,24 +496,16 @@ function renderPkgAiGrid() {
 
   grid.innerHTML = pkgAiImages.map((imgItem, idx) => {
     const isSel = idx === selectedPkgIdx;
-    const isCollage = imgItem.type === 'collage';
 
     return `
       <div onclick="selectPkgImg(${idx})" style="position:relative; cursor:pointer; border-radius:10px; overflow:hidden; border: 3px solid ${isSel ? '#16a34a' : '#cbd5e1'}; box-shadow: ${isSel ? '0 0 0 3px rgba(22,163,74,0.3)' : '0 2px 4px rgba(0,0,0,0.06)'}; background:#fff; text-align:center;">
-        ${isCollage ? `
-          <div style="height:120px; background:#f0fdf4; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px;">
-            <div style="font-size:32px;">🎁 🛍️</div>
-            <div style="font-size:11px; font-weight:800; color:#15803d; margin-top:4px;">Auto-Collage from All Items</div>
-          </div>
-        ` : `
-          <img src="${imgItem.url}" style="width:100%; height:120px; object-fit:contain; display:block;">
-        `}
+        <img src="${imgItem.url}" style="width:100%; height:120px; object-fit:contain; display:block; background:#f8fafc;">
         ${isSel ? `
           <div style="position:absolute; top:6px; right:6px; background:#16a34a; color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold;">
             ✓
           </div>
         ` : ''}
-        <div style="padding:5px; font-size:0.75rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155;">
+        <div style="padding:6px; font-size:0.75rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155; line-height:1.2;">
           ${imgItem.label}
         </div>
       </div>
@@ -538,8 +520,6 @@ function selectPkgImg(idx) {
   renderPkgAiGrid();
 }
 
-let pkgAiBaseImg = new Image();
-
 function redrawPkgCanvas() {
   const canvas = document.getElementById('pkgStudioCanvas');
   if (!canvas) return;
@@ -549,137 +529,15 @@ function redrawPkgCanvas() {
   canvas.width = w;
   canvas.height = h;
 
-  const pkgName = (document.getElementById('pkgStudioTitle')?.value || '').trim();
-  const pkgPrice = parseFloat(document.getElementById('pkgStudioPrice')?.value) || 0;
   const chosen = pkgAiImages[selectedPkgIdx];
 
-  // 1. Background
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, w, h);
-
-  // 2. Top Header Bar
-  const headerH = 50;
-  ctx.fillStyle = '#f0fdf4';
-  ctx.fillRect(0, 0, w, headerH);
-  ctx.strokeStyle = '#86efac';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(0, headerH);
-  ctx.lineTo(w, headerH);
-  ctx.stroke();
-
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 15px Arial Black, sans-serif';
-  ctx.fillStyle = '#15803d';
-  ctx.fillText('🎁 SPECIAL COMBO DEAL', 16, headerH / 2);
-
-  ctx.textAlign = 'right';
-  ctx.font = 'bold 18px Arial Black, sans-serif';
-  ctx.fillStyle = '#16a34a';
-  ctx.fillText(`TK ${pkgPrice.toFixed(2)}`, w - 16, headerH / 2);
-
-  // 3. Bottom Bar
-  const bottomH = 68;
-  const bottomY0 = h - bottomH;
-  ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(0, bottomY0, w, bottomH);
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(0, bottomY0);
-  ctx.lineTo(w, bottomY0);
-  ctx.stroke();
-
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 22px Arial Black, sans-serif';
-  ctx.fillStyle = '#0f172a';
-  ctx.fillText(pkgName, 16, bottomY0 + bottomH / 2, w - 160);
-
-  // Savings Pill
-  ctx.beginPath();
-  ctx.roundRect(w - 140, bottomY0 + (bottomH - 34) / 2, 124, 34, 8);
-  ctx.fillStyle = '#dc2626';
-  ctx.fill();
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 13px Arial Black, sans-serif';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('★ SAVE BIG', w - 78, bottomY0 + bottomH / 2);
-
-  // 4. Center Viewport
-  const centerAreaY0 = headerH + 6;
-  const centerAreaH = bottomY0 - centerAreaY0 - 6;
-
-  if (chosen && chosen.type === 'ai_photo' && chosen.url) {
+  if (chosen && chosen.url) {
+    pkgAiBaseImg.crossOrigin = 'anonymous';
+    pkgAiBaseImg.onload = function() {
+      ctx.drawImage(pkgAiBaseImg, 0, 0, w, h);
+    };
     pkgAiBaseImg.src = chosen.url;
     if (pkgAiBaseImg.complete && pkgAiBaseImg.naturalWidth > 0) {
-      ctx.drawImage(pkgAiBaseImg, 0, centerAreaY0, w, centerAreaH);
-    }
-  } else {
-    // Render Multi-Item Collage Grid
-    const items = Array.from(selectedPkgMap.values());
-    const n = Math.max(items.length, loadedItemImages.length);
-
-    if (loadedItemImages.length === 0) {
-      // Draw placeholder item cards
-      const cols = n <= 2 ? n : (n <= 4 ? 2 : 3);
-      const rows = Math.ceil(n / cols);
-      const cw = (w - 20) / cols;
-      const ch = centerAreaH / rows;
-
-      items.forEach((it, i) => {
-        const r = Math.floor(i / cols);
-        const c = i % cols;
-        const cx = 10 + c * cw + 6;
-        const cy = centerAreaY0 + r * ch + 6;
-        const cardW = cw - 12;
-        const cardH = ch - 12;
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.roundRect(cx, cy, cardW, cardH, 10);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = 'bold 14px Arial, sans-serif';
-        ctx.fillStyle = '#0f172a';
-        ctx.fillText((it.name || '').substring(0, 20), cx + cardW / 2, cy + cardH / 2 - 8);
-
-        ctx.font = 'bold 12px Arial, sans-serif';
-        ctx.fillStyle = '#16a34a';
-        ctx.fillText(`TK ${it.price.toFixed(2)} × ${it.qty}`, cx + cardW / 2, cy + cardH / 2 + 12);
-      });
-    } else {
-      // Draw actual loaded item images
-      const count = loadedItemImages.length;
-      const cols = count <= 2 ? count : (count <= 4 ? 2 : 3);
-      const rows = Math.ceil(count / cols);
-      const cw = (w - 20) / cols;
-      const ch = centerAreaH / rows;
-
-      loadedItemImages.forEach((img, i) => {
-        const r = Math.floor(i / cols);
-        const c = i % cols;
-        const cx = 10 + c * cw + 6;
-        const cy = centerAreaY0 + r * ch + 6;
-        const cardW = cw - 12;
-        const cardH = ch - 12;
-
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(cx, cy, cardW, cardH, 8);
-        ctx.fill();
-        ctx.stroke();
-
-        const scale = Math.min((cardW - 8) / img.naturalWidth, (cardH - 8) / img.naturalHeight);
-        const dw = img.naturalWidth * scale;
         const dh = img.naturalHeight * scale;
         const dx = cx + (cardW - dw) / 2;
         const dy = cy + (cardH - dh) / 2;
