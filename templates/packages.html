@@ -63,7 +63,7 @@
                  data-sku="{{ p.sku|e }}"
                  data-price="{{ p.sell_price }}"
                  data-image="{{ p.image_url|e if p.image_url else '' }}"
-                 onclick="addPkgProductRow('{{ p.id }}', '{{ p.name|e }}', '{{ p.sku|e }}', {{ p.sell_price }}, 1, '{{ p.image_url|e if p.image_url else '' }}')"
+                 onclick="selectPkgProductOption(this)"
                  style="padding:10px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; font-size:13px;"
                  onmouseover="this.style.background='#eff6ff'"
                  onmouseout="this.style.background='white'">
@@ -205,6 +205,16 @@
 
 <script>
 let selectedPkgMap = new Map(); // id -> { name, sku, price, qty }
+
+function selectPkgProductOption(el) {
+  if (!el) return;
+  const id = el.getAttribute('data-id');
+  const name = el.getAttribute('data-name');
+  const sku = el.getAttribute('data-sku');
+  const price = el.getAttribute('data-price');
+  const image = el.getAttribute('data-image');
+  addPkgProductRow(id, name, sku, price, 1, image);
+}
 
 function showPkgDropdown() {
   document.getElementById('pkgDropdown').style.display = 'block';
@@ -625,7 +635,7 @@ function redrawPkgCanvas() {
         ctx.textBaseline = 'middle';
         ctx.font = 'bold 14px Arial, sans-serif';
         ctx.fillStyle = '#0f172a';
-        ctx.fillText(it.name[:20], cx + cardW / 2, cy + cardH / 2 - 8);
+        ctx.fillText((it.name || '').substring(0, 20), cx + cardW / 2, cy + cardH / 2 - 8);
 
         ctx.font = 'bold 12px Arial, sans-serif';
         ctx.fillStyle = '#16a34a';
