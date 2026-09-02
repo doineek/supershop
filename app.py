@@ -1985,11 +1985,20 @@ def prepare_receipt_data(conn, sale_id):
         ord_num = inv_num.replace("INV-ONLINE-", "").strip()
         ord_row = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (ord_num,)).fetchone()
         if ord_row:
-            delivery_charge = float(ord_row["delivery_charge"] or 0)
+            shop_st = get_all_settings(conn)
+            free_del_active = (shop_st.get("free_delivery_active") or "0") == "1"
+            free_del_min = float(shop_st.get("free_delivery_min_amount") or 500.0)
+            
+            subtotal_val = float(ord_row["subtotal"] or 0)
+            if free_del_active and subtotal_val >= free_del_min:
+                delivery_charge = 0.0
+            else:
+                delivery_charge = float(ord_row["delivery_charge"] or 0)
+
             sale_dict["delivery_charge"] = delivery_charge
-            sale_dict["subtotal"] = float(ord_row["subtotal"] or 0)
-            sale_dict["total_amount"] = float(ord_row["subtotal"] or ord_row["total_amount"])
-            sale_dict["rounded_total"] = float(ord_row["total_amount"] or 0)
+            sale_dict["subtotal"] = subtotal_val
+            sale_dict["total_amount"] = subtotal_val
+            sale_dict["rounded_total"] = subtotal_val + delivery_charge
             sale_dict["order_status"] = ord_row["order_status"]
             sale_dict["area"] = ord_row["area"]
             sale_dict["district"] = ord_row["district"]
