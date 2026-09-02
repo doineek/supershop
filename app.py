@@ -1251,20 +1251,26 @@ def new_category():
 
 def detect_packaging_type(name, cat=""):
     n = (name + " " + cat).lower()
-    if any(k in n for k in ["oil", "tel", "shampoo", "sauce", "ketchup", "syrup", "juice", "drink", "water", "beverage", "cleaner", "harpic", "handwash", "lotion", "coke", "pepsi", "sprite", "vinegar", "soap liquid"]):
-        return "realistic branded plastic or glass bottle container with screw cap and colorful supermarket label sticker"
+    if any(k in n for k in ["rice", "chal", "chawl", "basmati", "chinigura", "miniket", "najirshail", "polao", "pulao"]):
+        return "heavy-duty sealed plastic rice bag pouch featuring a clear transparent see-through window section clearly revealing authentic dry uncooked grains of aromatic rice inside the packet"
+    elif any(k in n for k in ["dal", "daal", "lentil", "mug", "mosoor", "khesari", "chola", "boot", "chickpea", "pulses"]):
+        return "sealed grocery packet pouch with a clear transparent cutout window section visibly displaying real dry lentils and dal grains inside the bag"
+    elif any(k in n for k in ["oil", "tel", "mustard oil", "soyabean", "olive oil", "sunflower"]):
+        return "transparent plastic cooking oil bottle container visibly showing rich golden pure oil liquid inside with screw cap and supermarket retail label sticker"
     elif any(k in n for k in ["ghee", "honey", "modhu", "jam", "jelly", "pickle", "achar", "coffee", "mayonnaise", "nutella", "peanut butter"]):
-        return "transparent glass or plastic grocery jar with airtight labeled lid container"
+        return "crystal clear transparent glass grocery jar visibly revealing rich golden textured ghee and amber honey inside with sealed lid and label sticker"
+    elif any(k in n for k in ["shampoo", "sauce", "ketchup", "syrup", "juice", "drink", "water", "beverage", "cleaner", "harpic", "handwash", "lotion", "coke", "pepsi", "sprite", "vinegar"]):
+        return "branded plastic or glass bottle container with screw cap and colorful supermarket label sticker"
     elif any(k in n for k in ["tea", "cha", "soap", "shaban", "toothpaste", "paste", "cereal", "cornflakes", "match", "box", "medicine", "tablet", "chocolate", "tissue", "dano", "marks", "horlicks", "ovaltine"]):
         return "printed paperboard retail carton box packaging with clear brand graphics and product artwork"
-    elif any(k in n for k in ["atta", "flour", "maida", "rice", "chal", "suji", "sugar", "cini", "chini", "dal", "daal", "lentil", "salt", "lobon", "sack", "bag", "potato", "alu", "onion", "peyaj"]):
-        return "heavy-duty printed plastic poly bag sack packaging with retail food branding"
+    elif any(k in n for k in ["atta", "flour", "maida", "suji", "sugar", "cini", "chini", "salt", "lobon", "sack", "bag", "potato", "alu", "onion", "peyaj"]):
+        return "heavy-duty printed plastic poly bag sack grocery packaging with retail food branding"
     elif any(k in n for k in ["can", "tin", "tuna", "sardine", "beverage can", "spray"]):
         return "metallic retail tin can container with branded printed label"
     elif any(k in n for k in ["biscuit", "cookie", "cake", "bread", "bun", "toast", "chanachur", "chips", "crisps", "noodles", "maggi", "pasta", "semon", "semai", "masala", "spices", "turmeric", "haldi", "chilli", "morich", "coriander", "dhaniya", "cumin", "jeera", "garam", "meat masala", "fish masala", "biryani", "radhuni", "pran", "bd"]):
         return "sealed flexible foil grocery packet pouch with realistic crimped edges, glossy finish and vibrant printed food graphics"
     else:
-        return "authentic commercial supermarket retail product packaging mockup"
+        return "authentic commercial supermarket retail product packaging mockup with clear brand typography"
 
 
 @app.route("/api/ai/generate_product_image", methods=["POST"])
@@ -1276,7 +1282,7 @@ def api_ai_generate_product_image():
     category_name = (data.get("category_name") or "").strip()
     brand_name = (data.get("brand_name") or "").strip()
     packaging_type = (data.get("packaging_type") or "auto").strip()
-    style = (data.get("style") or "packaging").strip()
+    style = (data.get("style") or "flux").strip()
     aspect = (data.get("aspect") or "1:1").strip()
 
     if not product_name:
@@ -1302,6 +1308,10 @@ def api_ai_generate_product_image():
     # 2. Package Shape Resolution
     if packaging_type == "pouch":
         pack_shape_desc = "sealed flexible grocery foil packet pouch with crimped edges and vibrant printed food branding"
+    elif packaging_type == "rice_sack":
+        pack_shape_desc = "heavy-duty sealed plastic rice bag pouch featuring a clear transparent see-through window section clearly revealing authentic dry uncooked grains of aromatic rice inside the packet"
+    elif packaging_type == "dal_pouch":
+        pack_shape_desc = "sealed grocery packet pouch with a clear transparent cutout window section visibly displaying real dry lentils and dal grains inside the bag"
     elif packaging_type == "bottle":
         pack_shape_desc = "branded supermarket plastic or glass bottle container with cap and retail label sticker"
     elif packaging_type == "box":
@@ -1317,37 +1327,40 @@ def api_ai_generate_product_image():
 
     clean_name = product_name.replace("/", " ").replace("\\", " ")
     
-    # 3. High quality realistic packaging prompts
+    # 3. High quality realistic packaging prompts with exact printed product name
     full_prompt = (
-        f"Authentic commercial retail grocery packaging mockup of {clean_name}, {brand_name} {category_name}, "
-        f"shaped as realistic {pack_shape_desc} with front printed brand logo and colorful product artwork, "
-        f"professional supermarket product photography, 3D retail packaging, crisp details, studio lighting, "
-        f"pure clean white background with soft grounded shadow, 8k resolution commercial packaging shoot"
+        f'Award-winning ultra-realistic commercial studio product photography of supermarket retail packaged "{clean_name}". '
+        f'The product is an authentic {pack_shape_desc}. '
+        f'The packaging front clearly, legibly and prominently displays the exact printed words "{clean_name}" in bold crisp modern retail typography and brand graphics. '
+        f'Cinematic soft studio lighting, sharp 8k resolution, photorealistic material textures, glossy wrapper sheen, '
+        f'isolated on solid pure white background with realistic grounded contact shadow, authentic grocery store product advertisement.'
     )
     encoded_prompt = urllib.parse.quote(full_prompt)
 
-    # 4. Fetch from AI Generator
+    # 4. Fetch from AI Generator using Flux Realism
     seeds = [42, 108]
     for s in seeds:
         if len(generated_images) >= 2:
             break
-        ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&seed={s}&nologo=true"
+        ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=flux&seed={s}&nologo=true"
         try:
             req = urllib.request.Request(
                 ai_url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             )
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=12) as response:
                 img_data = response.read()
                 if len(img_data) > 1000:
                     img = Image.open(io.BytesIO(img_data)).convert("RGB")
                     img.thumbnail((width, height), Image.Resampling.LANCZOS)
                     buf = io.BytesIO()
-                    img.save(buf, format="JPEG", quality=85, optimize=True)
+                    img.save(buf, format="JPEG", quality=88, optimize=True)
                     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
                     generated_images.append(f"data:image/jpeg;base64,{b64}")
         except Exception as e:
             print("AI Image Generation Error:", e)
+
+    # 5. Fallback stylish studio canvas if online AI did not return enough images
 
     # 4. Fallback stylish studio canvas if online AI did not return enough images
     if len(generated_images) < 2:
