@@ -6386,8 +6386,25 @@ def packages_page():
         p_dict["items"] = [dict(i) for i in items]
         packages_list.append(p_dict)
 
+    edit_id = request.args.get("edit")
+    edit_pkg = None
+    if edit_id:
+        try:
+            edit_id = int(edit_id)
+            edit_pkg_row = conn.execute("SELECT * FROM packages WHERE id = ?", (edit_id,)).fetchone()
+            if edit_pkg_row:
+                edit_pkg = dict(edit_pkg_row)
+                items = conn.execute("""
+                    SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url
+                    FROM package_items pi JOIN products p ON pi.product_id = p.id
+                    WHERE pi.package_id = ?
+                """, (edit_id,)).fetchall()
+                edit_pkg["items"] = [dict(i) for i in items]
+        except Exception as e:
+            print("Error loading edit package:", e)
+
     conn.close()
-    return render_template("packages.html", packages=packages_list, products=all_products)
+    return render_template("packages.html", packages=packages_list, products=all_products, edit_pkg=edit_pkg)
 
 
 @app.route("/packages/<int:package_id>/edit", methods=["POST"])

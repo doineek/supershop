@@ -35,28 +35,32 @@
 <div class="packages-split-grid">
   <!-- Create / Edit Package Form (50%) -->
   <div>
-    <div class="card" id="pkgFormCard">
+    <div class="card {% if edit_pkg %}pkg-edit-highlight{% endif %}" id="pkgFormCard">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 id="pkgFormHeading" style="margin:0; color:#15803d; font-size:16px;">+ Create New Combo Package</h3>
-        <button type="button" id="cancelPkgEditBtn" onclick="resetPkgForm()" style="display:none; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:bold;">Cancel Edit</button>
+        <h3 id="pkgFormHeading" style="margin:0; color:#15803d; font-size:16px;">
+          {% if edit_pkg %}✏️ Edit Combo Package: {{ edit_pkg.name }}{% else %}+ Create New Combo Package{% endif %}
+        </h3>
+        {% if edit_pkg %}
+        <a href="{{ url_for('packages_page') }}" class="btn btn-small" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:bold; text-decoration:none;">✕ Cancel Edit</a>
+        {% endif %}
       </div>
 
-      <form method="POST" id="pkgForm" action="{{ url_for('packages_page') }}" enctype="multipart/form-data" onsubmit="return confirmPackageSave(event);">
-        <input type="hidden" id="pkgEditId" value="">
+      <form method="POST" id="pkgForm" action="{% if edit_pkg %}{{ url_for('edit_package', package_id=edit_pkg.id) }}{% else %}{{ url_for('packages_page') }}{% endif %}" enctype="multipart/form-data" onsubmit="return confirmPackageSave(event);">
+        <input type="hidden" id="pkgEditId" value="{{ edit_pkg.id if edit_pkg else '' }}">
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Package Name*</label>
-          <input type="text" id="pkgNameInput" name="name" placeholder="e.g. Weekly Family Grocery Bundle" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <input type="text" id="pkgNameInput" name="name" value="{{ edit_pkg.name if edit_pkg else '' }}" placeholder="e.g. Weekly Family Grocery Bundle" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
         </div>
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Combo Special Price (TK)*</label>
-          <input type="number" step="0.01" id="pkgPriceInput" name="package_price" placeholder="e.g. 499.00" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#16a34a;">
+          <input type="number" step="0.01" id="pkgPriceInput" name="package_price" value="{{ edit_pkg.package_price if edit_pkg else '' }}" placeholder="e.g. 499.00" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#16a34a;">
         </div>
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Description (Optional)</label>
-          <textarea id="pkgDescInput" name="description" rows="2" placeholder="e.g. Contains 5 kg Rice, 1 L Oil, 1 kg Sugar" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;"></textarea>
+          <textarea id="pkgDescInput" name="description" rows="2" placeholder="e.g. Contains 5 kg Rice, 1 L Oil, 1 kg Sugar" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">{{ edit_pkg.description if edit_pkg else '' }}</textarea>
         </div>
 
         <div style="margin-bottom:12px;">
@@ -67,9 +71,9 @@
             </span>
           </div>
           <input type="file" id="pkgFileInput" name="package_image_file" accept="image/*" style="width:100%; margin-bottom:6px; font-size:13px;">
-          <input type="text" id="pkgImageInput" name="image_url" placeholder="Or enter Image URL (https://...)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
-          <div id="pkgImgPreviewWrapper" style="display:none; align-items:center; gap:8px; margin-top:6px;">
-            <img id="pkgImgPreviewEl" src="" alt="Package Preview" style="width:48px; height:48px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc;">
+          <input type="text" id="pkgImageInput" name="image_url" value="{{ edit_pkg.image_url if edit_pkg else '' }}" placeholder="Or enter Image URL (https://...)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <div id="pkgImgPreviewWrapper" style="{% if edit_pkg and edit_pkg.image_url %}display:flex;{% else %}display:none;{% endif %} align-items:center; gap:8px; margin-top:6px;">
+            <img id="pkgImgPreviewEl" src="{{ edit_pkg.image_url if edit_pkg and edit_pkg.image_url else '' }}" alt="Package Preview" style="width:48px; height:48px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc;">
             <span style="font-size:11px; color:#16a34a; font-weight:bold;">Custom Image Set</span>
           </div>
         </div>
@@ -111,15 +115,35 @@
                 </tr>
               </thead>
               <tbody id="selectedPkgBody">
+                {% if edit_pkg and edit_pkg['items'] %}
+                  {% for it in edit_pkg['items'] %}
+                  <tr id="pkgRow_{{ it.product_id }}" style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:6px 8px;">
+                      <div style="font-weight:600; color:#0f172a;">{{ it.product_name }}</div>
+                      <div style="font-size:11px; color:#64748b;">SKU: {{ it.sku }} | TK {{ "%.2f"|format(it.sell_price) }}</div>
+                      <input type="hidden" name="product_ids" value="{{ it.product_id }}">
+                    </td>
+                    <td style="padding:6px 8px;">
+                      <input type="number" name="qty_{{ it.product_id }}" value="{{ it.quantity }}" min="1" onchange="updatePkgItemQty('{{ it.product_id }}', this.value)" style="width:55px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; font-weight:bold;">
+                    </td>
+                    <td style="padding:6px 8px; text-align:right;">
+                      <button type="button" onclick="removePkgProductRow('{{ it.product_id }}')" style="background:#ef4444; color:white; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">✕</button>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
                 <tr id="emptyPkgRow">
                   <td colspan="3" style="text-align:center; padding:16px; color:#94a3b8;">No products added yet. Search above to add items.</td>
                 </tr>
+                {% endif %}
               </tbody>
             </table>
           </div>
         </div>
 
-        <button type="submit" id="pkgSubmitBtn" class="btn btn-primary" style="width:100%; padding:10px;">+ Save Package</button>
+        <button type="submit" id="pkgSubmitBtn" class="btn btn-primary" style="width:100%; padding:10px; font-weight:bold;">
+          {% if edit_pkg %}💾 Update Combo Package{% else %}+ Save Package{% endif %}
+        </button>
       </form>
     </div>
   </div>
@@ -140,7 +164,7 @@
           </thead>
           <tbody>
             {% for pkg in packages %}
-            <tr style="border-bottom:1px solid #f1f5f9; {% if not pkg.is_active %}background:#f8fafc; opacity:0.85;{% endif %}">
+            <tr style="border-bottom:1px solid #f1f5f9; {% if not pkg.is_active %}background:#f8fafc; opacity:0.85;{% endif %} {% if edit_pkg and edit_pkg.id == pkg.id %}background:#f0fdf4; border-left:4px solid #16a34a;{% endif %}">
               <td style="padding:10px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                   {% if pkg.image_url %}
@@ -188,7 +212,7 @@
                   </button>
                   {% endif %}
                 </form>
-                <button type="button" class="btn btn-outline btn-small" onclick="openEditPkgModal({{ pkg.id }})" style="margin-right:4px; font-weight:700;">✏️ Edit</button>
+                <a href="{{ url_for('packages_page') }}?edit={{ pkg.id }}" class="btn btn-outline btn-small" style="margin-right:4px; font-weight:700; text-decoration:none; display:inline-block; line-height:1.5;">✏️ Edit</a>
                 <form method="POST" action="{{ url_for('delete_package', package_id=pkg.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete combo package {{ pkg.name }}? This cannot be undone.');">
                   <button class="btn btn-danger btn-small" type="submit">Delete</button>
                 </form>
@@ -201,101 +225,6 @@
         </table>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- Edit Package Pop-up Modal -->
-<div id="editPkgModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:1100; align-items:center; justify-content:center; padding:16px;">
-  <div style="background:#fff; width:100%; max-width:620px; max-height:90vh; overflow-y:auto; border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); position:relative; padding:24px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
-      <h3 id="modalEditPkgTitleHeading" style="margin:0; color:#15803d; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
-        ✏️ Edit Combo Package
-      </h3>
-      <button type="button" onclick="closeEditPkgModal()" style="background:none; border:none; font-size:24px; color:#64748b; cursor:pointer; line-height:1;">&times;</button>
-    </div>
-
-    <form method="POST" id="editModalPkgForm" action="" enctype="multipart/form-data">
-      <input type="hidden" id="modalEditPkgId" value="">
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Package Name*</label>
-        <input type="text" id="modalEditPkgName" name="name" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
-      </div>
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div>
-          <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Combo Special Price (TK)*</label>
-          <input type="number" step="0.01" id="modalEditPkgPrice" name="package_price" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#16a34a;">
-        </div>
-        <div>
-          <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Description (Optional)</label>
-          <input type="text" id="modalEditPkgDesc" name="description" placeholder="e.g. Contains 5 kg Rice, 1 L Oil" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
-        </div>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <label style="display:block; font-weight:600; font-size:13px;">Package Image</label>
-          <span style="font-size:0.8rem; color:#4f46e5; font-weight:700; cursor:pointer;" onclick="openModalPkgAiStudio()">
-            ✨ Generate Combo Image with AI ➔
-          </span>
-        </div>
-        <input type="file" id="modalEditPkgFile" name="package_image_file" accept="image/*" style="width:100%; margin-bottom:6px; font-size:13px;">
-        <input type="text" id="modalEditPkgImageUrl" name="image_url" placeholder="Or enter Image URL (https://...)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
-        <div id="modalEditPkgPreviewWrap" style="display:none; align-items:center; gap:8px; margin-top:6px;">
-          <img id="modalEditPkgPreviewImg" src="" alt="Preview" style="width:48px; height:48px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc;">
-          <span style="font-size:11px; color:#16a34a; font-weight:bold;">Custom Image Set</span>
-        </div>
-      </div>
-
-      <!-- Add Product Search inside Modal -->
-      <div style="margin-bottom:12px; position:relative;">
-        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px;">Add More Products to this Combo</label>
-        <input type="text" id="modalPkgProductSearch" placeholder="Type SKU or Product Name to add items..." style="width:100%; padding:8px 12px; border:1px solid #0284c7; border-radius:8px; background:#f0f9ff;" autocomplete="off" onkeyup="filterModalPkgProducts()" onfocus="showModalPkgDropdown()">
-        
-        <div id="modalPkgDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:180px; overflow-y:auto; background:white; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:200; margin-top:4px;">
-          {% for p in products %}
-          <div class="modal-pkg-product-option"
-               data-id="{{ p.id }}"
-               data-name="{{ p.name|e }}"
-               data-sku="{{ p.sku|e }}"
-               data-price="{{ p.sell_price }}"
-               data-image="{{ p.image_url|e if p.image_url else '' }}"
-               onclick="selectModalPkgProductOption(this)"
-               style="padding:8px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; font-size:13px;"
-               onmouseover="this.style.background='#eff6ff'"
-               onmouseout="this.style.background='white'">
-            <div style="font-weight:700; color:#0f172a;">{{ p.name }}</div>
-            <div style="font-size:11px; color:#64748b;">SKU: {{ p.sku }} | Price: TK {{ p.sell_price }}</div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <!-- Selected Items Table in Modal -->
-      <div style="margin-bottom:16px;">
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:#0f172a;">Included Products:</label>
-        <div class="table-responsive" style="border:1px solid #e2e8f0; border-radius:8px; max-height:180px; overflow-y:auto;">
-          <table style="width:100%; border-collapse:collapse; font-size:13px;">
-            <thead>
-              <tr style="background:#f8fafc; text-align:left; border-bottom:1px solid #cbd5e1;">
-                <th style="padding:6px 8px;">Product</th>
-                <th style="padding:6px 8px; width:70px;">Qty</th>
-                <th style="padding:6px 8px; text-align:right;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="modalEditSelectedPkgBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #e2e8f0; padding-top:14px;">
-        <button type="button" class="btn btn-outline" onclick="closeEditPkgModal()">Cancel</button>
-        <button type="submit" class="btn" style="background:#15803d; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer;">
-          💾 Update Combo Package
-        </button>
-      </div>
-    </form>
   </div>
 </div>
 
@@ -335,208 +264,22 @@
   </div>
 </div>
 
-<script type="application/json" id="all_packages_json">
-{{ packages|tojson|safe }}
-</script>
-
 <script>
-let ALL_PACKAGES_MAP = new Map();
-
-function initPackagesMap() {
-  try {
-    const rawEl = document.getElementById('all_packages_json');
-    if (rawEl && rawEl.textContent) {
-      const arr = JSON.parse(rawEl.textContent);
-      arr.forEach(p => ALL_PACKAGES_MAP.set(Number(p.id), p));
-    }
-  } catch (err) {
-    console.error("Failed to parse packages JSON:", err);
-  }
-}
-initPackagesMap();
-
-let editModalPkgMap = new Map(); // id -> { id, name, sku, price, qty, image }
-
-async function openEditPkgModal(pkgId) {
-  if (ALL_PACKAGES_MAP.size === 0) {
-    initPackagesMap();
-  }
-  let pkg = ALL_PACKAGES_MAP.get(Number(pkgId));
-  
-  if (!pkg) {
-    try {
-      const res = await fetch('/api/packages/' + pkgId);
-      const data = await res.json();
-      if (data && data.success && data.package) {
-        pkg = data.package;
-        ALL_PACKAGES_MAP.set(Number(pkgId), pkg);
-      }
-    } catch (e) {
-      console.error("Fetch package API fallback error:", e);
-    }
-  }
-
-  if (!pkg) {
-    console.error("Package not found for ID:", pkgId);
-    alert("Could not load package #" + pkgId + ". Please refresh the page.");
-    return;
-  }
-
-  document.getElementById('modalEditPkgId').value = pkg.id;
-  document.getElementById('editModalPkgForm').action = "/packages/" + pkg.id + "/edit";
-  document.getElementById('modalEditPkgTitleHeading').innerText = "✏️ Edit Combo Package: " + (pkg.name || '');
-  document.getElementById('modalEditPkgName').value = pkg.name || '';
-  document.getElementById('modalEditPkgPrice').value = pkg.package_price || '';
-  document.getElementById('modalEditPkgDesc').value = pkg.description || '';
-  document.getElementById('modalEditPkgImageUrl').value = pkg.image_url || '';
-
-  const wrap = document.getElementById('modalEditPkgPreviewWrap');
-  const img = document.getElementById('modalEditPkgPreviewImg');
-  if (pkg.image_url) {
-    if (img) img.src = pkg.image_url;
-    if (wrap) wrap.style.display = 'flex';
-  } else {
-    if (wrap) wrap.style.display = 'none';
-  }
-
-  editModalPkgMap.clear();
-  const tbody = document.getElementById('modalEditSelectedPkgBody');
-  if (tbody) tbody.innerHTML = '';
-
-  if (pkg.items && Array.isArray(pkg.items) && pkg.items.length > 0) {
-    pkg.items.forEach(it => {
-      addModalEditPkgRow(it.product_id, it.product_name, it.sku || 'SKU', it.sell_price, it.quantity, it.image_url || '');
-    });
-  } else {
-    if (tbody) {
-      tbody.innerHTML = `<tr id="emptyModalPkgRow"><td colspan="3" style="text-align:center; padding:12px; color:#94a3b8;">No products added yet. Search above to add items.</td></tr>`;
-    }
-  }
-
-  const modal = document.getElementById('editPkgModal');
-  if (modal) modal.style.display = 'flex';
-}
-
-function closeEditPkgModal() {
-  const modal = document.getElementById('editPkgModal');
-  if (modal) modal.style.display = 'none';
-}
-
-function showModalPkgDropdown() {
-  const dd = document.getElementById('modalPkgDropdown');
-  if (dd) dd.style.display = 'block';
-  filterModalPkgProducts();
-}
-
-function filterModalPkgProducts() {
-  const query = (document.getElementById('modalPkgProductSearch')?.value || '').toLowerCase().trim();
-  const options = document.querySelectorAll('.modal-pkg-product-option');
-  options.forEach(opt => {
-    const name = (opt.getAttribute('data-name') || '').toLowerCase();
-    const sku = (opt.getAttribute('data-sku') || '').toLowerCase();
-    if (!query || name.includes(query) || sku.includes(query)) {
-      opt.style.display = 'block';
-    } else {
-      opt.style.display = 'none';
-    }
-  });
-}
-
-function selectModalPkgProductOption(el) {
-  if (!el) return;
-  const id = el.getAttribute('data-id');
-  const name = el.getAttribute('data-name');
-  const sku = el.getAttribute('data-sku');
-  const price = el.getAttribute('data-price');
-  let image = el.getAttribute('data-image') || '';
-  if (image) {
-    if (image.includes(' || ')) {
-      image = image.split(' || ')[0].trim();
-    } else if (image.includes(',')) {
-      image = image.split(',')[0].trim();
-    }
-  }
-  addModalEditPkgRow(id, name, sku, price, 1, image);
-  const searchInput = document.getElementById('modalPkgProductSearch');
-  if (searchInput) searchInput.value = '';
-  const dd = document.getElementById('modalPkgDropdown');
-  if (dd) dd.style.display = 'none';
-}
-
-function addModalEditPkgRow(id, name, sku, price, qty = 1, image = '') {
-  id = String(id);
-  if (editModalPkgMap.has(id)) {
-    alert("Product is already in this package.");
-    const dd = document.getElementById('modalPkgDropdown');
-    if (dd) dd.style.display = 'none';
-    return;
-  }
-
-  editModalPkgMap.set(id, { id, name, sku, price: parseFloat(price) || 0, qty: parseInt(qty) || 1, image });
-  document.getElementById('emptyModalPkgRow')?.remove();
-
-  const tbody = document.getElementById('modalEditSelectedPkgBody');
-  if (!tbody) return;
-
-  const tr = document.createElement('tr');
-  tr.id = 'modalPkgRow_' + id;
-  tr.style.borderBottom = '1px solid #f1f5f9';
-  tr.innerHTML = `
-    <td style="padding:6px 8px;">
-      <div style="font-weight:600; color:#0f172a;">${name}</div>
-      <div style="font-size:11px; color:#64748b;">SKU: ${sku} | TK ${parseFloat(price).toFixed(2)}</div>
-      <input type="hidden" name="product_ids" value="${id}">
-    </td>
-    <td style="padding:6px 8px;">
-      <input type="number" name="qty_${id}" value="${qty}" min="1" onchange="updateModalEditPkgQty('${id}', this.value)" style="width:55px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; font-weight:bold;">
-    </td>
-    <td style="padding:6px 8px; text-align:right;">
-      <button type="button" onclick="removeModalEditPkgRow('${id}')" style="background:#ef4444; color:white; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">✕</button>
-    </td>
-  `;
-  tbody.appendChild(tr);
-}
-
-function updateModalEditPkgQty(id, qtyVal) {
-  if (editModalPkgMap.has(id)) {
-    editModalPkgMap.get(id).qty = Math.max(1, parseInt(qtyVal) || 1);
-  }
-}
-
-function removeModalEditPkgRow(id) {
-  id = String(id);
-  editModalPkgMap.delete(id);
-  document.getElementById('modalPkgRow_' + id)?.remove();
-  const tbody = document.getElementById('modalEditSelectedPkgBody');
-  if (tbody && tbody.children.length === 0) {
-    tbody.innerHTML = `<tr id="emptyModalPkgRow"><td colspan="3" style="text-align:center; padding:12px; color:#94a3b8;">No products added yet. Search above to add items.</td></tr>`;
-  }
-}
-
-function openModalPkgAiStudio() {
-  const pkgName = (document.getElementById('modalEditPkgName')?.value || '').trim();
-  const pkgPrice = parseFloat(document.getElementById('modalEditPkgPrice')?.value) || 0;
-
-  if (editModalPkgMap.size === 0) {
-    alert("Please add at least 1 product to the combo first to generate unified AI images.");
-    return;
-  }
-
-  selectedPkgMap.clear();
-  editModalPkgMap.forEach((v, k) => selectedPkgMap.set(k, v));
-
-  document.getElementById('pkgStudioTitle').value = pkgName || 'Special Combo Bundle';
-  document.getElementById('pkgStudioPrice').value = pkgPrice || 0;
-
-  document.getElementById('pkgAiModal').style.display = 'flex';
-  triggerPkgAiGenerate();
-}
-
-function loadPkgById(pkgId) {
-  openEditPkgModal(pkgId);
-}
-
 let selectedPkgMap = new Map(); // id -> { name, sku, price, qty, image }
+
+// Initialize selected products map if editing a package
+{% if edit_pkg and edit_pkg['items'] %}
+  {% for it in edit_pkg['items'] %}
+  selectedPkgMap.set('{{ it.product_id }}', {
+    id: '{{ it.product_id }}',
+    name: '{{ it.product_name|e }}',
+    sku: '{{ it.sku|e }}',
+    price: parseFloat('{{ it.sell_price }}') || 0,
+    qty: parseInt('{{ it.quantity }}') || 1,
+    image: '{{ it.image_url|e if it.image_url else '' }}'
+  });
+  {% endfor %}
+{% endif %}
 
 function selectPkgProductOption(el) {
   if (!el) return;
