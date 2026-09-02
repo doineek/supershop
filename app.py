@@ -1428,11 +1428,10 @@ def api_ai_generate_product_image():
     
     # 3. High quality realistic packaging prompts with exact printed product name
     full_prompt = (
-        f'Award-winning ultra-realistic commercial studio product photography of supermarket retail packaged "{clean_name}". '
+        f'Award-winning ultra-realistic commercial studio photography of supermarket retail packaged "{clean_name}". '
         f'The product is an authentic {pack_shape_desc}. '
-        f'The packaging front clearly, legibly and prominently displays the exact printed words "{clean_name}" in bold crisp modern retail typography and brand graphics. '
-        f'Cinematic soft studio lighting, sharp 8k resolution, photorealistic material textures, glossy wrapper sheen, '
-        f'isolated on solid pure white background with realistic grounded contact shadow, authentic grocery store product advertisement.'
+        f'The packaging front cleanly displays the bold printed text "{clean_name}" in professional modern retail typography. '
+        f'Upright standing product presentation, Hasselblad 100mm macro studio commercial photography, soft diffused studio light, pure solid clean white background, subtle grounded contact shadow, 8k resolution, photorealistic retail merchandise.'
     )
     encoded_prompt = urllib.parse.quote(full_prompt)
 

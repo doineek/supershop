@@ -439,8 +439,12 @@ function openAiImageModal() {
     return;
   }
 
-  // Pre-fill prompt name
+  // Pre-fill prompt name and Google Search link
   document.getElementById('aiProdNameDisplay').textContent = prodName;
+  const gLink = document.getElementById('googleImageSearchLink');
+  if (gLink) {
+    gLink.href = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(prodName + ' packet grocery bangladesh')}`;
+  }
   document.getElementById('aiModal').style.display = 'flex';
   
   // If no images generated yet, trigger generation automatically
@@ -451,6 +455,23 @@ function openAiImageModal() {
 
 function closeAiImageModal() {
   document.getElementById('aiModal').style.display = 'none';
+}
+
+function loadWebImageToStudio() {
+  const urlInput = document.getElementById('webImgDirectInput');
+  const url = urlInput ? urlInput.value.trim() : '';
+  if (!url) {
+    alert('Please enter a valid image URL (ইন্টারনেটের ছবির লিংক দিন)');
+    return;
+  }
+  
+  generatedAiImages.unshift({
+    url: url,
+    label: '🌐 Internet Web Photo'
+  });
+  selectedAiImageIdx = 0;
+  renderAiImagesGrid();
+  initStudioEditor();
 }
 
 async function triggerAiGenerate() {
@@ -845,11 +866,25 @@ function applyCustomStudioImage(asCover = true) {
 
       <!-- Generated Base Options Grid -->
       <div style="margin-top:10px;">
-        <div style="font-size:0.80rem; font-weight:700; color:#64748b; margin-bottom:6px;">
-          1. CHOOSE BASE PACKAGE PHOTO:
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div style="font-size:0.80rem; font-weight:700; color:#64748b;">
+            1. CHOOSE BASE PACKAGE PHOTO:
+          </div>
+          <a id="googleImageSearchLink" href="#" target="_blank" style="font-size:0.75rem; font-weight:700; color:#2563eb; text-decoration:none; display:flex; align-items:center; gap:4px; background:#eff6ff; padding:2px 8px; border-radius:6px; border:1px solid #bfdbfe;">
+            🔍 Search Real Photos on Google
+          </a>
         </div>
         <div id="aiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px;">
           <!-- Injected via JavaScript -->
+        </div>
+
+        <!-- Quick Web Image URL Direct Input -->
+        <div style="display:flex; gap:6px; margin-top:10px; background:#f1f5f9; padding:8px 10px; border-radius:8px; align-items:center;">
+          <span style="font-size:0.80rem; font-weight:700; color:#475569; white-space:nowrap;">🌐 Web Image:</span>
+          <input type="url" id="webImgDirectInput" placeholder="Paste image link from Google / Web (ইন্টারনেটের ছবির লিংক দিন)" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.82rem;">
+          <button type="button" onclick="loadWebImageToStudio()" style="background:#0f172a; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:0.80rem; font-weight:700; cursor:pointer; white-space:nowrap;">
+            📥 Load to Studio
+          </button>
         </div>
       </div>
 
