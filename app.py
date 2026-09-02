@@ -1715,6 +1715,111 @@ def api_ai_generate_banner_image():
     })
 
 
+def load_pil_image_safe(raw_img: str, name: str = "Product") -> Image.Image:
+    """
+    Robustly loads a PIL image from a base64 data URI, local static/upload file path, or remote URL.
+    Handles transparency gracefully by compositing onto a white background so product images never turn black.
+    """
+    if not raw_img or not isinstance(raw_img, str):
+        return None
+    raw_img = raw_img.strip()
+    if not raw_img:
+        return None
+
+    # 1. Base64 Data URI
+    if raw_img.startswith("data:image/"):
+        try:
+            _, b64 = raw_img.split(",", 1)
+            raw_bytes = base64.b64decode(b64.strip())
+            im = Image.open(io.BytesIO(raw_bytes))
+            if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                rgba = im.convert("RGBA")
+                bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                bg.paste(rgba, mask=rgba.split()[3])
+                return bg
+            return im.convert("RGB")
+        except Exception as e:
+            print(f"Error decoding base64 image for {name}:", e)
+            return None
+
+    # Handle multi-images separator if any
+    if " || " in raw_img:
+        raw_img = raw_img.split(" || ")[0].strip()
+    elif "," in raw_img and not raw_img.startswith("http"):
+        raw_img = raw_img.split(",")[0].strip()
+
+    # 2. Local file path
+    if raw_img.startswith("/") or raw_img.startswith("static/") or raw_img.startswith("uploads/"):
+        clean_path = raw_img.lstrip("/")
+        full_path = os.path.join(app.root_path, clean_path)
+        if not os.path.exists(full_path):
+            full_path = os.path.join(app.root_path, "static", clean_path.removeprefix("static/"))
+        if os.path.exists(full_path):
+            try:
+                im = Image.open(full_path)
+                if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                    rgba = im.convert("RGBA")
+                    bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                    bg.paste(rgba, mask=rgba.split()[3])
+                    return bg
+                return im.convert("RGB")
+            except Exception as e:
+                print(f"Error loading local image for {name} ({full_path}):", e)
+
+    # 3. HTTP / HTTPS URL
+    if raw_img.startswith("http://") or raw_img.startswith("https://"):
+        own_domains = ["doineek.onrender.com", "127.0.0.1", "localhost"]
+        for own_domain in own_domains:
+            if own_domain in raw_img:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(raw_img)
+                    local_path = parsed.path.lstrip("/")
+                    full_path = os.path.join(app.root_path, local_path)
+                    if os.path.exists(full_path):
+                        im = Image.open(full_path)
+                        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                            rgba = im.convert("RGBA")
+                            bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                            bg.paste(rgba, mask=rgba.split()[3])
+                            return bg
+                        return im.convert("RGB")
+                except Exception:
+                    pass
+
+        try:
+            cached_uri = download_and_cache_external_image(raw_img)
+            if cached_uri and cached_uri.startswith("data:image/"):
+                _, b64 = cached_uri.split(",", 1)
+                im = Image.open(io.BytesIO(base64.b64decode(b64.strip())))
+                if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                    rgba = im.convert("RGBA")
+                    bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                    bg.paste(rgba, mask=rgba.split()[3])
+                    return bg
+                return im.convert("RGB")
+            else:
+                req = urllib.request.Request(
+                    raw_img,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Referer": "https://www.google.com/"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=6) as response:
+                    im = Image.open(io.BytesIO(response.read()))
+                    if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                        rgba = im.convert("RGBA")
+                        bg = Image.new("RGB", rgba.size, (255, 255, 255))
+                        bg.paste(rgba, mask=rgba.split()[3])
+                        return bg
+                    return im.convert("RGB")
+        except Exception as e:
+            print(f"Error fetching external image for {name}:", e)
+
+    return None
+
+
 def create_combo_package_collage(package_name: str, package_price: float, items_data: list) -> Image.Image:
     """
     Creates a clean, attractive multi-product grid collage card from actual product photos.
@@ -1900,6 +2005,91 @@ def create_showcase_combo_collage(package_name: str, package_price: float, items
     return card
 
 
+def create_promotional_combo_banner(package_name: str, package_price: float, items_data: list) -> Image.Image:
+    """
+    Creates an eye-catching promotional combo banner card with vibrant red/amber header and dark modern footer.
+    """
+    w, h = 600, 600
+    card = Image.new("RGB", (w, h), (255, 255, 255))
+    draw = ImageDraw.Draw(card)
+
+    # Top banner
+    header_h = 70
+    draw.rectangle([0, 0, w, header_h], fill=(220, 38, 38))
+    font_badge = get_font_helper(size=14, bold=True)
+    draw.text((w // 2, 22), "🔥 MEGA VALUE COMBO PACK 🔥", fill=(254, 240, 138), anchor="mm", font=font_badge)
+    font_title = get_font_helper(size=17, bold=True)
+    draw.text((w // 2, 48), str(package_name)[:34], fill=(255, 255, 255), anchor="mm", font=font_title)
+
+    # Bottom banner with Price
+    bottom_h = 70
+    bottom_y0 = h - bottom_h
+    draw.rectangle([0, bottom_y0, w, h], fill=(15, 23, 42))
+
+    font_pr_lbl = get_font_helper(size=12, bold=False)
+    draw.text((24, bottom_y0 + 22), "SPECIAL COMBO PRICE", fill=(148, 163, 184), anchor="lm", font=font_pr_lbl)
+    font_pr = get_font_helper(size=22, bold=True)
+    draw.text((24, bottom_y0 + 48), f"TK {package_price:,.2f}", fill=(74, 222, 128), anchor="lm", font=font_pr)
+
+    font_items = get_font_helper(size=13, bold=True)
+    draw.text((w - 24, bottom_y0 + (bottom_h // 2)), f"🛒 {len(items_data)} Real Items Included", fill=(255, 255, 255), anchor="rm", font=font_items)
+
+    # Center products
+    center_y0 = header_h + 10
+    center_h = bottom_y0 - center_y0 - 10
+    num = len(items_data)
+
+    if num == 1:
+        it = items_data[0]
+        img = it['image'].convert("RGB")
+        img.thumbnail((w - 60, center_h - 40), Image.Resampling.LANCZOS)
+        card.paste(img, ((w - img.width) // 2, center_y0 + (center_h - img.height) // 2))
+    elif num == 2:
+        cell_w = (w - 40) // 2
+        for i, it in enumerate(items_data[:2]):
+            x0 = 16 + i * (cell_w + 8)
+            y0 = center_y0
+            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + center_h], radius=10, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 24, center_h - 44), Image.Resampling.LANCZOS)
+            card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 10 + (center_h - 48 - img.height) // 2))
+            draw.text((x0 + cell_w // 2, y0 + center_h - 16), it['name'][:18], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=11, bold=True))
+    elif num in (3, 4):
+        cols = 2
+        cell_w = (w - 36) // 2
+        cell_h = (center_h - 10) // 2
+        for i, it in enumerate(items_data[:4]):
+            r = i // cols
+            c = i % cols
+            if num == 3 and i == 2:
+                x0 = (w - cell_w) // 2
+            else:
+                x0 = 14 + c * (cell_w + 8)
+            y0 = center_y0 + r * (cell_h + 10)
+            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 20, cell_h - 32), Image.Resampling.LANCZOS)
+            card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 36 - img.height) // 2))
+            draw.text((x0 + cell_w // 2, y0 + cell_h - 12), it['name'][:20], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=11, bold=True))
+    else:
+        cols = 3
+        cell_w = (w - 40) // 3
+        cell_h = (center_h - 10) // 2
+        for i, it in enumerate(items_data[:6]):
+            r = i // cols
+            c = i % cols
+            x0 = 12 + c * (cell_w + 8)
+            y0 = center_y0 + r * (cell_h + 10)
+            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = it['image'].convert("RGB")
+            img.thumbnail((cell_w - 16, cell_h - 28), Image.Resampling.LANCZOS)
+            card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 32 - img.height) // 2))
+            draw.text((x0 + cell_w // 2, y0 + cell_h - 10), it['name'][:14], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=10, bold=True))
+
+    draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
+    return card
+
+
 @app.route("/api/ai/generate_combo_image", methods=["POST"])
 @login_required
 @admin_required
@@ -1913,19 +2103,27 @@ def api_ai_generate_combo_image():
 
     # 1. Fetch products info & images directly from SQLite DB (most complete source)
     resolved_products = []  # list of {'id': ..., 'name': ..., 'image_url': ...}
+    valid_pids = []
     if product_ids:
+        for pid in product_ids:
+            try:
+                valid_pids.append(int(pid))
+            except (ValueError, TypeError):
+                pass
+
+    if valid_pids:
         try:
             conn = get_connection()
-            placeholders = ",".join("?" for _ in product_ids)
+            placeholders = ",".join("?" for _ in valid_pids)
             p_rows = conn.execute(
                 f"SELECT id, image_url, name FROM products WHERE id IN ({placeholders})",
-                [int(pid) for pid in product_ids]
+                valid_pids
             ).fetchall()
             conn.close()
             # Preserve the ordering of product_ids requested
             row_map = {int(r["id"]): r for r in p_rows}
-            for pid in product_ids:
-                r = row_map.get(int(pid))
+            for pid in valid_pids:
+                r = row_map.get(pid)
                 if r:
                     resolved_products.append({
                         "id": r["id"],
@@ -1935,7 +2133,34 @@ def api_ai_generate_combo_image():
         except Exception as e:
             print("Error fetching product images for combo:", e)
 
-    # If product_ids query returned nothing, use raw_images and items_list as fallback
+    # If product_ids query returned nothing or had missing items, lookup by items_list names
+    if len(resolved_products) < len(items_list) and items_list:
+        try:
+            conn = get_connection()
+            for idx, raw_name in enumerate(items_list):
+                clean_name = raw_name.split("(")[0].strip()
+                if not any(rp.get("name") == clean_name for rp in resolved_products):
+                    p_match = conn.execute(
+                        "SELECT id, image_url, name FROM products WHERE LOWER(name) = LOWER(?) OR instr(LOWER(name), LOWER(?)) > 0 LIMIT 1",
+                        (clean_name, clean_name)
+                    ).fetchone()
+                    if p_match:
+                        resolved_products.append({
+                            "id": p_match["id"],
+                            "name": p_match["name"],
+                            "image_url": p_match["image_url"] or (raw_images[idx] if idx < len(raw_images) else "")
+                        })
+                    elif idx < len(raw_images) and raw_images[idx]:
+                        resolved_products.append({
+                            "id": f"item_{idx}",
+                            "name": raw_name,
+                            "image_url": raw_images[idx]
+                        })
+            conn.close()
+        except Exception as e:
+            print("Error matching combo product names from DB:", e)
+
+    # Final fallback if still empty
     if not resolved_products and (raw_images or items_list):
         for idx, raw_img in enumerate(raw_images):
             name = items_list[idx] if idx < len(items_list) else f"Item {idx+1}"
@@ -1946,64 +2171,11 @@ def api_ai_generate_combo_image():
             })
 
     # 2. Robustly Load Real PIL Images from actual product photos
-    items_data = []  # list of {'name': str, 'image': PIL.Image, 'qty': int}
+    items_data = []  # list of {'name': str, 'image': PIL.Image, 'qty': 1}
     for p_info in resolved_products:
         raw_img = p_info.get("image_url") or ""
         name = p_info.get("name") or "Product"
-        im = None
-
-        if raw_img and isinstance(raw_img, str):
-            raw_img = raw_img.strip()
-            # Handle multi-images separator if not base64
-            if not raw_img.startswith("data:image/"):
-                parts = split_image_urls(raw_img)
-                raw_img = parts[0] if parts else raw_img
-
-            try:
-                if raw_img.startswith("data:image/"):
-                    # Decode base64 data URI
-                    _, b64 = raw_img.split(",", 1)
-                    im = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-                elif raw_img.startswith("http://") or raw_img.startswith("https://"):
-                    # Check if it's our own server URL to load from disk
-                    own_domains = ["doineek.onrender.com", "127.0.0.1", "localhost"]
-                    for own_domain in own_domains:
-                        if own_domain in raw_img:
-                            try:
-                                from urllib.parse import urlparse
-                                parsed = urlparse(raw_img)
-                                local_path = parsed.path.lstrip("/")
-                                full_path = os.path.join(app.root_path, local_path)
-                                if os.path.exists(full_path):
-                                    im = Image.open(full_path).convert("RGB")
-                                    break
-                            except Exception:
-                                pass
-                    if im is None:
-                        # Download external URL with browser headers and SSL
-                        cached_uri = download_and_cache_external_image(raw_img)
-                        if cached_uri and cached_uri.startswith("data:image/"):
-                            _, b64 = cached_uri.split(",", 1)
-                            im = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-                        else:
-                            req = urllib.request.Request(
-                                raw_img,
-                                headers={
-                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                    "Referer": "https://www.google.com/"
-                                }
-                            )
-                            with urllib.request.urlopen(req, timeout=8) as response:
-                                im = Image.open(io.BytesIO(response.read())).convert("RGB")
-                elif raw_img.startswith("/") or raw_img.startswith("static/") or raw_img.startswith("uploads/"):
-                    clean_path = raw_img.lstrip("/")
-                    full_path = os.path.join(app.root_path, clean_path)
-                    if not os.path.exists(full_path):
-                        full_path = os.path.join(app.root_path, "static", clean_path.removeprefix("static/"))
-                    if os.path.exists(full_path):
-                        im = Image.open(full_path).convert("RGB")
-            except Exception as e:
-                print(f"Could not load image for {name} ({raw_img[:40]}):", e)
+        im = load_pil_image_safe(raw_img, name)
 
         # If product has no image or failed to load, create a clean placeholder card
         if im is None:
@@ -2049,7 +2221,21 @@ def api_ai_generate_combo_image():
         except Exception as e:
             print("Error rendering showcase collage card:", e)
 
-    # Option 3: ✨ 3D AI Studio Hamper (Pollinations AI)
+    # Option 3: 🔥 Mega Value Commercial Promo Banner (from actual product photos)
+    if items_data:
+        try:
+            banner_card = create_promotional_combo_banner(package_name, package_price, items_data)
+            buf3 = io.BytesIO()
+            banner_card.save(buf3, format="JPEG", quality=92, optimize=True)
+            b64_str3 = base64.b64encode(buf3.getvalue()).decode("utf-8")
+            generated_images.append({
+                "url": f"data:image/jpeg;base64,{b64_str3}",
+                "label": "🔥 Mega Value Offer Banner (সুপার অফার ব্যানার কোলাজ)"
+            })
+        except Exception as e:
+            print("Error rendering promotional banner card:", e)
+
+    # Option 4: ✨ 3D AI Studio Hamper (Pollinations AI) - optional AI visual
     items_str = ", ".join([it["name"] for it in items_data[:5]]) if items_data else "assorted supermarket daily groceries"
     full_prompt = (
         f'Award-winning commercial studio product photography of supermarket combo package bundle "{package_name}". '
@@ -2065,7 +2251,7 @@ def api_ai_generate_combo_image():
         ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
         try:
             req = urllib.request.Request(ai_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            with urllib.request.urlopen(req, timeout=6) as response:
+            with urllib.request.urlopen(req, timeout=4) as response:
                 img_data = response.read()
                 if len(img_data) > 1000:
                     b64 = base64.b64encode(img_data).decode("utf-8")

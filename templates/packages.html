@@ -117,7 +117,13 @@
               <tbody id="selectedPkgBody">
                 {% if edit_pkg and edit_pkg['items'] %}
                   {% for it in edit_pkg['items'] %}
-                  <tr id="pkgRow_{{ it.product_id }}" style="border-bottom:1px solid #f1f5f9;">
+                  <tr id="pkgRow_{{ it.product_id }}"
+                      data-id="{{ it.product_id }}"
+                      data-name="{{ it.product_name|e }}"
+                      data-sku="{{ it.sku|e }}"
+                      data-price="{{ it.sell_price }}"
+                      data-image="{{ it.image_url|e if it.image_url else '' }}"
+                      style="border-bottom:1px solid #f1f5f9;">
                     <td style="padding:6px 8px;">
                       <div style="font-weight:600; color:#0f172a;">{{ it.product_name }}</div>
                       <div style="font-size:11px; color:#64748b;">SKU: {{ it.sku }} | TK {{ "%.2f"|format(it.sell_price) }}</div>
@@ -276,7 +282,7 @@ let selectedPkgMap = new Map(); // id -> { name, sku, price, qty, image }
     sku: {{ it.sku|tojson }},
     price: parseFloat('{{ it.sell_price }}') || 0,
     qty: parseInt('{{ it.quantity }}') || 1,
-    image: {% if it.image_url and not it.image_url.startswith('data:') %}{{ it.image_url|tojson }}{% else %}''{% endif %}
+    image: {{ it.image_url|tojson if it.image_url else "''" }}
   });
   {% endfor %}
 {% endif %}
@@ -291,7 +297,7 @@ function selectPkgProductOption(el) {
   if (image) {
     if (image.includes(' || ')) {
       image = image.split(' || ')[0].trim();
-    } else if (image.includes(',')) {
+    } else if (image.includes(',') && !image.startsWith('data:image/')) {
       image = image.split(',')[0].trim();
     }
   }
@@ -518,25 +524,61 @@ let pkgAiImages = [];
 let selectedPkgIdx = 0;
 let pkgAiBaseImg = new Image();
 
+function renderPkgStudioIncludedProducts() {
+  const container = document.getElementById('pkgStudioIncludedProducts');
+  const countEl = document.getElementById('pkgStudioItemsCount');
+  if (!container) return;
+
+  const items = Array.from(selectedPkgMap.values());
+  if (countEl) countEl.innerText = `${items.length} item${items.length === 1 ? '' : 's'}`;
+
+  if (items.length === 0) {
+    container.innerHTML = `<div style="font-size:12px; color:#64748b; padding:4px 0;">কোনো পণ্য সিলেক্ট করা নেই। প্যাকেজে প্রোডাক্ট যোগ করুন।</div>`;
+    return;
+  }
+
+  container.innerHTML = items.map(it => {
+    const imgSrc = it.image || '';
+    const imgHtml = imgSrc ?
+      `<img src="${imgSrc}" style="width:36px; height:36px; object-fit:contain; border-radius:6px; background:#fff; border:1px solid #cbd5e1; flex-shrink:0;">` :
+      `<div style="width:36px; height:36px; border-radius:6px; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">🛍️</div>`;
+
+    return `
+      <div style="display:flex; align-items:center; gap:8px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; padding:6px 10px; flex-shrink:0; max-width:240px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        ${imgHtml}
+        <div style="overflow:hidden; text-align:left;">
+          <div style="font-weight:700; font-size:12px; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.name}">
+            ${it.name}
+          </div>
+          <div style="font-size:10px; color:#64748b;">
+            <span style="font-weight:700; color:#15803d;">TK ${parseFloat(it.price || 0).toFixed(2)}</span> × ${it.qty || 1} pcs
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function openPkgAiModal() {
   const pkgName = (document.getElementById('pkgNameInput')?.value || '').trim();
   const pkgPrice = parseFloat(document.getElementById('pkgPriceInput')?.value) || 0;
 
-  // Sync selectedPkgMap from the DOM table (in case page was loaded in edit mode)
+  // Sync selectedPkgMap from the DOM table if map is empty (e.g. page loaded in edit mode)
   if (selectedPkgMap.size === 0) {
     const tbody = document.getElementById('selectedPkgBody');
     if (tbody) {
-      tbody.querySelectorAll('input[name="product_ids"]').forEach(inp => {
-        const pid = inp.value;
+      tbody.querySelectorAll('tr[id^="pkgRow_"]').forEach(row => {
+        const inp = row.querySelector('input[name="product_ids"]');
+        const pid = inp ? inp.value : '';
         if (pid && !selectedPkgMap.has(pid)) {
-          const row = inp.closest('tr');
-          if (!row) return;
           const nameEl = row.querySelector('td div[style*="font-weight:600"]');
-          const skuEl = row.querySelector('td div[style*="font-size:11px"]');
+          const nameVal = row.getAttribute('data-name') || (nameEl ? nameEl.textContent.trim() : pid);
+          const skuVal = row.getAttribute('data-sku') || '';
+          const priceVal = parseFloat(row.getAttribute('data-price')) || 0;
+          const imgVal = row.getAttribute('data-image') || '';
           const qtyEl = row.querySelector('input[type="number"]');
-          const name = nameEl ? nameEl.textContent.trim() : pid;
           const qtyVal = qtyEl ? (parseInt(qtyEl.value) || 1) : 1;
-          selectedPkgMap.set(pid, { id: pid, name: name, sku: '', price: 0, qty: qtyVal, image: '' });
+          selectedPkgMap.set(pid, { id: pid, name: nameVal, sku: skuVal, price: priceVal, qty: qtyVal, image: imgVal });
         }
       });
     }
@@ -550,6 +592,7 @@ function openPkgAiModal() {
   document.getElementById('pkgStudioTitle').value = pkgName || 'Special Combo Bundle';
   document.getElementById('pkgStudioPrice').value = pkgPrice || 0;
 
+  renderPkgStudioIncludedProducts();
   document.getElementById('pkgAiModal').style.display = 'flex';
   triggerPkgAiGenerate();
 }
@@ -562,9 +605,10 @@ async function triggerPkgAiGenerate() {
   const pkgName = document.getElementById('pkgStudioTitle')?.value.trim() || 'Supermarket Combo Deal';
   const pkgPrice = parseFloat(document.getElementById('pkgStudioPrice')?.value) || 0;
   const items = Array.from(selectedPkgMap.values()).map(it => it.name + (it.qty > 1 ? ` (${it.qty} pcs)` : ''));
-  const rawImagesList = Array.from(selectedPkgMap.values()).map(it => it.image).filter(Boolean);
+  const rawImagesList = Array.from(selectedPkgMap.values()).map(it => it.image || '');
   const productIds = Array.from(selectedPkgMap.keys());
 
+  renderPkgStudioIncludedProducts();
   const spinner = document.getElementById('pkgAiLoading');
   if (spinner) spinner.style.display = 'flex';
 
@@ -706,10 +750,31 @@ function applyPkgStudioImage() {
         <div style="font-weight:700; color:#15803d; font-size:0.90rem; margin-top:10px;">Composing package items into unified AI image... please wait</div>
       </div>
 
+      <!-- Included Products Strip in Studio Modal -->
+      <div style="margin-bottom:16px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:12px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+          <div style="font-size:0.85rem; font-weight:800; color:#15803d; display:flex; align-items:center; gap:8px;">
+            <span>📦 প্যাকেজে অন্তর্ভুক্ত আসল প্রোডাক্টসমূহ (Products in this Package):</span>
+            <span id="pkgStudioItemsCount" style="background:#16a34a; color:#fff; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:bold;">0 items</span>
+          </div>
+          <button type="button" onclick="triggerPkgAiGenerate()" style="background:#16a34a; color:#ffffff; font-size:0.80rem; font-weight:800; padding:6px 14px; border-radius:8px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 5px rgba(22,163,74,0.3);">
+            🔄 Regenerate Collages (পুনরায় কোলাজ তৈরি করুন)
+          </button>
+        </div>
+        <div id="pkgStudioIncludedProducts" style="display:flex; gap:10px; overflow-x:auto; padding-bottom:6px;">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
       <!-- Combo Options Grid -->
       <div>
-        <div style="font-size:0.80rem; font-weight:700; color:#64748b; margin-bottom:6px;">
-          1. CHOOSE COMBO IMAGE STYLE:
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="font-size:0.85rem; font-weight:800; color:#334155;">
+            1. CHOOSE COMBO IMAGE STYLE:
+          </div>
+          <button type="button" onclick="triggerPkgAiGenerate()" style="background:#f0fdf4; border:1.5px solid #16a34a; color:#15803d; font-size:0.78rem; font-weight:800; padding:4px 12px; border-radius:7px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+            🔄 Refresh
+          </button>
         </div>
         <div id="pkgAiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
           <!-- Injected via JavaScript -->
@@ -758,8 +823,11 @@ function applyPkgStudioImage() {
     </div>
 
     <!-- Modal Footer -->
-    <div style="padding:10px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
-      <button type="button" onclick="closePkgAiModal()" style="padding:7px 16px; border-radius:6px; border:1px solid #cbd5e1; background:#fff; font-weight:600; cursor:pointer; color:#475569;">
+    <div style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+      <button type="button" onclick="triggerPkgAiGenerate()" style="background:#16a34a; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:800; font-size:0.85rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(22,163,74,0.3);">
+        🔄 Regenerate Collages (পুনরায় কোলাজ তৈরি করুন)
+      </button>
+      <button type="button" onclick="closePkgAiModal()" style="padding:8px 18px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; font-weight:700; cursor:pointer; color:#475569;">
         Close
       </button>
     </div>
