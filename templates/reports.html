@@ -4,7 +4,7 @@
 <div class="toolbar" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
   <div>
     <h1 style="margin:0; font-size:1.6rem; color:#0f172a;">📊 Financial Overview & Analytics Reports</h1>
-    <p class="subtitle" style="margin:4px 0 0 0; color:#64748b;">Comprehensive Sales Revenue, COGS, Net Profit across Online, POS, Packages & Offers.</p>
+    <p class="subtitle" style="margin:4px 0 0 0; color:#64748b;">Comprehensive Sales Revenue, COGS, Ledger Allocations & Net Profit across all channels.</p>
   </div>
   <div>
     <select id="periodSelect" onchange="window.location.href='{{ url_for('reports') }}?period=' + this.value"
@@ -31,25 +31,36 @@
       Total {{ tx_count }} Transactions (POS + Online)
     </span>
   </div>
-  <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap:16px;">
+  <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:16px;">
     <div class="card" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:16px;">
-      <div class="label" style="font-size:13px; font-weight:600; color:#64748b;">Total Sales Revenue</div>
-      <div class="value" style="color:#16a34a; font-size:26px; font-weight:800; margin:6px 0;">TK {{ "%.2f"|format(revenue) }}</div>
+      <div class="label" style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">1. Sales Revenue</div>
+      <div class="value" style="color:#16a34a; font-size:22px; font-weight:800; margin:6px 0;">TK {{ "%.2f"|format(revenue) }}</div>
       <small style="color:#64748b;">{{ tx_count }} Total customer invoices</small>
     </div>
     <div class="card" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:16px;">
-      <div class="label" style="font-size:13px; font-weight:600; color:#64748b;">Cost of Goods Sold (COGS)</div>
-      <div class="value" style="color:#475569; font-size:26px; font-weight:800; margin:6px 0;">TK {{ "%.2f"|format(cogs) }}</div>
-      <small style="color:#64748b;">Total product inventory purchase cost</small>
+      <div class="label" style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">2. COGS (Cost)</div>
+      <div class="value" style="color:#475569; font-size:22px; font-weight:800; margin:6px 0;">TK {{ "%.2f"|format(cogs) }}</div>
+      <small style="color:#64748b;">Product inventory cost</small>
+    </div>
+    <div class="card" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:16px;">
+      <div class="label" style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase;">3. Income & Expense</div>
+      <div class="value" style="font-size:16px; font-weight:800; margin:6px 0;">
+        <span style="color:#16a34a;">+TK {{ "%.2f"|format(other_income) }}</span> / 
+        <span style="color:#dc2626;">−TK {{ "%.2f"|format(other_expenses) }}</span>
+      </div>
+      {% set net_ledger = other_income - other_expenses %}
+      <small style="color:{{ '#16a34a' if net_ledger >= 0 else '#dc2626' }}; font-weight:700;">
+        Net: {{ "+" if net_ledger >= 0 else "-" }}TK {{ "%.2f"|format(net_ledger|abs) }}
+      </small>
     </div>
     <div class="card" style="border:2px solid {{ '#16a34a' if net_profit >= 0 else '#dc2626' }}; background: {{ '#f0fdf4' if net_profit >= 0 else '#fef2f2' }}; border-radius:12px; padding:16px;">
-      <div class="label" style="font-weight:700; color:{{ '#16a34a' if net_profit >= 0 else '#dc2626' }}; font-size:13px;">
-        NET {{ 'PROFIT' if net_profit >= 0 else 'LOSS' }} (OVERALL)
+      <div class="label" style="font-weight:700; color:{{ '#16a34a' if net_profit >= 0 else '#dc2626' }}; font-size:12px; text-transform:uppercase;">
+        4. NET {{ 'PROFIT' if net_profit >= 0 else 'LOSS' }}
       </div>
-      <div class="value" style="color:{{ '#16a34a' if net_profit >= 0 else '#dc2626' }}; font-size:26px; font-weight:800; margin:6px 0;">
+      <div class="value" style="color:{{ '#16a34a' if net_profit >= 0 else '#dc2626' }}; font-size:22px; font-weight:800; margin:6px 0;">
         {{ "+" if net_profit >= 0 else "-" }}TK {{ "%.2f"|format(net_profit|abs) }}
       </div>
-      <small style="color:#475569; font-weight:600;">Gross (TK {{ "%.2f"|format(gross_profit) }}) + Inc (TK {{ "%.2f"|format(other_income) }}) − Exp (TK {{ "%.2f"|format(other_expenses) }})</small>
+      <small style="color:#475569; font-weight:600;">Gross (TK {{ "%.2f"|format(gross_profit) }}) ± Ledger</small>
     </div>
   </div>
 </div>
@@ -68,18 +79,25 @@
       </span>
     </div>
     
-    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
-      <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#0369a1; text-transform:uppercase;">Sales Revenue</div>
-        <div style="font-size:18px; font-weight:800; color:#0284c7; margin-top:4px;">TK {{ "%.2f"|format(online_summary.revenue) }}</div>
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+      <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#0369a1; text-transform:uppercase;">Sales Revenue</div>
+        <div style="font-size:16px; font-weight:800; color:#0284c7; margin-top:4px;">TK {{ "%.2f"|format(online_summary.revenue) }}</div>
       </div>
-      <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#0369a1; text-transform:uppercase;">COGS (Cost)</div>
-        <div style="font-size:18px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(online_summary.cogs) }}</div>
+      <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#0369a1; text-transform:uppercase;">COGS (Cost)</div>
+        <div style="font-size:16px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(online_summary.cogs) }}</div>
       </div>
-      <div style="background:{{ '#dcfce7' if online_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if online_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:{{ '#15803d' if online_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
-        <div style="font-size:18px; font-weight:800; color:{{ '#15803d' if online_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
+      <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#0369a1; text-transform:uppercase;">Income & Exp</div>
+        <div style="font-size:12px; font-weight:700; margin-top:4px;">
+          <span style="color:#16a34a;">+{{ "%.0f"|format(online_summary.income) }}</span> / 
+          <span style="color:#dc2626;">−{{ "%.0f"|format(online_summary.expense) }}</span>
+        </div>
+      </div>
+      <div style="background:{{ '#dcfce7' if online_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if online_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:{{ '#15803d' if online_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
+        <div style="font-size:16px; font-weight:800; color:{{ '#15803d' if online_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
           {{ "+" if online_summary.net_profit >= 0 else "-" }}TK {{ "%.2f"|format(online_summary.net_profit|abs) }}
         </div>
       </div>
@@ -97,18 +115,25 @@
       </span>
     </div>
     
-    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
-      <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">Sales Revenue</div>
-        <div style="font-size:18px; font-weight:800; color:#1e293b; margin-top:4px;">TK {{ "%.2f"|format(offline_summary.revenue) }}</div>
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+      <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#475569; text-transform:uppercase;">Sales Revenue</div>
+        <div style="font-size:16px; font-weight:800; color:#1e293b; margin-top:4px;">TK {{ "%.2f"|format(offline_summary.revenue) }}</div>
       </div>
-      <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">COGS (Cost)</div>
-        <div style="font-size:18px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(offline_summary.cogs) }}</div>
+      <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#475569; text-transform:uppercase;">COGS (Cost)</div>
+        <div style="font-size:16px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(offline_summary.cogs) }}</div>
       </div>
-      <div style="background:{{ '#dcfce7' if offline_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if offline_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:{{ '#15803d' if offline_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
-        <div style="font-size:18px; font-weight:800; color:{{ '#15803d' if offline_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
+      <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#475569; text-transform:uppercase;">Income & Exp</div>
+        <div style="font-size:12px; font-weight:700; margin-top:4px;">
+          <span style="color:#16a34a;">+{{ "%.0f"|format(offline_summary.income) }}</span> / 
+          <span style="color:#dc2626;">−{{ "%.0f"|format(offline_summary.expense) }}</span>
+        </div>
+      </div>
+      <div style="background:{{ '#dcfce7' if offline_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if offline_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:{{ '#15803d' if offline_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
+        <div style="font-size:16px; font-weight:800; color:{{ '#15803d' if offline_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
           {{ "+" if offline_summary.net_profit >= 0 else "-" }}TK {{ "%.2f"|format(offline_summary.net_profit|abs) }}
         </div>
       </div>
@@ -131,18 +156,25 @@
       </span>
     </div>
     
-    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
-      <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#6d28d9; text-transform:uppercase;">Sales Revenue</div>
-        <div style="font-size:18px; font-weight:800; color:#7c3aed; margin-top:4px;">TK {{ "%.2f"|format(packages_summary.revenue) }}</div>
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+      <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#6d28d9; text-transform:uppercase;">Sales Revenue</div>
+        <div style="font-size:16px; font-weight:800; color:#7c3aed; margin-top:4px;">TK {{ "%.2f"|format(packages_summary.revenue) }}</div>
       </div>
-      <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#6d28d9; text-transform:uppercase;">COGS (Cost)</div>
-        <div style="font-size:18px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(packages_summary.cogs) }}</div>
+      <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#6d28d9; text-transform:uppercase;">COGS (Cost)</div>
+        <div style="font-size:16px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(packages_summary.cogs) }}</div>
       </div>
-      <div style="background:{{ '#dcfce7' if packages_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if packages_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:{{ '#15803d' if packages_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
-        <div style="font-size:18px; font-weight:800; color:{{ '#15803d' if packages_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
+      <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#6d28d9; text-transform:uppercase;">Income & Exp</div>
+        <div style="font-size:12px; font-weight:700; margin-top:4px;">
+          <span style="color:#16a34a;">+{{ "%.0f"|format(packages_summary.income) }}</span> / 
+          <span style="color:#dc2626;">−{{ "%.0f"|format(packages_summary.expense) }}</span>
+        </div>
+      </div>
+      <div style="background:{{ '#dcfce7' if packages_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if packages_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:{{ '#15803d' if packages_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
+        <div style="font-size:16px; font-weight:800; color:{{ '#15803d' if packages_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
           {{ "+" if packages_summary.net_profit >= 0 else "-" }}TK {{ "%.2f"|format(packages_summary.net_profit|abs) }}
         </div>
       </div>
@@ -160,18 +192,25 @@
       </span>
     </div>
     
-    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
-      <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#c2410c; text-transform:uppercase;">Sales Revenue</div>
-        <div style="font-size:18px; font-weight:800; color:#ea580c; margin-top:4px;">TK {{ "%.2f"|format(offers_summary.revenue) }}</div>
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+      <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#c2410c; text-transform:uppercase;">Sales Revenue</div>
+        <div style="font-size:16px; font-weight:800; color:#ea580c; margin-top:4px;">TK {{ "%.2f"|format(offers_summary.revenue) }}</div>
       </div>
-      <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:#c2410c; text-transform:uppercase;">COGS (Cost)</div>
-        <div style="font-size:18px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(offers_summary.cogs) }}</div>
+      <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#c2410c; text-transform:uppercase;">COGS (Cost)</div>
+        <div style="font-size:16px; font-weight:800; color:#475569; margin-top:4px;">TK {{ "%.2f"|format(offers_summary.cogs) }}</div>
       </div>
-      <div style="background:{{ '#dcfce7' if offers_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if offers_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:12px;">
-        <div style="font-size:11px; font-weight:700; color:{{ '#15803d' if offers_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
-        <div style="font-size:18px; font-weight:800; color:{{ '#15803d' if offers_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
+      <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:#c2410c; text-transform:uppercase;">Income & Exp</div>
+        <div style="font-size:12px; font-weight:700; margin-top:4px;">
+          <span style="color:#16a34a;">+{{ "%.0f"|format(offers_summary.income) }}</span> / 
+          <span style="color:#dc2626;">−{{ "%.0f"|format(offers_summary.expense) }}</span>
+        </div>
+      </div>
+      <div style="background:{{ '#dcfce7' if offers_summary.net_profit >= 0 else '#fee2e2' }}; border:1px solid {{ '#86efac' if offers_summary.net_profit >= 0 else '#fca5a5' }}; border-radius:10px; padding:10px;">
+        <div style="font-size:10.5px; font-weight:700; color:{{ '#15803d' if offers_summary.net_profit >= 0 else '#b91c1c' }}; text-transform:uppercase;">Net Profit</div>
+        <div style="font-size:16px; font-weight:800; color:{{ '#15803d' if offers_summary.net_profit >= 0 else '#b91c1c' }}; margin-top:4px;">
           {{ "+" if offers_summary.net_profit >= 0 else "-" }}TK {{ "%.2f"|format(offers_summary.net_profit|abs) }}
         </div>
       </div>
@@ -287,7 +326,7 @@
   </div>
 </div>
 
-<!-- 5. INCOME & EXPENSE LEDGER WITH TARGET SEGMENT -->
+<!-- 5. INCOME & EXPENSE LEDGER WITH TARGET SEGMENT & 1-CLICK SORTING -->
 <div style="display:grid; grid-template-columns: 360px 1fr; gap:24px; margin-bottom:32px; align-items:start;">
   
   <form method="POST" action="{{ url_for('add_ledger_entry') }}" class="form-card" style="background:#fff; border:1px solid #cbd5e1; border-radius:14px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
@@ -335,32 +374,45 @@
 
   <div class="card" style="padding:20px; background:#fff; border:1px solid #cbd5e1; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <h2 style="font-size:1.15rem; color:#1e293b; margin:0;">Income & Expense Ledger ({{ period.title() }})</h2>
-      <span style="font-size:12px; color:#64748b; font-weight:600;">{{ ledger_entries|length }} Records</span>
+      <div>
+        <h2 style="font-size:1.15rem; color:#1e293b; margin:0;">Income & Expense Ledger ({{ period.title() }})</h2>
+        <p style="margin:2px 0 0 0; font-size:12px; color:#64748b;">Click on any column header to auto-sort (Date, Type, Segment, Title, Amount).</p>
+      </div>
+      <span style="font-size:12px; color:#64748b; font-weight:600; background:#f1f5f9; padding:4px 10px; border-radius:12px;">{{ ledger_entries|length }} Records</span>
     </div>
     <div style="overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <table id="ledgerTable" style="width:100%; border-collapse:collapse; font-size:13px;">
         <thead>
           <tr style="border-bottom:2px solid #e2e8f0; text-align:left;">
-            <th style="padding:10px 8px;">Date</th>
-            <th style="padding:10px 8px;">Type</th>
-            <th style="padding:10px 8px;">Department / Segment</th>
-            <th style="padding:10px 8px;">Title</th>
-            <th style="padding:10px 8px; text-align:right;">Amount</th>
+            <th class="ledger-sort-th" onclick="sortLedgerTable(0)" style="padding:10px 8px; cursor:pointer; user-select:none;">
+              Date <span class="sort-icon" style="color:#94a3b8; font-size:11px;">⇅</span>
+            </th>
+            <th class="ledger-sort-th" onclick="sortLedgerTable(1)" style="padding:10px 8px; cursor:pointer; user-select:none;">
+              Type <span class="sort-icon" style="color:#94a3b8; font-size:11px;">⇅</span>
+            </th>
+            <th class="ledger-sort-th" onclick="sortLedgerTable(2)" style="padding:10px 8px; cursor:pointer; user-select:none;">
+              Department / Segment <span class="sort-icon" style="color:#94a3b8; font-size:11px;">⇅</span>
+            </th>
+            <th class="ledger-sort-th" onclick="sortLedgerTable(3)" style="padding:10px 8px; cursor:pointer; user-select:none;">
+              Title <span class="sort-icon" style="color:#94a3b8; font-size:11px;">⇅</span>
+            </th>
+            <th class="ledger-sort-th" onclick="sortLedgerTable(4)" style="padding:10px 8px; text-align:right; cursor:pointer; user-select:none;">
+              Amount <span class="sort-icon" style="color:#94a3b8; font-size:11px;">⇅</span>
+            </th>
             <th style="padding:10px 8px; text-align:center;">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for item in ledger_entries %}
-          <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:10px 8px; white-space:nowrap; color:#64748b;">{{ item.entry_date }}</td>
-            <td style="padding:10px 8px;">
+          <tr class="ledger-data-row" data-edit-row-id="edit-row-{{ item.id }}" style="border-bottom:1px solid #f1f5f9;">
+            <td data-sort-value="{{ item.entry_date }}" style="padding:10px 8px; white-space:nowrap; color:#64748b;">{{ item.entry_date }}</td>
+            <td data-sort-value="{{ item.entry_type }}" style="padding:10px 8px;">
               <span style="font-weight:700; font-size:11px; padding:3px 8px; border-radius:6px; background:{{ '#dcfce7' if item.entry_type == 'income' else '#fee2e2' }}; color:{{ '#15803d' if item.entry_type == 'income' else '#b91c1c' }};">
                 {{ 'INCOME (+)' if item.entry_type == 'income' else 'EXPENSE (-)' }}
               </span>
             </td>
-            <td style="padding:10px 8px;">
-              {% set seg = item.target_segment or 'all' %}
+            {% set seg = item.target_segment or 'all' %}
+            <td data-sort-value="{{ seg }}" style="padding:10px 8px;">
               {% if seg == 'online' %}
                 <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:11px; padding:2px 8px; border-radius:6px;">📱 Online Orders</span>
               {% elif seg == 'offline' %}
@@ -373,8 +425,8 @@
                 <span style="background:#ede9fe; color:#4338ca; font-weight:700; font-size:11px; padding:2px 8px; border-radius:6px;">📊 Total / Overall</span>
               {% endif %}
             </td>
-            <td style="padding:10px 8px;"><strong>{{ item.title }}</strong></td>
-            <td style="padding:10px 8px; text-align:right; font-weight:800; color:{{ '#15803d' if item.entry_type == 'income' else '#1e293b' }};">
+            <td data-sort-value="{{ item.title }}" style="padding:10px 8px;"><strong>{{ item.title }}</strong></td>
+            <td data-sort-value="{{ item.amount }}" style="padding:10px 8px; text-align:right; font-weight:800; color:{{ '#15803d' if item.entry_type == 'income' else '#1e293b' }};">
               TK {{ "%.2f"|format(item.amount) }}
             </td>
             <td style="padding:10px 8px; text-align:center; white-space:nowrap;">
@@ -427,6 +479,60 @@ function toggleEdit(rowId) {
   if (row) {
     row.style.display = row.style.display === "none" ? "table-row" : "none";
   }
+}
+
+// =========================================================================
+// 1-Click Auto-Sorting on Income & Expense Ledger Table
+// =========================================================================
+let currentLedgerSortCol = -1;
+let ledgerSortAsc = true;
+
+function sortLedgerTable(colIndex) {
+  const table = document.getElementById('ledgerTable');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr.ledger-data-row'));
+  if (rows.length === 0) return;
+
+  if (currentLedgerSortCol === colIndex) {
+    ledgerSortAsc = !ledgerSortAsc;
+  } else {
+    currentLedgerSortCol = colIndex;
+    ledgerSortAsc = true;
+  }
+
+  // Update header indicators
+  document.querySelectorAll('.ledger-sort-th').forEach((th, idx) => {
+    const icon = th.querySelector('.sort-icon');
+    if (idx === colIndex) {
+      icon.innerHTML = ledgerSortAsc ? ' ▲' : ' ▼';
+      icon.style.color = '#4f46e5';
+    } else {
+      icon.innerHTML = ' ⇅';
+      icon.style.color = '#94a3b8';
+    }
+  });
+
+  rows.sort((a, b) => {
+    let valA = a.children[colIndex].getAttribute('data-sort-value') || a.children[colIndex].innerText.trim();
+    let valB = b.children[colIndex].getAttribute('data-sort-value') || b.children[colIndex].innerText.trim();
+
+    // Numeric comparison for amount
+    if (colIndex === 4) {
+      valA = parseFloat(valA.replace(/[^0-9.-]/g, '')) || 0;
+      valB = parseFloat(valB.replace(/[^0-9.-]/g, '')) || 0;
+      return ledgerSortAsc ? valA - valB : valB - valA;
+    }
+
+    return ledgerSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+  });
+
+  rows.forEach(row => {
+    const editRowId = row.getAttribute('data-edit-row-id');
+    const editRow = editRowId ? document.getElementById(editRowId) : null;
+    tbody.appendChild(row);
+    if (editRow) tbody.appendChild(editRow);
+  });
 }
 
 // =========================================================================
