@@ -656,21 +656,122 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
 
-                    if (!_isDeliveryMan)
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                          );
-                        },
-                        child: Text(loc.translate('register')),
+                    if (!_isDeliveryMan) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                              );
+                            },
+                            child: Text(loc.translate('register')),
+                          ),
+                          TextButton.icon(
+                            onPressed: _openAdminLoginDialog,
+                            icon: const Icon(Icons.admin_panel_settings, size: 16, color: Color(0xFF1E293B)),
+                            label: const Text(
+                              "🔑 Admin & Cashier Mode ➔",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                    ],
                   ],
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openAdminLoginDialog() {
+    final TextEditingController adminUserCtrl = TextEditingController();
+    final TextEditingController adminPassCtrl = TextEditingController();
+    bool isLoggingIn = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.shield_outlined, color: Color(0xFF1E293B)),
+              SizedBox(width: 8),
+              Text("Admin & Cashier Sign In", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: adminUserCtrl,
+                decoration: const InputDecoration(
+                  labelText: "Admin / Cashier Username",
+                  prefixIcon: Icon(Icons.person),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: adminPassCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Password",
+                  prefixIcon: Icon(Icons.lock),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: isLoggingIn
+                  ? null
+                  : () async {
+                      final u = adminUserCtrl.text.trim();
+                      final p = adminPassCtrl.text.trim();
+                      if (u.isEmpty || p.isEmpty) return;
+
+                      setDialogState(() => isLoggingIn = true);
+                      final res = await ApiService.login(phone: u, password: p, isDeliveryMan: false);
+                      setDialogState(() => isLoggingIn = false);
+
+                      if (res['success'] == true) {
+                        Navigator.pop(ctx);
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('user_phone', u);
+                        await prefs.setString('user_name', res['user']?['name'] ?? u);
+                        await prefs.setBool('is_admin_mode', true);
+                        if (!mounted) return;
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(res['message'] ?? "Invalid admin/cashier credentials"), backgroundColor: Colors.red),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E293B)),
+              child: const Text("Sign In", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
