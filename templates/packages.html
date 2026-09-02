@@ -645,22 +645,28 @@ function redrawPkgCanvas() {
   if (chosen && chosen.url) {
     pkgAiBaseImg.crossOrigin = 'anonymous';
     pkgAiBaseImg.onload = function() {
+      ctx.clearRect(0, 0, w, h);
       ctx.drawImage(pkgAiBaseImg, 0, 0, w, h);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, w, h);
     };
-    pkgAiBaseImg.src = chosen.url;
-    if (pkgAiBaseImg.complete && pkgAiBaseImg.naturalWidth > 0) {
-        const dh = img.naturalHeight * scale;
-        const dx = cx + (cardW - dw) / 2;
-        const dy = cy + (cardH - dh) / 2;
-        ctx.drawImage(img, dx, dy, dw, dh);
-      });
+    if (pkgAiBaseImg.src !== chosen.url) {
+      pkgAiBaseImg.src = chosen.url;
+    } else if (pkgAiBaseImg.complete && pkgAiBaseImg.naturalWidth > 0) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(pkgAiBaseImg, 0, 0, w, h);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, w, h);
     }
+  } else {
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, w, h);
   }
-
-  // Outer Border
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(0, 0, w, h);
 }
 
 function applyPkgStudioImage() {
