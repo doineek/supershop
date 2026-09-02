@@ -6523,6 +6523,24 @@ def api_packages():
     return jsonify(packages_list)
 
 
+@app.route("/api/packages/<int:package_id>", methods=["GET"])
+def api_package_detail(package_id):
+    conn = get_connection()
+    pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (package_id,)).fetchone()
+    if not pkg:
+        conn.close()
+        return jsonify({"success": False, "message": "Package not found"}), 404
+    p_dict = dict(pkg)
+    items = conn.execute("""
+        SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
+        FROM package_items pi JOIN products p ON pi.product_id = p.id
+        WHERE pi.package_id = ?
+    """, (package_id,)).fetchall()
+    p_dict["items"] = [dict(i) for i in items]
+    conn.close()
+    return jsonify({"success": True, "package": p_dict})
+
+
 # ===========================================================================
 # 🚨 System Reset & 2FA Email OTP Verification
 # ===========================================================================

@@ -357,14 +357,28 @@ initPackagesMap();
 
 let editModalPkgMap = new Map(); // id -> { id, name, sku, price, qty, image }
 
-function openEditPkgModal(pkgId) {
+async function openEditPkgModal(pkgId) {
   if (ALL_PACKAGES_MAP.size === 0) {
     initPackagesMap();
   }
-  const pkg = ALL_PACKAGES_MAP.get(Number(pkgId));
+  let pkg = ALL_PACKAGES_MAP.get(Number(pkgId));
+  
+  if (!pkg) {
+    try {
+      const res = await fetch('/api/packages/' + pkgId);
+      const data = await res.json();
+      if (data && data.success && data.package) {
+        pkg = data.package;
+        ALL_PACKAGES_MAP.set(Number(pkgId), pkg);
+      }
+    } catch (e) {
+      console.error("Fetch package API fallback error:", e);
+    }
+  }
+
   if (!pkg) {
     console.error("Package not found for ID:", pkgId);
-    alert("Could not load package #" + pkgId);
+    alert("Could not load package #" + pkgId + ". Please refresh the page.");
     return;
   }
 
@@ -398,8 +412,6 @@ function openEditPkgModal(pkgId) {
       tbody.innerHTML = `<tr id="emptyModalPkgRow"><td colspan="3" style="text-align:center; padding:12px; color:#94a3b8;">No products added yet. Search above to add items.</td></tr>`;
     }
   }
-
-  loadPkgForEdit(pkg);
 
   const modal = document.getElementById('editPkgModal');
   if (modal) modal.style.display = 'flex';
