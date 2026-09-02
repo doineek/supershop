@@ -1273,66 +1273,97 @@ def detect_packaging_type(name, cat=""):
         return "authentic commercial supermarket retail product packaging mockup with clear brand typography"
 
 
+def get_font_helper(size=24, bold=True):
+    import os
+    from PIL import ImageFont
+    font_paths = [
+        # Windows standard fonts
+        "C:\\Windows\\Fonts\\arialbd.ttf" if bold else "C:\\Windows\\Fonts\\arial.ttf",
+        "C:\\Windows\\Fonts\\segoeuib.ttf" if bold else "C:\\Windows\\Fonts\\segoeui.ttf",
+        "C:\\Windows\\Fonts\\tahomabd.ttf" if bold else "C:\\Windows\\Fonts\\tahoma.ttf",
+        "C:\\Windows\\Fonts\\calibrib.ttf" if bold else "C:\\Windows\\Fonts\\calibri.ttf",
+        # Linux / Render standard fonts
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"
+    ]
+    for p in font_paths:
+        if os.path.exists(p):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
+    try:
+        return ImageFont.load_default()
+    except Exception:
+        return None
+
+
 def overlay_product_label(img, product_name, brand_name="", category=""):
     try:
         import re
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
         img = img.convert("RGBA")
         w, h = img.size
         
         overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
-        # Extract weight/quantity if present (e.g. 5kg, 1L, 200g, 500ml)
         weight_match = re.search(r'(\d+(?:\.\d+)?\s*(?:kg|g|gm|ltr|litre|l|ml|pcs|pack|packet|টি|কেজি|গ্রাম|লিটার))', product_name, re.IGNORECASE)
         weight_str = weight_match.group(1).upper() if weight_match else ""
 
-        clean_title = product_name
-        if weight_str:
-            clean_title = re.sub(re.escape(weight_match.group(1)), '', clean_title, flags=re.IGNORECASE).strip(' -_,()')
+        # 1. Compact Ultra-Professional Floating Header
+        pill_w, pill_h = int(w * 0.88), int(h * 0.125)
+        pill_x0 = (w - pill_w) // 2
+        pill_y0 = int(h * 0.03)
+        pill_x1 = pill_x0 + pill_w
+        pill_y1 = pill_y0 + pill_h
 
-        # Position label directly ON THE PACKAGE FRONT (centered in middle-lower section of package body)
-        label_w = int(w * 0.70)
-        label_h = int(h * 0.25)
-        lx0 = (w - label_w) // 2
-        ly0 = int(h * 0.32)
-        lx1 = lx0 + label_w
-        ly1 = ly0 + label_h
-
-        # 1. Subtle drop shadow on package surface
-        draw.rounded_rectangle([lx0 + 2, ly0 + 3, lx1 + 2, ly1 + 3], radius=14, fill=(0, 0, 0, 50))
+        # Subtle drop shadow
+        for offset in range(1, 4):
+            draw.rounded_rectangle([pill_x0 - offset, pill_y0 - offset + 2, pill_x1 + offset, pill_y1 + offset + 2], radius=16, fill=(0, 0, 0, 30))
         
-        # 2. Package Label Plaque (Authentic grocery packaging front sticker with gold trim)
-        draw.rounded_rectangle([lx0, ly0, lx1, ly1], radius=14, fill=(255, 255, 255, 245), outline=(217, 119, 6), width=3)
-        # Inner gold border
-        draw.rounded_rectangle([lx0 + 4, ly0 + 4, lx1 - 4, ly1 - 4], radius=10, outline=(251, 191, 36), width=1)
+        # Premium Dark Slate Header with Gold Accent Border
+        draw.rounded_rectangle([pill_x0, pill_y0, pill_x1, pill_y1], radius=16, fill=(15, 23, 42, 245), outline=(245, 158, 11, 240), width=2)
 
-        # 3. Brand Header on Label
-        brand_display = (brand_name or "PREMIUM").upper()
-        draw.text((w // 2, ly0 + 16), f"• {brand_display} •", fill=(180, 83, 9), anchor="mm")
+        font_title = get_font_helper(size=int(h * 0.052), bold=True)
+        font_brand = get_font_helper(size=int(h * 0.024), bold=True)
+        font_badge = get_font_helper(size=int(h * 0.034), bold=True)
 
-        # 4. Main Product Name printed boldly on package label
-        words = clean_title.split()
-        line1 = ""
-        line2 = ""
-        if len(clean_title) <= 18:
-            line1 = clean_title
-        else:
-            half = len(words) // 2
-            line1 = " ".join(words[:half]) if half > 0 else words[0]
-            line2 = " ".join(words[half:]) if half > 0 else " ".join(words[1:])
+        # Title text
+        title_text = product_name[:34]
+        title_y = pill_y0 + (pill_h // 2) - (8 if brand_name else 0)
+        
+        draw.text((w // 2 + 1, title_y + 1), title_text, fill=(0, 0, 0, 220), anchor="mm", font=font_title)
+        draw.text((w // 2, title_y), title_text, fill=(255, 255, 255, 255), anchor="mm", font=font_title)
 
-        if line2:
-            draw.text((w // 2, ly0 + label_h // 2 - 4), line1, fill=(15, 23, 42), anchor="mm")
-            draw.text((w // 2, ly0 + label_h // 2 + 18), line2, fill=(15, 23, 42), anchor="mm")
-        else:
-            draw.text((w // 2, ly0 + label_h // 2 + 6), line1, fill=(15, 23, 42), anchor="mm")
+        if brand_name:
+            brand_y = pill_y0 + pill_h - 13
+            brand_text = f"{brand_name.upper()}  |  PREMIUM QUALITY"
+            draw.text((w // 2, brand_y), brand_text, fill=(253, 224, 71, 255), anchor="mm", font=font_brand)
 
-        # 5. Bottom Net Weight & Seal strip on label
-        strip_h = 24
-        draw.rounded_rectangle([lx0 + 6, ly1 - strip_h - 6, lx1 - 6, ly1 - 6], radius=6, fill=(22, 163, 74))
-        badge_text = f"NET WT. {weight_str}  |  100% PURE" if weight_str else "PREMIUM SELECTED QUALITY"
-        draw.text((w // 2, ly1 - 6 - strip_h // 2), badge_text, fill=(255, 255, 255), anchor="mm")
+        # 2. Compact Bottom Right Net Weight Badge
+        if weight_str:
+            bw, bh = int(w * 0.32), int(h * 0.075)
+            bx0 = w - bw - int(w * 0.035)
+            by0 = h - bh - int(h * 0.035)
+            bx1 = bx0 + bw
+            by1 = by0 + bh
+            
+            draw.rounded_rectangle([bx0 + 2, by0 + 2, bx1 + 2, by1 + 2], radius=12, fill=(0, 0, 0, 80))
+            draw.rounded_rectangle([bx0, by0, bx1, by1], radius=12, fill=(22, 163, 74, 250), outline=(255, 255, 255, 220), width=2)
+            draw.text(((bx0 + bx1) // 2, (by0 + by1) // 2), f"NET {weight_str}", fill=(255, 255, 255, 255), anchor="mm", font=font_badge)
+
+        # 3. Compact Bottom Left 100% Pure Badge
+        qw, qh = int(w * 0.34), int(h * 0.075)
+        qx0 = int(w * 0.035)
+        qy0 = h - qh - int(h * 0.035)
+        qx1 = qx0 + qw
+        qy1 = qy0 + qh
+        
+        draw.rounded_rectangle([qx0 + 2, qy0 + 2, qx1 + 2, qy1 + 2], radius=12, fill=(0, 0, 0, 80))
+        draw.rounded_rectangle([qx0, qy0, qx1, qy1], radius=12, fill=(79, 70, 229, 250), outline=(255, 255, 255, 220), width=2)
+        draw.text(((qx0 + qx1) // 2, (qy0 + qy1) // 2), "100% ORIGINAL", fill=(255, 255, 255, 255), anchor="mm", font=font_badge)
 
         return Image.alpha_composite(img, overlay).convert("RGB")
     except Exception as e:
