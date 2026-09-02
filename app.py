@@ -89,6 +89,17 @@ def handle_cors_options():
         return response
 
 
+@app.route("/api/ping", methods=["GET"])
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "ok",
+        "service": "DOINEEK Supershop",
+        "message": "Server is active & awake",
+        "timestamp": datetime.now().isoformat()
+    }), 200
+
+
 def parse_bogo_quantities(offer_value, offer_title, product_name=""):
     """
     Parses buy_qty and free_qty for Buy X Get Y / BOGO offers.
