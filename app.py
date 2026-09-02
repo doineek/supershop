@@ -1436,25 +1436,31 @@ def api_ai_generate_product_image():
     )
     encoded_prompt = urllib.parse.quote(full_prompt)
 
-    # 4. Fetch from AI Generator using Flux Realism
+    # 4. Fetch from AI Generator using Flux Realism with fast turbo fallback
     seeds = [42, 108]
+    models_to_try = ["flux", "turbo"]
+    
     for s in seeds:
         if len(raw_images) >= 2:
             break
-        ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=flux&seed={s}&nologo=true"
-        try:
-            req = urllib.request.Request(
-                ai_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            )
-            with urllib.request.urlopen(req, timeout=12) as response:
-                img_data = response.read()
-                if len(img_data) > 1000:
-                    img = Image.open(io.BytesIO(img_data)).convert("RGB")
-                    img.thumbnail((width, height), Image.Resampling.LANCZOS)
-                    raw_images.append(img)
-        except Exception as e:
-            print("AI Image Generation Error:", e)
+        for m in models_to_try:
+            if len(raw_images) >= 2:
+                break
+            ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model={m}&seed={s}&nologo=true"
+            try:
+                req = urllib.request.Request(
+                    ai_url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                )
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    img_data = response.read()
+                    if len(img_data) > 1000:
+                        img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                        img.thumbnail((width, height), Image.Resampling.LANCZOS)
+                        raw_images.append(img)
+                        break
+            except Exception as e:
+                print(f"AI Image Generation ({m}) Error:", e)
 
     # If raw images fetched, produce both labeled version and clean version
     for img in raw_images:
@@ -1511,7 +1517,10 @@ def api_ai_generate_product_image():
             buf = io.BytesIO()
             canvas.save(buf, format="JPEG", quality=85, optimize=True)
             b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            generated_images.append(f"data:image/jpeg;base64,{b64}")
+            generated_images.append({
+                "url": f"data:image/jpeg;base64,{b64}",
+                "label": "🎨 Studio Package Mockup"
+            })
         except Exception as e:
             print("Fallback canvas generation error:", e)
 

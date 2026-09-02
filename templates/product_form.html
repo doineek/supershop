@@ -461,9 +461,9 @@ async function triggerAiGenerate() {
   const brandSelect = document.querySelector('select[name="brand_id"]');
   const brandName = brandSelect && brandSelect.selectedIndex >= 0 ? brandSelect.options[brandSelect.selectedIndex].text : '';
   
-  const packagingType = document.getElementById('aiPackagingSelect').value;
-  const style = document.getElementById('aiStyleSelect').value;
-  const aspect = document.getElementById('aiAspectSelect').value;
+  const packagingType = document.getElementById('aiPackagingSelect')?.value || 'auto';
+  const style = document.getElementById('aiStyleSelect')?.value || 'flux';
+  const aspect = document.getElementById('aiAspectSelect')?.value || '1:1';
 
   const btn = document.getElementById('aiGenSubmitBtn');
   const spinner = document.getElementById('aiGenLoading');
