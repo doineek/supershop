@@ -1795,17 +1795,24 @@ def api_ai_generate_combo_image():
     package_name = (data.get("package_name") or "Grocery Combo Deal").strip()
     package_price = float(data.get("package_price") or 0.0)
     items_list = data.get("items", [])
-    raw_images = data.get("item_images", [])
+    raw_images = list(data.get("item_images", []))
     product_ids = data.get("product_ids", [])
-    
-    # If raw_images is empty but product_ids are given, fetch product images from DB
-    if not raw_images and product_ids:
+
+    # Always fetch images from DB using product_ids (most reliable source)
+    # This ensures base64 data URIs and all image types are correctly retrieved
+    if product_ids:
         try:
             conn = get_connection()
             placeholders = ",".join("?" for _ in product_ids)
-            p_rows = conn.execute(f"SELECT id, image_url, name FROM products WHERE id IN ({placeholders})", [int(pid) for pid in product_ids]).fetchall()
+            p_rows = conn.execute(
+                f"SELECT id, image_url, name FROM products WHERE id IN ({placeholders})",
+                [int(pid) for pid in product_ids]
+            ).fetchall()
             conn.close()
-            raw_images = [r["image_url"] for r in p_rows if r["image_url"]]
+            # Use DB images as primary source (they're the most complete/correct)
+            db_images = [r["image_url"] for r in p_rows if r["image_url"]]
+            if db_images:
+                raw_images = db_images  # DB images override JS-sent images
         except Exception as e:
             print("Error fetching product images for combo:", e)
 
