@@ -1273,6 +1273,61 @@ def detect_packaging_type(name, cat=""):
         return "authentic commercial supermarket retail product packaging mockup with clear brand typography"
 
 
+def overlay_product_label(img, product_name, brand_name="", category=""):
+    try:
+        import re
+        from PIL import Image, ImageDraw, ImageFont
+        img = img.convert("RGBA")
+        w, h = img.size
+        
+        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        
+        weight_match = re.search(r'(\d+(?:\.\d+)?\s*(?:kg|g|gm|ltr|litre|l|ml|pcs|pack|packet|টি|কেজি|গ্রাম|লিটার))', product_name, re.IGNORECASE)
+        weight_str = weight_match.group(1).upper() if weight_match else ""
+
+        # 1. Top Ribbon / Brand Pill
+        pill_w, pill_h = int(w * 0.82), int(h * 0.15)
+        pill_x0 = (w - pill_w) // 2
+        pill_y0 = int(h * 0.04)
+        pill_x1 = pill_x0 + pill_w
+        pill_y1 = pill_y0 + pill_h
+
+        draw.rounded_rectangle([pill_x0 + 3, pill_y0 + 3, pill_x1 + 3, pill_y1 + 3], radius=16, fill=(0, 0, 0, 70))
+        draw.rounded_rectangle([pill_x0, pill_y0, pill_x1, pill_y1], radius=16, fill=(15, 23, 42, 235), outline=(255, 255, 255, 220), width=2)
+        
+        draw.text((w // 2, pill_y0 + pill_h // 2 - (8 if brand_name else 0)), product_name[:34], fill=(255, 255, 255, 255), anchor="mm")
+        if brand_name:
+            draw.text((w // 2, pill_y0 + pill_h - 12), f"★ {brand_name.upper()} • PREMIUM QUALITY ★", fill=(253, 224, 71, 240), anchor="mm")
+
+        # 2. Weight Badge in Bottom Right
+        if weight_str:
+            bw, bh = int(w * 0.30), int(h * 0.08)
+            bx0 = w - bw - int(w * 0.05)
+            by0 = h - bh - int(h * 0.05)
+            bx1 = bx0 + bw
+            by1 = by0 + bh
+            
+            draw.rounded_rectangle([bx0 + 2, by0 + 2, bx1 + 2, by1 + 2], radius=10, fill=(0, 0, 0, 60))
+            draw.rounded_rectangle([bx0, by0, bx1, by1], radius=10, fill=(22, 163, 74, 240), outline=(255, 255, 255, 210), width=2)
+            draw.text(((bx0 + bx1) // 2, (by0 + by1) // 2), f"NET {weight_str}", fill=(255, 255, 255, 255), anchor="mm")
+
+        # 3. 100% Quality Guaranteed Badge Bottom Left
+        qw, qh = int(w * 0.36), int(h * 0.07)
+        qx0 = int(w * 0.05)
+        qy0 = h - qh - int(h * 0.05)
+        qx1 = qx0 + qw
+        qy1 = qy0 + qh
+        draw.rounded_rectangle([qx0 + 2, qy0 + 2, qx1 + 2, qy1 + 2], radius=10, fill=(0, 0, 0, 60))
+        draw.rounded_rectangle([qx0, qy0, qx1, qy1], radius=10, fill=(79, 70, 229, 235), outline=(255, 255, 255, 210), width=2)
+        draw.text(((qx0 + qx1) // 2, (qy0 + qy1) // 2), "✓ 100% ORIGINAL", fill=(255, 255, 255, 255), anchor="mm")
+
+        return Image.alpha_composite(img, overlay).convert("RGB")
+    except Exception as e:
+        print("Overlay Error:", e)
+        return img.convert("RGB")
+
+
 @app.route("/api/ai/generate_product_image", methods=["POST"])
 @login_required
 @admin_required
@@ -1294,6 +1349,7 @@ def api_ai_generate_product_image():
     import base64
     from PIL import Image, ImageDraw
 
+    raw_images = []
     generated_images = []
 
     # 1. Dimension calculation
@@ -1340,7 +1396,7 @@ def api_ai_generate_product_image():
     # 4. Fetch from AI Generator using Flux Realism
     seeds = [42, 108]
     for s in seeds:
-        if len(generated_images) >= 2:
+        if len(raw_images) >= 2:
             break
         ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=flux&seed={s}&nologo=true"
         try:
@@ -1353,17 +1409,33 @@ def api_ai_generate_product_image():
                 if len(img_data) > 1000:
                     img = Image.open(io.BytesIO(img_data)).convert("RGB")
                     img.thumbnail((width, height), Image.Resampling.LANCZOS)
-                    buf = io.BytesIO()
-                    img.save(buf, format="JPEG", quality=88, optimize=True)
-                    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-                    generated_images.append(f"data:image/jpeg;base64,{b64}")
+                    raw_images.append(img)
         except Exception as e:
             print("AI Image Generation Error:", e)
 
-    # 5. Fallback stylish studio canvas if online AI did not return enough images
+    # If raw images fetched, produce both labeled version and clean version
+    for img in raw_images:
+        # 1. Overlay Labeled Version (guarantees crystal-clear product name & weight)
+        labeled_img = overlay_product_label(img, product_name, brand_name, category_name)
+        buf1 = io.BytesIO()
+        labeled_img.save(buf1, format="JPEG", quality=88, optimize=True)
+        b64_1 = base64.b64encode(buf1.getvalue()).decode("utf-8")
+        generated_images.append({
+            "url": f"data:image/jpeg;base64,{b64_1}",
+            "label": "🏷️ With Clear Name & Weight Banner (প্যাকেটে নাম ও ওজনের স্পষ্ট ব্যানার সহ)"
+        })
 
-    # 4. Fallback stylish studio canvas if online AI did not return enough images
-    if len(generated_images) < 2:
+        # 2. Clean AI Photo Version
+        buf2 = io.BytesIO()
+        img.save(buf2, format="JPEG", quality=88, optimize=True)
+        b64_2 = base64.b64encode(buf2.getvalue()).decode("utf-8")
+        generated_images.append({
+            "url": f"data:image/jpeg;base64,{b64_2}",
+            "label": "📸 Clean Package Photo (আসল প্যাকেজ ফটো)"
+        })
+
+    # 5. Fallback stylish studio canvas if online AI did not return enough images
+    if len(generated_images) == 0:
         try:
             canvas = Image.new("RGB", (width, height), color=(248, 250, 252))
             draw = ImageDraw.Draw(canvas)
