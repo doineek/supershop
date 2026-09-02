@@ -62,7 +62,9 @@
       {% for order in orders %}
       <tr id="orderRow_{{ order.id }}" style="border-bottom: 1px solid #f1f5f9; background: {% if order.order_status == 'new' %}#f0f9ff{% else %}white{% endif %};">
         <td style="padding: 14px 16px; vertical-align: top;">
-          <strong style="font-family: 'IBM Plex Mono', monospace; color: #1e293b;">{{ order.order_number }}</strong>
+          <a href="{{ url_for('online_order_invoice', order_id=order.id) }}" target="_blank" style="font-family: 'IBM Plex Mono', monospace; font-weight: 800; color: #2563eb; text-decoration: none;" title="Click to view full invoice">
+            📄 {{ order.order_number }} ↗
+          </a>
           <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">{{ order.created_at[:16].replace('T', ' ') }}</div>
         </td>
         
@@ -78,7 +80,18 @@
         <td style="padding: 14px 16px; vertical-align: top;">
           <ul style="margin: 0; padding-left: 16px; font-size: 0.88rem; color: #334155;">
             {% for item in order.order_items %}
-            <li><strong>{{ item.product_name }}</strong> × {{ item.quantity }} (TK {{ "%.2f"|format(item.total_price) }})</li>
+            <li style="margin-bottom: 4px;">
+              {% if item.product_name.startswith('📦') %}
+              <a href="{{ url_for('packages_page') }}" target="_blank" style="color: #15803d; font-weight: 700; text-decoration: none;" title="View Package Details">
+                {{ item.product_name }} ↗
+              </a>
+              {% else %}
+              <a href="{{ url_for('products') }}?search={{ item.product_name }}" target="_blank" style="color: #0f172a; font-weight: 700; text-decoration: none;" title="View Product in Inventory">
+                {{ item.product_name }} ↗
+              </a>
+              {% endif %}
+              × {{ item.quantity }} (TK {{ "%.2f"|format(item.total_price) }})
+            </li>
             {% endfor %}
           </ul>
           <div style="margin-top: 6px; font-weight: 700; color: #0f172a;">

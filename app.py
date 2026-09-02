@@ -5108,53 +5108,45 @@ def api_place_order():
         p_name_raw = (item.get("product_name") or item.get("name") or item.get("title") or "").strip()
         p_sku_raw = (item.get("sku") or "").strip()
 
-        # Check if item is a Combo Package first
+        # Accurately determine if item is a Combo Package
+        is_pkg_item = bool(
+            item.get("is_pkg") or
+            item.get("is_package") or
+            str(prod_id or "").upper().startswith("PKG_") or
+            str(item.get("id", "")).upper().startswith("PKG_") or
+            p_name_raw.startswith("📦")
+        )
+
         pkg = None
-        if prod_id is not None:
-            try:
-                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (int(prod_id),)).fetchone()
-            except Exception:
-                pass
-        
-        if not pkg and p_name_raw:
-            clean_pname = p_name_raw.replace("📦", "").strip()
-            pkg = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0", (clean_pname, clean_pname, clean_pname)).fetchone()
+        if is_pkg_item:
+            raw_pkg_id = str(item.get("raw_id") or prod_id or "").upper().replace("PKG_", "").strip()
+            if raw_pkg_id.isdigit():
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (int(raw_pkg_id),)).fetchone()
+            if not pkg and p_name_raw:
+                clean_pname = p_name_raw.replace("📦", "").strip()
+                pkg = conn.execute("SELECT * FROM packages WHERE name = ?", (clean_pname,)).fetchone()
 
         if pkg:
             p_id = pkg["id"]
             unit_price = float(pkg["package_price"])
             mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
-
-            p_items = conn.execute("""
-                SELECT pi.*, p.sku, p.name AS product_name, p.sell_price, p.mrp
-                FROM package_items pi JOIN products p ON pi.product_id = p.id
-                WHERE pi.package_id = ?
-            """, (pkg["id"],)).fetchall()
-
-            item_details = []
-            sl = 1
-            for pi in p_items:
-                item_details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
-                sl += 1
-
-            if item_details:
-                p_name = f"{pkg['name']} ({', '.join(item_details)})"
-            else:
-                p_name = f"{pkg['name']}"
-
+            p_name = f"📦 {pkg['name']}"
             offer_type = ""
             offer_value = ""
             offer_title = ""
+            is_package = True
         else:
+            is_package = False
             prod = None
-            if prod_id is not None:
+            if prod_id is not None and not str(prod_id).upper().startswith("PKG_"):
                 try:
                     prod = conn.execute("SELECT * FROM products WHERE id = ?", (int(prod_id),)).fetchone()
                 except Exception:
-                    prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
-            
+                    prod = conn.execute("SELECT * FROM products WHERE id = ?", (str(prod_id),)).fetchone()
+
             if not prod and p_name_raw:
-                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
+                clean_name = p_name_raw.replace("📦", "").strip()
+                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (clean_name,)).fetchone()
 
             if prod:
                 p_id = prod["id"]
@@ -5193,7 +5185,8 @@ def api_place_order():
             "mrp_price": mrp_price,
             "quantity": actual_qty,
             "paid_qty": paid_qty,
-            "total_price": line_total
+            "total_price": line_total,
+            "is_package": is_package
         })
 
     if not processed_items:
@@ -5252,23 +5245,41 @@ def api_place_order():
     # 3. Insert into online_order_items
     for item in processed_items:
         raw_pid = item["product_id"]
-        valid_pid = raw_pid
-        chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-        if not chk_p:
+        is_pkg = item.get("is_package", False)
+
+        if is_pkg:
             first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
             valid_pid = first_p["id"] if first_p else 1
+            cur.execute("""
+                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
 
-        cur.execute("""
-            INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
+            # Deduct stock for each item in package
+            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (raw_pid,)).fetchall()
+            for pi in p_items:
+                deduct_qty = pi["quantity"] * item["quantity"]
+                cur.execute("UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (deduct_qty, pi["product_id"]))
+                remote_control.push_product_to_cloud(pi["product_id"])
+        else:
+            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+            if not chk_p:
+                first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+                valid_pid = first_p["id"] if first_p else 1
+            else:
+                valid_pid = raw_pid
 
-        if chk_p:
-            cur.execute(
-                "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
-                (item["quantity"], valid_pid)
-            )
-            remote_control.push_product_to_cloud(valid_pid)
+            cur.execute("""
+                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
+
+            if chk_p:
+                cur.execute(
+                    "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                    (item["quantity"], valid_pid)
+                )
+                remote_control.push_product_to_cloud(valid_pid)
 
     cur.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
 
@@ -5296,23 +5307,24 @@ def api_place_order():
     ))
     sale_id = cur.lastrowid
 
+    first_prod_row = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
+    fallback_pid = first_prod_row["id"] if first_prod_row else 1
+
     for item in processed_items:
         raw_pid = item["product_id"]
-        chk_prod = cur.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-        if not chk_prod:
-            first_prod = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
-            valid_pid = first_prod["id"] if first_prod else None
+        is_pkg = item.get("is_package", False)
+        if is_pkg:
+            valid_pid = fallback_pid
         else:
-            valid_pid = raw_pid
+            chk_prod = cur.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+            valid_pid = chk_prod["id"] if chk_prod else fallback_pid
 
-        if valid_pid:
-            cur.execute("""
-                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
-            """, (
-                sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
-            ))
-
+        cur.execute("""
+            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+            VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+        """, (
+            sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
+        ))
 
     conn.commit()
     conn.close()
