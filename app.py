@@ -905,33 +905,107 @@ def delete_product(product_id):
     return redirect(url_for("products"))
 
 
-@app.route("/products/<int:product_id>/restock", methods=["GET"])
+@app.route("/products/<int:product_id>/restock", methods=["GET", "POST"])
 @login_required
 @admin_required
 def restock_product(product_id):
     conn = get_connection()
+    orig = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if not orig:
+        conn.close()
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
+    if request.method == "POST":
+        sku_clean = orig["sku"]
+        name = request.form.get("name", orig["name"]).strip()
+        brand = request.form.get("brand", orig["brand"] or "").strip()
+        unit = request.form.get("unit", orig["unit"] or "").strip()
+        description = request.form.get("description", orig["description"] or "").strip()
+
+        try:
+            added_qty = int(request.form.get("stock_qty") or 0)
+        except ValueError:
+            added_qty = 0
+
+        try:
+            new_sl = int(request.form.get("sl_number") or ((orig.get("sl_number") or 1) + 1))
+        except ValueError:
+            new_sl = (orig.get("sl_number") or 1) + 1
+
+        cost_price = float(request.form.get("cost_price") or orig["cost_price"])
+        mrp = float(request.form.get("mrp") or orig["mrp"])
+        sell_price = float(request.form.get("sell_price") or orig["sell_price"])
+        vat_pct = float(request.form.get("vat_pct") or orig["vat_pct"])
+        low_stock_threshold = int(request.form.get("low_stock_threshold") or orig["low_stock_threshold"] or 5)
+        expiry_date = request.form.get("expiry_date", orig["expiry_date"] or "").strip()
+
+        # Handle image upload if provided
+        image_url = request.form.get("image_url", orig["image_url"] or "").strip()
+        uploaded_files = request.files.getlist("image_file")
+        uploaded_urls = []
+        for file in uploaded_files:
+            if file and file.filename != "":
+                filename = secure_filename(f"{sku_clean}_{int(datetime.now().timestamp())}_{file.filename}")
+                file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                file.save(file_path)
+                data_uri = process_uploaded_image_file(file_path)
+                uploaded_urls.append(data_uri)
+        if uploaded_urls:
+            image_url = ", ".join(uploaded_urls) + (f", {image_url}" if image_url else "")
+
+        new_total_stock = orig["stock_qty"] + added_qty
+
+        conn.execute("""
+            UPDATE products SET name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                                 cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                                 sl_number=?, description=?, image_url=?, expiry_date=?
+            WHERE id=?
+        """, (
+            name, brand, unit,
+            request.form.get("category_id") or orig["category_id"],
+            request.form.get("sub_category_id") or orig["sub_category_id"],
+            request.form.get("sub_sub_category_id") or orig["sub_sub_category_id"],
+            cost_price, mrp, sell_price, vat_pct,
+            new_total_stock, low_stock_threshold,
+            new_sl, description, image_url, expiry_date,
+            product_id
+        ))
+        conn.commit()
+
+        # Generate barcode tags for the newly added restock quantity
+        if added_qty > 0:
+            create_product_units(conn, product_id, added_qty)
+
+        conn.close()
+
+        # Push update to Firebase Firestore
+        remote_control.push_product_to_cloud(product_id)
+
+        flash(f"Product '{name}' successfully restocked with {added_qty} unit(s) (SL: {new_sl}). Total stock is now {new_total_stock}!", "success")
+        return redirect(url_for("products"))
+
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
-    orig = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
     conn.close()
 
-    if not orig:
-        flash("Product not found.", "error")
-        return redirect(url_for("products"))
-
-    # Convert to dict and increment SL Number by 1
     p_dict = dict(orig)
     new_sl = (p_dict.get("sl_number") or 1) + 1
-    p_dict["id"] = None
     p_dict["sl_number"] = new_sl
-    # Keep original SKU intact as requested by user
-    p_dict["sku"] = orig["sku"]
-    p_dict["stock_qty"] = 10
+    p_dict["stock_qty"] = 10  # default suggested restock qty to add
 
-    flash(f"Restocking product: SL Number incremented to {new_sl}. You can modify price/stock/expiry and save.", "info")
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=p_dict)
+    flash(f"Restocking product: SL Number incremented to {new_sl}. You can modify price/stock/expiry and click Save Product.", "info")
+    return render_template(
+        "product_form.html",
+        categories=categories,
+        sub_categories=sub_categories,
+        sub_sub_categories=sub_sub_categories,
+        brands=brands,
+        product=p_dict,
+        form_title=f"📦 Restock Product: {orig['name']} (SL: {new_sl})"
+    )
 
 
 @app.route("/products/<int:product_id>/return", methods=["POST"])
@@ -1693,6 +1767,52 @@ def pos_lookup():
     exclude = [s for s in request.args.get("exclude", "").split(",") if s]
 
     conn = get_connection()
+
+    # Check if code matches a Combo Package ID or Name
+    pkg_code_id = None
+    if code.lower().startswith("pkg_") or code.lower().startswith("pkg-") or code.lower().startswith("combo-"):
+        try:
+            pkg_code_id = int(re.sub(r"\D", "", code))
+        except Exception:
+            pkg_code_id = None
+
+    pkg_match = None
+    if pkg_code_id:
+        pkg_match = conn.execute("SELECT * FROM packages WHERE id = ? AND is_active = 1", (pkg_code_id,)).fetchone()
+    if not pkg_match:
+        pkg_match = conn.execute("SELECT * FROM packages WHERE LOWER(name) = LOWER(?) AND is_active = 1", (code,)).fetchone()
+
+    if pkg_match:
+        p_items = conn.execute("""
+            SELECT pi.*, p.name as prod_name, p.stock_qty, p.sell_price, p.sku
+            FROM package_items pi JOIN products p ON pi.product_id = p.id
+            WHERE pi.package_id = ?
+        """, (pkg_match["id"],)).fetchall()
+
+        min_avail_pkg = 999
+        for pi in p_items:
+            avail = pi["stock_qty"] // pi["quantity"] if pi["quantity"] > 0 else 0
+            if avail < min_avail_pkg:
+                min_avail_pkg = avail
+
+        conn.close()
+        return jsonify({
+            "id": f"pkg_{pkg_match['id']}",
+            "package_id": pkg_match["id"],
+            "is_package": True,
+            "name": f"📦 {pkg_match['name']}",
+            "sku": "COMBO",
+            "price": float(pkg_match["package_price"]),
+            "mrp": float(pkg_match["package_price"]),
+            "vat_pct": 0,
+            "stock_qty": max(0, min_avail_pkg),
+            "is_offer": 0,
+            "offer_type": "",
+            "offer_value": "",
+            "offer_title": "",
+            "unit_serial": None,
+        })
+
     product = None
     specific_unit_serial = None
 
@@ -1766,8 +1886,28 @@ def pos():
         WHERE stock_qty > 0 AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date > ?)
         ORDER BY name
     """, (today_date,)).fetchall()
+
+    raw_pkgs = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
+    packages = []
+    for pkg in raw_pkgs:
+        p_dict = dict(pkg)
+        items = conn.execute("""
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.stock_qty
+            FROM package_items pi JOIN products p ON pi.product_id = p.id
+            WHERE pi.package_id = ?
+        """, (pkg["id"],)).fetchall()
+        p_dict["included_items"] = [dict(i) for i in items]
+
+        min_stock = 999
+        for it in items:
+            avail = it["stock_qty"] // it["quantity"] if it["quantity"] > 0 else 0
+            if avail < min_stock:
+                min_stock = avail
+        p_dict["combo_stock"] = max(0, min_stock)
+        packages.append(p_dict)
+
     conn.close()
-    return render_template("pos.html", products=all_products)
+    return render_template("pos.html", products=all_products, packages=packages)
 
 
 @app.route("/pos/checkout", methods=["POST"])
@@ -1795,61 +1935,97 @@ def checkout():
     line_details = []
 
     for item in items:
-        product = cur.execute("SELECT * FROM products WHERE id = ?", (item["product_id"],)).fetchone()
-        if not product:
-            conn.close()
-            return jsonify({"error": "A product in the cart no longer exists."}), 400
-        quantity = int(item["quantity"])
-        if product["stock_qty"] < quantity:
-            conn.close()
-            return jsonify({"error": f'Not enough stock for "{product["name"]}".'}), 400
-
-        # Serials the cashier actually scanned off a physical tag for this
-        # line (may be fewer than quantity if some units were added by
-        # clicking the product tile instead of scanning).
-        scanned_serials = [s for s in (item.get("serials") or []) if s]
-        valid_serials = []
-        for serial in scanned_serials:
-            unit_row = cur.execute(
-                "SELECT id FROM product_units WHERE a_code = ? AND product_id = ? AND status = 'in_stock'",
-                (serial, product["id"])
-            ).fetchone()
-            if not unit_row:
+        is_pkg = item.get("is_package") or str(item.get("product_id", "")).startswith("pkg_") or item.get("package_id")
+        if is_pkg:
+            pkg_id = int(str(item.get("package_id") or item.get("product_id")).replace("pkg_", ""))
+            pkg = cur.execute("SELECT * FROM packages WHERE id = ?", (pkg_id,)).fetchone()
+            if not pkg:
                 conn.close()
-                return jsonify({
-                    "error": f'Scanned serial "{serial}" for "{product["name"]}" is no longer available. Please rescan or remove it from the cart.'
-                }), 400
-            valid_serials.append((serial, unit_row["id"]))
+                return jsonify({"error": "A combo package in the cart no longer exists."}), 400
+            quantity = int(item["quantity"])
+            pkg_items = cur.execute("""
+                SELECT pi.*, p.name as prod_name, p.stock_qty, p.cost_price, p.sell_price, p.mrp
+                FROM package_items pi 
+                JOIN products p ON pi.product_id = p.id 
+                WHERE pi.package_id = ?
+            """, (pkg_id,)).fetchall()
 
-        offer_type = product["offer_type"] or ""
-        offer_value = product["offer_value"] or ""
-        offer_title = product["offer_title"] or ""
-        paid_qty = quantity
-        if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in offer_value.lower()):
-            buy_qty, free_qty = parse_bogo_quantities(offer_value, offer_title, product["name"])
-            total_set = buy_qty + free_qty
-            sets = quantity // total_set
-            remainder = quantity % total_set
-            paid_qty = (sets * buy_qty) + min(remainder, buy_qty)
+            for pi in pkg_items:
+                req_qty = quantity * pi["quantity"]
+                if pi["stock_qty"] < req_qty:
+                    conn.close()
+                    return jsonify({"error": f'Not enough stock for "{pi["prod_name"]}" in combo package ({pi["stock_qty"]} available, {req_qty} needed).'}), 400
 
-        line_subtotal = product["sell_price"] * paid_qty
-        vat_rate = product["vat_pct"] / 100.0 if product["vat_pct"] else 0
-        line_vat = line_subtotal * vat_rate
+            pkg_price = float(pkg["package_price"])
+            line_subtotal = pkg_price * quantity
+            sub_total += line_subtotal
+            mrp_total += line_subtotal
+            line_details.append({
+                "is_package": True,
+                "package_id": pkg_id,
+                "package_name": pkg["name"],
+                "quantity": quantity,
+                "unit_price": pkg_price,
+                "mrp_price": pkg_price,
+                "vat_pct": 0,
+                "line_vat": 0,
+                "cost_price": sum([float(pi["cost_price"] or 0) * pi["quantity"] for pi in pkg_items]),
+                "pkg_items": [dict(pi) for pi in pkg_items]
+            })
+        else:
+            product = cur.execute("SELECT * FROM products WHERE id = ?", (item["product_id"],)).fetchone()
+            if not product:
+                conn.close()
+                return jsonify({"error": "A product in the cart no longer exists."}), 400
+            quantity = int(item["quantity"])
+            if product["stock_qty"] < quantity:
+                conn.close()
+                return jsonify({"error": f'Not enough stock for "{product["name"]}".'}), 400
 
-        sub_total += line_subtotal
-        total_vat += line_vat
-        mrp_for_line = product["mrp"] if product["mrp"] > 0 else product["sell_price"]
-        mrp_total += mrp_for_line * quantity
-        line_details.append((
-            product["id"],
-            quantity,
-            product["sell_price"],
-            mrp_for_line,
-            product["vat_pct"],
-            line_vat,
-            product["cost_price"],
-            valid_serials
-        ))
+            scanned_serials = [s for s in (item.get("serials") or []) if s]
+            valid_serials = []
+            for serial in scanned_serials:
+                unit_row = cur.execute(
+                    "SELECT id FROM product_units WHERE a_code = ? AND product_id = ? AND status = 'in_stock'",
+                    (serial, product["id"])
+                ).fetchone()
+                if not unit_row:
+                    conn.close()
+                    return jsonify({
+                        "error": f'Scanned serial "{serial}" for "{product["name"]}" is no longer available. Please rescan or remove it from the cart.'
+                    }), 400
+                valid_serials.append((serial, unit_row["id"]))
+
+            offer_type = product["offer_type"] or ""
+            offer_value = product["offer_value"] or ""
+            offer_title = product["offer_title"] or ""
+            paid_qty = quantity
+            if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in offer_value.lower()):
+                buy_qty, free_qty = parse_bogo_quantities(offer_value, offer_title, product["name"])
+                total_set = buy_qty + free_qty
+                sets = quantity // total_set
+                remainder = quantity % total_set
+                paid_qty = (sets * buy_qty) + min(remainder, buy_qty)
+
+            line_subtotal = product["sell_price"] * paid_qty
+            vat_rate = product["vat_pct"] / 100.0 if product["vat_pct"] else 0
+            line_vat = line_subtotal * vat_rate
+
+            sub_total += line_subtotal
+            total_vat += line_vat
+            mrp_for_line = product["mrp"] if product["mrp"] > 0 else product["sell_price"]
+            mrp_total += mrp_for_line * quantity
+            line_details.append({
+                "is_package": False,
+                "product_id": product["id"],
+                "quantity": quantity,
+                "unit_price": product["sell_price"],
+                "mrp_price": mrp_for_line,
+                "vat_pct": product["vat_pct"],
+                "line_vat": line_vat,
+                "cost_price": product["cost_price"],
+                "valid_serials": valid_serials
+            })
 
     grand_total = sub_total + total_vat
     rounded_total = round_to_whole(grand_total)
@@ -1893,37 +2069,62 @@ def checkout():
     ))
     sale_id = cur.lastrowid
 
-    for product_id, quantity, unit_price, mrp_price, vat_pct, line_vat, cost_price, valid_serials in line_details:
-        sold_serials = []
+    for ld in line_details:
+        if ld.get("is_package"):
+            pkg_name = ld["package_name"]
+            quantity = ld["quantity"]
+            unit_price = ld["unit_price"]
+            for pi in ld["pkg_items"]:
+                req_qty = quantity * pi["quantity"]
+                cur.execute("UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?", (req_qty, pi["product_id"]))
+                auto_units = cur.execute("""
+                    SELECT id FROM product_units
+                    WHERE product_id = ? AND status = 'in_stock'
+                    LIMIT ?
+                """, (pi["product_id"], req_qty)).fetchall()
+                for u in auto_units:
+                    cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (u["id"],))
 
-        # 1) Mark the units the cashier actually scanned as sold.
-        for serial, unit_id in valid_serials:
-            cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (unit_id,))
-            sold_serials.append(serial)
+            pkg_fk_pid = ld["pkg_items"][0]["product_id"] if ld["pkg_items"] else None
+            if not pkg_fk_pid:
+                first_p = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
+                pkg_fk_pid = first_p["id"] if first_p else 1
 
-        # 2) Auto-fill any remaining quantity (added without scanning a tag)
-        #    from whatever units are still in stock.
-        remaining = quantity - len(valid_serials)
-        if remaining > 0:
-            auto_units = cur.execute("""
-                SELECT id, a_code FROM product_units
-                WHERE product_id = ? AND status = 'in_stock'
-                LIMIT ?
-            """, (product_id, remaining)).fetchall()
-            for u in auto_units:
-                cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (u["id"],))
-                sold_serials.append(u["a_code"])
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
+                VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
+            """, (sale_id, pkg_fk_pid, quantity, unit_price, unit_price, ld["cost_price"], f"📦 {pkg_name}"))
+        else:
+            product_id = ld["product_id"]
+            quantity = ld["quantity"]
+            valid_serials = ld["valid_serials"]
+            sold_serials = []
 
-        unit_serials_str = ", ".join(sold_serials)
+            for serial, unit_id in valid_serials:
+                cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (unit_id,))
+                sold_serials.append(serial)
 
-        cur.execute(
-            "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, line_vat, cost_price, unit_serials_str)
-        )
-        cur.execute(
-            "UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?",
-            (quantity, product_id)
-        )
+            remaining = quantity - len(valid_serials)
+            if remaining > 0:
+                auto_units = cur.execute("""
+                    SELECT id, a_code FROM product_units
+                    WHERE product_id = ? AND status = 'in_stock'
+                    LIMIT ?
+                """, (product_id, remaining)).fetchall()
+                for u in auto_units:
+                    cur.execute("UPDATE product_units SET status = 'sold' WHERE id = ?", (u["id"],))
+                    sold_serials.append(u["a_code"])
+
+            unit_serials_str = ", ".join(sold_serials)
+
+            cur.execute(
+                "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sale_id, product_id, quantity, ld["unit_price"], ld["mrp_price"], ld["vat_pct"], ld["line_vat"], ld["cost_price"], unit_serials_str)
+            )
+            cur.execute(
+                "UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?",
+                (quantity, product_id)
+            )
 
     conn.commit()
     conn.close()
@@ -1932,9 +2133,12 @@ def checkout():
     remote_control.push_sale_to_cloud(sale_id)
     if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
         remote_control.push_customer_user_to_cloud(customer_mobile)
-    for item in items:
-        if item.get("product_id"):
-            remote_control.push_product_to_cloud(item["product_id"])
+    for ld in line_details:
+        if ld.get("is_package"):
+            for pi in ld.get("pkg_items", []):
+                remote_control.push_product_to_cloud(pi["product_id"])
+        elif ld.get("product_id"):
+            remote_control.push_product_to_cloud(ld["product_id"])
 
 
     return jsonify({
@@ -2086,10 +2290,14 @@ def prepare_receipt_data(conn, sale_id):
             i_dict = dict(r)
             pid = i_dict["product_id"]
             
-            is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone()
+            is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone() if pid > 0 else None
             pkg = None
-            if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
-                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (pid,)).fetchone()
+            if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦") or (i_dict.get("unit_serials") or "").startswith("📦"):
+                pkg_cand_name = (i_dict.get("unit_serials") or "").replace("📦", "").strip()
+                if pkg_cand_name:
+                    pkg = conn.execute("SELECT * FROM packages WHERE LOWER(name) = LOWER(?)", (pkg_cand_name,)).fetchone()
+                if not pkg and pid > 0:
+                    pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (pid,)).fetchone()
 
             if pkg:
                 p_items = conn.execute("""
@@ -2103,6 +2311,12 @@ def prepare_receipt_data(conn, sale_id):
                     details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
                     sl += 1
                 i_dict["product_name"] = f"📦 {pkg['name']} ({', '.join(details)})"
+                i_dict["sku"] = "COMBO"
+                i_dict["offer_type"] = ""
+                i_dict["offer_title"] = ""
+                i_dict["offer_value"] = ""
+            elif (i_dict.get("unit_serials") or "").startswith("📦"):
+                i_dict["product_name"] = i_dict.get("unit_serials")
                 i_dict["sku"] = "COMBO"
                 i_dict["offer_type"] = ""
                 i_dict["offer_title"] = ""

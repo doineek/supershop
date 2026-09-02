@@ -118,15 +118,28 @@
             {% for pkg in packages %}
             <tr style="border-bottom:1px solid #f1f5f9; {% if not pkg.is_active %}background:#f8fafc; opacity:0.85;{% endif %}">
               <td style="padding:10px;">
-                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                  <span style="font-weight:bold; color:#0f172a;">📦 {{ pkg.name }}</span>
-                  {% if pkg.is_active %}
-                  <span style="background:#dcfce7; color:#15803d; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #bbf7d0;">Active</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  {% if pkg.image_url %}
+                  <div style="width:45px; height:45px; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; flex-shrink:0; background:#f8fafc; display:flex; align-items:center; justify-content:center;">
+                    <img src="{{ pkg.image_url }}" alt="{{ pkg.name }}" style="width:100%; height:100%; object-fit:contain;" onerror="this.src='/static/images/logo.png'">
+                  </div>
                   {% else %}
-                  <span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #fecaca;">Deactivated</span>
+                  <div style="width:45px; height:45px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:22px;">
+                    🎁
+                  </div>
                   {% endif %}
+                  <div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      <span style="font-weight:bold; color:#0f172a;">{{ pkg.name }}</span>
+                      {% if pkg.is_active %}
+                      <span style="background:#dcfce7; color:#15803d; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #bbf7d0;">Active</span>
+                      {% else %}
+                      <span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #fecaca;">Deactivated</span>
+                      {% endif %}
+                    </div>
+                    <div style="font-size:12px; color:#64748b; margin-top:2px;">{{ pkg.description }}</div>
+                  </div>
                 </div>
-                <div style="font-size:12px; color:#64748b; margin-top:2px;">{{ pkg.description }}</div>
               </td>
               <td style="padding:10px; font-size:12px;">
                 <ul style="margin:0; padding-left:16px;">

@@ -36,7 +36,43 @@ const checkoutBtn = document.getElementById("checkoutBtn");
 const customerIdInput = document.getElementById("customerIdInput");
 const customerMobileInput = document.getElementById("customerMobileInput");
 
-const allTiles = Array.from(productList.querySelectorAll(".pos-product"));
+const allTiles = Array.from(document.querySelectorAll(".pos-product"));
+
+function switchPosCatalog(tab) {
+  const prodList = document.getElementById("productList");
+  const pkgList = document.getElementById("packageList");
+  const tabProdBtn = document.getElementById("posTabProducts");
+  const tabPkgBtn = document.getElementById("posTabPackages");
+
+  if (tab === "packages") {
+    if (prodList) prodList.style.display = "none";
+    if (pkgList) pkgList.style.display = "grid";
+    if (tabProdBtn) {
+      tabProdBtn.style.background = "#f1f5f9";
+      tabProdBtn.style.color = "#475569";
+      tabProdBtn.style.borderColor = "#cbd5e1";
+    }
+    if (tabPkgBtn) {
+      tabPkgBtn.style.background = "#ea580c";
+      tabPkgBtn.style.color = "#ffffff";
+      tabPkgBtn.style.borderColor = "#ea580c";
+    }
+  } else {
+    if (prodList) prodList.style.display = "grid";
+    if (pkgList) pkgList.style.display = "none";
+    if (tabProdBtn) {
+      tabProdBtn.style.background = "#0284c7";
+      tabProdBtn.style.color = "#ffffff";
+      tabProdBtn.style.borderColor = "#0284c7";
+    }
+    if (tabPkgBtn) {
+      tabPkgBtn.style.background = "#fff7ed";
+      tabPkgBtn.style.color = "#ea580c";
+      tabPkgBtn.style.borderColor = "#ea580c";
+    }
+  }
+}
+window.switchPosCatalog = switchPosCatalog;
 
 const savedCustId = localStorage.getItem(CUSTOMER_ID_KEY);
 if (savedCustId) customerIdInput.value = savedCustId;
@@ -155,6 +191,7 @@ allTiles.forEach(btn => {
     mrp: parseFloat(btn.dataset.mrp) || 0,
     vat_pct: parseFloat(btn.dataset.vat) || 0,
     stock: parseInt(btn.dataset.stock, 10),
+    is_package: btn.dataset.isPkg === "true",
     offer_type: btn.dataset.offerType || "",
     offer_value: btn.dataset.offerValue || "",
     offer_title: btn.dataset.offerTitle || "",
@@ -216,10 +253,12 @@ function getBuyXGetYStats(item) {
 
 function addToCart(data) {
   const id = String(data.id);
+  const isPkg = data.is_package || data.isPkg || id.startsWith("pkg_");
   if (!cart[id]) {
     cart[id] = {
-      name: data.name, sku: data.sku || "", price: data.price, mrp: data.mrp || 0,
+      name: data.name, sku: data.sku || (isPkg ? "COMBO" : ""), price: data.price, mrp: data.mrp || 0,
       vat_pct: data.vat_pct || 0, stock: data.stock, quantity: 0, serials: [],
+      is_package: isPkg,
       offer_type: data.offer_type || "", offer_value: data.offer_value || "", offer_title: data.offer_title || ""
     };
   }
@@ -368,11 +407,17 @@ cardInput.addEventListener("input", updateChange);
 checkoutBtn.addEventListener("click", async () => {
   const items = Object.keys(cart)
     .filter(id => cart[id].quantity > 0)
-    .map(id => ({
-      product_id: parseInt(id, 10),
-      quantity: cart[id].quantity,
-      serials: cart[id].serials.filter(Boolean),
-    }));
+    .map(id => {
+      const isPkg = cart[id].is_package || String(id).startsWith("pkg_");
+      const cleanId = isPkg ? parseInt(String(id).replace("pkg_", ""), 10) : parseInt(id, 10);
+      return {
+        product_id: isPkg ? null : cleanId,
+        package_id: isPkg ? cleanId : null,
+        is_package: isPkg,
+        quantity: cart[id].quantity,
+        serials: cart[id].serials.filter(Boolean),
+      };
+    });
 
   if (items.length === 0) {
     alert("Add at least one product before charging the customer.");

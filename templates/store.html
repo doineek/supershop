@@ -1892,8 +1892,20 @@
       </div>
       <div class="packages-container">
         {% for pkg in packages %}
-        <div class="package-card">
-          <span class="pkg-badge">SUPER SAVER</span>
+        <div class="package-card" style="cursor:pointer;" onclick="openStorePackageDetails('{{ pkg.id }}')">
+          <span class="pkg-badge">🎁 SUPER SAVER</span>
+          
+          <div class="pkg-img-box" style="width:100%; height:140px; border-radius:10px; overflow:hidden; background:#f8fafc; border:1px solid #fed7aa; margin-bottom:10px; display:flex; align-items:center; justify-content:center;">
+            {% if pkg.image_url %}
+              <img src="{{ pkg.image_url }}" alt="{{ pkg.name }}" style="width:100%; height:100%; object-fit:contain; padding:4px;" onerror="this.onerror=null; this.src='/static/images/logo.png';">
+            {% else %}
+              <div style="text-align:center; padding:10px;">
+                <span style="font-size:38px;">🎁</span>
+                <div style="font-size:0.75rem; font-weight:700; color:#ea580c; margin-top:2px;">Special Combo Deal</div>
+              </div>
+            {% endif %}
+          </div>
+
           <div>
             <div class="pkg-title">{{ pkg.name }}</div>
             <div class="pkg-items-desc">
@@ -1902,13 +1914,13 @@
               {% endfor %}
             </div>
           </div>
-          <div class="pkg-footer">
+          <div class="pkg-footer" onclick="event.stopPropagation();">
             <div class="pkg-price">TK {{ "%.2f"|format(pkg.package_price) }}</div>
             <div style="display:flex; gap:6px;">
-              <button class="btn-add" style="padding:6px 10px;" onclick="addPackageCart('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+              <button class="btn-add" style="padding:6px 10px;" onclick="event.stopPropagation(); addPackageCart('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
                 + Add
               </button>
-              <button class="btn-buy-now" style="padding:6px 12px;" onclick="buyPackageNow('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+              <button class="btn-buy-now" style="padding:6px 12px;" onclick="event.stopPropagation(); buyPackageNow('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
                 Buy Now
               </button>
             </div>
@@ -2711,6 +2723,7 @@
 
     // Global Data passed from Backend
     const allProducts = {{ products|tojson }};
+    const allPackagesData = {{ packages|tojson }};
     const allDeliveryAreas = {{ delivery_areas|tojson }};
     const activePromotions = {{ promotions|tojson }};
     const DEFAULT_DELIVERY_CHARGE = parseFloat("{{ settings.delivery_charge|float if settings.delivery_charge else 60.0 }}");
@@ -4189,6 +4202,30 @@
         document.getElementById('packageDetailModal').style.display = 'none';
         openProductDetailModal(prod.id);
       }
+    }
+
+    function openStorePackageDetails(pkgId) {
+      const pkg = allPackagesData.find(p => p.id === parseInt(pkgId) || p.id === pkgId);
+      if (!pkg) return;
+      returnToOrderHistoryOnDetailClose = false;
+      openPackageDetailModal({
+        product_name: pkg.name,
+        package_name: pkg.name,
+        package_price: pkg.package_price,
+        unit_price: pkg.package_price,
+        package_image: pkg.image_url,
+        image_url: pkg.image_url,
+        is_package: true,
+        package_items: (pkg.included_items || []).map(it => ({
+          product_id: it.product_id,
+          prod_name: it.product_name,
+          item_qty: it.quantity,
+          sell_price: it.sell_price,
+          unit: it.unit || '',
+          sku: it.sku || '',
+          image_url: it.image_url || ''
+        }))
+      });
     }
 
     function closePackageDetailModal() {
