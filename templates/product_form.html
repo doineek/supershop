@@ -131,27 +131,21 @@
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; margin-top: 16px;">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
       <h3 style="margin:0; font-size: 1rem; color: #1e293b;">📱 E-Commerce App Customizations</h3>
-      
-      <!-- AI Image Generator Trigger Button -->
-      <button type="button" onclick="openAiImageModal()" style="background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899); color:#fff; border:none; padding:8px 16px; border-radius:8px; font-size:0.88rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(99,102,241,0.35); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-        <span>✨ AI Image Generator</span>
-        <span style="background:rgba(255,255,255,0.25); font-size:0.75rem; padding:2px 6px; border-radius:10px;">অটো ছবি তৈরি</span>
-      </button>
     </div>
     
     <!-- Multi-File Batch Select & Drag-and-Drop Dropzone -->
     <div style="margin-top:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
         <label style="font-weight:bold; color:#0f172a;">Upload Product Images (Batch Select / Drag and Drop / AI)</label>
-        <span style="font-size:0.80rem; color:#6366f1; font-weight:600; cursor:pointer;" onclick="openAiImageModal()">
-          ✨ ছবির প্রয়োজন? AI দিয়ে ১-ক্লিকে বানান ➔
+        <span style="font-size:0.82rem; color:#4f46e5; font-weight:700; cursor:pointer;" onclick="openAiImageModal()">
+          ✨ Need Product Images? Generate with AI Studio ➔
         </span>
       </div>
       
       <div id="dropZone" onclick="document.getElementById('multiFileInput').click()" style="border: 2px dashed #0284c7; background: #f0f9ff; padding: 22px; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s;">
         <div style="font-size: 2.2rem; color: #0284c7;">📁 📸</div>
         <div style="font-weight: bold; color: #0369a1; font-size: 1rem; margin-top: 4px;">Click or Drag Multiple Product Photos Here</div>
-        <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">(Hold Ctrl to select multiple photos, or use AI Generator)</div>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">(Hold Ctrl to select multiple photos, or use AI Studio)</div>
         <input type="file" id="multiFileInput" name="product_image_files" accept="image/*" multiple style="display:none;" onchange="handleFileSelect(this.files)">
       </div>
 
@@ -431,7 +425,7 @@ function openAiImageModal() {
   const prodName = nameInput ? nameInput.value.trim() : '';
 
   if (!prodName) {
-    alert('⚠️ অনুগ্রহ করে প্রথমে উপরে প্রোডাক্টের নাম (Product Name) লিখুন।');
+    alert('⚠️ Please enter the Product Name above first.');
     if (nameInput) {
       nameInput.focus();
       nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -843,17 +837,17 @@ function applyCustomStudioImage(asCover = true) {
       <!-- Packaging Shape & Aspect Controls -->
       <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:12px; margin-bottom:12px;">
         <div>
-          <label style="font-size:0.80rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📦 Packaging Shape / প্যাকেটের ধরন</label>
+          <label style="font-size:0.80rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📦 Packaging Shape</label>
           <select id="aiPackagingSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #4f46e5; font-size:0.86rem; font-weight:700; background:#f5f3ff; color:#4338ca;">
-            <option value="auto" selected>🤖 Smart Auto-Detect (স্বয়ংক্রিয় নিখুঁত প্যাকেজিং)</option>
-            <option value="rice_sack">🌾 Rice Sack / Pouch (চাল - ট্রান্সপারেন্ট অংশে চাল দেখা যাবে)</option>
-            <option value="dal_pouch">🥣 Dal / Lentil Pouch (ডাল - ট্রান্সপারেন্ট অংশে ডাল দেখা যাবে)</option>
-            <option value="pouch">🛍️ Sealed Foil Pouch (মসলা, চিপস, নুডলস, বিস্কুট প্যাকেট)</option>
-            <option value="bottle">🧴 Bottle / Canister (তেল, জুস, শ্যাম্পু বোতল)</option>
-            <option value="box">📦 Carton Box Pack (চা, সাবান, টুথপেস্ট বক্স)</option>
-            <option value="jar">🫙 Glass / Plastic Jar (ঘি, মধু, জ্যাম, আচার বয়াম)</option>
-            <option value="sack">🥡 Poly Bag / Sack (আটা, ময়দা, চিনির ব্যাগ)</option>
-            <option value="can">🥫 Tin Can / Cylinder (গুঁড়োদুধ, টিন ক্যান)</option>
+            <option value="auto" selected>🤖 Smart Auto-Detect Packaging</option>
+            <option value="rice_sack">🌾 Rice Sack / Transparent Bag</option>
+            <option value="dal_pouch">🥣 Dal / Lentil Transparent Pouch</option>
+            <option value="pouch">🛍️ Sealed Foil Pouch / Packet</option>
+            <option value="bottle">🧴 Bottle / Container (Oil, Juice, Shampoo)</option>
+            <option value="box">📦 Paperboard Carton Box (Tea, Soap, Paste)</option>
+            <option value="jar">🫙 Glass / Plastic Jar (Ghee, Honey, Jam)</option>
+            <option value="sack">🥡 Poly Bag / Heavy Sack (Flour, Sugar)</option>
+            <option value="can">🥫 Tin Can / Metal Cylinder (Milk Powder)</option>
           </select>
         </div>
 
@@ -875,7 +869,7 @@ function applyCustomStudioImage(asCover = true) {
       <!-- Loading State -->
       <div id="aiGenLoading" style="display:none; flex-direction:column; align-items:center; justify-content:center; padding:24px 10px;">
         <div style="width:36px; height:36px; border:4px solid #e0e7ff; border-top:4px solid #4f46e5; border-radius:50%; animation:spin 1s linear infinite;"></div>
-        <div style="font-weight:700; color:#4338ca; font-size:0.92rem; margin-top:10px;">AI ছবি তৈরি করছে... একটু অপেক্ষা করুন</div>
+        <div style="font-weight:700; color:#4338ca; font-size:0.92rem; margin-top:10px;">Generating realistic AI product photo... please wait</div>
       </div>
 
       <!-- Generated Base Options Grid -->
@@ -895,7 +889,7 @@ function applyCustomStudioImage(asCover = true) {
         <!-- Quick Web Image URL Direct Input -->
         <div style="display:flex; gap:6px; margin-top:10px; background:#f1f5f9; padding:8px 10px; border-radius:8px; align-items:center;">
           <span style="font-size:0.80rem; font-weight:700; color:#475569; white-space:nowrap;">🌐 Web Image:</span>
-          <input type="url" id="webImgDirectInput" placeholder="Paste image link from Google / Web (ইন্টারনেটের ছবির লিংক দিন)" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.82rem;">
+          <input type="url" id="webImgDirectInput" placeholder="Paste image link from Google / Web" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.82rem;">
           <button type="button" onclick="loadWebImageToStudio()" style="background:#0f172a; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:0.80rem; font-weight:700; cursor:pointer; white-space:nowrap;">
             📥 Load to Studio
           </button>
@@ -906,7 +900,7 @@ function applyCustomStudioImage(asCover = true) {
       <div id="aiTypographyStudioSection" style="display:none; margin-top:18px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:16px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
           <div style="font-weight:800; font-size:0.95rem; color:#1e293b; display:flex; align-items:center; gap:6px;">
-            <span>🎨 Live Text & Typography Customizer (লেখা, ফন্ট ও কালার সাজান)</span>
+            <span>🎨 Live Text & Typography Customizer</span>
           </div>
           <span style="font-size:0.75rem; color:#6366f1; font-weight:700; background:#eef2ff; padding:2px 8px; border-radius:10px;">
             ⚡ Real-time Live Preview
@@ -920,31 +914,30 @@ function applyCustomStudioImage(asCover = true) {
             
             <!-- Title Text Input -->
             <div style="margin-bottom:8px;">
-              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Product Title (প্রোডাক্টের নাম)</label>
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Product Title</label>
               <input type="text" id="studioTitleInput" oninput="redrawStudioCanvas()" placeholder="e.g. Nazirshail Rice 5kg" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:700; color:#0f172a;">
             </div>
 
             <!-- Brand / Subtitle Input -->
             <div style="margin-bottom:8px;">
-              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Brand / Subtitle (ব্র্যান্ড বা সাবটাইটেল)</label>
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Brand / Subtitle</label>
               <input type="text" id="studioBrandInput" oninput="redrawStudioCanvas()" placeholder="e.g. PRAN | PREMIUM QUALITY" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
             </div>
 
             <!-- Net Weight Input -->
             <div style="margin-bottom:10px;">
-              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Net Weight / Size (ওজন)</label>
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Net Weight / Size</label>
               <input type="text" id="studioWeightInput" oninput="redrawStudioCanvas()" placeholder="e.g. 5 KG / 1 LITRE" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
             </div>
 
-            <!-- Font Size & Font Family Row -->
             <!-- Layout Mode & Font Style Row -->
             <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:8px; margin-bottom:10px;">
               <div>
-                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Layout Mode / লেখার স্থান</label>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Layout Mode</label>
                 <select id="studioLayoutMode" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1.5px solid #4f46e5; font-size:0.80rem; font-weight:700; background:#f5f3ff; color:#4338ca;">
-                  <option value="outside_card" selected>🛍️ Text Outside Photo (ছবির বাইরে লেখা)</option>
-                  <option value="overlay_banner">✨ Floating Banner on Photo (ছবির উপর ব্যানার)</option>
-                  <option value="clean_photo_only">📸 Pure Clean Photo (শুধু ছবি)</option>
+                  <option value="outside_card" selected>🛍️ Text Outside Photo (Showcase Card)</option>
+                  <option value="overlay_banner">✨ Floating Banner on Photo</option>
+                  <option value="clean_photo_only">📸 Pure Clean Photo Only</option>
                 </select>
               </div>
 
@@ -995,8 +988,6 @@ function applyCustomStudioImage(asCover = true) {
                 🛡️ Show 100% Original Badge
               </label>
             </div>
-            </div>
-
           </div>
 
           <!-- Live Canvas Preview Column -->
@@ -1014,10 +1005,10 @@ function applyCustomStudioImage(asCover = true) {
         <!-- Custom Studio Action Buttons -->
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px; padding-top:12px; border-top:1px dashed #cbd5e1; flex-wrap:wrap;">
           <button type="button" onclick="applyCustomStudioImage(false)" style="padding:9px 16px; border-radius:8px; border:1px solid #6366f1; background:#eef2ff; color:#4f46e5; font-weight:700; cursor:pointer; font-size:0.86rem;">
-            ➕ Add to Gallery (গ্যালারিতে যোগ করুন)
+            ➕ Add to Gallery
           </button>
           <button type="button" onclick="applyCustomStudioImage(true)" style="padding:9px 20px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:800; cursor:pointer; box-shadow:0 3px 8px rgba(22,163,74,0.35); font-size:0.90rem;">
-            ⭐ Save & Set as Primary Cover (কভার ফটো হিসেবে সেভ করুন)
+            ⭐ Save & Set as Primary Cover
           </button>
         </div>
 
