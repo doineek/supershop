@@ -113,6 +113,8 @@ class CartProvider extends ChangeNotifier {
   String _selectedArea = 'Akur Takur Para';
   String _addressDetails = '';
   double _customDeliveryCharge = 60.0;
+  bool _freeDeliveryActive = false;
+  double _freeDeliveryMinAmount = 1000.0;
 
   CartProvider() {
     refreshDeliveryCharge();
@@ -123,8 +125,14 @@ class CartProvider extends ChangeNotifier {
     if (settings.containsKey("delivery_charge")) {
       double val = double.tryParse(settings["delivery_charge"].toString()) ?? 60.0;
       _customDeliveryCharge = val;
-      notifyListeners();
     }
+    if (settings.containsKey("free_delivery_active")) {
+      _freeDeliveryActive = settings["free_delivery_active"].toString() == "1" || settings["free_delivery_active"].toString() == "true";
+    }
+    if (settings.containsKey("free_delivery_min_amount")) {
+      _freeDeliveryMinAmount = double.tryParse(settings["free_delivery_min_amount"].toString()) ?? 1000.0;
+    }
+    notifyListeners();
   }
 
   List<CartItem> get items => _items;
@@ -137,7 +145,13 @@ class CartProvider extends ChangeNotifier {
   int get totalItemCount => _items.fold(0, (sum, i) => sum + i.quantity);
 
   double get subtotal => _items.fold(0.0, (sum, i) => sum + i.totalPrice);
-  double get deliveryCharge => _items.isEmpty ? 0.0 : _customDeliveryCharge;
+  
+  bool get isFreeDelivery => _freeDeliveryActive && subtotal >= _freeDeliveryMinAmount;
+  bool get freeDeliveryActive => _freeDeliveryActive;
+  double get freeDeliveryMinAmount => _freeDeliveryMinAmount;
+  double get baseDeliveryCharge => _items.isEmpty ? 0.0 : _customDeliveryCharge;
+  
+  double get deliveryCharge => _items.isEmpty ? 0.0 : (isFreeDelivery ? 0.0 : _customDeliveryCharge);
   double get grandTotal => subtotal + deliveryCharge;
 
   void setLocation(String country, String district, String area, {String details = ''}) {

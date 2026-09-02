@@ -753,17 +753,50 @@ class _CartScreenState extends State<CartScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(loc.translate('delivery_charge')),
-                      Text(
-                        _deliveryVoucherDiscount > 0
-                            ? 'TK ${(cartProv.deliveryCharge - _deliveryVoucherDiscount).clamp(0, double.infinity).toStringAsFixed(2)} (Discounted)'
-                            : 'TK ${cartProv.deliveryCharge.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: _deliveryVoucherDiscount > 0 ? Colors.green : Colors.black,
-                          fontWeight: _deliveryVoucherDiscount > 0 ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
+                      cartProv.isFreeDelivery
+                          ? Row(
+                              children: [
+                                Text(
+                                  'TK ${cartProv.baseDeliveryCharge.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    decoration: TextDecoration.lineThrough,
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade100,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.green.shade300),
+                                  ),
+                                  child: const Text(
+                                    'FREE (৳০)',
+                                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(
+                              _deliveryVoucherDiscount > 0
+                                  ? 'TK ${(cartProv.deliveryCharge - _deliveryVoucherDiscount).clamp(0, double.infinity).toStringAsFixed(2)} (Discounted)'
+                                  : 'TK ${cartProv.deliveryCharge.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: _deliveryVoucherDiscount > 0 ? Colors.green : Colors.black,
+                                fontWeight: _deliveryVoucherDiscount > 0 ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
                     ],
                   ),
+                  if (cartProv.freeDeliveryActive && !cartProv.isFreeDelivery && cartProv.subtotal > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '🚚 Add TK ${(cartProv.freeDeliveryMinAmount - cartProv.subtotal).toStringAsFixed(2)} more for FREE Delivery!',
+                      style: TextStyle(color: Colors.indigo.shade600, fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                   if (_deliveryVoucherDiscount > 0) ...[
                     const SizedBox(height: 4),
                     Row(

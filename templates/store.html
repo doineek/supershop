@@ -2066,7 +2066,7 @@
       </div>
       <div class="cost-row">
         <span>Delivery Fee</span>
-        <span>TK {{ "%.2f"|format(settings.delivery_charge|float if settings.delivery_charge else 60.0) }}</span>
+        <span id="cartViewDelivery">TK {{ "%.2f"|format(settings.delivery_charge|float if settings.delivery_charge else 60.0) }}</span>
       </div>
       <div class="cost-row cost-total">
         <span>Total Payable</span>
@@ -2697,6 +2697,8 @@
     const allDeliveryAreas = {{ delivery_areas|tojson }};
     const activePromotions = {{ promotions|tojson }};
     const DEFAULT_DELIVERY_CHARGE = parseFloat("{{ settings.delivery_charge|float if settings.delivery_charge else 60.0 }}");
+    const FREE_DELIVERY_ACTIVE = {{ 'true' if (settings.free_delivery_active or '0') == '1' else 'false' }};
+    const FREE_DELIVERY_MIN_AMOUNT = parseFloat("{{ settings.free_delivery_min_amount or 1000.0 }}");
 
     // Cart persistence & Auth State
     let cart = JSON.parse(localStorage.getItem('supershop_cart_en') || '{}');
@@ -2983,11 +2985,19 @@
         return;
       }
       const item = activePromotions[promoIdx];
-      if (item && item.id) {
-        setFilterTab('all', document.getElementById('tab-all'));
-        setTimeout(() => {
-          scrollToProduct(item.id);
-        }, 100);
+      if (item) {
+        if (item.id === -999) {
+          showToast('🚚 Free Delivery active on orders of TK ' + (FREE_DELIVERY_MIN_AMOUNT || 1000) + '+! Add products to cart.', 'success');
+          const grid = document.getElementById('productsGrid');
+          if (grid) grid.scrollIntoView({ behavior: 'smooth' });
+          return;
+        }
+        if (item.id) {
+          setFilterTab('all', document.getElementById('tab-all'));
+          setTimeout(() => {
+            scrollToProduct(item.id);
+          }, 100);
+        }
       }
     }
 
@@ -4020,7 +4030,10 @@
         const linePrice = it.price * stats.paidQty;
         subtotal += linePrice;
       });
-      const grandTotal = subtotal > 0 ? (subtotal + DEFAULT_DELIVERY_CHARGE) : 0;
+
+      const isFreeDelivery = FREE_DELIVERY_ACTIVE && subtotal >= FREE_DELIVERY_MIN_AMOUNT;
+      const effectiveDeliveryCharge = (subtotal > 0 && isFreeDelivery) ? 0 : (subtotal > 0 ? DEFAULT_DELIVERY_CHARGE : 0);
+      const grandTotal = subtotal > 0 ? (subtotal + effectiveDeliveryCharge) : 0;
 
       const btmBadge = document.getElementById('bottomCartBadge');
       if (btmBadge) btmBadge.textContent = totalCount;
@@ -4034,6 +4047,24 @@
       document.getElementById('cartViewSubtotal').textContent = `TK ${subtotal.toFixed(2)}`;
       document.getElementById('cartViewTotal').textContent = `TK ${grandTotal.toFixed(2)}`;
       document.getElementById('checkoutTotalPayable').textContent = `TK ${grandTotal.toFixed(2)}`;
+
+      // Update Delivery Charge Labels
+      const delEl = document.getElementById('costDelivery');
+      const cartViewDelEl = document.getElementById('cartViewDelivery');
+      const checkoutDelEl = document.getElementById('checkoutDeliveryCharge');
+
+      let delHtml = `TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)}`;
+      if (subtotal > 0) {
+        if (isFreeDelivery) {
+          delHtml = `<span style="color:#16a34a; font-weight:800;">FREE (৳০) <span style="text-decoration:line-through; color:#94a3b8; font-size:0.8rem; font-weight:normal;">TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)}</span></span>`;
+        } else if (FREE_DELIVERY_ACTIVE) {
+          const needed = FREE_DELIVERY_MIN_AMOUNT - subtotal;
+          delHtml = `TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)} <div style="font-size:0.75rem; color:#4f46e5; font-weight:700; margin-top:2px;">🚚 Add TK ${needed.toFixed(2)} for FREE Delivery!</div>`;
+        }
+      }
+      if (delEl) delEl.innerHTML = delHtml;
+      if (cartViewDelEl) cartViewDelEl.innerHTML = delHtml;
+      if (checkoutDelEl) checkoutDelEl.innerHTML = delHtml;
 
       const listContainer = document.getElementById('cartItemsList');
       if (items.length === 0) {
@@ -4267,6 +4298,14 @@
         price: it.price
       }));
 
+      let subtotal = 0;
+      Object.values(cart).forEach(it => {
+        const stats = getBuyXGetYStats(it);
+        subtotal += it.price * stats.paidQty;
+      });
+      const isFreeDelivery = FREE_DELIVERY_ACTIVE && subtotal >= FREE_DELIVERY_MIN_AMOUNT;
+      const orderDeliveryCharge = isFreeDelivery ? 0 : DEFAULT_DELIVERY_CHARGE;
+
       const payload = {
         customer_name: custName,
         customer_phone: custPhone,
@@ -4275,7 +4314,7 @@
         area: areaZone,
         payment_method: paymentMethod,
         cart_items: items,
-        delivery_charge: DEFAULT_DELIVERY_CHARGE
+        delivery_charge: orderDeliveryCharge
       };
 
       try {

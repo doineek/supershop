@@ -357,6 +357,30 @@ def render_storefront():
     promos = [dict(r) for r in promo_rows]
 
     shop_settings = get_all_settings(conn)
+    
+    # Inject Free Delivery Slide in Store Hero Banner if active & enabled
+    free_del_active = (shop_settings.get("free_delivery_active") or "0") == "1"
+    free_del_show_banner = (shop_settings.get("free_delivery_show_banner") or "1") == "1"
+    min_amt = float(shop_settings.get("free_delivery_min_amount") or 1000.0)
+    default_del = float(shop_settings.get("delivery_charge") or 100.0)
+    del_img = shop_settings.get("free_delivery_image_url") or "/static/images/logo.png"
+
+    if free_del_active and free_del_show_banner:
+        free_del_slide = {
+            "id": -999,
+            "name": shop_settings.get("free_delivery_title") or "🚚 FREE HOME DELIVERY!",
+            "category_name": f"Spend TK {min_amt:,.0f}+",
+            "offer_title": f"FREE DELIVERY (Order ৳{min_amt:,.0f}+)",
+            "offer_type": "free_delivery",
+            "offer_value": "100% FREE",
+            "is_free_delivery": 1,
+            "sell_price": 0.0,
+            "mrp": default_del,
+            "image_url": del_img,
+            "description": shop_settings.get("free_delivery_subtitle") or f"Enjoy 100% Free Home Delivery on all orders above TK {min_amt:,.0f}!"
+        }
+        promos.insert(0, free_del_slide)
+
     conn.close()
     
     return render_template(
@@ -3026,6 +3050,55 @@ def save_offer_interval():
     return redirect(url_for("offers_page"))
 
 
+@app.route("/offers/free_delivery", methods=["POST"])
+@login_required
+@admin_required
+def save_free_delivery_offer():
+    free_active = "1" if request.form.get("free_delivery_active") else "0"
+    min_amount = request.form.get("free_delivery_min_amount", "1000").strip()
+    title = request.form.get("free_delivery_title", "🚚 FREE HOME DELIVERY!").strip()
+    subtitle = request.form.get("free_delivery_subtitle", "Enjoy 100% Free Delivery on all orders above TK 1,000!").strip()
+    show_banner = "1" if request.form.get("free_delivery_show_banner") else "0"
+    
+    # Image handling
+    image_url = request.form.get("free_delivery_image_url", "").strip()
+    img_file = request.files.get("free_delivery_image_file")
+    
+    if img_file and img_file.filename:
+        try:
+            from PIL import Image
+            import io
+            import base64
+            img = Image.open(img_file)
+            img = img.convert("RGB")
+            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85, optimize=True)
+            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+            image_url = f"data:image/jpeg;base64,{b64_str}"
+        except Exception as e:
+            print("Free delivery image upload failed:", e)
+
+    settings_to_update = {
+        "free_delivery_active": free_active,
+        "free_delivery_min_amount": min_amount,
+        "free_delivery_title": title,
+        "free_delivery_subtitle": subtitle,
+        "free_delivery_show_banner": show_banner,
+    }
+    if image_url:
+        settings_to_update["free_delivery_image_url"] = image_url
+
+    conn = get_connection()
+    update_settings(conn, settings_to_update)
+    conn.commit()
+    conn.close()
+    
+    remote_control.push_settings_to_cloud()
+    flash("🚚 Free Delivery Offer & Banner settings saved successfully.", "success")
+    return redirect(url_for("offers_page"))
+
+
 @app.route("/api/promotions", methods=["GET"])
 def api_promotions():
     conn = get_connection()
@@ -3038,10 +3111,44 @@ def api_promotions():
         WHERE p.is_promotion = 1 OR p.is_offer = 1 OR p.offer_type = 'bogo'
         ORDER BY p.id DESC
     """).fetchall()
+    
+    promos = [dict(r) for r in rows]
+    
+    free_del_active = (s.get("free_delivery_active") or "0") == "1"
+    free_del_show_banner = (s.get("free_delivery_show_banner") or "1") == "1"
+    min_amt = float(s.get("free_delivery_min_amount") or 1000.0)
+    default_del = float(s.get("delivery_charge") or 100.0)
+    del_img = s.get("free_delivery_image_url") or "/static/images/logo.png"
+
+    if free_del_active and free_del_show_banner:
+        free_del_slide = {
+            "id": -999,
+            "name": s.get("free_delivery_title") or "🚚 FREE HOME DELIVERY!",
+            "category_name": f"Spend TK {min_amt:,.0f}+",
+            "offer_title": f"FREE DELIVERY (Order ৳{min_amt:,.0f}+)",
+            "offer_type": "free_delivery",
+            "offer_value": "100% FREE",
+            "is_free_delivery": 1,
+            "sell_price": 0.0,
+            "mrp": default_del,
+            "image_url": del_img,
+            "description": s.get("free_delivery_subtitle") or f"Enjoy 100% Free Home Delivery on all orders above TK {min_amt:,.0f}!"
+        }
+        promos.insert(0, free_del_slide)
+
+    free_del_offer = {
+        "active": free_del_active,
+        "min_amount": min_amt,
+        "title": s.get("free_delivery_title") or "🚚 FREE HOME DELIVERY!",
+        "subtitle": s.get("free_delivery_subtitle") or f"Enjoy 100% Free Delivery on all orders above TK {min_amt:,.0f}!",
+        "show_banner": free_del_show_banner,
+        "image_url": del_img
+    }
     conn.close()
     return jsonify({
         "interval_sec": interval_sec,
-        "promotions": [dict(r) for r in rows]
+        "promotions": promos,
+        "free_delivery_offer": free_del_offer
     })
 
 
@@ -4426,8 +4533,15 @@ def api_place_order():
         return jsonify({"success": False, "message": "No valid cart items found."}), 400
 
     shop_settings = get_all_settings(conn)
-    delivery_charge = float(data.get("delivery_charge") or shop_settings.get("delivery_charge") or 60.0)
-    total_amount = subtotal + delivery_charge
+    free_del_active = (shop_settings.get("free_delivery_active") or "0") == "1"
+    free_del_min_amount = float(shop_settings.get("free_delivery_min_amount") or 1000.0)
+
+    if free_del_active and subtotal >= free_del_min_amount:
+        delivery_charge = 0.0
+    else:
+        delivery_charge = float(data.get("delivery_charge") if data.get("delivery_charge") is not None else shop_settings.get("delivery_charge") or 60.0)
+    
+    total_amount = max(0.0, subtotal + delivery_charge)
     created_at = datetime.now().isoformat()
 
     # Normalize phone
@@ -4546,6 +4660,8 @@ def api_place_order():
         "message": "Order submitted successfully!",
         "order_number": order_number,
         "delivery_otp": otp,
+        "subtotal": subtotal,
+        "delivery_charge": delivery_charge,
         "total_amount": total_amount
     })
 

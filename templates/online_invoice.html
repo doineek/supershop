@@ -170,15 +170,23 @@
 
   <table class="total-table">
     <tr>
-      <td>Subtotal ():</td>
+      <td>Subtotal:</td>
       <td style="text-align: right;"><strong>TK {{ "%.2f"|format(order.subtotal) }}</strong></td>
     </tr>
     <tr>
-      <td>Delivery Charge ( ):</td>
-      <td style="text-align: right;"><strong>TK {{ "%.2f"|format(order.delivery_charge) }}</strong></td>
+      <td>Delivery Charge:</td>
+      <td style="text-align: right;">
+        {% if order.delivery_charge == 0 or order.delivery_charge == 0.0 %}
+          <span style="color: #15803d; font-weight: 800; background: #dcfce7; border: 1px solid #86efac; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">
+            FREE (৳০ - Free Delivery Offer)
+          </span>
+        {% else %}
+          <strong>TK {{ "%.2f"|format(order.delivery_charge) }}</strong>
+        {% endif %}
+      </td>
     </tr>
     <tr style="font-size: 1.1rem; border-top: 2px solid #0f172a;">
-      <td><strong>Net Payable ( ):</strong></td>
+      <td><strong>Net Payable:</strong></td>
       <td style="text-align: right; color: #16a34a;"><strong>TK {{ "%.2f"|format(order.total_amount) }}</strong></td>
     </tr>
   </table>

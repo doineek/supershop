@@ -551,6 +551,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                                 return InkWell(
                                   onTap: () {
+                                    if (item["id"] == -999 || item["offer_type"] == "free_delivery") {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text("🚚 ${item['name'] ?? 'Free Delivery'} - ${item['description'] ?? 'Add items to cart to claim!'}"),
+                                          backgroundColor: Colors.teal.shade800,
+                                          duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                      return;
+                                    }
                                     try {
                                       final prod = Product.fromJson(Map<String, dynamic>.from(item));
                                       Navigator.push(
