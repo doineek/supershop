@@ -514,11 +514,11 @@ function renderAiImagesGrid() {
     const isSel = idx === selectedAiImageIdx;
     const imgSrc = typeof imgItem === 'string' ? imgItem : (imgItem.url || '');
     const imgLabel = typeof imgItem === 'object' && imgItem.label ? imgItem.label : `Option ${idx + 1}`;
-    const isOverlay = imgLabel.includes('Label') || imgLabel.includes('লেবেল');
+    const isOverlay = imgLabel.includes('Banner') || imgLabel.includes('ব্যানার');
 
     return `
       <div onclick="selectAiImg(${idx})" style="position:relative; cursor:pointer; border-radius:12px; overflow:hidden; border: 3px solid ${isSel ? '#6366f1' : '#cbd5e1'}; box-shadow: ${isSel ? '0 0 0 4px rgba(99,102,241,0.25), 0 4px 12px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.06)'}; transition:all 0.2s; background:#fff;">
-        <img src="${imgSrc}" style="width:100%; height:190px; object-fit:contain; background:#ffffff; display:block;">
+        <img src="${imgSrc}" style="width:100%; height:180px; object-fit:contain; background:#ffffff; display:block;">
         ${isSel ? `
           <div style="position:absolute; top:8px; right:8px; background:#6366f1; color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.3);">
             ✓
@@ -526,15 +526,18 @@ function renderAiImagesGrid() {
         ` : ''}
         ${isOverlay ? `
           <div style="position:absolute; top:8px; left:8px; background:#16a34a; color:#fff; font-size:0.70rem; font-weight:800; padding:2px 8px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.3);">
-            ⭐ প্যাকেটের গায়ে নাম
+            ⭐ নাম স্পষ্ট
           </div>
         ` : ''}
-        <div style="padding:8px; font-size:0.76rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155; border-top:1px solid #e2e8f0; line-height:1.3;">
+        <div style="padding:6px; font-size:0.75rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155; border-top:1px solid #e2e8f0; line-height:1.3;">
           ${imgLabel}
         </div>
       </div>
     `;
   }).join('');
+
+  // Init Studio with selected image
+  initStudioEditor();
 }
 
 function selectAiImg(idx) {
@@ -542,24 +545,239 @@ function selectAiImg(idx) {
   renderAiImagesGrid();
 }
 
-function applySelectedAiImage(asCover = true) {
-  if (!generatedAiImages || generatedAiImages.length === 0) return;
+// ================= Real-time Typography Studio Engine =================
+let studioBaseImage = new Image();
+
+function initStudioEditor() {
+  const studioSec = document.getElementById('aiTypographyStudioSection');
+  if (!studioSec) return;
+  studioSec.style.display = 'block';
+
   const chosenObj = generatedAiImages[selectedAiImageIdx];
   if (!chosenObj) return;
+  const imgSrc = typeof chosenObj === 'string' ? chosenObj : (chosenObj.url || '');
 
-  const chosen = typeof chosenObj === 'string' ? chosenObj : (chosenObj.url || '');
-  if (!chosen) return;
+  // Pre-fill inputs if empty
+  const nameInput = document.querySelector('input[name="name"]');
+  const prodName = nameInput ? nameInput.value.trim() : 'Product Name';
+  const brandSelect = document.querySelector('select[name="brand_id"]');
+  const brandName = brandSelect && brandSelect.selectedIndex >= 0 ? brandSelect.options[brandSelect.selectedIndex].text : '';
+
+  const titleField = document.getElementById('studioTitleInput');
+  if (titleField && !titleField.value) titleField.value = prodName;
+
+  const brandField = document.getElementById('studioBrandInput');
+  if (brandField && !brandField.value) brandField.value = brandName ? `${brandName.toUpperCase()} | PREMIUM QUALITY` : 'PREMIUM SUPERMARKET QUALITY';
+
+  const weightField = document.getElementById('studioWeightInput');
+  if (weightField && !weightField.value) {
+    const wm = prodName.match(/(\d+(?:\.\d+)?\s*(?:kg|g|gm|ltr|litre|l|ml|pcs|pack|packet|টি|কেজি|গ্রাম|লিটার))/i);
+    weightField.value = wm ? wm[1].toUpperCase() : '';
+  }
+
+  studioBaseImage.crossOrigin = 'anonymous';
+  studioBaseImage.onload = function() {
+    redrawStudioCanvas();
+  };
+  studioBaseImage.src = imgSrc;
+}
+
+function redrawStudioCanvas() {
+  const canvas = document.getElementById('studioCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = 600;
+  const h = 600;
+  canvas.width = w;
+  canvas.height = h;
+
+  // 1. Draw Base Image
+  if (studioBaseImage.complete && studioBaseImage.naturalWidth > 0) {
+    ctx.drawImage(studioBaseImage, 0, 0, w, h);
+  } else {
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  const titleText = (document.getElementById('studioTitleInput')?.value || '').trim();
+  const brandText = (document.getElementById('studioBrandInput')?.value || '').trim();
+  const weightText = (document.getElementById('studioWeightInput')?.value || '').trim();
+  
+  const fontSize = parseInt(document.getElementById('studioTitleSize')?.value || '34', 10);
+  const sizeBadge = document.getElementById('studioTitleSizeVal');
+  if (sizeBadge) sizeBadge.textContent = fontSize + 'px';
+
+  const fontFam = document.getElementById('studioFontFam')?.value || 'Arial Black, Impact, sans-serif';
+  const textColor = document.getElementById('studioTitleColor')?.value || '#ffffff';
+  const boxTheme = document.getElementById('studioBoxTheme')?.value || 'dark_gold';
+  const boxPos = document.getElementById('studioBoxPos')?.value || 'top';
+  const showWeight = document.getElementById('studioShowWeight')?.checked ?? true;
+  const showPure = document.getElementById('studioShowOriginal')?.checked ?? true;
+
+  if (!titleText) return;
+
+  // 2. Render Banner Box
+  let pillW = Math.floor(w * 0.90);
+  let pillH = brandText ? Math.max(72, fontSize + 36) : Math.max(54, fontSize + 20);
+  let pillX = (w - pillW) / 2;
+  let pillY = 18;
+
+  if (boxPos === 'bottom') {
+    pillY = h - pillH - 58;
+  } else if (boxPos === 'center') {
+    pillY = (h - pillH) / 2;
+  }
+
+  // Draw Box Background
+  if (boxTheme !== 'none') {
+    ctx.save();
+    // Drop Shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 4;
+
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillW, pillH, 16);
+
+    if (boxTheme === 'dark_gold') {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (boxTheme === 'royal_blue') {
+      ctx.fillStyle = 'rgba(30, 58, 138, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = '#93c5fd';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (boxTheme === 'emerald_green') {
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = '#86efac';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (boxTheme === 'crimson_red') {
+      ctx.fillStyle = 'rgba(153, 27, 27, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = '#fca5a5';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (boxTheme === 'golden_glass') {
+      ctx.fillStyle = 'rgba(217, 119, 6, 0.94)';
+      ctx.fill();
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (boxTheme === 'transparent_outline') {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 3. Draw Title Typography
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold ${fontSize}px ${fontFam}`;
+  ctx.fillStyle = textColor;
+
+  // Text Shadow
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 2;
+
+  const titleY = pillY + (brandText ? (pillH * 0.40) : (pillH * 0.50));
+  ctx.fillText(titleText, w / 2, titleY);
+
+  // 4. Draw Brand Subtitle
+  if (brandText) {
+    ctx.font = `bold ${Math.max(13, Math.floor(fontSize * 0.44))}px ${fontFam}`;
+    ctx.fillStyle = '#fde047';
+    ctx.shadowBlur = 4;
+    ctx.fillText(brandText, w / 2, pillY + pillH - 14);
+  }
+  ctx.restore();
+
+  // 5. Draw Net Weight Badge (Bottom Right)
+  if (showWeight && weightText) {
+    ctx.save();
+    const bw = 180;
+    const bh = 42;
+    const bx = w - bw - 20;
+    const by = h - bh - 20;
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 12);
+    ctx.fillStyle = '#16a34a';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 18px ${fontFam}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`NET ${weightText}`, bx + (bw / 2), by + (bh / 2));
+    ctx.restore();
+  }
+
+  // 6. Draw 100% Original Badge (Bottom Left)
+  if (showPure) {
+    ctx.save();
+    const qw = 180;
+    const qh = 42;
+    const qx = 20;
+    const qy = h - qh - 20;
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+
+    ctx.beginPath();
+    ctx.roundRect(qx, qy, qw, qh, 12);
+    ctx.fillStyle = '#4f46e5';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 18px ${fontFam}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`100% ORIGINAL`, qx + (qw / 2), qy + (qh / 2));
+    ctx.restore();
+  }
+}
+
+function applyCustomStudioImage(asCover = true) {
+  const canvas = document.getElementById('studioCanvas');
+  if (!canvas) return;
+
+  const customizedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  if (!customizedDataUrl) return;
 
   if (asCover) {
-    existingImages.unshift(chosen);
+    existingImages.unshift(customizedDataUrl);
   } else {
-    existingImages.push(chosen);
+    existingImages.push(customizedDataUrl);
   }
 
   renderExistingImages();
   closeAiImageModal();
   
-  // Scroll into image section
   const sec = document.getElementById('existingImagesSection');
   if (sec) {
     sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -567,31 +785,31 @@ function applySelectedAiImage(asCover = true) {
 }
 </script>
 
-<!-- ================= AI Image Generator Modal ================= -->
-<div id="aiModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:99999; backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:16px;">
-  <div style="background:#ffffff; width:100%; max-width:680px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2), 0 10px 10px -5px rgba(0,0,0,0.04); overflow:hidden; display:flex; flex-direction:column; max-height:92vh;">
+<!-- ================= AI Image Generator & Live Typography Studio Modal ================= -->
+<div id="aiModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:99999; backdrop-filter:blur(6px); align-items:center; justify-content:center; padding:12px;">
+  <div style="background:#ffffff; width:100%; max-width:860px; border-radius:18px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3); overflow:hidden; display:flex; flex-direction:column; max-height:94vh;">
     
     <!-- Modal Header -->
-    <div style="background:linear-gradient(135deg, #4f46e5, #7c3aed, #db2777); padding:16px 20px; color:#ffffff; display:flex; justify-content:space-between; align-items:center;">
+    <div style="background:linear-gradient(135deg, #4338ca, #6366f1, #d946ef); padding:14px 20px; color:#ffffff; display:flex; justify-content:space-between; align-items:center;">
       <div>
         <div style="font-weight:800; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
-          <span>✨ AI Product Image Generator</span>
+          <span>✨ AI Product Photo & Typography Studio</span>
         </div>
-        <div style="font-size:0.85rem; opacity:0.9; margin-top:2px;">
-          Generating for: <strong id="aiProdNameDisplay" style="color:#fef08a;">Product</strong>
+        <div style="font-size:0.82rem; opacity:0.95; margin-top:2px;">
+          Generating & Customizing: <strong id="aiProdNameDisplay" style="color:#fef08a;">Product</strong>
         </div>
       </div>
-      <button type="button" onclick="closeAiImageModal()" style="background:rgba(255,255,255,0.2); border:none; color:#fff; width:32px; height:32px; border-radius:50%; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+      <button type="button" onclick="closeAiImageModal()" style="background:rgba(255,255,255,0.25); border:none; color:#fff; width:32px; height:32px; border-radius:50%; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
     </div>
 
-    <!-- Modal Controls Body -->
+    <!-- Modal Scrollable Content -->
     <div style="padding:16px 20px; overflow-y:auto; flex:1;">
       
-      <!-- Packaging Shape & Style Selector Row -->
-      <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:12px; margin-bottom:14px;">
+      <!-- Packaging Shape & Aspect Controls -->
+      <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:12px; margin-bottom:12px;">
         <div>
-          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📦 Packaging Shape / প্যাকেটের ধরন</label>
-          <select id="aiPackagingSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #4f46e5; font-size:0.88rem; font-weight:700; background:#f5f3ff; color:#4338ca;">
+          <label style="font-size:0.80rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📦 Packaging Shape / প্যাকেটের ধরন</label>
+          <select id="aiPackagingSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #4f46e5; font-size:0.86rem; font-weight:700; background:#f5f3ff; color:#4338ca;">
             <option value="auto" selected>🤖 Smart Auto-Detect (স্বয়ংক্রিয় নিখুঁত প্যাকেজিং)</option>
             <option value="rice_sack">🌾 Rice Sack / Pouch (চাল - ট্রান্সপারেন্ট অংশে চাল দেখা যাবে)</option>
             <option value="dal_pouch">🥣 Dal / Lentil Pouch (ডাল - ট্রান্সপারেন্ট অংশে ডাল দেখা যাবে)</option>
@@ -605,51 +823,176 @@ function applySelectedAiImage(asCover = true) {
         </div>
 
         <div>
-          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">🎨 Style & Aspect</label>
+          <label style="font-size:0.80rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📐 Aspect Ratio</label>
           <div style="display:flex; gap:6px;">
-            <select id="aiStyleSelect" style="flex:1; padding:8px 6px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
-              <option value="packaging" selected>📦 Packaging</option>
-              <option value="photo">📸 Studio Photo</option>
-              <option value="3d">🌟 3D Render</option>
+            <select id="aiAspectSelect" style="flex:1; padding:8px 6px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
+              <option value="1:1" selected>🔲 1:1 Square</option>
+              <option value="3:4">📱 3:4 Box</option>
+              <option value="4:3">🖥️ 4:3 Studio</option>
             </select>
-            <select id="aiAspectSelect" style="width:90px; padding:8px 6px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
-              <option value="1:1" selected>🔲 1:1</option>
-              <option value="3:4">📱 3:4</option>
-              <option value="4:3">🖥️ 4:3</option>
-            </select>
+            <button type="button" id="aiGenSubmitBtn" onclick="triggerAiGenerate()" style="background:#4f46e5; color:#fff; border:none; padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+              <span>🔄 Generate</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Generate / Regenerate Button -->
-      <button type="button" id="aiGenSubmitBtn" onclick="triggerAiGenerate()" style="width:100%; background:linear-gradient(135deg, #4f46e5, #6366f1); color:#ffffff; font-weight:700; padding:11px; border-radius:8px; border:none; font-size:0.94rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 8px rgba(79,70,229,0.35);">
-        <span>🔄 Generate / Regenerate Realistic Package Photos</span>
-      </button>
-
       <!-- Loading State -->
-      <div id="aiGenLoading" style="display:none; flex-direction:column; align-items:center; justify-content:center; padding:30px 10px;">
-        <div style="width:40px; height:40px; border:4px solid #e0e7ff; border-top:4px solid #4f46e5; border-radius:50%; animation:spin 1s linear infinite;"></div>
-        <div style="font-weight:700; color:#4338ca; font-size:0.95rem; margin-top:12px;">AI ছবি তৈরি করছে... একটু অপেক্ষা করুন</div>
-        <div style="font-size:0.80rem; color:#64748b; margin-top:4px;">High-resolution commercial grocery photo is rendering</div>
+      <div id="aiGenLoading" style="display:none; flex-direction:column; align-items:center; justify-content:center; padding:24px 10px;">
+        <div style="width:36px; height:36px; border:4px solid #e0e7ff; border-top:4px solid #4f46e5; border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <div style="font-weight:700; color:#4338ca; font-size:0.92rem; margin-top:10px;">AI ছবি তৈরি করছে... একটু অপেক্ষা করুন</div>
       </div>
 
-      <!-- Generated Images Grid -->
-      <div id="aiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-top:16px;">
-        <!-- Injected via JavaScript -->
+      <!-- Generated Base Options Grid -->
+      <div style="margin-top:10px;">
+        <div style="font-size:0.80rem; font-weight:700; color:#64748b; margin-bottom:6px;">
+          1. CHOOSE BASE PACKAGE PHOTO:
+        </div>
+        <div id="aiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px;">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
+      <!-- ================= 2. LIVE TYPOGRAPHY & BANNER CUSTOMIZER STUDIO ================= -->
+      <div id="aiTypographyStudioSection" style="display:none; margin-top:18px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#1e293b; display:flex; align-items:center; gap:6px;">
+            <span>🎨 Live Text & Typography Customizer (লেখা, ফন্ট ও কালার সাজান)</span>
+          </div>
+          <span style="font-size:0.75rem; color:#6366f1; font-weight:700; background:#eef2ff; padding:2px 8px; border-radius:10px;">
+            ⚡ Real-time Live Preview
+          </span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+          
+          <!-- Controls Column -->
+          <div>
+            
+            <!-- Title Text Input -->
+            <div style="margin-bottom:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Product Title (প্রোডাক্টের নাম)</label>
+              <input type="text" id="studioTitleInput" oninput="redrawStudioCanvas()" placeholder="e.g. Nazirshail Rice 5kg" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:700; color:#0f172a;">
+            </div>
+
+            <!-- Brand / Subtitle Input -->
+            <div style="margin-bottom:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Brand / Subtitle (ব্র্যান্ড বা সাবটাইটেল)</label>
+              <input type="text" id="studioBrandInput" oninput="redrawStudioCanvas()" placeholder="e.g. PRAN | PREMIUM QUALITY" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
+            </div>
+
+            <!-- Net Weight Input -->
+            <div style="margin-bottom:10px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Net Weight / Size (ওজন)</label>
+              <input type="text" id="studioWeightInput" oninput="redrawStudioCanvas()" placeholder="e.g. 5 KG / 1 LITRE" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
+            </div>
+
+            <!-- Font Size & Font Family Row -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                  <label style="font-size:0.78rem; font-weight:700; color:#475569;">Font Size</label>
+                  <span id="studioTitleSizeVal" style="font-size:0.75rem; font-weight:800; color:#4f46e5;">34px</span>
+                </div>
+                <input type="range" id="studioTitleSize" min="22" max="52" value="34" oninput="redrawStudioCanvas()" style="width:100%; cursor:pointer;">
+              </div>
+
+              <div>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Font Style</label>
+                <select id="studioFontFam" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
+                  <option value="Arial Black, Impact, sans-serif" selected>Impact Ultra-Bold</option>
+                  <option value="Segoe UI, Inter, sans-serif">Modern Sans Bold</option>
+                  <option value="Trebuchet MS, sans-serif">Prominent Retail</option>
+                  <option value="Georgia, serif">Classic Serif</option>
+                  <option value="SolaimanLipi, Kalpurush, sans-serif">Bangla & English</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Text Color & Box Theme Row -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+              <div>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Title Color</label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="color" id="studioTitleColor" value="#ffffff" oninput="redrawStudioCanvas()" style="width:36px; height:32px; border:none; border-radius:6px; cursor:pointer;">
+                  <div style="display:flex; gap:3px;">
+                    <span onclick="document.getElementById('studioTitleColor').value='#ffffff'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#fff; border:1px solid #cbd5e1; cursor:pointer;" title="White"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#fde047'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#fde047; border:1px solid #cbd5e1; cursor:pointer;" title="Gold"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#86efac'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#86efac; border:1px solid #cbd5e1; cursor:pointer;" title="Lime"></span>
+                    <span onclick="document.getElementById('studioTitleColor').value='#67e8f9'; redrawStudioCanvas();" style="width:18px; height:18px; border-radius:50%; background:#67e8f9; border:1px solid #cbd5e1; cursor:pointer;" title="Cyan"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Banner Box Theme</label>
+                <select id="studioBoxTheme" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
+                  <option value="dark_gold" selected>🖤 Dark Slate + Gold</option>
+                  <option value="royal_blue">🔷 Royal Navy Blue</option>
+                  <option value="emerald_green">🟢 Emerald Green</option>
+                  <option value="crimson_red">🔴 Crimson Red</option>
+                  <option value="golden_glass">🟡 Golden Ribbon</option>
+                  <option value="transparent_outline">🔲 Minimal Outline</option>
+                  <option value="none">🚫 No Box (Text Only)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Position & Badge Toggles -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Banner Position</label>
+                <select id="studioBoxPos" onchange="redrawStudioCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
+                  <option value="top" selected>⬆️ Top Floating</option>
+                  <option value="bottom">⬇️ Bottom Banner</option>
+                  <option value="center">🎯 Center Label</option>
+                </select>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:4px; justify-content:center; padding-top:10px;">
+                <label style="font-size:0.75rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                  <input type="checkbox" id="studioShowWeight" checked onchange="redrawStudioCanvas()">
+                  ⚖️ Weight Badge
+                </label>
+                <label style="font-size:0.75rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                  <input type="checkbox" id="studioShowOriginal" checked onchange="redrawStudioCanvas()">
+                  🛡️ 100% Pure Seal
+                </label>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Live Canvas Preview Column -->
+          <div style="text-align:center;">
+            <div style="font-size:0.78rem; font-weight:700; color:#64748b; margin-bottom:4px;">
+              LIVE RESULT PREVIEW:
+            </div>
+            <div style="display:inline-block; border-radius:14px; overflow:hidden; border:2px solid #cbd5e1; box-shadow:0 8px 16px rgba(0,0,0,0.12); background:#fff; max-width:280px; width:100%;">
+              <canvas id="studioCanvas" style="width:100%; height:auto; display:block;"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Custom Studio Action Buttons -->
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px; padding-top:12px; border-top:1px dashed #cbd5e1; flex-wrap:wrap;">
+          <button type="button" onclick="applyCustomStudioImage(false)" style="padding:9px 16px; border-radius:8px; border:1px solid #6366f1; background:#eef2ff; color:#4f46e5; font-weight:700; cursor:pointer; font-size:0.86rem;">
+            ➕ Add to Gallery (গ্যালারিতে যোগ করুন)
+          </button>
+          <button type="button" onclick="applyCustomStudioImage(true)" style="padding:9px 20px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:800; cursor:pointer; box-shadow:0 3px 8px rgba(22,163,74,0.35); font-size:0.90rem;">
+            ⭐ Save & Set as Primary Cover (কভার ফটো হিসেবে সেভ করুন)
+          </button>
+        </div>
+
       </div>
 
     </div>
 
-    <!-- Modal Footer Actions -->
-    <div id="aiActionButtons" style="display:none; padding:14px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
-      <button type="button" onclick="closeAiImageModal()" style="padding:8px 14px; border-radius:8px; border:1px solid #cbd5e1; background:#ffffff; font-weight:600; cursor:pointer; color:#475569;">
-        Cancel
-      </button>
-      <button type="button" onclick="applySelectedAiImage(false)" style="padding:8px 14px; border-radius:8px; border:1px solid #6366f1; background:#eef2ff; color:#4f46e5; font-weight:700; cursor:pointer;">
-        ➕ Add as Additional Photo
-      </button>
-      <button type="button" onclick="applySelectedAiImage(true)" style="padding:8px 16px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:800; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.35);">
-        ⭐ Set as Primary Cover Photo
+    <!-- Modal Footer -->
+    <div id="aiActionButtons" style="display:none; padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+      <button type="button" onclick="closeAiImageModal()" style="padding:8px 16px; border-radius:8px; border:1px solid #cbd5e1; background:#ffffff; font-weight:600; cursor:pointer; color:#475569;">
+        Close Studio
       </button>
     </div>
 
