@@ -272,11 +272,11 @@ let selectedPkgMap = new Map(); // id -> { name, sku, price, qty, image }
   {% for it in edit_pkg['items'] %}
   selectedPkgMap.set('{{ it.product_id }}', {
     id: '{{ it.product_id }}',
-    name: '{{ it.product_name|e }}',
-    sku: '{{ it.sku|e }}',
+    name: {{ it.product_name|tojson }},
+    sku: {{ it.sku|tojson }},
     price: parseFloat('{{ it.sell_price }}') || 0,
     qty: parseInt('{{ it.quantity }}') || 1,
-    image: '{{ it.image_url|e if it.image_url else '' }}'
+    image: ''
   });
   {% endfor %}
 {% endif %}
@@ -450,6 +450,26 @@ function confirmPackageSave(e) {
     alert("Please enter a valid Package Price (TK).");
     return false;
   }
+
+  // Sync selectedPkgMap from the DOM table (in case page was loaded in edit mode)
+  if (selectedPkgMap.size === 0) {
+    const tbody = document.getElementById('selectedPkgBody');
+    if (tbody) {
+      tbody.querySelectorAll('input[name="product_ids"]').forEach(inp => {
+        const pid = inp.value;
+        if (pid && !selectedPkgMap.has(pid)) {
+          const row = inp.closest('tr');
+          if (!row) return;
+          const nameEl = row.querySelector('td div[style*="font-weight:600"]');
+          const qtyEl = row.querySelector('input[type="number"]');
+          const nameVal = nameEl ? nameEl.textContent.trim() : pid;
+          const qtyVal = qtyEl ? (parseInt(qtyEl.value) || 1) : 1;
+          selectedPkgMap.set(pid, { id: pid, name: nameVal, sku: '', price: 0, qty: qtyVal, image: '' });
+        }
+      });
+    }
+  }
+
   if (selectedPkgMap.size === 0) {
     alert("Please select at least 1 product to include in this combo package.");
     return false;
@@ -501,6 +521,26 @@ let pkgAiBaseImg = new Image();
 function openPkgAiModal() {
   const pkgName = (document.getElementById('pkgNameInput')?.value || '').trim();
   const pkgPrice = parseFloat(document.getElementById('pkgPriceInput')?.value) || 0;
+
+  // Sync selectedPkgMap from the DOM table (in case page was loaded in edit mode)
+  if (selectedPkgMap.size === 0) {
+    const tbody = document.getElementById('selectedPkgBody');
+    if (tbody) {
+      tbody.querySelectorAll('input[name="product_ids"]').forEach(inp => {
+        const pid = inp.value;
+        if (pid && !selectedPkgMap.has(pid)) {
+          const row = inp.closest('tr');
+          if (!row) return;
+          const nameEl = row.querySelector('td div[style*="font-weight:600"]');
+          const skuEl = row.querySelector('td div[style*="font-size:11px"]');
+          const qtyEl = row.querySelector('input[type="number"]');
+          const name = nameEl ? nameEl.textContent.trim() : pid;
+          const qtyVal = qtyEl ? (parseInt(qtyEl.value) || 1) : 1;
+          selectedPkgMap.set(pid, { id: pid, name: name, sku: '', price: 0, qty: qtyVal, image: '' });
+        }
+      });
+    }
+  }
 
   if (selectedPkgMap.size === 0) {
     alert("Please add at least 1 product to the combo first to generate unified AI images.");
