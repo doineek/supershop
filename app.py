@@ -1522,6 +1522,98 @@ def api_ai_generate_product_image():
     })
 
 
+@app.route("/api/ai/generate_banner_image", methods=["POST"])
+@login_required
+@admin_required
+def api_ai_generate_banner_image():
+    data = request.json or {}
+    banner_type = data.get("banner_type", "free_delivery")
+    title = (data.get("title") or "Free Home Delivery").strip()
+    subtitle = (data.get("subtitle") or "On orders above TK 1,000").strip()
+
+    if banner_type == "free_delivery":
+        full_prompt = (
+            f'Award-winning vibrant commercial advertising banner photography for supermarket "{title}". '
+            'Features an eco-friendly electric grocery delivery scooter and delivery van surrounded by modern fresh grocery shopping baskets filled with packaged supermarket food items and organic fruits. '
+            'Bright cheerful daylight commercial lighting, clean emerald green and golden yellow theme, pure white studio background, 8k resolution, photorealistic retail advertising banner.'
+        )
+    else:
+        full_prompt = (
+            f'Award-winning commercial supermarket promotional advertising banner for "{title}". '
+            'Vibrant supermarket discount sale setting, grocery items, celebration confetti, 8k resolution, photorealistic commercial graphics.'
+        )
+
+    encoded_prompt = urllib.parse.quote(full_prompt)
+    width, height = 800, 450
+    generated_images = []
+    
+    seeds = [101, 202]
+    for s in seeds:
+        ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
+        try:
+            req = urllib.request.Request(ai_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                img_data = response.read()
+                if len(img_data) > 1000:
+                    b64 = base64.b64encode(img_data).decode("utf-8")
+                    generated_images.append({
+                        "url": f"data:image/jpeg;base64,{b64}",
+                        "label": f"Banner Option {len(generated_images) + 1}"
+                    })
+        except Exception as e:
+            print("Banner AI Generation Error:", e)
+
+    return jsonify({
+        "success": True,
+        "images": generated_images,
+        "prompt": full_prompt
+    })
+
+
+@app.route("/api/ai/generate_combo_image", methods=["POST"])
+@login_required
+@admin_required
+def api_ai_generate_combo_image():
+    data = request.json or {}
+    package_name = (data.get("package_name") or "Grocery Combo Deal").strip()
+    package_price = data.get("package_price", 0.0)
+    items_list = data.get("items", [])
+    
+    items_str = ", ".join([str(it) for it in items_list[:5]]) if items_list else "assorted supermarket daily groceries"
+    
+    full_prompt = (
+        f'Award-winning commercial studio product photography of supermarket combo package bundle "{package_name}". '
+        f'The combo bundle contains neatly arranged products: {items_str}. '
+        'All grocery items are displayed together in an authentic supermarket gift hamper basket with a gold ribbon. '
+        'Pure clean white background, soft diffused studio light, 8k resolution, photorealistic retail packaging.'
+    )
+    encoded_prompt = urllib.parse.quote(full_prompt)
+    width, height = 600, 600
+    generated_images = []
+    
+    seeds = [303, 404]
+    for s in seeds:
+        ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=turbo&seed={s}&nologo=true"
+        try:
+            req = urllib.request.Request(ai_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                img_data = response.read()
+                if len(img_data) > 1000:
+                    b64 = base64.b64encode(img_data).decode("utf-8")
+                    generated_images.append({
+                        "url": f"data:image/jpeg;base64,{b64}",
+                        "label": f"Combo Hamper Option {len(generated_images) + 1}"
+                    })
+        except Exception as e:
+            print("Combo AI Generation Error:", e)
+
+    return jsonify({
+        "success": True,
+        "images": generated_images,
+        "prompt": full_prompt
+    })
+
+
 @app.route("/api/image_proxy")
 @login_required
 @admin_required

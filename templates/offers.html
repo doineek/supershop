@@ -81,14 +81,18 @@
 
     <!-- Custom Banner Image Selector -->
     <div>
-      <label style="display:block; font-weight:700; margin-bottom:4px; font-size:13px; color:#1e293b;">Banner Image (Upload Photo)</label>
-      <input type="file" name="free_delivery_image_file" accept="image/*" style="width:100%; font-size:12px; padding:6px 0;">
-      {% if settings.get('free_delivery_image_url') %}
-        <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-          <img src="{{ settings.get('free_delivery_image_url') }}" alt="Banner Preview" style="width:40px; height:40px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc;">
-          <span style="font-size:11px; color:#16a34a; font-weight:bold;">Custom Photo Active</span>
-        </div>
-      {% endif %}
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <label style="display:block; font-weight:700; font-size:13px; color:#1e293b;">Banner Image</label>
+        <span style="font-size:0.82rem; color:#4f46e5; font-weight:700; cursor:pointer;" onclick="openFreeDelAiModal()">
+          ✨ Need Banner Images? Generate with AI Studio ➔
+        </span>
+      </div>
+      <input type="file" id="freeDelFileInput" name="free_delivery_image_file" accept="image/*" style="width:100%; font-size:12px; padding:6px 0;">
+      <input type="hidden" id="freeDelImageUrlInput" name="free_delivery_image_url" value="{{ settings.get('free_delivery_image_url') or '' }}">
+      <div id="freeDelPreviewContainer" style="display:flex; align-items:center; gap:8px; margin-top:6px; {% if not settings.get('free_delivery_image_url') %}display:none;{% endif %}">
+        <img id="freeDelImgPreview" src="{{ settings.get('free_delivery_image_url') or '' }}" alt="Banner Preview" style="width:50px; height:50px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc;">
+        <span style="font-size:11px; color:#16a34a; font-weight:bold;">Custom Photo Active</span>
+      </div>
     </div>
 
     <div style="grid-column: 1 / -1; display:flex; justify-content:flex-end;">
@@ -799,5 +803,379 @@ function updateEvScopeOptions() {
     </form>
   </div>
 </div>
+
+<!-- ================= AI FREE DELIVERY & PROMOTIONAL BANNER STUDIO MODAL ================= -->
+<div id="freeDelAiModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.75); z-index:9999; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px);">
+  <div style="background:#ffffff; border-radius:18px; width:100%; max-width:820px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.4); border:1px solid #e2e8f0;">
+    
+    <!-- Modal Header -->
+    <div style="background:linear-gradient(135deg, #0284c7, #0ea5e9, #059669); padding:14px 20px; color:#ffffff; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:800; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          <span>🚚 Free Delivery & Promotional Banner AI Studio</span>
+        </div>
+        <div style="font-size:0.82rem; opacity:0.95; margin-top:2px;">
+          Create & customize eye-catching promotional banners for App & Web slider
+        </div>
+      </div>
+      <button type="button" onclick="closeFreeDelAiModal()" style="background:rgba(255,255,255,0.25); border:none; color:#fff; width:32px; height:32px; border-radius:50%; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+    </div>
+
+    <!-- Modal Content -->
+    <div style="padding:16px 20px; overflow-y:auto; flex:1;">
+      
+      <!-- Generator Trigger Row -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label style="font-size:0.80rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">Banner Theme</label>
+          <select id="freeDelAiThemeSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #0284c7; font-size:0.86rem; font-weight:700; background:#f0f9ff; color:#0369a1;">
+            <option value="free_delivery" selected>🚚 Supermarket Free Delivery Scooter & Van</option>
+            <option value="grocery_sale">🛒 Big Grocery Super Sale & Fresh Baskets</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:end; gap:6px;">
+          <button type="button" id="freeDelAiGenBtn" onclick="triggerFreeDelAiGenerate()" style="flex:1; background:#0284c7; color:#fff; border:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.86rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <span>🔄 Generate AI Banner</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="freeDelAiLoading" style="display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px 10px;">
+        <div style="width:36px; height:36px; border:4px solid #e0f2fe; border-top:4px solid #0284c7; border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <div style="font-weight:700; color:#0369a1; font-size:0.90rem; margin-top:10px;">Generating 8k commercial delivery banner... please wait</div>
+      </div>
+
+      <!-- Base Photos Grid -->
+      <div style="margin-top:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div style="font-size:0.80rem; font-weight:700; color:#64748b;">
+            1. CHOOSE BASE BANNER PHOTO:
+          </div>
+          <a href="https://www.google.com/search?tbm=isch&q=free+delivery+supermarket+banner+grocery" target="_blank" style="font-size:0.75rem; font-weight:700; color:#2563eb; text-decoration:none; display:flex; align-items:center; gap:4px; background:#eff6ff; padding:2px 8px; border-radius:6px; border:1px solid #bfdbfe;">
+            🔍 Search Delivery Banners on Google
+          </a>
+        </div>
+        <div id="freeDelAiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+          <!-- Injected via JavaScript -->
+        </div>
+
+        <!-- Direct Web Image Input -->
+        <div style="display:flex; gap:6px; margin-top:10px; background:#f1f5f9; padding:8px 10px; border-radius:8px; align-items:center;">
+          <span style="font-size:0.80rem; font-weight:700; color:#475569; white-space:nowrap;">🌐 Web Image:</span>
+          <input type="url" id="freeDelWebImgInput" placeholder="Paste banner image link from Google / Web" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.82rem;">
+          <button type="button" onclick="loadFreeDelWebImage()" style="background:#0f172a; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:0.80rem; font-weight:700; cursor:pointer; white-space:nowrap;">
+            📥 Load to Studio
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Customizer Studio -->
+      <div id="freeDelStudioSection" style="display:none; margin-top:16px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:16px;">
+        <div style="font-weight:800; font-size:0.92rem; color:#1e293b; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">
+          🎨 Customize Banner Headline & Badges
+        </div>
+
+        <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:16px; align-items:start;">
+          <!-- Controls -->
+          <div>
+            <div style="margin-bottom:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Banner Headline</label>
+              <input type="text" id="freeDelStudioTitle" oninput="redrawFreeDelCanvas()" placeholder="e.g. 🚚 FREE HOME DELIVERY!" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:700; color:#0f172a;">
+            </div>
+
+            <div style="margin-bottom:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Offer Condition / Subtitle</label>
+              <input type="text" id="freeDelStudioSubtitle" oninput="redrawFreeDelCanvas()" placeholder="e.g. On all orders above TK 1,000" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+              <div>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Banner Theme</label>
+                <select id="freeDelStudioTheme" onchange="redrawFreeDelCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
+                  <option value="emerald_green" selected>🟢 Emerald Green</option>
+                  <option value="royal_blue">🔷 Royal Navy Blue</option>
+                  <option value="dark_gold">🖤 Dark Slate + Gold</option>
+                  <option value="crimson_red">🔴 Crimson Red</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Font Style</label>
+                <select id="freeDelStudioFont" onchange="redrawFreeDelCanvas()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.80rem; font-weight:700;">
+                  <option value="Arial Black, Impact, sans-serif" selected>Impact Ultra-Bold</option>
+                  <option value="Segoe UI, Inter, sans-serif">Modern Clean Bold</option>
+                  <option value="Trebuchet MS, sans-serif">Prominent Retail</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div style="text-align:center;">
+            <div style="font-size:0.78rem; font-weight:700; color:#64748b; margin-bottom:4px;">
+              LIVE BANNER PREVIEW (16:9):
+            </div>
+            <div style="display:inline-block; border-radius:12px; overflow:hidden; border:2px solid #cbd5e1; box-shadow:0 6px 12px rgba(0,0,0,0.1); background:#fff; width:100%;">
+              <canvas id="freeDelStudioCanvas" style="width:100%; height:auto; display:block;"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:12px; padding-top:10px; border-top:1px dashed #cbd5e1;">
+          <button type="button" onclick="applyFreeDelStudioBanner()" style="padding:9px 20px; border-radius:8px; border:none; background:#059669; color:#ffffff; font-weight:800; cursor:pointer; box-shadow:0 3px 8px rgba(5,150,105,0.35); font-size:0.90rem;">
+            ⭐ Set as Free Delivery Banner Image
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Modal Footer -->
+    <div style="padding:10px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+      <button type="button" onclick="closeFreeDelAiModal()" style="padding:7px 16px; border-radius:6px; border:1px solid #cbd5e1; background:#fff; font-weight:600; cursor:pointer; color:#475569;">
+        Close
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let freeDelAiImages = [];
+let selectedFreeDelIdx = 0;
+let freeDelBaseImage = new Image();
+
+function openFreeDelAiModal() {
+  const minAmt = document.querySelector('input[name="free_delivery_min_amount"]')?.value || '1000';
+  const title = document.querySelector('input[name="free_delivery_title"]')?.value || '🚚 FREE HOME DELIVERY!';
+  const subtitle = document.querySelector('input[name="free_delivery_subtitle"]')?.value || `On all orders above TK ${minAmt}`;
+
+  document.getElementById('freeDelStudioTitle').value = title;
+  document.getElementById('freeDelStudioSubtitle').value = subtitle;
+
+  document.getElementById('freeDelAiModal').style.display = 'flex';
+  if (freeDelAiImages.length === 0) {
+    triggerFreeDelAiGenerate();
+  }
+}
+
+function closeFreeDelAiModal() {
+  document.getElementById('freeDelAiModal').style.display = 'none';
+}
+
+async function triggerFreeDelAiGenerate() {
+  const btn = document.getElementById('freeDelAiGenBtn');
+  const spinner = document.getElementById('freeDelAiLoading');
+  const grid = document.getElementById('freeDelAiImagesGrid');
+  const theme = document.getElementById('freeDelAiThemeSelect')?.value || 'free_delivery';
+  const title = document.getElementById('freeDelStudioTitle')?.value || 'Free Home Delivery';
+
+  if (btn) btn.disabled = true;
+  if (spinner) spinner.style.display = 'flex';
+
+  try {
+    const res = await fetch('/api/ai/generate_banner_image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ banner_type: theme, title: title })
+    });
+    const data = await res.json();
+    if (data.success && data.images && data.images.length > 0) {
+      freeDelAiImages = data.images;
+      selectedFreeDelIdx = 0;
+      renderFreeDelAiGrid();
+    } else {
+      // Fallback banner
+      freeDelAiImages = [{
+        url: `https://image.pollinations.ai/prompt/${encodeURIComponent('supermarket grocery delivery van free delivery banner green theme')}?width=800&height=450&model=turbo&nologo=true`,
+        label: 'Commercial Banner'
+      }];
+      selectedFreeDelIdx = 0;
+      renderFreeDelAiGrid();
+    }
+  } catch (err) {
+    console.error('Banner AI error:', err);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (spinner) spinner.style.display = 'none';
+  }
+}
+
+function renderFreeDelAiGrid() {
+  const grid = document.getElementById('freeDelAiImagesGrid');
+  if (!grid) return;
+
+  grid.innerHTML = freeDelAiImages.map((imgItem, idx) => {
+    const isSel = idx === selectedFreeDelIdx;
+    const imgSrc = typeof imgItem === 'string' ? imgItem : (imgItem.url || '');
+    const imgLabel = typeof imgItem === 'object' && imgItem.label ? imgItem.label : `Option ${idx + 1}`;
+
+    return `
+      <div onclick="selectFreeDelImg(${idx})" style="position:relative; cursor:pointer; border-radius:10px; overflow:hidden; border: 3px solid ${isSel ? '#0284c7' : '#cbd5e1'}; box-shadow: ${isSel ? '0 0 0 3px rgba(2,132,199,0.3)' : '0 2px 4px rgba(0,0,0,0.06)'}; background:#fff;">
+        <img src="${imgSrc}" style="width:100%; height:120px; object-fit:cover; display:block;">
+        ${isSel ? `
+          <div style="position:absolute; top:6px; right:6px; background:#0284c7; color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold;">
+            ✓
+          </div>
+        ` : ''}
+        <div style="padding:4px; font-size:0.75rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155;">
+          ${imgLabel}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  initFreeDelStudio();
+}
+
+function selectFreeDelImg(idx) {
+  selectedFreeDelIdx = idx;
+  renderFreeDelAiGrid();
+}
+
+function loadFreeDelWebImage() {
+  const urlInput = document.getElementById('freeDelWebImgInput');
+  const url = urlInput ? urlInput.value.trim() : '';
+  if (!url) {
+    alert('Please enter a valid image URL');
+    return;
+  }
+  freeDelAiImages.unshift({ url: url, label: '🌐 Web Banner' });
+  selectedFreeDelIdx = 0;
+  renderFreeDelAiGrid();
+}
+
+function initFreeDelStudio() {
+  const sec = document.getElementById('freeDelStudioSection');
+  if (!sec) return;
+  sec.style.display = 'block';
+
+  const chosen = freeDelAiImages[selectedFreeDelIdx];
+  if (!chosen) return;
+  let imgSrc = typeof chosen === 'string' ? chosen : (chosen.url || '');
+
+  if (imgSrc.startsWith('http://') || imgSrc.startsWith('https://')) {
+    imgSrc = '/api/image_proxy?url=' + encodeURIComponent(imgSrc);
+  }
+
+  freeDelBaseImage = new Image();
+  freeDelBaseImage.crossOrigin = 'anonymous';
+  freeDelBaseImage.onload = function() {
+    redrawFreeDelCanvas();
+  };
+  freeDelBaseImage.onerror = function() {
+    const fallback = new Image();
+    fallback.onload = function() {
+      freeDelBaseImage = fallback;
+      redrawFreeDelCanvas();
+    };
+    fallback.src = typeof chosen === 'string' ? chosen : chosen.url;
+  };
+  freeDelBaseImage.src = imgSrc;
+}
+
+function redrawFreeDelCanvas() {
+  const canvas = document.getElementById('freeDelStudioCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = 800;
+  const h = 450;
+  canvas.width = w;
+  canvas.height = h;
+
+  // 1. Draw Base
+  if (freeDelBaseImage.complete && freeDelBaseImage.naturalWidth > 0) {
+    ctx.drawImage(freeDelBaseImage, 0, 0, w, h);
+  } else {
+    ctx.fillStyle = '#f0fdf4';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  const title = (document.getElementById('freeDelStudioTitle')?.value || '').trim();
+  const subtitle = (document.getElementById('freeDelStudioSubtitle')?.value || '').trim();
+  const theme = document.getElementById('freeDelStudioTheme')?.value || 'emerald_green';
+  const fontFam = document.getElementById('freeDelStudioFont')?.value || 'Arial Black, Impact, sans-serif';
+
+  // 2. Overlay Top Banner Ribbon
+  if (title) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+
+    const bannerH = subtitle ? 96 : 64;
+    ctx.beginPath();
+    ctx.roundRect(30, 24, w - 60, bannerH, 16);
+
+    if (theme === 'emerald_green') {
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.94)';
+      ctx.strokeStyle = '#86efac';
+    } else if (theme === 'royal_blue') {
+      ctx.fillStyle = 'rgba(30, 58, 138, 0.94)';
+      ctx.strokeStyle = '#93c5fd';
+    } else if (theme === 'dark_gold') {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+      ctx.strokeStyle = '#f59e0b';
+    } else {
+      ctx.fillStyle = 'rgba(153, 27, 27, 0.94)';
+      ctx.strokeStyle = '#fca5a5';
+    }
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 32px ${fontFam}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(title, w / 2, 24 + (subtitle ? 38 : bannerH / 2));
+
+    if (subtitle) {
+      ctx.font = `bold 18px ${fontFam}`;
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(subtitle, w / 2, 24 + bannerH - 24);
+    }
+  }
+
+  // Bottom Tag
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(w - 220, h - 50, 190, 36, 10);
+  ctx.fillStyle = '#16a34a';
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold 14px ${fontFam}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('⚡ 100% FREE DELIVERY', w - 125, h - 32);
+  ctx.restore();
+}
+
+function applyFreeDelStudioBanner() {
+  const canvas = document.getElementById('freeDelStudioCanvas');
+  if (!canvas) return;
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  if (!dataUrl) return;
+
+  const urlInput = document.getElementById('freeDelImageUrlInput');
+  if (urlInput) urlInput.value = dataUrl;
+
+  const preview = document.getElementById('freeDelImgPreview');
+  const container = document.getElementById('freeDelPreviewContainer');
+  if (preview) preview.src = dataUrl;
+  if (container) container.style.display = 'flex';
+
+  closeFreeDelAiModal();
+  alert('✅ Free Delivery Banner updated successfully! Click "Save Free Delivery & Banner Settings" to apply to store.');
+}
 </script>
 {% endblock %}
+

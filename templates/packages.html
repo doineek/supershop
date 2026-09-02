@@ -36,9 +36,18 @@
         </div>
 
         <div style="margin-bottom:12px;">
-          <label style="display:block; font-weight:600; margin-bottom:4px;">Upload Package Image or Image URL</label>
-          <input type="file" name="package_image_file" accept="image/*" style="width:100%; margin-bottom:6px; font-size:13px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label style="display:block; font-weight:600;">Package Image</label>
+            <span style="font-size:0.82rem; color:#4f46e5; font-weight:700; cursor:pointer;" onclick="openPkgAiModal()">
+              ✨ Generate Combo Image with AI ➔
+            </span>
+          </div>
+          <input type="file" id="pkgFileInput" name="package_image_file" accept="image/*" style="width:100%; margin-bottom:6px; font-size:13px;">
           <input type="text" id="pkgImageInput" name="image_url" placeholder="Or enter Image URL (https://...)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">
+          <div id="pkgImgPreviewWrapper" style="display:none; align-items:center; gap:8px; margin-top:6px;">
+            <img id="pkgImgPreviewEl" src="" alt="Package Preview" style="width:48px; height:48px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc;">
+            <span style="font-size:11px; color:#16a34a; font-weight:bold;">Custom Image Set</span>
+          </div>
         </div>
 
         <!-- Searchable Product Selection -->
@@ -53,7 +62,8 @@
                  data-name="{{ p.name|e }}"
                  data-sku="{{ p.sku|e }}"
                  data-price="{{ p.sell_price }}"
-                 onclick="addPkgProductRow('{{ p.id }}', '{{ p.name|e }}', '{{ p.sku|e }}', {{ p.sell_price }}, 1)"
+                 data-image="{{ p.image_url|e if p.image_url else '' }}"
+                 onclick="addPkgProductRow('{{ p.id }}', '{{ p.name|e }}', '{{ p.sku|e }}', {{ p.sell_price }}, 1, '{{ p.image_url|e if p.image_url else '' }}')"
                  style="padding:10px 12px; border-bottom:1px solid #f1f5f9; cursor:pointer; font-size:13px;"
                  onmouseover="this.style.background='#eff6ff'"
                  onmouseout="this.style.background='white'">
@@ -215,7 +225,7 @@ function filterPkgProducts() {
   });
 }
 
-function addPkgProductRow(id, name, sku, price, qty = 1) {
+function addPkgProductRow(id, name, sku, price, qty = 1, image = '') {
   id = String(id);
   if (selectedPkgMap.has(id)) {
     alert("Product is already added to this package.");
@@ -223,7 +233,7 @@ function addPkgProductRow(id, name, sku, price, qty = 1) {
     return;
   }
 
-  selectedPkgMap.set(id, { id, name, sku, price: parseFloat(price), qty: parseInt(qty) });
+  selectedPkgMap.set(id, { id, name, sku, price: parseFloat(price), qty: parseInt(qty), image: image || '' });
   document.getElementById('emptyPkgRow')?.remove();
 
   const tbody = document.getElementById('selectedPkgBody');
@@ -281,13 +291,20 @@ function loadPkgForEdit(pkg) {
   document.getElementById('pkgDescInput').value = pkg.description || '';
   document.getElementById('pkgImageInput').value = pkg.image_url || '';
 
+  if (pkg.image_url) {
+    const preview = document.getElementById('pkgImgPreviewEl');
+    const wrapper = document.getElementById('pkgImgPreviewWrapper');
+    if (preview) preview.src = pkg.image_url;
+    if (wrapper) wrapper.style.display = 'flex';
+  }
+
   // Clear current selected products table
   selectedPkgMap.clear();
   document.getElementById('selectedPkgBody').innerHTML = '';
 
   if (pkg.items && pkg.items.length > 0) {
     pkg.items.forEach(it => {
-      addPkgProductRow(it.product_id, it.product_name, it.sku || 'SKU', it.sell_price, it.quantity);
+      addPkgProductRow(it.product_id, it.product_name, it.sku || 'SKU', it.sell_price, it.quantity, it.image_url || '');
     });
   }
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -325,7 +342,6 @@ function validateAndConfirmPackage(e) {
   let itemsListHtml = "";
 
   selectedPkgMap.forEach(item => {
-    // Read current qty from input DOM in case user typed directly
     const qtyInput = document.querySelector(`input[name="qty_${item.id}"]`);
     if (qtyInput) item.qty = Math.max(1, parseInt(qtyInput.value) || 1);
 
@@ -334,14 +350,12 @@ function validateAndConfirmPackage(e) {
     itemsListHtml += `<li><strong>${item.name}</strong> × ${item.qty} (TK ${item.price.toFixed(2)} each = TK ${itemTotal.toFixed(2)})</li>`;
   });
 
-  // Price validation: Combo price CANNOT be higher than total regular price
   if (comboPrice > totalRegularPrice) {
     alert(`⛔ ERROR: Combo Special Price (TK ${comboPrice.toFixed(2)}) CANNOT be higher than the regular total price of included products (TK ${totalRegularPrice.toFixed(2)}).\n\nPlease lower the combo price or add more items to offer a real discount.`);
     e.preventDefault();
     return false;
   }
 
-  // Show confirmation modal
   e.preventDefault();
   const pkgName = document.getElementById('pkgNameInput').value.trim();
   const savings = totalRegularPrice - comboPrice;
@@ -372,5 +386,394 @@ document.addEventListener('click', function(e) {
     document.getElementById('pkgDropdown').style.display = 'none';
   }
 });
+
+// ================= COMBO PACKAGE AI COLLAGE & 3D STUDIO ENGINE =================
+let pkgAiImages = [];
+let selectedPkgIdx = 0;
+let loadedItemImages = [];
+
+function openPkgAiModal() {
+  const pkgName = document.getElementById('pkgNameInput')?.value.trim() || 'Supermarket Combo Deal';
+  const pkgPrice = parseFloat(document.getElementById('pkgPriceInput')?.value) || 0;
+
+  if (selectedPkgMap.size === 0) {
+    alert('⚠️ Please search and add at least 1 product to the package first.');
+    return;
+  }
+
+  document.getElementById('pkgStudioTitle').value = pkgName;
+  document.getElementById('pkgStudioPrice').value = pkgPrice ? pkgPrice.toFixed(2) : '499.00';
+  document.getElementById('pkgAiModal').style.display = 'flex';
+
+  triggerPkgAiGenerate();
+}
+
+function closePkgAiModal() {
+  document.getElementById('pkgAiModal').style.display = 'none';
+}
+
+async function triggerPkgAiGenerate() {
+  const pkgName = document.getElementById('pkgStudioTitle')?.value.trim() || 'Supermarket Combo Deal';
+  const pkgPrice = parseFloat(document.getElementById('pkgStudioPrice')?.value) || 0;
+  const items = Array.from(selectedPkgMap.values()).map(it => it.name + (it.qty > 1 ? ` (${it.qty} pcs)` : ''));
+
+  const spinner = document.getElementById('pkgAiLoading');
+  if (spinner) spinner.style.display = 'flex';
+
+  // 1. Load actual item images for smart collage
+  loadedItemImages = [];
+  const rawImagesList = Array.from(selectedPkgMap.values()).map(it => it.image).filter(Boolean);
+  
+  for (const imgUrl of rawImagesList) {
+    try {
+      const img = new Image();
+      let safeSrc = imgUrl;
+      if (safeSrc.startsWith('http://') || safeSrc.startsWith('https://')) {
+        safeSrc = '/api/image_proxy?url=' + encodeURIComponent(safeSrc);
+      }
+      img.crossOrigin = 'anonymous';
+      await new Promise(resolve => {
+        img.onload = () => { loadedItemImages.push(img); resolve(); };
+        img.onerror = () => { resolve(); };
+        img.src = safeSrc;
+      });
+    } catch (e) {}
+  }
+
+  // 2. Fetch 3D AI generation
+  try {
+    const res = await fetch('/api/ai/generate_combo_image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ package_name: pkgName, package_price: pkgPrice, items: items })
+    });
+    const data = await res.json();
+    pkgAiImages = [];
+
+    // Prepend Collage Option
+    pkgAiImages.push({
+      type: 'collage',
+      label: '🎁 Smart Multi-Item Collage (সকল পণ্যের কোলাজ)'
+    });
+
+    if (data.success && data.images && data.images.length > 0) {
+      data.images.forEach(img => {
+        pkgAiImages.push({
+          type: 'ai_photo',
+          url: img.url,
+          label: img.label
+        });
+      });
+    }
+  } catch (err) {
+    pkgAiImages = [{
+      type: 'collage',
+      label: '🎁 Smart Multi-Item Collage (সকল পণ্যের কোলাজ)'
+    }];
+  } finally {
+    if (spinner) spinner.style.display = 'none';
+    selectedPkgIdx = 0;
+    renderPkgAiGrid();
+  }
+}
+
+function renderPkgAiGrid() {
+  const grid = document.getElementById('pkgAiImagesGrid');
+  if (!grid) return;
+
+  grid.innerHTML = pkgAiImages.map((imgItem, idx) => {
+    const isSel = idx === selectedPkgIdx;
+    const isCollage = imgItem.type === 'collage';
+
+    return `
+      <div onclick="selectPkgImg(${idx})" style="position:relative; cursor:pointer; border-radius:10px; overflow:hidden; border: 3px solid ${isSel ? '#16a34a' : '#cbd5e1'}; box-shadow: ${isSel ? '0 0 0 3px rgba(22,163,74,0.3)' : '0 2px 4px rgba(0,0,0,0.06)'}; background:#fff; text-align:center;">
+        ${isCollage ? `
+          <div style="height:120px; background:#f0fdf4; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px;">
+            <div style="font-size:32px;">🎁 🛍️</div>
+            <div style="font-size:11px; font-weight:800; color:#15803d; margin-top:4px;">Auto-Collage from All Items</div>
+          </div>
+        ` : `
+          <img src="${imgItem.url}" style="width:100%; height:120px; object-fit:contain; display:block;">
+        `}
+        ${isSel ? `
+          <div style="position:absolute; top:6px; right:6px; background:#16a34a; color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold;">
+            ✓
+          </div>
+        ` : ''}
+        <div style="padding:5px; font-size:0.75rem; text-align:center; font-weight:700; background:#f8fafc; color:#334155;">
+          ${imgItem.label}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  redrawPkgCanvas();
+}
+
+function selectPkgImg(idx) {
+  selectedPkgIdx = idx;
+  renderPkgAiGrid();
+}
+
+let pkgAiBaseImg = new Image();
+
+function redrawPkgCanvas() {
+  const canvas = document.getElementById('pkgStudioCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = 600;
+  const h = 600;
+  canvas.width = w;
+  canvas.height = h;
+
+  const pkgName = (document.getElementById('pkgStudioTitle')?.value || '').trim();
+  const pkgPrice = parseFloat(document.getElementById('pkgStudioPrice')?.value) || 0;
+  const chosen = pkgAiImages[selectedPkgIdx];
+
+  // 1. Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  // 2. Top Header Bar
+  const headerH = 50;
+  ctx.fillStyle = '#f0fdf4';
+  ctx.fillRect(0, 0, w, headerH);
+  ctx.strokeStyle = '#86efac';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, headerH);
+  ctx.lineTo(w, headerH);
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 15px Arial Black, sans-serif';
+  ctx.fillStyle = '#15803d';
+  ctx.fillText('🎁 SPECIAL COMBO DEAL', 16, headerH / 2);
+
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 18px Arial Black, sans-serif';
+  ctx.fillStyle = '#16a34a';
+  ctx.fillText(`TK ${pkgPrice.toFixed(2)}`, w - 16, headerH / 2);
+
+  // 3. Bottom Bar
+  const bottomH = 68;
+  const bottomY0 = h - bottomH;
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, bottomY0, w, bottomH);
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, bottomY0);
+  ctx.lineTo(w, bottomY0);
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 22px Arial Black, sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText(pkgName, 16, bottomY0 + bottomH / 2, w - 160);
+
+  // Savings Pill
+  ctx.beginPath();
+  ctx.roundRect(w - 140, bottomY0 + (bottomH - 34) / 2, 124, 34, 8);
+  ctx.fillStyle = '#dc2626';
+  ctx.fill();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 13px Arial Black, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('★ SAVE BIG', w - 78, bottomY0 + bottomH / 2);
+
+  // 4. Center Viewport
+  const centerAreaY0 = headerH + 6;
+  const centerAreaH = bottomY0 - centerAreaY0 - 6;
+
+  if (chosen && chosen.type === 'ai_photo' && chosen.url) {
+    pkgAiBaseImg.src = chosen.url;
+    if (pkgAiBaseImg.complete && pkgAiBaseImg.naturalWidth > 0) {
+      ctx.drawImage(pkgAiBaseImg, 0, centerAreaY0, w, centerAreaH);
+    }
+  } else {
+    // Render Multi-Item Collage Grid
+    const items = Array.from(selectedPkgMap.values());
+    const n = Math.max(items.length, loadedItemImages.length);
+
+    if (loadedItemImages.length === 0) {
+      // Draw placeholder item cards
+      const cols = n <= 2 ? n : (n <= 4 ? 2 : 3);
+      const rows = Math.ceil(n / cols);
+      const cw = (w - 20) / cols;
+      const ch = centerAreaH / rows;
+
+      items.forEach((it, i) => {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        const cx = 10 + c * cw + 6;
+        const cy = centerAreaY0 + r * ch + 6;
+        const cardW = cw - 12;
+        const cardH = ch - 12;
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(cx, cy, cardW, cardH, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 14px Arial, sans-serif';
+        ctx.fillStyle = '#0f172a';
+        ctx.fillText(it.name[:20], cx + cardW / 2, cy + cardH / 2 - 8);
+
+        ctx.font = 'bold 12px Arial, sans-serif';
+        ctx.fillStyle = '#16a34a';
+        ctx.fillText(`TK ${it.price.toFixed(2)} × ${it.qty}`, cx + cardW / 2, cy + cardH / 2 + 12);
+      });
+    } else {
+      // Draw actual loaded item images
+      const count = loadedItemImages.length;
+      const cols = count <= 2 ? count : (count <= 4 ? 2 : 3);
+      const rows = Math.ceil(count / cols);
+      const cw = (w - 20) / cols;
+      const ch = centerAreaH / rows;
+
+      loadedItemImages.forEach((img, i) => {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        const cx = 10 + c * cw + 6;
+        const cy = centerAreaY0 + r * ch + 6;
+        const cardW = cw - 12;
+        const cardH = ch - 12;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(cx, cy, cardW, cardH, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        const scale = Math.min((cardW - 8) / img.naturalWidth, (cardH - 8) / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        const dx = cx + (cardW - dw) / 2;
+        const dy = cy + (cardH - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+      });
+    }
+  }
+
+  // Outer Border
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, w, h);
+}
+
+function applyPkgStudioImage() {
+  const canvas = document.getElementById('pkgStudioCanvas');
+  if (!canvas) return;
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  if (!dataUrl) return;
+
+  const urlInput = document.getElementById('pkgImageInput');
+  if (urlInput) urlInput.value = dataUrl;
+
+  const preview = document.getElementById('pkgImgPreviewEl');
+  const wrapper = document.getElementById('pkgImgPreviewWrapper');
+  if (preview) preview.src = dataUrl;
+  if (wrapper) wrapper.style.display = 'flex';
+
+  closePkgAiModal();
+  alert('✅ Combo Package Image created successfully! Click "+ Save Package" to save.');
+}
 </script>
+
+<!-- ================= COMBO PACKAGE AI STUDIO MODAL ================= -->
+<div id="pkgAiModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.75); z-index:9999; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px);">
+  <div style="background:#ffffff; border-radius:18px; width:100%; max-width:820px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.4); border:1px solid #e2e8f0;">
+    
+    <!-- Modal Header -->
+    <div style="background:linear-gradient(135deg, #15803d, #16a34a, #059669); padding:14px 20px; color:#ffffff; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:800; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          <span>🎁 Combo Package & Multi-Item AI Studio</span>
+        </div>
+        <div style="font-size:0.82rem; opacity:0.95; margin-top:2px;">
+          Automatically generate unified 3D combo photos & collages from all included items
+        </div>
+      </div>
+      <button type="button" onclick="closePkgAiModal()" style="background:rgba(255,255,255,0.25); border:none; color:#fff; width:32px; height:32px; border-radius:50%; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+    </div>
+
+    <!-- Modal Content -->
+    <div style="padding:16px 20px; overflow-y:auto; flex:1;">
+      
+      <!-- Loading State -->
+      <div id="pkgAiLoading" style="display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px 10px;">
+        <div style="width:36px; height:36px; border:4px solid #dcfce7; border-top:4px solid #16a34a; border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <div style="font-weight:700; color:#15803d; font-size:0.90rem; margin-top:10px;">Composing package items into unified AI image... please wait</div>
+      </div>
+
+      <!-- Combo Options Grid -->
+      <div>
+        <div style="font-size:0.80rem; font-weight:700; color:#64748b; margin-bottom:6px;">
+          1. CHOOSE COMBO IMAGE STYLE:
+        </div>
+        <div id="pkgAiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
+      <!-- Live Studio Controls & Preview -->
+      <div style="margin-top:16px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:16px;">
+        <div style="font-weight:800; font-size:0.92rem; color:#1e293b; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">
+          🎨 Live Combo Card Customizer
+        </div>
+
+        <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:16px; align-items:start;">
+          <!-- Controls -->
+          <div>
+            <div style="margin-bottom:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Package Title</label>
+              <input type="text" id="pkgStudioTitle" oninput="redrawPkgCanvas()" placeholder="Package Title" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:700; color:#0f172a;">
+            </div>
+
+            <div style="margin-bottom:8px;">
+              <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:2px;">Special Combo Price (TK)</label>
+              <input type="number" step="0.01" id="pkgStudioPrice" oninput="redrawPkgCanvas()" placeholder="499.00" style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:bold; color:#16a34a;">
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div style="text-align:center;">
+            <div style="font-size:0.78rem; font-weight:700; color:#64748b; margin-bottom:4px;">
+              LIVE COMBO PREVIEW:
+            </div>
+            <div style="display:inline-block; border-radius:12px; overflow:hidden; border:2px solid #cbd5e1; box-shadow:0 6px 12px rgba(0,0,0,0.1); background:#fff; max-width:280px; width:100%;">
+              <canvas id="pkgStudioCanvas" style="width:100%; height:auto; display:block;"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:12px; padding-top:10px; border-top:1px dashed #cbd5e1;">
+          <button type="button" onclick="applyPkgStudioImage()" style="padding:9px 20px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:800; cursor:pointer; box-shadow:0 3px 8px rgba(22,163,74,0.35); font-size:0.90rem;">
+            ⭐ Set as Package Cover Image
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Modal Footer -->
+    <div style="padding:10px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+      <button type="button" onclick="closePkgAiModal()" style="padding:7px 16px; border-radius:6px; border:1px solid #cbd5e1; background:#fff; font-weight:600; cursor:pointer; color:#475569;">
+        Close
+      </button>
+    </div>
+
+  </div>
+</div>
 {% endblock %}
