@@ -1978,8 +1978,9 @@ def prepare_receipt_data(conn, sale_id):
 
     sale_dict = dict(sale)
     inv_num = str(sale_dict.get("invoice_number") or "")
-    online_items_map = {}
     delivery_charge = 0.0
+    items = []
+    
     if inv_num.startswith("INV-ONLINE-"):
         ord_num = inv_num.replace("INV-ONLINE-", "").strip()
         ord_row = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (ord_num,)).fetchone()
@@ -1994,27 +1995,49 @@ def prepare_receipt_data(conn, sale_id):
             sale_dict["payment_method"] = ord_row["payment_method"]
             o_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
             for oi in o_items:
-                online_items_map[oi["product_id"]] = {
-                    "product_name": oi["product_name"],
-                    "total_price": float(oi["total_price"] or 0),
-                    "quantity": int(oi["quantity"] or 1)
-                }
+                oi_dict = dict(oi)
+                p_row = conn.execute("SELECT sku, offer_type, offer_value, offer_title FROM products WHERE id = ?", (oi_dict["product_id"],)).fetchone()
+                sku = p_row["sku"] if p_row else "ONLINE"
+                p_name = oi_dict.get("product_name") or "Product"
+                if "📦" in p_name or "Package" in p_name or "Combo" in p_name:
+                    sku = "COMBO"
+                
+                qty = int(oi_dict.get("quantity") or 1)
+                unit_price = float(oi_dict.get("unit_price") or 0.0)
+                mrp_price = float(oi_dict.get("mrp_price") or unit_price)
+                line_total = float(oi_dict.get("total_price") or (unit_price * qty))
+                paid_qty = qty
+                free_qty = 0
 
-    raw_items = conn.execute("""
-        SELECT si.*, COALESCE(p.name, '') AS prod_name_tbl, COALESCE(p.sku, '') AS prod_sku, p.offer_type, p.offer_value, p.offer_title
-        FROM sale_items si LEFT JOIN products p ON si.product_id = p.id
-        WHERE si.sale_id = ?
-    """, (sale_id,)).fetchall()
-    
-    items = []
-    for r in raw_items:
-        i_dict = dict(r)
-        pid = i_dict["product_id"]
+                items.append({
+                    "id": oi_dict.get("id"),
+                    "product_id": oi_dict.get("product_id"),
+                    "product_name": p_name,
+                    "sku": sku,
+                    "quantity": qty,
+                    "paid_qty": paid_qty,
+                    "free_qty": free_qty,
+                    "unit_price": unit_price,
+                    "mrp_price": mrp_price,
+                    "line_total": line_total,
+                    "total_price": line_total,
+                    "vat_amount": 0.0,
+                    "discount": 0.0,
+                    "offer_type": p_row["offer_type"] if p_row else "",
+                    "offer_title": p_row["offer_title"] if p_row else "",
+                    "offer_value": p_row["offer_value"] if p_row else ""
+                })
+    else:
+        raw_items = conn.execute("""
+            SELECT si.*, COALESCE(p.name, '') AS prod_name_tbl, COALESCE(p.sku, '') AS prod_sku, p.offer_type, p.offer_value, p.offer_title
+            FROM sale_items si LEFT JOIN products p ON si.product_id = p.id
+            WHERE si.sale_id = ?
+        """, (sale_id,)).fetchall()
         
-        if pid in online_items_map and online_items_map[pid].get("product_name"):
-            i_dict["product_name"] = online_items_map[pid]["product_name"]
-            i_dict["sku"] = "ONLINE"
-        else:
+        for r in raw_items:
+            i_dict = dict(r)
+            pid = i_dict["product_id"]
+            
             is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone()
             pkg = None
             if not is_regular_prod or (i_dict.get("prod_name_tbl") or "").startswith("📦"):
@@ -2037,12 +2060,12 @@ def prepare_receipt_data(conn, sale_id):
                 i_dict["product_name"] = i_dict.get("prod_name_tbl") or "Item"
                 i_dict["sku"] = i_dict.get("prod_sku") or ""
 
-        qty = int(i_dict.get("quantity") or 1)
-        unit_price = float(i_dict.get("unit_price") or 0.0)
-        offer_type = i_dict.get("offer_type") or ""
-        offer_title = i_dict.get("offer_title") or ""
-        offer_value = i_dict.get("offer_value") or ""
-        p_name = i_dict.get("product_name") or ""
+            qty = int(i_dict.get("quantity") or 1)
+            unit_price = float(i_dict.get("unit_price") or 0.0)
+            offer_type = i_dict.get("offer_type") or ""
+            offer_title = i_dict.get("offer_title") or ""
+            offer_value = i_dict.get("offer_value") or ""
+            p_name = i_dict.get("product_name") or ""
 
         paid_qty = qty
         free_qty = 0
@@ -5108,45 +5131,62 @@ def api_place_order():
         p_name_raw = (item.get("product_name") or item.get("name") or item.get("title") or "").strip()
         p_sku_raw = (item.get("sku") or "").strip()
 
-        # Accurately determine if item is a Combo Package
-        is_pkg_item = bool(
-            item.get("is_pkg") or
-            item.get("is_package") or
-            str(prod_id or "").upper().startswith("PKG_") or
-            str(item.get("id", "")).upper().startswith("PKG_") or
-            p_name_raw.startswith("📦")
+        # Check if item is an explicit Combo Package
+        is_pkg_flag = (
+            item.get("is_package") is True or
+            item.get("type") == "package" or
+            item.get("package_id") is not None or
+            str(prod_id).startswith("pkg_") or
+            p_name_raw.startswith("📦") or
+            p_name_raw.startswith("ONLINE - Package")
         )
 
         pkg = None
-        if is_pkg_item:
-            raw_pkg_id = str(item.get("raw_id") or prod_id or "").upper().replace("PKG_", "").strip()
-            if raw_pkg_id.isdigit():
-                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (int(raw_pkg_id),)).fetchone()
+        if is_pkg_flag:
+            pkg_id_clean = item.get("package_id") or str(prod_id).replace("pkg_", "")
+            try:
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (int(pkg_id_clean),)).fetchone()
+            except Exception:
+                pass
             if not pkg and p_name_raw:
                 clean_pname = p_name_raw.replace("📦", "").strip()
-                pkg = conn.execute("SELECT * FROM packages WHERE name = ?", (clean_pname,)).fetchone()
+                pkg = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0", (clean_pname, clean_pname, clean_pname)).fetchone()
 
         if pkg:
             p_id = pkg["id"]
             unit_price = float(pkg["package_price"])
             mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
-            p_name = f"📦 {pkg['name']}"
+
+            p_items = conn.execute("""
+                SELECT pi.*, p.sku, p.name AS product_name, p.sell_price, p.mrp
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg["id"],)).fetchall()
+
+            item_details = []
+            sl = 1
+            for pi in p_items:
+                item_details.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} SL:{sl}")
+                sl += 1
+
+            if item_details:
+                p_name = f"📦 {pkg['name']} ({', '.join(item_details)})"
+            else:
+                p_name = f"📦 {pkg['name']}"
+
             offer_type = ""
             offer_value = ""
             offer_title = ""
-            is_package = True
         else:
-            is_package = False
             prod = None
-            if prod_id is not None and not str(prod_id).upper().startswith("PKG_"):
+            if prod_id is not None:
                 try:
                     prod = conn.execute("SELECT * FROM products WHERE id = ?", (int(prod_id),)).fetchone()
                 except Exception:
-                    prod = conn.execute("SELECT * FROM products WHERE id = ?", (str(prod_id),)).fetchone()
-
+                    prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+            
             if not prod and p_name_raw:
-                clean_name = p_name_raw.replace("📦", "").strip()
-                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (clean_name,)).fetchone()
+                prod = conn.execute("SELECT * FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
 
             if prod:
                 p_id = prod["id"]
@@ -5158,7 +5198,7 @@ def api_place_order():
                 offer_title = prod["offer_title"] or ""
             else:
                 p_id = prod_id or 0
-                p_name = p_sku_raw if (p_sku_raw and "(" in p_sku_raw) else p_name_raw
+                p_name = p_name_raw or (p_sku_raw if p_sku_raw else "Product")
                 unit_price = float(item.get("unit_price") or item.get("sell_price") or item.get("price") or 0.0)
                 mrp_price = float(item.get("mrp_price") or item.get("mrp") or unit_price)
                 offer_type = ""
@@ -5185,8 +5225,7 @@ def api_place_order():
             "mrp_price": mrp_price,
             "quantity": actual_qty,
             "paid_qty": paid_qty,
-            "total_price": line_total,
-            "is_package": is_package
+            "total_price": line_total
         })
 
     if not processed_items:
@@ -5245,41 +5284,23 @@ def api_place_order():
     # 3. Insert into online_order_items
     for item in processed_items:
         raw_pid = item["product_id"]
-        is_pkg = item.get("is_package", False)
-
-        if is_pkg:
+        valid_pid = raw_pid
+        chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+        if not chk_p:
             first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
             valid_pid = first_p["id"] if first_p else 1
-            cur.execute("""
-                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
 
-            # Deduct stock for each item in package
-            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (raw_pid,)).fetchall()
-            for pi in p_items:
-                deduct_qty = pi["quantity"] * item["quantity"]
-                cur.execute("UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (deduct_qty, pi["product_id"]))
-                remote_control.push_product_to_cloud(pi["product_id"])
-        else:
-            chk_p = conn.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-            if not chk_p:
-                first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
-                valid_pid = first_p["id"] if first_p else 1
-            else:
-                valid_pid = raw_pid
+        cur.execute("""
+            INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
 
-            cur.execute("""
-                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
-
-            if chk_p:
-                cur.execute(
-                    "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
-                    (item["quantity"], valid_pid)
-                )
-                remote_control.push_product_to_cloud(valid_pid)
+        if chk_p:
+            cur.execute(
+                "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                (item["quantity"], valid_pid)
+            )
+            remote_control.push_product_to_cloud(valid_pid)
 
     cur.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
 
@@ -5307,24 +5328,23 @@ def api_place_order():
     ))
     sale_id = cur.lastrowid
 
-    first_prod_row = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
-    fallback_pid = first_prod_row["id"] if first_prod_row else 1
-
     for item in processed_items:
         raw_pid = item["product_id"]
-        is_pkg = item.get("is_package", False)
-        if is_pkg:
-            valid_pid = fallback_pid
+        chk_prod = cur.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
+        if not chk_prod:
+            first_prod = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
+            valid_pid = first_prod["id"] if first_prod else None
         else:
-            chk_prod = cur.execute("SELECT id FROM products WHERE id = ?", (raw_pid,)).fetchone()
-            valid_pid = chk_prod["id"] if chk_prod else fallback_pid
+            valid_pid = raw_pid
 
-        cur.execute("""
-            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-            VALUES (?, ?, ?, ?, ?, 0, 0, 0)
-        """, (
-            sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
-        ))
+        if valid_pid:
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+            """, (
+                sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
+            ))
+
 
     conn.commit()
     conn.close()
@@ -5381,7 +5401,12 @@ def api_my_orders():
 
     result = []
     for ord_row in orders:
-        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+        items = conn.execute("""
+            SELECT oi.*, p.image_url, p.unit, p.sku, p.brand, p.description, p.sell_price as prod_sell_price
+            FROM online_order_items oi
+            LEFT JOIN products p ON oi.product_id = p.id
+            WHERE oi.order_id = ?
+        """, (ord_row["id"],)).fetchall()
         o_dict = dict(ord_row)
         o_dict["items"] = [dict(i) for i in items]
         result.append(o_dict)

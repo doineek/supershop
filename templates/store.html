@@ -2408,13 +2408,13 @@
 
   <!-- Order History Modal -->
   <div class="modal-backdrop" id="orderHistoryModal">
-    <div class="modal-box" style="max-width:540px;">
+    <div class="modal-box" style="max-width:700px; width:95%;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
         <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary);">🧾 My Order History</h3>
         <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeOrderHistoryModal()">✕</button>
       </div>
 
-      <div id="myOrdersListContainer" style="max-height:65vh; overflow-y:auto; padding-right:4px;">
+      <div id="myOrdersListContainer" style="max-height:75vh; overflow-y:auto; padding-right:4px;">
         <div style="text-align:center; padding:30px; color:var(--text-muted);">Loading orders...</div>
       </div>
     </div>
@@ -3905,67 +3905,115 @@
         const res = await fetch('/api/orders/my-orders?phone=' + encodeURIComponent(currentCustomer.phone));
         const orders = await res.json();
         if (Array.isArray(orders) && orders.length > 0) {
-          container.innerHTML = orders.map(o => {
-            const itemsList = o.items || [];
-            const itemsHtml = itemsList.length > 0 
-              ? itemsList.map(it => {
-                  const isPkg = (it.product_name || '').startsWith('📦');
-                  const clickAttr = isPkg 
-                    ? `onclick="setFilterTab('packages'); closeOrderHistoryModal();"` 
-                    : `onclick="openProductDetailModal(${it.product_id})"`;
-                  
-                  return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #f1f5f9;">
-                      <a href="javascript:void(0)" ${clickAttr} style="font-weight:700; color:#1e293b; text-decoration:none; font-size:0.85rem; display:inline-flex; align-items:center; gap:5px;" title="Click to view product details">
-                        <span>${isPkg ? '🎁' : '🛍️'} ${it.product_name}</span>
-                        <span style="font-size:0.75rem; color:#4f46e5; font-weight:800;">👁️</span>
-                      </a>
-                      <span style="font-size:0.80rem; color:#475569; font-weight:700; white-space:nowrap; margin-left:8px;">
-                        × ${it.quantity} (TK ${(it.total_price || (it.unit_price * it.quantity)).toFixed(2)})
-                      </span>
+          container.innerHTML = orders.map((o, oIdx) => {
+            const items = o.items || [];
+            
+            // 1. Initial summary preview line of all products in order
+            const prodSummaryNames = items.map(it => {
+              const cleanName = (it.product_name || 'Product').split('(')[0].trim();
+              return `${cleanName} (×${it.quantity})`;
+            }).join(', ');
+
+            // 2. Render each item in a professionally divided card
+            const itemsCardsHtml = items.map((it, itIdx) => {
+              const itImg = getFirstImageJS(it.image_url) || '/static/images/logo.png';
+              const isPkg = (it.product_name || '').includes('📦') || (it.product_name || '').toLowerCase().includes('package');
+              const cleanTitle = it.product_name || 'Product';
+              const uPrice = parseFloat(it.unit_price || 0);
+              const lTotal = parseFloat(it.total_price || (uPrice * it.quantity));
+
+              return `
+                <div class="order-product-card" onclick="openProductFromOrder('${it.product_id}')" style="display:flex; align-items:center; gap:12px; padding:10px 12px; background:#ffffff; border:1.5px solid #e2e8f0; border-radius:10px; margin-bottom:8px; cursor:pointer; transition:all 0.2s ease; box-shadow:0 1px 3px rgba(0,0,0,0.04);" onmouseover="this.style.borderColor='#3b82f6'; this.style.background='#f8fafc';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='#ffffff';">
+                  <div style="width:48px; height:48px; border-radius:8px; overflow:hidden; background:#f1f5f9; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #e2e8f0;">
+                    ${isPkg ? `
+                      <span style="font-size:24px;">🎁</span>
+                    ` : `
+                      <img src="${itImg}" alt="${cleanTitle}" style="width:100%; height:100%; object-fit:contain;" onerror="this.src='/static/images/logo.png'">
+                    `}
+                  </div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:700; font-size:0.88rem; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${cleanTitle}">
+                      ${cleanTitle}
                     </div>
-                  `;
-                }).join('')
-              : '<div style="color:#94a3b8; font-size:0.80rem; font-style:italic;">No item details available</div>';
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:3px; font-size:0.78rem; color:#64748b;">
+                      <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-weight:700;">Qty: ${it.quantity}</span>
+                      <span>× TK ${uPrice.toFixed(2)}</span>
+                      ${it.unit ? `<span style="color:#94a3b8;">• ${it.unit}</span>` : ''}
+                    </div>
+                  </div>
+                  <div style="text-align:right; flex-shrink:0;">
+                    <div style="font-weight:800; font-size:0.92rem; color:#16a34a;">TK ${lTotal.toFixed(2)}</div>
+                    <div style="font-size:0.70rem; color:#3b82f6; font-weight:700; margin-top:2px;">View Product ➔</div>
+                  </div>
+                </div>
+              `;
+            }).join('');
 
             return `
-              <div class="order-item-card" style="background:#ffffff; border:1.5px solid var(--border); border-radius:14px; padding:16px; margin-bottom:14px; box-shadow:0 3px 10px rgba(0,0,0,0.04);">
-                
-                <!-- Order Header (Clickable Order Number) -->
-                <div class="order-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                  <a href="/online_orders/${o.id}/invoice" target="_blank" class="order-num" style="font-weight:900; color:#2563eb; text-decoration:none; font-size:1rem; display:flex; align-items:center; gap:6px; cursor:pointer;" title="Click to view order invoice / details">
-                    <span>📄 #${o.order_number}</span>
-                    <span style="font-size:0.75rem; background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:6px; border:1px solid #bfdbfe;">Details ↗</span>
-                  </a>
-                  <div class="order-status status-${o.order_status}" style="font-size:0.78rem; font-weight:800; padding:4px 12px; border-radius:14px; text-transform:uppercase;">
-                    ${o.order_status || 'Pending'}
+              <div class="order-item-card" style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:14px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,0.04);">
+                <!-- Header with Order Number & Status -->
+                <div class="order-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <div class="order-num" onclick="toggleOrderDetailBox('${o.id}')" style="font-weight:800; font-size:0.95rem; color:#2563eb; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Click to view full order details">
+                    <span>🧾 #${o.order_number}</span>
+                  </div>
+                  <div class="order-status status-${o.order_status}" style="font-size:0.75rem; font-weight:800; padding:3px 10px; border-radius:20px;">
+                    ${(o.order_status || 'Pending').toUpperCase()}
                   </div>
                 </div>
 
-                <!-- Products List Shown Upfront -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:10px;">
-                  <div style="font-size:0.75rem; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:6px; letter-spacing:0.5px;">
-                    Included Products (প্রোডাক্টসমূহের তালিকা):
-                  </div>
-                  ${itemsHtml}
+                <!-- Products Summary Line (Initially Visible) -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin:8px 0; font-size:0.82rem; color:#334155; line-height:1.4;">
+                  <strong style="color:#0f172a;">🛍️ Products in this order:</strong> ${prodSummaryNames || 'General grocery items'}
                 </div>
 
-                <div style="font-size:0.80rem; color:var(--text-muted); margin-bottom:8px;">
-                  📅 Order Date: ${(o.created_at || '').slice(0, 16).replace('T', ' ')}
-                </div>
-
-                <!-- Order Footer -->
-                <div style="display:flex; justify-content:space-between; align-items:center; border-top:1.5px dashed var(--border); padding-top:10px; margin-top:8px;">
+                <!-- Price and Date Bar -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
                   <div>
-                    <div style="font-size:0.95rem; font-weight:900; color:var(--primary);">
-                      Total: TK ${(o.total_amount || 0).toFixed(2)}
-                    </div>
-                    <small style="font-size:0.75rem; color:#64748b;">(${o.payment_method === 'cod' ? 'Cash on Delivery' : 'Online Payment'})</small>
+                    <div style="font-size:0.75rem; color:#64748b;">${(o.created_at || '').slice(0, 16).replace('T', ' ')}</div>
+                    <div style="font-size:0.75rem; color:#94a3b8;">${o.payment_method === 'cod' ? '💵 Cash on Delivery' : '💳 Online Payment'}</div>
                   </div>
-                  <a href="/online_orders/${o.id}/invoice" target="_blank" style="background:#0f172a; color:#ffffff; padding:6px 14px; border-radius:8px; font-size:0.80rem; font-weight:700; text-decoration:none; display:flex; align-items:center; gap:4px;">
-                    <span>Print Invoice</span>
-                    <span>🖨️</span>
-                  </a>
+                  <div style="text-align:right;">
+                    <span style="font-size:1rem; font-weight:900; color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
+                    <button type="button" onclick="toggleOrderDetailBox('${o.id}')" id="detailToggleBtn_${o.id}" style="display:block; margin-top:4px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:4px 10px; border-radius:6px; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                      👁️ Details (বিস্তারিত) ▾
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Expandable Detailed Section (Separated Product Cards) -->
+                <div id="orderDetailBox_${o.id}" style="display:none; margin-top:12px; padding-top:12px; border-top:1.5px dashed #cbd5e1;">
+                  <div style="font-size:0.82rem; font-weight:800; color:#1e293b; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>📦 Ordered Items (${items.length} Products):</span>
+                    <span style="font-size:0.74rem; color:#64748b; font-weight:600;">(Click item to view product)</span>
+                  </div>
+
+                  <div class="order-items-separated-list">
+                    ${itemsCardsHtml}
+                  </div>
+
+                  <!-- Delivery Details & Pricing Summary -->
+                  <div style="background:#f1f5f9; border-radius:8px; padding:10px; margin-top:10px; font-size:0.80rem; color:#475569;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                      <span>Subtotal:</span>
+                      <strong>TK ${(o.subtotal || 0).toFixed(2)}</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                      <span>Delivery Charge:</span>
+                      <strong>TK ${(o.delivery_charge || 0).toFixed(2)}</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-weight:800; color:#0f172a; border-top:1px solid #cbd5e1; padding-top:4px; margin-top:4px;">
+                      <span>Total Amount:</span>
+                      <span style="color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div style="margin-top:6px; font-size:0.75rem; color:#64748b;">
+                      📍 <strong>Address:</strong> ${o.address_details || ''}, ${o.area || ''}, ${o.district || ''}
+                    </div>
+                    ${o.delivery_otp ? `
+                      <div style="margin-top:4px; font-size:0.75rem; color:#0369a1; font-weight:700;">
+                        🔑 Delivery Confirmation OTP: <span style="background:#e0f2fe; padding:2px 6px; border-radius:4px; letter-spacing:1px;">${o.delivery_otp}</span>
+                      </div>
+                    ` : ''}
+                  </div>
                 </div>
 
               </div>
@@ -3976,6 +4024,32 @@
         }
       } catch (err) {
         container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:0.85rem;">Could not load orders history.</div>';
+      }
+    }
+
+    function toggleOrderDetailBox(orderId) {
+      const box = document.getElementById('orderDetailBox_' + orderId);
+      const btn = document.getElementById('detailToggleBtn_' + orderId);
+      if (!box) return;
+      if (box.style.display === 'none' || !box.style.display) {
+        box.style.display = 'block';
+        if (btn) btn.innerHTML = '▲ Hide Details (লুকান)';
+      } else {
+        box.style.display = 'none';
+        if (btn) btn.innerHTML = '👁️ Details (বিস্তারিত) ▾';
+      }
+    }
+
+    function openProductFromOrder(productId) {
+      productId = parseInt(productId) || productId;
+      const prod = allProducts.find(p => p.id === productId || p.id === parseInt(productId));
+      if (prod) {
+        closeOrderHistoryModal();
+        openProductDetailModal(prod.id);
+      } else {
+        // Find if in categories or packages
+        closeOrderHistoryModal();
+        switchView('home');
       }
     }
 
