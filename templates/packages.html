@@ -164,7 +164,7 @@
                   </button>
                   {% endif %}
                 </form>
-                <button type="button" class="btn btn-outline btn-small" onclick='loadPkgForEdit({{ pkg|tojson }})' style="margin-right:4px;">✏️ Edit</button>
+                <button type="button" class="btn btn-outline btn-small" onclick="loadPkgById({{ pkg.id }})" style="margin-right:4px;">✏️ Edit</button>
                 <form method="POST" action="{{ url_for('delete_package', package_id=pkg.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete combo package {{ pkg.name }}? This cannot be undone.');">
                   <button class="btn btn-danger btn-small" type="submit">Delete</button>
                 </form>
@@ -217,6 +217,19 @@
 </div>
 
 <script>
+const ALL_PACKAGES_DATA = {{ packages|tojson|safe }};
+const ALL_PACKAGES_MAP = new Map();
+ALL_PACKAGES_DATA.forEach(p => ALL_PACKAGES_MAP.set(Number(p.id), p));
+
+function loadPkgById(pkgId) {
+  const pkg = ALL_PACKAGES_MAP.get(Number(pkgId));
+  if (pkg) {
+    loadPkgForEdit(pkg);
+  } else {
+    console.error("Package not found for ID:", pkgId);
+  }
+}
+
 let selectedPkgMap = new Map(); // id -> { name, sku, price, qty, image }
 
 function selectPkgProductOption(el) {
