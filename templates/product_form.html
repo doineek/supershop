@@ -596,11 +596,26 @@ function initStudioEditor() {
     weightField.value = wm ? wm[1].toUpperCase() : '';
   }
 
+  let targetSrc = imgSrc;
+  if (targetSrc.startsWith('http://') || targetSrc.startsWith('https://')) {
+    targetSrc = '/api/image_proxy?url=' + encodeURIComponent(targetSrc);
+  }
+
+  studioBaseImage = new Image();
   studioBaseImage.crossOrigin = 'anonymous';
   studioBaseImage.onload = function() {
     redrawStudioCanvas();
   };
-  studioBaseImage.src = imgSrc;
+  studioBaseImage.onerror = function() {
+    // If proxy failed, try direct load
+    const fallbackImg = new Image();
+    fallbackImg.onload = function() {
+      studioBaseImage = fallbackImg;
+      redrawStudioCanvas();
+    };
+    fallbackImg.src = imgSrc;
+  };
+  studioBaseImage.src = targetSrc;
 }
 
 function redrawStudioCanvas() {

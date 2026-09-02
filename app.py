@@ -6,7 +6,7 @@ Run it with:  python app.py
 Then open a browser at: http://127.0.0.1:5000
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context, Response, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date, timedelta
@@ -1528,6 +1528,52 @@ def api_ai_generate_product_image():
         "images": generated_images,
         "prompt": full_prompt
     })
+
+
+@app.route("/api/image_proxy")
+@login_required
+@admin_required
+def api_image_proxy():
+    img_url = request.args.get("url", "").strip()
+    if not img_url or not (img_url.startswith("http://") or img_url.startswith("https://")):
+        return "Invalid URL", 400
+    
+    import urllib.request
+    import urllib.parse
+    import io
+    from PIL import Image
+    try:
+        parts = urllib.parse.urlsplit(img_url)
+        clean_url = urllib.parse.urlunsplit((
+            parts.scheme,
+            parts.netloc,
+            urllib.parse.quote(urllib.parse.unquote(parts.path)),
+            parts.query,
+            parts.fragment
+        ))
+        req = urllib.request.Request(
+            clean_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.google.com/"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            img = Image.open(io.BytesIO(data)).convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=90, optimize=True)
+            return Response(
+                buf.getvalue(),
+                mimetype="image/jpeg",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "public, max-age=86400"
+                }
+            )
+    except Exception as e:
+        print("Proxy Image Fetch Error:", e)
+        return jsonify({"error": str(e)}), 500
 
 
 # ===========================================================================
