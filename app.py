@@ -1249,6 +1249,117 @@ def new_category():
     return redirect(url_for("products"))
 
 
+@app.route("/api/ai/generate_product_image", methods=["POST"])
+@login_required
+@admin_required
+def api_ai_generate_product_image():
+    data = request.json or {}
+    product_name = (data.get("product_name") or "").strip()
+    category_name = (data.get("category_name") or "").strip()
+    brand_name = (data.get("brand_name") or "").strip()
+    style = (data.get("style") or "packaging").strip()
+    aspect = (data.get("aspect") or "1:1").strip()
+
+    if not product_name:
+        return jsonify({"success": False, "message": "Product name is required."}), 400
+
+    import urllib.request
+    import urllib.parse
+    import io
+    import base64
+    from PIL import Image, ImageDraw
+
+    generated_images = []
+
+    # 1. Dimension calculation
+    width, height = 600, 600
+    if aspect == "4:3":
+        width, height = 640, 480
+    elif aspect == "3:4":
+        width, height = 480, 640
+    elif aspect == "16:9":
+        width, height = 640, 360
+
+    # 2. Prompt crafting
+    if style == "packaging":
+        style_prompt = "commercial retail packaging box or pouch container mockup, bright clean supermarket retail lighting"
+    elif style == "photo":
+        style_prompt = "fresh real grocery commercial product photography, pure white background, 4k sharp focus"
+    else:
+        style_prompt = "sleek 3d product render with professional studio softbox reflections, premium retail showcase"
+
+    clean_name = product_name.replace("/", " ").replace("\\", " ")
+    full_prompt = f"Product photo of {clean_name}, {brand_name} {category_name}, {style_prompt}, realistic supermarket item, no watermark, isolated, centered"
+    encoded_prompt = urllib.parse.quote(full_prompt)
+
+    # 3. Fetch from AI Generator
+    seeds = [42, 108]
+    for s in seeds:
+        if len(generated_images) >= 2:
+            break
+        ai_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&seed={s}&nologo=true"
+        try:
+            req = urllib.request.Request(
+                ai_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            with urllib.request.urlopen(req, timeout=6) as response:
+                img_data = response.read()
+                if len(img_data) > 1000:
+                    img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                    img.thumbnail((width, height), Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=85, optimize=True)
+                    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                    generated_images.append(f"data:image/jpeg;base64,{b64}")
+        except Exception as e:
+            print("AI Image Generation Error:", e)
+
+    # 4. Fallback stylish studio canvas if online AI did not return enough images
+    if len(generated_images) < 2:
+        try:
+            canvas = Image.new("RGB", (width, height), color=(248, 250, 252))
+            draw = ImageDraw.Draw(canvas)
+            
+            for y in range(height):
+                r = int(240 + (y / height) * 15)
+                g = int(244 + (y / height) * 11)
+                b = int(255 - (y / height) * 10)
+                draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+            card_box = [40, 40, width - 40, height - 40]
+            draw.rounded_rectangle(card_box, radius=20, fill=(255, 255, 255), outline=(99, 102, 241), width=4)
+
+            draw.rounded_rectangle([width//2 - 120, 65, width//2 + 120, 105], radius=10, fill=(99, 102, 241))
+            draw.text((width // 2, 85), "SUPERMARKET PRODUCT", fill=(255, 255, 255), anchor="mm")
+
+            if category_name:
+                draw.text((width // 2, 140), category_name.upper(), fill=(100, 116, 139), anchor="mm")
+
+            draw.text((width // 2, height // 2 - 20), product_name[:24], fill=(15, 23, 42), anchor="mm")
+            if len(product_name) > 24:
+                draw.text((width // 2, height // 2 + 20), product_name[24:50], fill=(15, 23, 42), anchor="mm")
+
+            if brand_name:
+                draw.text((width // 2, height // 2 + 70), f"Brand: {brand_name}", fill=(79, 70, 229), anchor="mm")
+
+            draw.rounded_rectangle([width//2 - 140, height - 100, width//2 + 140, height - 60], radius=12, fill=(22, 163, 74))
+            draw.text((width // 2, height - 80), "100% QUALITY GUARANTEED", fill=(255, 255, 255), anchor="mm")
+
+            buf = io.BytesIO()
+            canvas.save(buf, format="JPEG", quality=85, optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            generated_images.append(f"data:image/jpeg;base64,{b64}")
+        except Exception as e:
+            print("Fallback canvas generation error:", e)
+
+    return jsonify({
+        "success": True,
+        "images": generated_images,
+        "prompt": full_prompt
+    })
+
+
 # ===========================================================================
 # POS & Checkout
 # ===========================================================================

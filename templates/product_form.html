@@ -129,16 +129,29 @@
 
   <!-- E-commerce App Specific Fields -->
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; margin-top: 16px;">
-    <h3 style="margin-top:0; font-size: 1rem; color: #1e293b;">📱 E-Commerce App Customizations</h3>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <h3 style="margin:0; font-size: 1rem; color: #1e293b;">📱 E-Commerce App Customizations</h3>
+      
+      <!-- AI Image Generator Trigger Button -->
+      <button type="button" onclick="openAiImageModal()" style="background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899); color:#fff; border:none; padding:8px 16px; border-radius:8px; font-size:0.88rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(99,102,241,0.35); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+        <span>✨ AI Image Generator</span>
+        <span style="background:rgba(255,255,255,0.25); font-size:0.75rem; padding:2px 6px; border-radius:10px;">অটো ছবি তৈরি</span>
+      </button>
+    </div>
     
     <!-- Multi-File Batch Select & Drag-and-Drop Dropzone -->
-    <div style="margin-top:10px;">
-      <label style="font-weight:bold; color:#0f172a;">Upload Product Images (Batch Select / Drag and Drop)</label>
+    <div style="margin-top:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <label style="font-weight:bold; color:#0f172a;">Upload Product Images (Batch Select / Drag and Drop / AI)</label>
+        <span style="font-size:0.80rem; color:#6366f1; font-weight:600; cursor:pointer;" onclick="openAiImageModal()">
+          ✨ ছবির প্রয়োজন? AI দিয়ে ১-ক্লিকে বানান ➔
+        </span>
+      </div>
       
       <div id="dropZone" onclick="document.getElementById('multiFileInput').click()" style="border: 2px dashed #0284c7; background: #f0f9ff; padding: 22px; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s;">
         <div style="font-size: 2.2rem; color: #0284c7;">📁 📸</div>
         <div style="font-weight: bold; color: #0369a1; font-size: 1rem; margin-top: 4px;">Click or Drag Multiple Product Photos Here</div>
-        <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">(Hold Ctrl to select multiple photos)</div>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">(Hold Ctrl to select multiple photos, or use AI Generator)</div>
         <input type="file" id="multiFileInput" name="product_image_files" accept="image/*" multiple style="display:none;" onchange="handleFileSelect(this.files)">
       </div>
 
@@ -408,5 +421,218 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+// ================= AI Image Generator Modal Logic =================
+let generatedAiImages = [];
+let selectedAiImageIdx = 0;
+
+function openAiImageModal() {
+  const nameInput = document.querySelector('input[name="name"]');
+  const prodName = nameInput ? nameInput.value.trim() : '';
+
+  if (!prodName) {
+    alert('⚠️ অনুগ্রহ করে প্রথমে উপরে প্রোডাক্টের নাম (Product Name) লিখুন।');
+    if (nameInput) {
+      nameInput.focus();
+      nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return;
+  }
+
+  // Pre-fill prompt name
+  document.getElementById('aiProdNameDisplay').textContent = prodName;
+  document.getElementById('aiModal').style.display = 'flex';
+  
+  // If no images generated yet, trigger generation automatically
+  if (generatedAiImages.length === 0) {
+    triggerAiGenerate();
+  }
+}
+
+function closeAiImageModal() {
+  document.getElementById('aiModal').style.display = 'none';
+}
+
+async function triggerAiGenerate() {
+  const nameInput = document.querySelector('input[name="name"]');
+  const prodName = nameInput ? nameInput.value.trim() : '';
+  const mainCatSelect = document.getElementById('mainCategorySelect');
+  const catName = mainCatSelect && mainCatSelect.selectedIndex >= 0 ? mainCatSelect.options[mainCatSelect.selectedIndex].text : '';
+  const brandSelect = document.querySelector('select[name="brand_id"]');
+  const brandName = brandSelect && brandSelect.selectedIndex >= 0 ? brandSelect.options[brandSelect.selectedIndex].text : '';
+  
+  const style = document.getElementById('aiStyleSelect').value;
+  const aspect = document.getElementById('aiAspectSelect').value;
+
+  const btn = document.getElementById('aiGenSubmitBtn');
+  const spinner = document.getElementById('aiGenLoading');
+  const grid = document.getElementById('aiImagesGrid');
+  const actionWrap = document.getElementById('aiActionButtons');
+
+  btn.disabled = true;
+  spinner.style.display = 'flex';
+  grid.innerHTML = '';
+  actionWrap.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/ai/generate_product_image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_name: prodName,
+        category_name: catName,
+        brand_name: brandName,
+        style: style,
+        aspect: aspect
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success && data.images && data.images.length > 0) {
+      generatedAiImages = data.images;
+      selectedAiImageIdx = 0;
+      renderAiImagesGrid();
+      actionWrap.style.display = 'flex';
+    } else {
+      grid.innerHTML = `<div style="color:#ef4444; font-weight:600; padding:20px; text-align:center;">ছবি জেনারেট করা সম্ভব হয়নি: ${data.message || 'Error'}</div>`;
+    }
+  } catch (err) {
+    grid.innerHTML = `<div style="color:#ef4444; font-weight:600; padding:20px; text-align:center;">Error: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function renderAiImagesGrid() {
+  const grid = document.getElementById('aiImagesGrid');
+  if (!grid) return;
+
+  grid.innerHTML = generatedAiImages.map((imgSrc, idx) => {
+    const isSel = idx === selectedAiImageIdx;
+    return `
+      <div onclick="selectAiImg(${idx})" style="position:relative; cursor:pointer; border-radius:12px; overflow:hidden; border: 3px solid ${isSel ? '#6366f1' : '#cbd5e1'}; box-shadow: ${isSel ? '0 0 0 4px rgba(99,102,241,0.25), 0 4px 12px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.06)'}; transition:all 0.2s;">
+        <img src="${imgSrc}" style="width:100%; height:180px; object-fit:contain; background:#ffffff; display:block;">
+        ${isSel ? `
+          <div style="position:absolute; top:8px; right:8px; background:#6366f1; color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">
+            ✓
+          </div>
+        ` : ''}
+        <div style="padding:6px; font-size:0.78rem; text-align:center; font-weight:600; background:#f8fafc; color:#475569;">
+          Option ${idx + 1}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectAiImg(idx) {
+  selectedAiImageIdx = idx;
+  renderAiImagesGrid();
+}
+
+function applySelectedAiImage(asCover = true) {
+  if (!generatedAiImages || generatedAiImages.length === 0) return;
+  const chosen = generatedAiImages[selectedAiImageIdx];
+  if (!chosen) return;
+
+  if (asCover) {
+    existingImages.unshift(chosen);
+  } else {
+    existingImages.push(chosen);
+  }
+
+  renderExistingImages();
+  closeAiImageModal();
+  
+  // Scroll into image section
+  const sec = document.getElementById('existingImagesSection');
+  if (sec) {
+    sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
 </script>
+
+<!-- ================= AI Image Generator Modal ================= -->
+<div id="aiModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); z-index:99999; backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:16px;">
+  <div style="background:#ffffff; width:100%; max-width:680px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2), 0 10px 10px -5px rgba(0,0,0,0.04); overflow:hidden; display:flex; flex-direction:column; max-height:92vh;">
+    
+    <!-- Modal Header -->
+    <div style="background:linear-gradient(135deg, #4f46e5, #7c3aed, #db2777); padding:16px 20px; color:#ffffff; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:800; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          <span>✨ AI Product Image Generator</span>
+        </div>
+        <div style="font-size:0.85rem; opacity:0.9; margin-top:2px;">
+          Generating for: <strong id="aiProdNameDisplay" style="color:#fef08a;">Product</strong>
+        </div>
+      </div>
+      <button type="button" onclick="closeAiImageModal()" style="background:rgba(255,255,255,0.2); border:none; color:#fff; width:32px; height:32px; border-radius:50%; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+    </div>
+
+    <!-- Modal Controls Body -->
+    <div style="padding:16px 20px; overflow-y:auto; flex:1;">
+      
+      <!-- Style & Aspect Selector Row -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">🎨 Photography Style</label>
+          <select id="aiStyleSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:600;">
+            <option value="packaging" selected>📦 Supermarket Packaging (প্যাকেট/বোতল)</option>
+            <option value="photo">📸 Clean White Studio Photo (হোয়াইট ব্যাকগ্রাউন্ড)</option>
+            <option value="3d">🌟 3D Realistic Render (প্রিমিয়াম ৩ডি)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📐 Aspect Ratio / আকার</label>
+          <select id="aiAspectSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:600;">
+            <option value="1:1" selected>🔲 1:1 Square (স্ট্যান্ডার্ড স্কয়ার)</option>
+            <option value="4:3">🖥️ 4:3 Studio Grid</option>
+            <option value="3:4">📱 3:4 Box / Tall Packaging</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Generate / Regenerate Button -->
+      <button type="button" id="aiGenSubmitBtn" onclick="triggerAiGenerate()" style="width:100%; background:#4f46e5; color:#ffffff; font-weight:700; padding:10px; border-radius:8px; border:none; font-size:0.92rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 2px 6px rgba(79,70,229,0.3);">
+        <span>🔄 Generate / Regenerate New AI Photos</span>
+      </button>
+
+      <!-- Loading State -->
+      <div id="aiGenLoading" style="display:none; flex-direction:column; align-items:center; justify-content:center; padding:30px 10px;">
+        <div style="width:40px; height:40px; border:4px solid #e0e7ff; border-top:4px solid #4f46e5; border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <div style="font-weight:700; color:#4338ca; font-size:0.95rem; margin-top:12px;">AI ছবি তৈরি করছে... একটু অপেক্ষা করুন</div>
+        <div style="font-size:0.80rem; color:#64748b; margin-top:4px;">High-resolution commercial grocery photo is rendering</div>
+      </div>
+
+      <!-- Generated Images Grid -->
+      <div id="aiImagesGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-top:16px;">
+        <!-- Injected via JavaScript -->
+      </div>
+
+    </div>
+
+    <!-- Modal Footer Actions -->
+    <div id="aiActionButtons" style="display:none; padding:14px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+      <button type="button" onclick="closeAiImageModal()" style="padding:8px 14px; border-radius:8px; border:1px solid #cbd5e1; background:#ffffff; font-weight:600; cursor:pointer; color:#475569;">
+        Cancel
+      </button>
+      <button type="button" onclick="applySelectedAiImage(false)" style="padding:8px 14px; border-radius:8px; border:1px solid #6366f1; background:#eef2ff; color:#4f46e5; font-weight:700; cursor:pointer;">
+        ➕ Add as Additional Photo
+      </button>
+      <button type="button" onclick="applySelectedAiImage(true)" style="padding:8px 16px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:800; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.35);">
+        ⭐ Set as Primary Cover Photo
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<style>
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
 {% endblock %}
