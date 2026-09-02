@@ -1249,6 +1249,24 @@ def new_category():
     return redirect(url_for("products"))
 
 
+def detect_packaging_type(name, cat=""):
+    n = (name + " " + cat).lower()
+    if any(k in n for k in ["oil", "tel", "shampoo", "sauce", "ketchup", "syrup", "juice", "drink", "water", "beverage", "cleaner", "harpic", "handwash", "lotion", "coke", "pepsi", "sprite", "vinegar", "soap liquid"]):
+        return "realistic branded plastic or glass bottle container with screw cap and colorful supermarket label sticker"
+    elif any(k in n for k in ["ghee", "honey", "modhu", "jam", "jelly", "pickle", "achar", "coffee", "mayonnaise", "nutella", "peanut butter"]):
+        return "transparent glass or plastic grocery jar with airtight labeled lid container"
+    elif any(k in n for k in ["tea", "cha", "soap", "shaban", "toothpaste", "paste", "cereal", "cornflakes", "match", "box", "medicine", "tablet", "chocolate", "tissue", "dano", "marks", "horlicks", "ovaltine"]):
+        return "printed paperboard retail carton box packaging with clear brand graphics and product artwork"
+    elif any(k in n for k in ["atta", "flour", "maida", "rice", "chal", "suji", "sugar", "cini", "chini", "dal", "daal", "lentil", "salt", "lobon", "sack", "bag", "potato", "alu", "onion", "peyaj"]):
+        return "heavy-duty printed plastic poly bag sack packaging with retail food branding"
+    elif any(k in n for k in ["can", "tin", "tuna", "sardine", "beverage can", "spray"]):
+        return "metallic retail tin can container with branded printed label"
+    elif any(k in n for k in ["biscuit", "cookie", "cake", "bread", "bun", "toast", "chanachur", "chips", "crisps", "noodles", "maggi", "pasta", "semon", "semai", "masala", "spices", "turmeric", "haldi", "chilli", "morich", "coriander", "dhaniya", "cumin", "jeera", "garam", "meat masala", "fish masala", "biryani", "radhuni", "pran", "bd"]):
+        return "sealed flexible foil grocery packet pouch with realistic crimped edges, glossy finish and vibrant printed food graphics"
+    else:
+        return "authentic commercial supermarket retail product packaging mockup"
+
+
 @app.route("/api/ai/generate_product_image", methods=["POST"])
 @login_required
 @admin_required
@@ -1257,6 +1275,7 @@ def api_ai_generate_product_image():
     product_name = (data.get("product_name") or "").strip()
     category_name = (data.get("category_name") or "").strip()
     brand_name = (data.get("brand_name") or "").strip()
+    packaging_type = (data.get("packaging_type") or "auto").strip()
     style = (data.get("style") or "packaging").strip()
     aspect = (data.get("aspect") or "1:1").strip()
 
@@ -1280,19 +1299,34 @@ def api_ai_generate_product_image():
     elif aspect == "16:9":
         width, height = 640, 360
 
-    # 2. Prompt crafting
-    if style == "packaging":
-        style_prompt = "commercial retail packaging box or pouch container mockup, bright clean supermarket retail lighting"
-    elif style == "photo":
-        style_prompt = "fresh real grocery commercial product photography, pure white background, 4k sharp focus"
+    # 2. Package Shape Resolution
+    if packaging_type == "pouch":
+        pack_shape_desc = "sealed flexible grocery foil packet pouch with crimped edges and vibrant printed food branding"
+    elif packaging_type == "bottle":
+        pack_shape_desc = "branded supermarket plastic or glass bottle container with cap and retail label sticker"
+    elif packaging_type == "box":
+        pack_shape_desc = "printed retail paperboard carton box packaging with clear brand typography"
+    elif packaging_type == "jar":
+        pack_shape_desc = "transparent glass or plastic grocery jar with sealed lid and colorful product label"
+    elif packaging_type == "sack":
+        pack_shape_desc = "heavy-duty printed plastic poly bag sack grocery packaging"
+    elif packaging_type == "can":
+        pack_shape_desc = "metallic retail tin can container with branded label"
     else:
-        style_prompt = "sleek 3d product render with professional studio softbox reflections, premium retail showcase"
+        pack_shape_desc = detect_packaging_type(product_name, category_name)
 
     clean_name = product_name.replace("/", " ").replace("\\", " ")
-    full_prompt = f"Product photo of {clean_name}, {brand_name} {category_name}, {style_prompt}, realistic supermarket item, no watermark, isolated, centered"
+    
+    # 3. High quality realistic packaging prompts
+    full_prompt = (
+        f"Authentic commercial retail grocery packaging mockup of {clean_name}, {brand_name} {category_name}, "
+        f"shaped as realistic {pack_shape_desc} with front printed brand logo and colorful product artwork, "
+        f"professional supermarket product photography, 3D retail packaging, crisp details, studio lighting, "
+        f"pure clean white background with soft grounded shadow, 8k resolution commercial packaging shoot"
+    )
     encoded_prompt = urllib.parse.quote(full_prompt)
 
-    # 3. Fetch from AI Generator
+    # 4. Fetch from AI Generator
     seeds = [42, 108]
     for s in seeds:
         if len(generated_images) >= 2:
@@ -1303,7 +1337,7 @@ def api_ai_generate_product_image():
                 ai_url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             )
-            with urllib.request.urlopen(req, timeout=6) as response:
+            with urllib.request.urlopen(req, timeout=8) as response:
                 img_data = response.read()
                 if len(img_data) > 1000:
                     img = Image.open(io.BytesIO(img_data)).convert("RGB")

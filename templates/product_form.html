@@ -461,6 +461,7 @@ async function triggerAiGenerate() {
   const brandSelect = document.querySelector('select[name="brand_id"]');
   const brandName = brandSelect && brandSelect.selectedIndex >= 0 ? brandSelect.options[brandSelect.selectedIndex].text : '';
   
+  const packagingType = document.getElementById('aiPackagingSelect').value;
   const style = document.getElementById('aiStyleSelect').value;
   const aspect = document.getElementById('aiAspectSelect').value;
 
@@ -482,6 +483,7 @@ async function triggerAiGenerate() {
         product_name: prodName,
         category_name: catName,
         brand_name: brandName,
+        packaging_type: packagingType,
         style: style,
         aspect: aspect
       })
@@ -573,30 +575,41 @@ function applySelectedAiImage(asCover = true) {
     <!-- Modal Controls Body -->
     <div style="padding:16px 20px; overflow-y:auto; flex:1;">
       
-      <!-- Style & Aspect Selector Row -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+      <!-- Packaging Shape & Style Selector Row -->
+      <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:12px; margin-bottom:14px;">
         <div>
-          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">🎨 Photography Style</label>
-          <select id="aiStyleSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:600;">
-            <option value="packaging" selected>📦 Supermarket Packaging (প্যাকেট/বোতল)</option>
-            <option value="photo">📸 Clean White Studio Photo (হোয়াইট ব্যাকগ্রাউন্ড)</option>
-            <option value="3d">🌟 3D Realistic Render (প্রিমিয়াম ৩ডি)</option>
+          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📦 Packaging Shape / প্যাকেটের ধরন</label>
+          <select id="aiPackagingSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #4f46e5; font-size:0.88rem; font-weight:700; background:#f5f3ff; color:#4338ca;">
+            <option value="auto" selected>🤖 Auto-Detect (স্বয়ংক্রিয় প্যাকেজিং)</option>
+            <option value="pouch">🛍️ Sealed Foil Pouch (মসলা, চিপস, নুডলস, বিস্কুট প্যাকেট)</option>
+            <option value="bottle">🧴 Bottle / Canister (তেল, জুস, শ্যাম্পু বোতল)</option>
+            <option value="box">📦 Carton Box Pack (চা, সাবান, টুথপেস্ট বক্স)</option>
+            <option value="jar">🫙 Glass / Plastic Jar (ঘি, মধু, জ্যাম, আচার বয়াম)</option>
+            <option value="sack">🥡 Poly Bag / Sack (চাল, ডাল, আটা, ময়দার ব্যাগ)</option>
+            <option value="can">🥫 Tin Can / Cylinder (গুঁড়োদুধ, টিন ক্যান)</option>
           </select>
         </div>
 
         <div>
-          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">📐 Aspect Ratio / আকার</label>
-          <select id="aiAspectSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.88rem; font-weight:600;">
-            <option value="1:1" selected>🔲 1:1 Square (স্ট্যান্ডার্ড স্কয়ার)</option>
-            <option value="4:3">🖥️ 4:3 Studio Grid</option>
-            <option value="3:4">📱 3:4 Box / Tall Packaging</option>
-          </select>
+          <label style="font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px; display:block;">🎨 Style & Aspect</label>
+          <div style="display:flex; gap:6px;">
+            <select id="aiStyleSelect" style="flex:1; padding:8px 6px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
+              <option value="packaging" selected>📦 Packaging</option>
+              <option value="photo">📸 Studio Photo</option>
+              <option value="3d">🌟 3D Render</option>
+            </select>
+            <select id="aiAspectSelect" style="width:90px; padding:8px 6px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:600;">
+              <option value="1:1" selected>🔲 1:1</option>
+              <option value="3:4">📱 3:4</option>
+              <option value="4:3">🖥️ 4:3</option>
+            </select>
+          </div>
         </div>
       </div>
 
       <!-- Generate / Regenerate Button -->
-      <button type="button" id="aiGenSubmitBtn" onclick="triggerAiGenerate()" style="width:100%; background:#4f46e5; color:#ffffff; font-weight:700; padding:10px; border-radius:8px; border:none; font-size:0.92rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 2px 6px rgba(79,70,229,0.3);">
-        <span>🔄 Generate / Regenerate New AI Photos</span>
+      <button type="button" id="aiGenSubmitBtn" onclick="triggerAiGenerate()" style="width:100%; background:linear-gradient(135deg, #4f46e5, #6366f1); color:#ffffff; font-weight:700; padding:11px; border-radius:8px; border:none; font-size:0.94rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 8px rgba(79,70,229,0.35);">
+        <span>🔄 Generate / Regenerate Realistic Package Photos</span>
       </button>
 
       <!-- Loading State -->
