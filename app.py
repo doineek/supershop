@@ -3960,12 +3960,41 @@ def pay_rider(rider_id):
         flash("Payment amount must be greater than 0.", "error")
         return redirect(url_for("riders_page"))
 
+    rider_name = rider["full_name"] or rider["username"]
+    rider_phone = rider["username"]
+
+    # Calculate real-time balance due to strictly prevent paying when balance is 0 or above balance due
+    default_fee = get_rider_delivery_fee_setting(conn)
+    delivered_orders = conn.execute("""
+        SELECT rider_fee FROM online_orders 
+        WHERE (assigned_rider_id = ? OR assigned_rider_phone = ?) AND order_status = 'delivered'
+    """, (rider_id, rider_phone)).fetchall()
+
+    all_time_earned = 0.0
+    for ord_row in delivered_orders:
+        o_fee = float(ord_row["rider_fee"] or 0)
+        if o_fee <= 0:
+            o_fee = default_fee
+        all_time_earned += o_fee
+
+    payouts_rows = conn.execute("SELECT amount FROM rider_payouts WHERE rider_id = ?", (rider_id,)).fetchall()
+    all_time_paid = sum(float(p["amount"] or 0) for p in payouts_rows)
+    balance_due = max(0.0, round(all_time_earned - all_time_paid, 2))
+
+    if balance_due <= 0:
+        conn.close()
+        flash(f"Rider {rider_name} has no outstanding due balance to pay (all delivered orders are already paid).", "error")
+        return redirect(url_for("riders_page", rider_id=rider_id))
+
+    if amount > balance_due + 0.001:
+        conn.close()
+        flash(f"Payment amount (TK {amount:,.2f}) cannot exceed the outstanding due balance (TK {balance_due:,.2f}).", "error")
+        return redirect(url_for("riders_page", rider_id=rider_id))
+
     payment_method = request.form.get("payment_method", "Cash").strip() or "Cash"
     note = request.form.get("note", "").strip()
     payout_date = request.form.get("payout_date", "").strip() or datetime.now().strftime("%Y-%m-%d")
     now_str = datetime.now().isoformat()
-    rider_name = rider["full_name"] or rider["username"]
-    rider_phone = rider["username"]
 
     # 1. Record payout in rider_payouts
     conn.execute("""

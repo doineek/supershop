@@ -194,9 +194,15 @@
         <td style="padding:12px 14px; text-align:right;">
           <div style="display:inline-flex; gap:6px; justify-content:flex-end; align-items:center;">
             <!-- Pay Button -->
-            <button type="button" class="btn btn-small" onclick="openPayRiderModal({{ r.id }}, '{{ r.full_name|escape }}', '{{ r.username }}', {{ r.total_earned }}, {{ r.total_paid }}, {{ r.balance_due }})" style="background:{% if r.balance_due > 0 %}#15803d{% else %}#0284c7{% endif %}; color:#fff; border:none; padding:5px 12px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.80rem; display:inline-flex; align-items:center; gap:4px;">
-              💵 Pay {% if r.balance_due > 0 %}(TK {{ "%.0f"|format(r.balance_due) }}){% endif %}
+            {% if r.balance_due > 0 %}
+            <button type="button" class="btn btn-small" onclick="openPayRiderModal({{ r.id }}, '{{ r.full_name|escape }}', '{{ r.username }}', {{ r.total_earned }}, {{ r.total_paid }}, {{ r.balance_due }})" style="background:#15803d; color:#fff; border:none; padding:5px 12px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.80rem; display:inline-flex; align-items:center; gap:4px;">
+              💵 Pay (TK {{ "%.0f"|format(r.balance_due) }})
             </button>
+            {% else %}
+            <button type="button" class="btn btn-small" disabled style="background:#e2e8f0; color:#64748b; border:1px solid #cbd5e1; padding:5px 12px; border-radius:6px; cursor:not-allowed; font-weight:700; font-size:0.80rem; display:inline-flex; align-items:center; gap:4px; opacity:0.85;" title="All delivered orders are paid. No pending due to disburse.">
+              Paid
+            </button>
+            {% endif %}
 
             <!-- Detailed Profile Button -->
             <button type="button" class="btn btn-small" onclick='openRiderProfileModal({{ r|tojson|safe }})' style="background:#4f46e5; color:#fff; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.80rem;">
@@ -263,10 +269,16 @@
 
     <form id="payRiderForm" method="POST" action="">
       <div style="margin-bottom:14px;">
-        <label style="display:block; font-size:0.85rem; font-weight:700; color:#334155; margin-bottom:4px;">
-          Payout Amount (TK) *
-        </label>
-        <input type="number" step="0.5" min="1" name="amount" id="payAmountInput" required style="width:100%; padding:10px; border:2px solid #15803d; border-radius:8px; font-size:1.15rem; font-weight:bold; color:#0f172a;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="font-size:0.85rem; font-weight:700; color:#334155;">
+            Payout Amount (TK) *
+          </label>
+          <span style="font-size:0.75rem; color:#dc2626; font-weight:700;">
+            Max allowed: <span id="payAmountMaxLimitLabel">TK 0.00</span>
+          </span>
+        </div>
+        <input type="number" step="0.5" min="0.5" name="amount" id="payAmountInput" required style="width:100%; padding:10px; border:2px solid #15803d; border-radius:8px; font-size:1.15rem; font-weight:bold; color:#0f172a;" oninput="validatePayAmount(this)">
+        <small id="payAmountErrorMsg" style="display:none; color:#dc2626; font-weight:700; font-size:0.78rem; margin-top:4px;"></small>
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
@@ -544,18 +556,47 @@ function setDatePreset(type) {
 
 // Open Pay Modal
 function openPayRiderModal(riderId, name, phone, earned, paid, due) {
+  const dueVal = Number(due) || 0;
+  if (dueVal <= 0) {
+    alert('This rider has no pending due balance. All delivered orders are already paid.');
+    return;
+  }
   document.getElementById('payRiderForm').action = '/riders/' + riderId + '/pay';
   document.getElementById('payRiderNameLabel').innerText = '🛵 ' + name;
   document.getElementById('payRiderPhoneLabel').innerText = 'Mobile: ' + phone;
   document.getElementById('payRiderEarned').innerText = 'TK ' + Number(earned).toFixed(2);
   document.getElementById('payRiderPaid').innerText = 'TK ' + Number(paid).toFixed(2);
-  document.getElementById('payRiderDue').innerText = 'TK ' + Number(due).toFixed(2);
-  document.getElementById('payAmountInput').value = due > 0 ? due.toFixed(2) : '50.00';
+  document.getElementById('payRiderDue').innerText = 'TK ' + dueVal.toFixed(2);
+  
+  const amtInput = document.getElementById('payAmountInput');
+  amtInput.value = dueVal.toFixed(2);
+  amtInput.max = dueVal.toFixed(2);
+  amtInput.min = '0.5';
+  document.getElementById('payAmountMaxLimitLabel').innerText = 'TK ' + dueVal.toFixed(2);
+  document.getElementById('payAmountErrorMsg').style.display = 'none';
+  amtInput.style.borderColor = '#15803d';
+
   document.getElementById('payDateInput').value = new Date().toISOString().split('T')[0];
   document.getElementById('payRiderModal').style.display = 'flex';
 }
 function closePayRiderModal() {
   document.getElementById('payRiderModal').style.display = 'none';
+}
+
+function validatePayAmount(input) {
+  const val = parseFloat(input.value) || 0;
+  const maxVal = parseFloat(input.getAttribute('max')) || 0;
+  const err = document.getElementById('payAmountErrorMsg');
+  if (val > maxVal + 0.001) {
+    err.innerText = '⚠️ Amount cannot exceed the outstanding due of TK ' + maxVal.toFixed(2) + '!';
+    err.style.display = 'block';
+    input.style.borderColor = '#dc2626';
+    return false;
+  } else {
+    err.style.display = 'none';
+    input.style.borderColor = '#15803d';
+    return true;
+  }
 }
 
 // Open Detailed Rider Profile Modal
@@ -581,10 +622,31 @@ function openRiderProfileModal(rider) {
   document.getElementById('profilePayoutsCount').innerText = rider.payouts ? rider.payouts.length : 0;
   document.getElementById('profileOrdersCount').innerText = rider.total_delivered;
 
-  document.getElementById('profilePayBtn').onclick = () => {
-    closeRiderProfileModal();
-    openPayRiderModal(rider.id, rider.full_name, rider.username, rider.total_earned, rider.total_paid, rider.balance_due);
-  };
+  const profilePayBtn = document.getElementById('profilePayBtn');
+  if (rider.balance_due <= 0) {
+    profilePayBtn.disabled = true;
+    profilePayBtn.style.background = '#e2e8f0';
+    profilePayBtn.style.color = '#64748b';
+    profilePayBtn.style.border = '1px solid #cbd5e1';
+    profilePayBtn.style.cursor = 'not-allowed';
+    profilePayBtn.style.opacity = '0.85';
+    profilePayBtn.innerText = 'Paid';
+    profilePayBtn.title = 'All delivered orders are paid. No pending due to disburse.';
+    profilePayBtn.onclick = null;
+  } else {
+    profilePayBtn.disabled = false;
+    profilePayBtn.style.background = '#15803d';
+    profilePayBtn.style.color = '#fff';
+    profilePayBtn.style.border = 'none';
+    profilePayBtn.style.cursor = 'pointer';
+    profilePayBtn.style.opacity = '1';
+    profilePayBtn.innerText = '💵 Pay Due (TK ' + Number(rider.balance_due).toFixed(2) + ')';
+    profilePayBtn.title = 'Pay outstanding delivery fees';
+    profilePayBtn.onclick = () => {
+      closeRiderProfileModal();
+      openPayRiderModal(rider.id, rider.full_name, rider.username, rider.total_earned, rider.total_paid, rider.balance_due);
+    };
+  }
 
   renderProfilePayouts(rider);
   renderProfileOrders(rider);
@@ -744,6 +806,27 @@ window.addEventListener('DOMContentLoaded', () => {
   const riderIdParam = urlParams.get('rider_id');
   if (riderIdParam) {
     onRiderDropdownSelected(riderIdParam);
+  }
+
+  const payForm = document.getElementById('payRiderForm');
+  if (payForm) {
+    payForm.addEventListener('submit', function(e) {
+      const amtInput = document.getElementById('payAmountInput');
+      const val = parseFloat(amtInput.value) || 0;
+      const maxVal = parseFloat(amtInput.getAttribute('max')) || 0;
+      if (val <= 0) {
+        alert('Payment amount must be greater than 0.');
+        e.preventDefault();
+        return false;
+      }
+      if (val > maxVal + 0.001) {
+        alert('Giving above the due amount is not allowed. The maximum amount you can pay is TK ' + maxVal.toFixed(2) + '.');
+        amtInput.value = maxVal.toFixed(2);
+        validatePayAmount(amtInput);
+        e.preventDefault();
+        return false;
+      }
+    });
   }
 });
 </script>
