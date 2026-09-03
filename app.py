@@ -5449,13 +5449,15 @@ def reports():
         "dead_stock": dead_stock,
         "slow_movers": slow_movers
     }
-    ai_report_en = build_ai_business_report(metrics_bundle, "en")
-    ai_report_bn = build_ai_business_report(metrics_bundle, "bn")
+    mode = request.args.get("mode", "examples")
+    ai_report_en = build_ai_business_report(metrics_bundle, "en", mode)
+    ai_report_bn = build_ai_business_report(metrics_bundle, "bn", mode)
 
     conn.close()
     return render_template(
         "reports.html",
         period=period,
+        mode=mode,
         revenue=total_rev,
         cogs=total_cogs,
         gross_profit=overall_gross,
@@ -5512,7 +5514,7 @@ def reports():
     )
 
 
-def build_ai_business_report(metrics: dict, lang: str = "en") -> dict:
+def build_ai_business_report(metrics: dict, lang: str = "en", mode: str = "examples") -> dict:
     rev = float(metrics.get("revenue", 0.0) or 0.0)
     cogs = float(metrics.get("cogs", 0.0) or 0.0)
     gross_profit = float(metrics.get("gross_profit", 0.0) or 0.0)
@@ -5534,45 +5536,380 @@ def build_ai_business_report(metrics: dict, lang: str = "en") -> dict:
     online_share_pct = (online_rev / rev * 100) if rev > 0 else 0.0
     pos_share_pct = (pos_rev / rev * 100) if rev > 0 else 0.0
     
-    top_prod_names = ", ".join([p["name"] for p in top_prods[:3]]) if top_prods else "General Inventory"
-    dead_prod_names = ", ".join([p["name"] for p in dead_stock[:3]]) if dead_stock else "None Identified"
+    is_bn = (lang == "bn")
     
-    current_state = [
-        f"Total Sales Revenue stands at TK {rev:,.2f} across {tx_count} customer transactions with an Average Order Value (AOV) of TK {aov:,.2f}.",
-        f"Profitability Metrics: Gross Profit Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and Net Profit Margin is {net_margin_pct:.1f}% (TK {net_profit:,.2f}).",
-        f"Channel Breakdown: Offline POS Counter accounts for {pos_share_pct:.1f}% (TK {pos_rev:,.2f}) while Online Mobile App/Web accounts for {online_share_pct:.1f}% (TK {online_rev:,.2f}).",
-        f"Top Revenue Drivers: Products like '{top_prod_names}' represent the highest turnover and consistent customer demand.",
-        f"Operational Allocations: Total ledger expenses are TK {expense:,.2f} counterbalanced by TK {income:,.2f} in other earnings."
-    ]
-    should_do = [
-        f"Negotiate 3-5% tiered bulk volume discounts directly with suppliers/distributors for top-performing items ({top_prod_names}).",
-        f"Capitalize on Free Delivery banners with a minimum basket threshold (e.g. TK 1,000+) to elevate average basket sizes beyond TK {aov:,.2f}.",
-        f"Package fast-moving staples together with high-margin specialty items into curated Combo Bundles.",
-        f"Leverage mobile push notifications and flash sales to scale online channel share from {online_share_pct:.1f}% to 30%+.",
-        "Place high-margin impulse-buy items (gum, mints, snacks) directly beside counter checkout registers."
-    ]
-    should_drop = [
-        f"Liquidate dead stock ({dead_prod_names}) locking shelf space by bundling them at 10-15% discount to recover tied-up capital.",
-        "Discontinue or strictly minimize perishable items yielding less than 2% gross margin that risk shelf spoilage.",
-        "Cut out untracked petty cash expenses and enforce strict digital ledger receipts.",
-        "Consolidate redundant brands in duplicate sub-categories; stock only the top 2-3 most trusted consumer brands."
-    ]
-    where_to_change = [
-        "Dynamic Pricing: Re-align sell prices and discount percentages on slow-moving inventory to accelerate inventory turns.",
-        "Safety Stock Thresholds: Increase minimum low-stock alerts for core commodities to prevent stockouts during peak hours.",
-        "App Banner Promotion: Feature high-margin combos and seasonal essentials prominently on mobile app headers.",
-        "Vendor Payment Credit Terms: Transition key accounts to 15-30 day trade credit to optimize cash working capital."
-    ]
-    profit_roadmap = [
-        "Dead Stock Liquidation: Unlocks TK 15,000 - TK 50,000 in immediate liquid working capital.",
-        "Bulk Procurement Savings: Enhances overall Gross Profit Margin by +2.5% to +4.0%.",
-        "Bundle Combos & Free Delivery Incentives: Estimated to lift average basket revenue by +18% to +25%.",
-        "Targeted Operational Improvements projected to increase Total Net Profit by 25% to 40% in next quarter."
-    ]
+    top_prod_names = ", ".join([p["name"] for p in top_prods[:3]]) if top_prods else ("সুপারশপ খাদ্য ও নিত্যপ্রয়োজনীয় ইনভেন্টরি" if is_bn else "General Retail Inventory")
+    first_top_prod = top_prods[0]["name"] if top_prods else ("জনপ্রিয় খাদ্যপণ্য" if is_bn else "Top Selling Commodity")
+    first_top_qty = top_prods[0]["qty_sold"] if top_prods else 0
+    first_top_rev = float(top_prods[0]["revenue"]) if (top_prods and "revenue" in top_prods[0].keys()) else 0.0
+    
+    dead_prod_names = ", ".join([p["name"] for p in dead_stock[:3]]) if dead_stock else ("কোনো অচল পণ্য চিহ্নিত হয়নি" if is_bn else "None Identified")
+    first_dead_prod = dead_stock[0]["name"] if dead_stock else ("ধীরগতির পণ্য" if is_bn else "Slow Moving Stock")
+    first_dead_qty = dead_stock[0]["stock_qty"] if dead_stock else 0
+
+    # 4 Visual Merchandising & Product Spotlights
+    if is_bn:
+        visual_spotlights = [
+            {
+                "icon": "⭐",
+                "badge": "শীর্ষ রাজস্ব পণ্য (Top Revenue Driver)",
+                "badge_bg": "rgba(34, 197, 94, 0.2)",
+                "badge_color": "#86efac",
+                "title": first_top_prod,
+                "detail": f"বিক্রয়: {first_top_qty} পিস | আয়: ৳{first_top_rev:,.2f}",
+                "example": "পরামর্শ: এই মূল পণ্যের সাথে আকর্ষণীয় মার্জিনের আইটেম যুক্ত করে কম্বো বান্ডিল বানান।"
+            },
+            {
+                "icon": "🛑",
+                "badge": "অচল স্টক সতর্কতা (Dead Stock Alert)",
+                "badge_bg": "rgba(239, 68, 68, 0.2)",
+                "badge_color": "#fca5a5",
+                "title": first_dead_prod,
+                "detail": f"মজুদ: {first_dead_qty} পিস তাক আটকে আছে",
+                "example": "পরামর্শ: ১০-১৫% ছাড়ে বা উপহার হিসেবে দিয়ে আগামী ৭ দিনে মূলধন ক্যাশ করে নিন।"
+            },
+            {
+                "icon": "💡",
+                "badge": "ক্যাশ কাউন্টার ডিসপ্লে (Impulse Buy)",
+                "badge_bg": "rgba(245, 158, 11, 0.2)",
+                "badge_color": "#fde047",
+                "title": "ছোট ও উচ্চ মার্জিনের স্ন্যাকস/টিস্যু",
+                "detail": "চকোলেট, চুইংগাম, পকেট টিস্যু, মিনি বিস্কুট",
+                "example": "পরামর্শ: বিলিং পয়েন্টে চোখের সামনে রাখলে প্রতি বিলে বাড়তি ২০-৫০ টাকা যোগ হবে।"
+            },
+            {
+                "icon": "📦",
+                "badge": "প্রস্তাবিত কম্বো অফার (Combo Bundle)",
+                "badge_bg": "rgba(168, 85, 247, 0.2)",
+                "badge_color": "#d8b4fe",
+                "title": f"{first_top_prod} + গৃহস্থালি কম্বো",
+                "detail": f"প্রত্যাশিত বাস্কেট মূল্য: ৳{aov*1.25:,.2f}+",
+                "example": "পরামর্শ: অ্যাপ হোমপেজ ও শপের প্রবেশদ্বারে ৫% ছাড়ের ব্যানার সহ প্রদর্শন করুন।"
+            }
+        ]
+    else:
+        visual_spotlights = [
+            {
+                "icon": "⭐",
+                "badge": "Top Revenue Driver",
+                "badge_bg": "rgba(34, 197, 94, 0.2)",
+                "badge_color": "#86efac",
+                "title": first_top_prod,
+                "detail": f"Sold: {first_top_qty} units | Revenue: TK {first_top_rev:,.2f}",
+                "example": "Action: Bundle this fast-moving staple with high-margin items to boost Basket Size."
+            },
+            {
+                "icon": "🛑",
+                "badge": "Dead Stock Alert",
+                "badge_bg": "rgba(239, 68, 68, 0.2)",
+                "badge_color": "#fca5a5",
+                "title": first_dead_prod,
+                "detail": f"Stock: {first_dead_qty} units locking shelf space",
+                "example": "Action: Liquidate via 10-15% markdown or purchase-gift bundles within 7 days."
+            },
+            {
+                "icon": "💡",
+                "badge": "Counter Impulse Display",
+                "badge_bg": "rgba(245, 158, 11, 0.2)",
+                "badge_color": "#fde047",
+                "title": "Front Checkout Impulse Items",
+                "detail": "Gums, chocolates, mints, mini biscuits & tissues",
+                "example": "Action: Place beside cashier register to effortlessly add TK 20-50 per transaction."
+            },
+            {
+                "icon": "📦",
+                "badge": "Recommended Combo Package",
+                "badge_bg": "rgba(168, 85, 247, 0.2)",
+                "badge_color": "#d8b4fe",
+                "title": f"{first_top_prod} + Household Combo",
+                "detail": f"Projected Basket Value: TK {aov*1.25:,.2f}+",
+                "example": "Action: Feature on store entrance poster and mobile app headers with 5% discount."
+            }
+        ]
+
+    # Mode-based Generation in Bengali
+    if is_bn:
+        if mode == "visual":
+            title = "🎨 ডইনিক সুপারশপ - এআই ভিজ্যুয়াল মার্চেন্ডাইজিং ও প্রফিট স্পটলাইট রিপোর্ট"
+            summary_tagline = f"ভিজ্যুয়াল ডিসপ্লে, সেলফ অর্গানাইজেশন ও রাজস্ব বিশ্লেষণ (মোট বিক্রয়: ৳{rev:,.2f} | নিট প্রফিট: ৳{net_profit:,.2f})"
+            current_state = [
+                f"ভিজ্যুয়াল বিক্রয় পারফরম্যান্স: মোট {tx_count}টি কাস্টমার বাস্কেটে ৳{rev:,.2f} অর্জিত হয়েছে; গড় বাস্কেট সাইজ ৳{aov:,.2f}।",
+                f"মুনাফা ও মার্জিন ডায়াগনোসিস: গ্রস প্রফিট ৳{gross_profit:,.2f} ({gross_margin_pct:.1f}%) এবং দোকান পরিচালন পরবর্তী নিট লাভ ৳{net_profit:,.2f} ({net_margin_pct:.1f}%)।",
+                f"চ্যানেল শেয়ার অনুপাত: অফলাইন পিওএস কাউন্টার {pos_share_pct:.1f}% (৳{pos_rev:,.2f}) বনাম অনলাইন মোবাইল অ্যাপ {online_share_pct:.1f}% (৳{online_rev:,.2f})।",
+                f"ভিজ্যুয়াল হিরো প্রোডাক্ট: '{first_top_prod}' সহ সর্বাধিক বিক্রিত পণ্য ({top_prod_names}) কাস্টমারদের সবচেয়ে বেশি আকর্ষণ করেছে।",
+                f"আর্থিক খতিয়ান ব্যালেন্স: মোট লেজার পরিচালন ব্যয় ৳{expense:,.2f} এবং অন্যান্য বিবিধ আয় ৳{income:,.2f}।"
+            ]
+            should_do = [
+                f"আই-লেভেল সেলফ পজিশনিং (Eye-Level Display): বেশি লাভজনক প্রিমিয়াম আইটেমগুলো কাস্টমারের সরাসরি চোখের উচ্চতায় (৪.৫ থেকে ৫.৫ ফুট) রাখুন। যেমন: শীর্ষ বিক্রিত '{first_top_prod}' এর ঠিক পাশেই আকর্ষণীয় মার্জিনের পণ্য প্রদর্শন করুন।",
+                f"কাউন্টার ইমপালস জোন: ক্যাশ কাউন্টারের সামনে চকলেট, চুইংগাম ও মিনি স্ন্যাকসের রঙচঙে ডিসপ্লে ট্রে স্থাপন করুন। কাস্টমার বিল দেওয়ার মুহূর্তে এগুলো কিনে নেয়, যা বাস্কেট সাইজ তাৎক্ষণিক বাড়ায়।",
+                f"রঙিন সেলফ-টকার ও কম্বো ব্যাজ: প্যাকেজ ও অফার পণ্যে উজ্জ্বল হলুদ/সবুজ রঙের 'Super Saver Combo' এবং 'Special Discount' স্টিকার লাগান যাতে দূর থেকেই কাস্টমারের চোখে পড়ে।",
+                f"মোবাইল অ্যাপ হোম ব্যানার: অনলাইন অ্যাপের একদম উপরে আকর্ষণীয় বড় ব্যানারে '{first_top_prod}' সহ কম্বো অফার হাইলাইট করুন।"
+            ]
+            should_drop = [
+                f"অচল পণ্যকে মূল্যবান সেলফে ফেলে রাখা বন্ধ করুন: '{dead_prod_names}' এর মতো ধীরগতির পণ্যগুলো প্রাইম সেলফে জায়গা নষ্ট করছে। এগুলোকে ঝুড়ি ডিসপ্লেতে বা এন্ট্রান্স ডিসকাউন্ট কর্নারে সরিয়ে দিন।",
+                "অপরিচ্ছন্ন ও অগোছালো তাক: পণ্য এলোমেলো থাকলে কাস্টমার সহজে খুঁজে পায় না এবং কেনাকাটা না করে চলে যায়। নিয়মিত ক্যাটাগরি অনুযায়ী ফ্রন্ট-ফেসিং নিশ্চিত করুন।",
+                "মেয়াদোত্তীর্ণ ঝুঁকিযুক্ত অতিরিক্ত স্টক: যেসব পণ্যের বিক্রি ধীর, সেগুলোর অতিরিক্ত কার্টন অর্ডার দেওয়া অবিলম্বে বন্ধ করুন।",
+                "কাউন্টারের সামনে জায়গা জট: কাউন্টারের আশেপাশে অপ্রয়োজনীয় বক্স বা খালি কার্টন রাখা বন্ধ করে শুধু বিক্রয়যোগ্য পণ্য সাজিয়ে রাখুন।"
+            ]
+            where_to_change = [
+                "শপ লেআউট ও ওয়াকওয়ে: দোকানের প্রবেশদ্বার থেকে ক্যাশ কাউন্টার পর্যন্ত কাস্টমারের হাঁটার পথ উন্মুক্ত ও আকর্ষণীয় রাখুন।",
+                f"ডিসকাউন্ট ট্যাগিং: ধীরগতির পণ্যগুলোতে ({dead_prod_names}) স্পষ্ট বড় হরফে '১০% ছাড়' স্টিকার লাগান।",
+                "আলো ও প্রডাক্ট হাইলাইট: ফ্রুটস, বেকারি ও প্রিমিয়াম সেলফে উজ্জ্বল ফোকাস লাইটের ব্যবস্থা করুন।",
+                "অনলাইন অ্যাপ ফটো কোয়ালিটি: অ্যাপে পণ্যের স্পষ্ট সাদা ব্যাকগ্রাউন্ডের ছবি ও সঠিক দাম নিশ্চিত করুন।"
+            ]
+            profit_roadmap = [
+                "ভিজ্যুয়াল মার্চেন্ডাইজিং রিঅ্যারেঞ্জ: প্রাইম সেলফে প্রিমিয়াম পণ্য সাজালে বাস্কেট মূল্য ১৫-২০% বাড়বে।",
+                f"কাউন্টার ইমপালস আইটেম: দৈনিক অন্তত ৩০-৫০ জন কাস্টমার ২০ টাকার ইমপালস কিনলে মাসে ৳১৮,০০০ - ৳৩০,০০০ অতিরিক্ত লাভ।",
+                f"অচল স্টক ক্লিয়ারেন্স: সেলফ কর্নারে ডিসকাউন্ট ঝুড়ি তৈরি করে অলস ৳১৫,০০০ - ৳৫০,০০০ ক্যাশ দ্রুত পুনরুদ্ধার সম্ভব।",
+                "অনলাইন ব্যানার রিফ্রেশ: প্রতি সপ্তাহে নতুন ব্যানার দিয়ে অনলাইন বিক্রয় শেয়ার ৩০%+ এ উন্নীত করা যাবে।"
+            ]
+        elif mode == "action":
+            title = "⚡ ডইনিক সুপারশপ - এআই টিম অ্যাকশন ও তাৎক্ষণিক বাস্তবায়ন চেকলিস্ট"
+            summary_tagline = f"দোকানদার, ম্যানেজার ও ক্যাশিয়ারের করণীয় অ্যাকশন চেকলিস্ট (বিক্রয়: ৳{rev:,.2f} | নিট লাভ: ৳{net_profit:,.2f})"
+            current_state = [
+                f"[পরিমাপ] নির্বাচিত সময়সীমায় মোট {tx_count}টি লেনদেনে মোট ৳{rev:,.2f} সংগৃহীত হয়েছে (গড় কেনাকাটা: ৳{aov:,.2f})।",
+                f"[লাভজনকতা] গ্রস প্রফিট ৳{gross_profit:,.2f} ({gross_margin_pct:.1f}%) এবং নিট লাভ ৳{net_profit:,.2f} ({net_margin_pct:.1f}%)।",
+                f"[চ্যানেল] অফলাইন সেলস ৳{pos_rev:,.2f} ({pos_share_pct:.1f}%) এবং অনলাইন অ্যাপ সেলস ৳{online_rev:,.2f} ({online_share_pct:.1f}%)।",
+                f"[চাহিদা ড্রাইভার] দ্রুততম বিক্রি হওয়া পণ্য: '{first_top_prod}' সহ মোট শীর্ষ আইটেম ({top_prod_names})।",
+                f"[ব্যয় হিসাব] দোকান পরিচালনা ও অন্যান্য ব্যয় বাবদ মোট ৳{expense:,.2f} লিপিবদ্ধ হয়েছে।"
+            ]
+            should_do = [
+                f"[উচ্চ অগ্রাধিকার - আজই করুন] শীর্ষ বিক্রিত '{first_top_prod}' এর স্টক স্তর পরীক্ষা করুন এবং রিস্টক পয়েন্ট অবিলম্বে ৫০% বাড়িয়ে দিন যাতে পিক সময়ে কখনো স্টক-আউট না হয়।",
+                "[উচ্চ অগ্রাধিকার - আজই করুন] ক্যাশ কাউন্টারের সামনে চকোলেট, চুইংগাম ও মিনি স্ন্যাকসের একটি নতুন ছোট ডিসপ্লে ট্রে সাজিয়ে রাখুন।",
+                f"[মাঝারি অগ্রাধিকার - এই সপ্তাহে] সরবরাহকারী ডিলারের সাথে বৈঠক করে '{top_prod_names}' এর উপর ৩-৫% অতিরিক্ত ভলিউম ক্যাশব্যাক চুক্তি করুন।",
+                "[চলতি সপ্তাহ] অনলাইন অ্যাপে ৳১,০০০ টাকার বেশি কেনাকাটায় ফ্রি ডেলিভারি ব্যানার সক্রিয় করুন।"
+            ]
+            should_drop = [
+                f"[জরুরি বর্জন] অচল পণ্য ({dead_prod_names}) ফেলে রাখা বন্ধ করুন; অবিলম্বে স্পেশাল ১০% ছাড়ের লাল স্টিকার মেরে সামনের সারিতে দিন।",
+                "[কঠোর নিয়ম] মেমো ছাড়া ক্যাশ ড্রয়ার থেকে কোনো নগদ টাকা খরচ করা সম্পূর্ণ বন্ধ করুন; তাৎক্ষণিক ডিজিটাল এন্ট্রি নিশ্চিত করুন।",
+                "[বর্জন] একই পণ্যের অপ্রয়োজনীয় ডুপ্লিকেট ব্র্যান্ড রাখা বন্ধ করুন; শুধু শীর্ষ ২-৩টি ব্র্যান্ড চালু রাখুন।",
+                "[বর্জন] মেয়াদোত্তীর্ণ হওয়ার ঝুঁকিযুক্ত কম বিক্রিত পণ্যের বড় অর্ডার দেওয়া বন্ধ করুন।"
+            ]
+            where_to_change = [
+                "ইনভেন্টরি চেকিং শিডিউল: প্রতি সোমবার সকালে অচল স্টক ও স্বল্প স্টক পণ্যের তালিকা প্রিন্ট করে রিঅর্ডার রিভিউ করুন।",
+                "ক্যাশিয়ারের সাথে কথোপকথন: কাস্টমারকে বিল দেওয়ার সময় 'কাউন্টারের এই অফার আইটেমটি কি যুক্ত করবেন?' জিজ্ঞেস করার নির্দেশ দিন।",
+                "সেলফ ফেসিং রুটিন: প্রতিদিন দোকান খোলার পর এবং বিকেলে সব তাকের পণ্যের ফ্রন্ট-ফেসিং সাজিয়ে রাখুন।",
+                "সাপ্লায়ার বিলিং টার্মস: মাসিক সরবরাহকারীদের বাকির মেয়াদ ১৫-৩০ দিনে উন্নীত করার প্রস্তাব পাঠান।"
+            ]
+            profit_roadmap = [
+                "অ্যাকশন বাস্তবায়ন ১: ক্যাশ কাউন্টার ইমপালস থেকে মাসিক ৳১৫,০০০+ অতিরিক্ত খাঁটি নিট প্রফিট।",
+                "অ্যাকশন বাস্তবায়ন ২: ডিলারদের ৩% ভলিউম ডিসকাউন্ট থেকে মোট প্রফিট মার্জিন সরাসরি +২.৫% বৃদ্ধি।",
+                f"অ্যাকশন বাস্তবায়ন ৩: অচল স্টক লিকুইডেশন থেকে ৳১৫,০০০ - ৳৫০,০০০ তাৎক্ষণিক নগদ চলতি মূলধন অবমুক্ত।",
+                "সামগ্রিক লক্ষ্যমাত্রা: এই চেকলিস্ট অনুসরণ করলে পরবর্তী ৬০ দিনে নিট প্রফিট ৩৫% বৃদ্ধি সুনিশ্চিত।"
+            ]
+        elif mode == "growth":
+            title = "🚀 ডইনিক সুপারশপ - এআই আগ্রাসী প্রবৃদ্ধি ও মার্কেটিং এক্সপ্যানশন রিপোর্ট"
+            summary_tagline = f"মার্কেটিং কৌশল, কম্বো ক্যাম্পেইন ও গ্রাহক প্রবৃদ্ধি রোডম্যাপ (বিক্রয়: ৳{rev:,.2f} | নিট লাভ: ৳{net_profit:,.2f})"
+            current_state = [
+                f"গ্রাহক সমাগম ও রাজস্ব: মোট {tx_count} জন কাস্টমার কেনাকাটা করেছেন এবং আয় হয়েছে ৳{rev:,.2f} (AOV: ৳{aov:,.2f})।",
+                f"গ্রস ও নিট মার্জিন: গ্রস মার্জিন {gross_margin_pct:.1f}% (৳{gross_profit:,.2f}) ও নিট মার্জিন {net_margin_pct:.1f}% (৳{net_profit:,.2f})।",
+                f"ডিজিটাল বিস্তার: অনলাইন অ্যাপ থেকে এসেছে {online_share_pct:.1f}% (৳{online_rev:,.2f}) এবং দোকানে এসেছে {pos_share_pct:.1f}% (৳{pos_rev:,.2f})।",
+                f"জনপ্রিয় ব্র্যান্ডসমূহ: '{first_top_prod}' সহ শীর্ষ খাদ্যপণ্য ({top_prod_names}) কাস্টমার ধরে রাখতে প্রধান ভূমিকা পালন করছে।",
+                f"ব্যয় ও আয় অনুপাত: মোট পরিচালন খরচ ৳{expense:,.2f} এবং অন্যান্য আয় ৳{income:,.2f}।"
+            ]
+            should_do = [
+                f"মেগা কম্বো প্যাকেজ ক্যাম্পেইন: '{first_top_prod}' সহ নিত্যপণ্য দিয়ে 'মাসিক বাজার সুপার সেভার কম্বো' চালু করুন এবং ৫-৮% বান্ডিল ছাড় দিন। এতে গড় বাস্কেট সাইজ ৳{aov:,.2f} থেকে বেড়ে ৳{aov*1.30:,.2f}+ হবে।",
+                "রেগুলার কাস্টমারদের জন্য লয়ালটি সুবিধা: নিয়মিত কাস্টমারদের জন্য পয়েন্ট সিস্টেম বা 'ভিআইপি মেম্বারশিপ' অফার করুন যাতে প্রতি ১০০ টাকার ক্রয়ে ১ পয়েন্ট পায়।",
+                f"অনলাইন অ্যাপ ফ্ল্যাশ সেল: সপ্তাহের নির্দিষ্ট দিন (যেমন শুক্রবার) শীর্ষ পণ্যে ({top_prod_names}) ২ ঘণ্টার ফ্ল্যাশ সেল দিয়ে অ্যাপ ট্রাফিক দ্বিগুণ করুন।",
+                "হোয়াটসঅ্যাপ ও এসএমএস মার্কেটিং: নতুন অফার ও কম্বো প্যাকেজের খবর নিয়মিত কাস্টমারদের ফোনে পাঠান।"
+            ]
+            should_drop = [
+                f"অচল পণ্য গুদামে ফেলে রাখা বন্ধ করুন: '{dead_prod_names}' কে 'মেগা ক্লিয়ারেন্স সেল' দিয়ে মূলধন উদ্ধার করুন।",
+                "একক পণ্যে বড় ডিসকাউন্ট দিয়ে মার্জিন হারানো বন্ধ করুন; সবসময় কম্বো আকারে ডিসকাউন্ট দিন যাতে মোট লাভ অক্ষুণ্ন থাকে।",
+                "অনলাইন প্রচারবিহীন থাকা বন্ধ করুন; ফেসবুক ও লোকাল গ্রুপে নিয়মিত পোস্ট ও ব্যানার শেয়ার করুন।",
+                "অপরিকল্পিত ডেলিভারি খরচ বন্ধ করুন; নির্দিষ্ট দূরত্বের ভেতরে একই ট্রিপে একাধিক অর্ডার ডেলিভারির ব্যবস্থা করুন।"
+            ]
+            where_to_change = [
+                "সোশ্যাল মিডিয়া প্রচার: স্থানীয় ফেসবুক গ্রুপ ও পেজে আকর্ষণীয় ফটো সহ সাপ্তাহিক অফারের পোস্ট দিন।",
+                "প্যাকেজ ক্যাটাগরি বিস্তার: অ্যাপে 'বাজেট কম্বো', 'ফ্যামিলি কম্বো' এবং 'ব্যাচেলর কম্বো' নামে আকর্ষণীয় প্যাকেজ তৈরি করুন।",
+                "ডেলিভারি পার্টনারশিপ: নির্দিষ্ট রাইডার ইনসেনটিভের মাধ্যমে ৩০ মিনিটে ফাস্ট ডেলিভারির নিশ্চয়তা দিন।",
+                "কাস্টমার ফিডব্যাক ও রিভিউ: প্রতি ডেলিভারির পর গ্রাহকের সন্তুষ্টি জেনে নিন এবং রেফারেল বোনাস চালু করুন।"
+            ]
+            profit_roadmap = [
+                "কম্বো ক্যাম্পেইন বিস্তার: বড় ফ্যামিলি বাস্কেট বিক্রয় বেড়ে মোট রাজস্ব ২৫% থেকে ৩৫% বৃদ্ধি পাবে।",
+                "অনলাইন অ্যাপ দ্বিগুণকরণ: অনলাইন শেয়ার ১৫% থেকে বাড়িয়ে ৩৫%+ এ রূপান্তর করা সম্ভব।",
+                f"ক্লিয়ারেন্স ফ্ল্যাশ সেল: অলস ইনভেন্টরি থেকে ৳২০,০০০ - ৳৬০,০০০ নগদ মূলধন রিকভারি।",
+                "সার্বিক প্রবৃদ্ধি লক্ষ্য: ৩ মাসের মধ্যে সুপারশপের মাসিক নিট মুনাফা ৪০% এর বেশি বৃদ্ধির সুস্পষ্ট সম্ভাবনা।"
+            ]
+        else: # "examples" (Default Practical Examples Mode)
+            title = "🧠 ডইনিক সুপারশপ - এআই এক্সিকিউটিভ বিজনেস ইন্টেলিজেন্স ও বাস্তব পরামর্শ রিপোর্ট"
+            summary_tagline = f"মোট বিক্রয় ৳{rev:,.2f} এবং নিট মুনাফা ৳{net_profit:,.2f} এর সামগ্রিক ব্যবসায়িক ডায়াগনোসিস ও বাস্তব দিকনির্দেশনা"
+            current_state = [
+                f"১. সামগ্রিক বিক্রয় ও গ্রাহক সমাগম: নির্বাচিত সময়সীমায় মোট {tx_count}টি সফল ট্রানজ্যাকশনে মোট ৳{rev:,.2f} বিক্রয় হয়েছে। প্রতিটি কাস্টমারের গড় বাস্কেট মূল্য (Average Order Value) ৳{aov:,.2f}।",
+                f"২. লাভজনকতা ও মার্জিন বিশ্লেষণ: মোট গ্রস প্রফিট অর্জিত হয়েছে ৳{gross_profit:,.2f} (গ্রস মার্জিন {gross_margin_pct:.1f}%) এবং দোকান পরিচালন ব্যয় সমন্বয়ের পর অর্জিত নিট মুনাফা ৳{net_profit:,.2f} (নিট মার্জিন {net_margin_pct:.1f}%)।",
+                f"৩. বিক্রয় চ্যানেল বন্টন: দোকানের অফলাইন পিওএস কাউন্টার থেকে এসেছে মোট বিক্রয়ের {pos_share_pct:.1f}% (৳{pos_rev:,.2f}) এবং অনলাইন মোবাইল অ্যাপ/ওয়েবসাইট থেকে এসেছে {online_share_pct:.1f}% (৳{online_rev:,.2f})।",
+                f"৪. শীর্ষ চাহিদাসম্পন্ন পণ্য (Top Sellers): '{first_top_prod}' সহ শীর্ষ আইটেমগুলো ({top_prod_names}) মোট বিক্রয়ের সিংহভাগ নিশ্চিত করছে এবং নিয়মিত কাস্টমার ফুটফল ধরে রেখেছে।",
+                f"৫. পরিচালন খরচ ও আনুষঙ্গিক আয়: মোট লেজার পরিচালন ব্যয় ৳{expense:,.2f} এবং অন্যান্য বিবিধ আয় বাবদ যুক্ত হয়েছে ৳{income:,.2f}।"
+            ]
+            should_do = [
+                f"📦 বাস্তব পণ্যের আকর্ষণীয় কম্বো তৈরি: দৈনন্দিন প্রয়োজনীয় প্রধান পণ্যের (যেমন: '{first_top_prod}') সাথে উচ্চ মার্জিনের আইটেম (যেমন: মসলা, চা পাতা বা প্রিমিয়াম স্ন্যাকস) একসাথে বান্ডিল করে 'ফ্যামিলি সুপার সেভার কম্বো' চালু করুন। উদাহরণস্বরূপ: ৫% ছাড় দিয়ে কম্বো অফার করলে কাস্টমার একবারে বেশি পণ্য কিনবে এবং গড় বাস্কেট সাইজ ৳{aov:,.2f} থেকে বেড়ে ৳{aov*1.25:,.2f}+ হবে।",
+                f"🍫 ক্যাশ কাউন্টার ইমপালস ডিসপ্লে: বিলিং কাউন্টারে কাস্টমারের হাতের নাগালে ছোট ও আকর্ষণীয় পণ্য (যেমন: চকলেট, চুইংগাম, ছোট বিস্কুট, মিনি শ্যাম্পু, টিস্যু) সাজিয়ে রাখুন। উদাহরণস্বরূপ: বিল পেমেন্টের সময় ১০-২০ টাকার অতিরিক্ত পণ্য যুক্ত হওয়া সহজ, যা কোনো বাড়তি খরচ ছাড়াই প্রতিদিন অতিরিক্ত নিট লাভ যোগ করবে।",
+                f"🤝 শীর্ষ বিক্রিত পণ্যে ডিলার ডিল: সেরা বিক্রিত আইটেমগুলোর ({top_prod_names}) ডিলারদের সাথে মাসিক টার্গেট ভিত্তিতে অতিরিক্ত ৩% থেকে ৫% ভলিউম ক্যাশব্যাক অথবা প্রতি ১০ কার্টনে ১ কার্টন ফ্রি স্কিম নিশ্চিত করুন। এতে পণ্যের ক্রয়মূল্য কমবে এবং সরাসরি গ্রস প্রফিট বৃদ্ধি পাবে।",
+                f"🚚 অনলাইন ফ্রি ডেলিভারি টার্গেট: অনলাইন অ্যাপে নির্দিষ্ট মূল্যের কেনাকাটায় (যেমন: ৳১,০০০ বা ৳১,৫০০ এর উপর) ফ্রি হোম ডেলিভারির ক্যাম্পেইন চালান। এতে অনলাইন বিক্রয়ের শেয়ার বর্তমান {online_share_pct:.1f}% থেকে ৩০%+ এ উন্নীত হবে এবং ডেলিভারি খরচ সাশ্রয় হবে।"
+            ]
+            should_drop = [
+                f"🛑 অচল স্টকের মূলধন আটকে রাখা বন্ধ করুন: দোকানে অলস পড়ে থাকা অচল পণ্য ({dead_prod_names}) তাকের জায়গা দখল করে আছে এবং মূলধন আটকে রেখেছে। উদাহরণস্বরূপ: এগুলোতে ১০-১৫% স্পেশাল ছাড় দিয়ে অথবা জনপ্রিয় পণ্যের সাথে 'বাই ওয়ান গেট ওয়ান / গিফট কম্বো' বানিয়ে আগামী ৭-১০ দিনের মধ্যে বিক্রি করে লিকুইড ক্যাশ তুলে নিন।",
+                f"⚠️ মেয়াদোত্তীর্ণ ও পচনশীল ক্ষতি কমানো: যেসব পণ্যের সেলস ভেলোসিটি অত্যন্ত ধীর বা মার্জিন ২% এর কম এবং নষ্ট হওয়ার ঝুঁকি আছে, সেগুলোর অতিরিক্ত স্টক রাখা বন্ধ করুন। 'ফার্স্ট ইন, ফার্স্ট আউট' (FIFO) পদ্ধতি কঠোরভাবে অনুসরণ করুন।",
+                f"📝 অনিবন্ধিত খুচরা খরচ বন্ধ: ক্যাশ ড্রয়ার থেকে মেমো ছাড়া কোনো নগদ অর্থ খরচ করা বন্ধ করুন। প্রতিটি দৈনন্দিন খরচ সিস্টেমে তাৎক্ষণিক ডিজিটাল লেজারে এন্ট্রি নিশ্চিত করুন যাতে মাস শেষে অদৃশ্য ক্ষতির হিসাব স্পষ্ট হয়।",
+                f"🏷️ ডুপ্লিকেট ব্র্যান্ড ছাঁটাই: একই ক্যাটাগরিতে ৫-৬টি বিভিন্ন অপরিচিত ব্র্যান্ডের পণ্য রাখার পরিবর্তে শুধুমাত্র কাস্টমারদের সবচেয়ে বিশ্বস্ত শীর্ষ ২-৩টি ব্র্যান্ড স্টক করুন। এতে ইনভেন্টরি ম্যানেজমেন্ট সহজ হবে এবং স্টক জট কমে যাবে।"
+            ]
+            where_to_change = [
+                f"🔄 সেলস স্পিড অনুযায়ী দাম নির্ধারণ: যেসব পণ্য দ্রুত চলে ({top_prod_names}) সেগুলোতে লাভজনক স্ট্যান্ডার্ড প্রাইজ ধরে রাখুন এবং ধীরগতির পণ্যগুলোতে আকর্ষণীয় স্টিকার ডিসকাউন্ট দিয়ে টার্নওভার বাড়ান।",
+                f"🔔 রিঅর্ডার পয়েন্ট বৃদ্ধি: মূল খাদ্য ও প্রসাধন সামগ্রীর মিনিমাম স্টক অ্যালার্ট সীমা বাড়িয়ে রাখুন, যাতে পিক সময়ে কোনো আইটেম শেষ হয়ে গিয়ে কাস্টমারকে 'Out of Stock' দেখে ফিরে যেতে না হয়।",
+                f"📱 অনলাইন ও দোকানের ডিসপ্লে সমন্বয়: মোবাইল অ্যাপের হোমপেজ ব্যানার এবং দোকানের প্রবেশদ্বারে সেরা অফার ও কম্বো প্যাকেজের বড় রঙিন পোস্টার বা ব্যানার প্রদর্শন করুন।",
+                f"💳 সাপ্লায়ারদের সাথে ক্রেডিট মেয়াদ: নিয়মিত পাইকারি সরবরাহকারীদের সাথে ১৫-৩০ দিনের ব্যবসায়িক ক্রেডিট সুবিধা চালু করুন, যাতে নিজের নগদ চলতি মূলধন সর্বদা সুরক্ষিত থাকে।"
+            ]
+            profit_roadmap = [
+                f"অচল স্টক বিক্রি: অচল পণ্য ({dead_prod_names[:30]}...) দ্রুত বিক্রি থেকে ৳১৫,০০০ - ৳৫০,০০০ তাৎক্ষণিক নগদ চলতি মূলধন অবমুক্ত হবে।",
+                "বাল্ক ক্রয় সাশ্রয়: সাপ্লায়ারদের সাথে ভলিউম চুক্তির মাধ্যমে পণ্যের ক্রয়মূল্য কমিয়ে গ্রস মার্জিন +২.৫% থেকে +৪.০% বাড়ানো সম্ভব।",
+                f"বাস্কেট সাইজ বৃদ্ধি: কম্বো বান্ডিল ও ফ্রি ডেলিভারি প্রণোদনায় গড় কেনাকাটা (AOV) ৳{aov:,.2f} থেকে ২০-২৫% বৃদ্ধি পাবে।",
+                "সামগ্রিক লক্ষ্যমাত্রা: উপরোক্ত কর্মপরিকল্পনাগুলো একযোগে বাস্তবায়ন করলে পরবর্তী প্রান্তিকে নিট মুনাফা ২৫% থেকে ৪০% বৃদ্ধি পাবে।"
+            ]
+    else:
+        # ENGLISH GENERATION
+        if mode == "visual":
+            title = "🎨 DOINEEK Supershop - AI Visual Merchandising & Revenue Spotlight Report"
+            summary_tagline = f"Visual Store Layout, Shelf Placement & Profit Analysis (Revenue: TK {rev:,.2f} | Net Profit: TK {net_profit:,.2f})"
+            current_state = [
+                f"Visual Sales Performance: Total sales revenue stands at TK {rev:,.2f} across {tx_count} customer orders; Average Order Value is TK {aov:,.2f}.",
+                f"Margin Diagnosis: Gross Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and operational Net Profit is TK {net_profit:,.2f} ({net_margin_pct:.1f}%).",
+                f"Channel Ratio: Offline POS counter represents {pos_share_pct:.1f}% (TK {pos_rev:,.2f}) vs Online App at {online_share_pct:.1f}% (TK {online_rev:,.2f}).",
+                f"Visual Drivers: Top-selling products like '{first_top_prod}' and '{top_prod_names}' command the highest customer visual attention.",
+                f"Operating Ledger: Total operating expenses are TK {expense:,.2f} alongside TK {income:,.2f} in other earnings."
+            ]
+            should_do = [
+                f"Eye-Level Shelf Merchandising: Place high-margin specialty items directly at eye level (4.5 to 5.5 ft) right beside high-turnover staples like '{first_top_prod}'.",
+                "Cashier Impulse Display: Set up colorful impulse display trays with chocolates, gums, mini snacks, and pocket tissues directly on billing counters.",
+                "High-Contrast Combo Signage: Install bright yellow/green 'Super Saver Combo' and 'Special Value' shelf-talkers so offers are visible from aisle entrances.",
+                f"Mobile App Top Banners: Feature high-margin bundles featuring '{first_top_prod}' prominently on the app header carousel."
+            ]
+            should_drop = [
+                f"Stop dedicating prime shelf space to dead stock: Move slow items ({dead_prod_names}) to clearance discount bins near checkout.",
+                "Avoid cluttered aisles: Disorganized shelves reduce customer basket sizes; maintain consistent facing across all aisles.",
+                "Discontinue overstocking slow-velocity goods with expiration risks.",
+                "Keep checkout counters uncluttered: Remove loose boxes and paperwork to prioritize revenue-generating impulse items."
+            ]
+            where_to_change = [
+                "Customer Flow Walkways: Ensure unobstructed, welcoming walkways from store entrance to checkout counters.",
+                f"Clearance Price Tagging: Apply vibrant '10% OFF' price tags to slow-moving inventory ({dead_prod_names}).",
+                "Product Lighting: Use bright spotlighting over bakery, produce, and premium packaged grocery shelves.",
+                "Online Product Imagery: Maintain crisp white-background images with clear pricing across the web and app."
+            ]
+            profit_roadmap = [
+                "Eye-Level Merchandising: Repositioning high-margin items projected to lift basket margins by 15-20%.",
+                "Counter Impulse Buying: Generating extra TK 20-50 across 30+ transactions adds TK 18,000 - TK 30,000 monthly net gain.",
+                f"Dead Stock Clearance: Unlocks TK 15,000 - TK 50,000 in liquid capital locked in slow inventory.",
+                "App Merchandising Banners: Target scaling digital online order revenue share to 30%+."
+            ]
+        elif mode == "action":
+            title = "⚡ DOINEEK Supershop - AI Team Action & Execution Priority Checklist"
+            summary_tagline = f"Manager, Cashier & Floor Staff Actionable Directives (Revenue: TK {rev:,.2f} | Net Profit: TK {net_profit:,.2f})"
+            current_state = [
+                f"[Metric] {tx_count} customer orders generated TK {rev:,.2f} in gross revenue with Average Order Value at TK {aov:,.2f}.",
+                f"[Profitability] Gross Profit stands at TK {gross_profit:,.2f} ({gross_margin_pct:.1f}%) and Net Profit at TK {net_profit:,.2f} ({net_margin_pct:.1f}%).",
+                f"[Channels] POS Counter accounts for TK {pos_rev:,.2f} ({pos_share_pct:.1f}%) vs Online App at TK {online_rev:,.2f} ({online_share_pct:.1f}%).",
+                f"[High Turnover] Fast-moving product driving sales: '{first_top_prod}' along with '{top_prod_names}'.",
+                f"[Expenses] Operating expenses total TK {expense:,.2f} balanced by TK {income:,.2f} in other income."
+            ]
+            should_do = [
+                f"[High Priority - Today] Audit stock levels for top item '{first_top_prod}' and raise re-order point by 50% to prevent stockouts.",
+                "[High Priority - Today] Install an impulse display tray (gums, mints, chocolates) immediately beside the cashier register.",
+                f"[Medium Priority - This Week] Meet with distributors for '{top_prod_names}' to secure a 3-5% volume discount or free cartoon scheme.",
+                "[This Week] Activate Free Delivery threshold on mobile app orders above TK 1,000."
+            ]
+            should_drop = [
+                f"[Urgent Drop] Stop holding dead stock ({dead_prod_names}); mark down by 10-15% with discount stickers immediately.",
+                "[Strict Enforcement] Stop unvouched petty cash payouts from register; enforce digital ledger entries.",
+                "[Drop] Discontinue duplicate low-demand brands; streamline to top 2-3 consumer favorites.",
+                "[Drop] Stop ordering bulk quantities of slow-moving items with near expiration dates."
+            ]
+            where_to_change = [
+                "Weekly Stock Audit: Every Monday morning, review slow-moving and low-stock alerts before ordering.",
+                "Cashier Prompting: Train cashier staff to mention counter impulse specials before printing final receipts.",
+                "Shelf Facing Routine: Daily 10-minute floor tidy to face all products neatly to the shelf edge.",
+                "Vendor Credit Terms: Request 15-30 day supplier credit terms to preserve cash flow."
+            ]
+            profit_roadmap = [
+                "Impulse Placement: Generates TK 15,000+ extra monthly net profit at minimal overhead.",
+                "Distributor Volume Discounts: Direct 3-5% procurement savings enhances Gross Margin by +2.5% to +4.0%.",
+                f"Dead Stock Recovery: Recovers TK 15,000 - TK 50,000 in trapped liquid cash.",
+                "Overall Target: 35% net profit increase achievable within 60 days of full checklist implementation."
+            ]
+        elif mode == "growth":
+            title = "🚀 DOINEEK Supershop - AI Aggressive Sales & Marketing Growth Report"
+            summary_tagline = f"Marketing Campaign Strategy, Combo Bundles & Scale Roadmap (Revenue: TK {rev:,.2f} | Net Profit: TK {net_profit:,.2f})"
+            current_state = [
+                f"Customer Volume: {tx_count} customer checkouts generated TK {rev:,.2f} with an Average Order Value of TK {aov:,.2f}.",
+                f"Profit Margins: Gross Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and Net Margin is {net_margin_pct:.1f}% (TK {net_profit:,.2f}).",
+                f"Digital Foothold: Online app orders generated {online_share_pct:.1f}% (TK {online_rev:,.2f}) alongside store POS {pos_share_pct:.1f}% (TK {pos_rev:,.2f}).",
+                f"Core Brand Anchors: Best sellers '{first_top_prod}' and '{top_prod_names}' represent essential customer loyalty anchors.",
+                f"Operational Ledger: Ledger expenses are TK {expense:,.2f} offset by TK {income:,.2f} in other revenue."
+            ]
+            should_do = [
+                f"Curate Mega Combo Bundles: Bundle top seller '{first_top_prod}' with secondary essentials into 'Monthly Family Packs' with 5% discount, lifting basket size from TK {aov:,.2f} to TK {aov*1.30:,.2f}+.",
+                "Launch VIP Customer Club: Provide points or loyalty perks (e.g. 1 point per TK 100) to incentivize repeat weekly store visits.",
+                f"App Flash Sales: Run 2-hour limited flash sales on top staples ({top_prod_names}) every Friday to double mobile app traffic.",
+                "WhatsApp & SMS Outreach: Send seasonal combo alerts and new stock updates directly to verified customer mobile numbers."
+            ]
+            should_drop = [
+                f"Stop storing dead stock ({dead_prod_names}) in backrooms; run a weekend 'Mega Clearance Sale' to recover cash.",
+                "Stop offering discounts on single standalone items; always require combo bundles to protect profit margins.",
+                "Avoid silence on social media; share weekly product spotlights and promo bundles consistently.",
+                "Eliminate inefficient single-drop deliveries; batch customer deliveries by area routes to lower transport costs."
+            ]
+            where_to_change = [
+                "Social Media Marketing: Share engaging photo posts of combo bundles across local community groups.",
+                "Package Category Expansion: Create 'Family Essentials', 'Budget Combos', and 'Hostel Packs' in the mobile app.",
+                "Express Delivery SLA: Guarantee 30-minute doorstep delivery with rider performance incentives.",
+                "Customer Feedback Loop: Solicit post-delivery reviews and incentivize customer referrals."
+            ]
+            profit_roadmap = [
+                "Combo Campaign Expansion: Lifts average transaction basket revenue by +25% to +35%.",
+                "Mobile App Scaling: Scales digital order revenue share from 15% to 35%+ of overall turnover.",
+                f"Clearance Flash Sales: Recovers TK 20,000 - TK 60,000 in immediate working capital from idle inventory.",
+                "Quarterly Projection: Drives an estimated 40%+ increase in total shop net profit over the next 90 days."
+            ]
+        else: # "examples" (Default Practical Examples Mode)
+            title = "🧠 DOINEEK Supershop - AI Executive Business Intelligence & Practical Advisory Report"
+            summary_tagline = f"Comprehensive Performance Analysis for Revenue TK {rev:,.2f} & Net Profit TK {net_profit:,.2f} with Real Product Examples"
+            current_state = [
+                f"1. Sales Revenue & Volume: Total Sales Revenue stands at TK {rev:,.2f} across {tx_count} customer transactions with an Average Order Value (AOV) of TK {aov:,.2f}.",
+                f"2. Profitability Margins: Gross Profit Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and Net Profit Margin is {net_margin_pct:.1f}% (TK {net_profit:,.2f}) after ledger operational adjustments.",
+                f"3. Channel Breakdown: Offline POS Counter accounts for {pos_share_pct:.1f}% (TK {pos_rev:,.2f}) while Online Mobile App/Web accounts for {online_share_pct:.1f}% (TK {online_rev:,.2f}).",
+                f"4. Top Revenue Drivers: Products like '{first_top_prod}' and '{top_prod_names}' represent the highest turnover and consistent customer demand.",
+                f"5. Operating Allocations: Total ledger expenses are TK {expense:,.2f} counterbalanced by TK {income:,.2f} in other earnings."
+            ]
+            should_do = [
+                f"📦 Curate Product Combo Bundles: Bundle high-demand staples (e.g. '{first_top_prod}' or rice/oil) together with high-margin specialty items (spices, premium tea, snacks) into 'Family Super Saver Combos'. Offering a 5% bundle discount lifts average order basket from TK {aov:,.2f} to TK {aov*1.25:,.2f}+.",
+                "🍫 Front Checkout Counter Impulse Displays: Place high-margin impulse goods (gums, mints, chocolates, mini snacks, pocket tissues) directly beside checkout billing registers. Customers instinctively add these at checkout, effortlessly boosting daily net profit.",
+                f"🤝 Negotiate Bulk Distributor Deals: For top-selling inventory ({top_prod_names}), negotiate 3-5% volume cashbacks or 1 free carton per 10 cartons scheme with distributors to directly increase Gross Margin.",
+                f"🚚 Free Delivery Basket Thresholds: Run mobile app promotions with Free Delivery for orders above TK 1,000 or TK 1,500. This will scale online share from {online_share_pct:.1f}% to 30%+ while covering logistics costs."
+            ]
+            should_drop = [
+                f"🛑 Liquidate Capital-Trapping Dead Stock: Unsold items ({dead_prod_names}) lock precious shelf space and capital. Liquidate them by bundling at 10-15% discount or gifting with top sellers to recover working cash within 7-10 days.",
+                "⚠️ Minimize Perishable & Expiration Losses: Stop ordering excess stock for items with less than 2% gross margin or slow velocity that risk expiration. Enforce strict FIFO (First In, First Out) stocking.",
+                "📝 Eliminate Untracked Petty Cash Outflows: Stop taking unrecorded cash directly from registers. Require immediate digital ledger entries for every daily expense to eliminate invisible leakages.",
+                "🏷️ Consolidate Redundant Duplicate Brands: Avoid stocking 5-6 duplicate brands in identical categories. Stock only the top 2-3 customer favorites to streamline inventory."
+            ]
+            where_to_change = [
+                f"🔄 Velocity-Based Dynamic Pricing: Keep profitable standard margins on fast-moving goods ({top_prod_names}) while applying attractive promo stickers to slow movers to accelerate cash turnover.",
+                "🔔 Increase Minimum Safety Stock Alerts: Raise low-stock alert thresholds for core essentials so shelves never hit 'Out of Stock' during peak customer rush hours.",
+                "📱 Synchronize Store Posters with App Banners: Display prominent color posters at store entrance mirroring the top combo banners on the mobile app.",
+                "💳 Supplier Trade Credit Terms: Transition key distributor accounts to 15-30 day trade credit to preserve cash working capital."
+            ]
+            profit_roadmap = [
+                f"Dead Stock Clearance: Unlocks TK 15,000 - TK 50,000 in immediate liquid working capital from idle items ({dead_prod_names[:30]}...).",
+                "Bulk Procurement Savings: Enhances overall Gross Profit Margin by +2.5% to +4.0% via volume distributor agreements.",
+                f"Combo Bundles & Basket Incentives: Lifts average customer order value (AOV) from TK {aov:,.2f} by +20% to +25%.",
+                "Targeted Growth Realization: Coordinated execution projected to increase Total Net Profit by 25% to 40% in next quarter."
+            ]
+
     return {
-        "lang": "en",
-        "title": "🧠 DOINEEK Supershop - AI Executive Business Intelligence & Actionable Advisory Report",
-        "summary_tagline": f"Comprehensive Performance Analysis for Revenue TK {rev:,.2f} & Net Profit TK {net_profit:,.2f}",
+        "lang": lang,
+        "mode": mode,
+        "title": title,
+        "summary_tagline": summary_tagline,
+        "visual_spotlights": visual_spotlights,
         "current_state": current_state,
         "should_do": should_do,
         "should_drop": should_drop,
@@ -5581,12 +5918,109 @@ def build_ai_business_report(metrics: dict, lang: str = "en") -> dict:
     }
 
 
+@app.route("/reports/api/regenerate_ai_report")
+@login_required
+@admin_required
+def api_regenerate_ai_report():
+    period = request.args.get("period", "monthly")
+    mode = request.args.get("mode", "examples")
+    today = date.today()
+    today_str = today.isoformat()
+
+    conn = get_connection()
+    if period == "daily":
+        date_filter = f"date(created_at) = '{today_str}'"
+        ledger_filter = f"date(entry_date) = '{today_str}'"
+    elif period == "weekly":
+        start = (today - timedelta(days=6)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "3_monthly":
+        start = (today - timedelta(days=89)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "6_monthly":
+        start = (today - timedelta(days=179)).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "quarterly":
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        start = date(today.year, quarter_start_month, 1).isoformat()
+        date_filter = f"date(created_at) >= '{start}'"
+        ledger_filter = f"date(entry_date) >= '{start}'"
+    elif period == "yearly":
+        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
+        ledger_filter = f"strftime('%Y', entry_date) = '{today_str[:4]}'"
+    elif period == "all":
+        date_filter = "1=1"
+        ledger_filter = "1=1"
+    else:
+        period = "monthly"
+        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
+        ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
+
+    offline_sales = conn.execute(f"SELECT COALESCE(SUM(rounded_total), 0) AS revenue, COUNT(id) AS tx_count FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}").fetchone()
+    online_sales = conn.execute(f"SELECT COALESCE(SUM(total_amount), 0) AS revenue, COUNT(*) AS tx_count FROM online_orders WHERE {date_filter}").fetchone()
+    offline_cogs = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
+    online_cogs = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id LEFT JOIN products p ON oi.product_id = p.id WHERE {date_filter.replace('created_at', 'o.created_at')}").fetchone()
+
+    pos_rev = float(offline_sales["revenue"])
+    online_rev = float(online_sales["revenue"])
+    total_rev = pos_rev + online_rev
+    pos_cnt = int(offline_sales["tx_count"])
+    online_cnt = int(online_sales["tx_count"])
+    total_tx = pos_cnt + online_cnt
+
+    pos_cogs = float(offline_cogs["total_cogs"])
+    online_cogs = float(online_cogs["total_cogs"])
+    total_cogs = pos_cogs + online_cogs
+    overall_gross = total_rev - total_cogs
+
+    ledger_entries = conn.execute(f"SELECT * FROM ledger_entries WHERE {ledger_filter}").fetchall()
+    all_inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income')
+    all_exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense')
+    overall_net = (overall_gross + all_inc) - all_exp
+
+    sold_sub = f"SELECT si.product_id, SUM(si.quantity) AS qty_sold, SUM(si.quantity * si.unit_price) AS revenue, SUM(si.quantity * si.cost_price) AS cogs_amt FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE {date_filter.replace('created_at', 's.created_at')} GROUP BY si.product_id"
+    prods = conn.execute(f"SELECT p.id, p.name, p.stock_qty, COALESCE(s.qty_sold, 0) AS qty_sold, COALESCE(s.revenue, 0) AS revenue, COALESCE(s.cogs_amt, 0) AS cogs_amt, (COALESCE(s.revenue, 0) - COALESCE(s.cogs_amt, 0)) AS profit FROM products p LEFT JOIN ({sold_sub}) s ON s.product_id = p.id ORDER BY qty_sold DESC").fetchall()
+    top_products = [dict(r) for r in prods if r["qty_sold"] > 0][:8]
+    dead_stock = [dict(r) for r in prods if r["qty_sold"] == 0 and r["stock_qty"] > 0][:8]
+    slow_movers = [dict(r) for r in sorted([r for r in prods if r["qty_sold"] > 0 and r["stock_qty"] > 0], key=lambda x: x["qty_sold"])[:8]]
+
+    metrics_bundle = {
+        "revenue": total_rev,
+        "cogs": total_cogs,
+        "gross_profit": overall_gross,
+        "net_profit": overall_net,
+        "other_income": all_inc,
+        "other_expenses": all_exp,
+        "tx_count": total_tx,
+        "online_revenue": online_rev,
+        "pos_revenue": pos_rev,
+        "top_products": top_products,
+        "dead_stock": dead_stock,
+        "slow_movers": slow_movers
+    }
+
+    ai_report_en = build_ai_business_report(metrics_bundle, "en", mode)
+    ai_report_bn = build_ai_business_report(metrics_bundle, "bn", mode)
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "mode": mode,
+        "ai_report_en": ai_report_en,
+        "ai_report_bn": ai_report_bn
+    })
+
+
 @app.route("/reports/export_pdf")
 @login_required
 @admin_required
 def reports_export_pdf():
     period = request.args.get("period", "monthly")
     lang = request.args.get("lang", "en")
+    mode = request.args.get("mode", "examples")
     today = date.today()
     today_str = today.isoformat()
 
@@ -5683,7 +6117,7 @@ def reports_export_pdf():
         "dead_stock": dead_stock,
         "slow_movers": slow_movers
     }
-    ai_report = build_ai_business_report(metrics_bundle, lang)
+    ai_report = build_ai_business_report(metrics_bundle, lang, mode)
     conn.close()
 
     return render_template(

@@ -308,6 +308,19 @@
       <span class="badge" style="background:#4338ca; color:#fff;">⚡ AI Advisor Engine</span>
     </div>
 
+    {% if ai_report.visual_spotlights %}
+    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+      {% for card in ai_report.visual_spotlights %}
+      <div style="flex: 1; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px; font-size: 8.5pt;">
+        <div style="font-weight: bold; color: #1e293b;">{{ card.icon }} {{ card.badge }}</div>
+        <div style="font-weight: 800; color: #4338ca; margin: 2px 0;">{{ card.title }}</div>
+        <div style="color: #64748b; font-size: 8pt;">{{ card.detail }}</div>
+        <div style="color: #334155; font-size: 7.5pt; margin-top: 3px; font-style: italic;">{{ card.example }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Pillar 1: Current State -->
     <div class="pillar-card">
       <div class="pillar-title" style="color:#1e3a8a;">

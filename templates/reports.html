@@ -48,19 +48,33 @@
       </div>
     </div>
 
-    <div style="display:flex; gap:10px; align-items:center;">
-      <!-- Language Switcher Tabs (Visible when expanded) -->
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <!-- Mode Selector (Illustrations, Examples, Action, Growth) -->
+      <select id="aiReportModeSelect" onchange="regenerateAiReport()" style="background:#312e81; color:#ffffff; border:1px solid #818cf8; padding:7px 12px; border-radius:8px; font-size:0.80rem; font-weight:700; cursor:pointer; outline:none;" title="Select AI Report Perspective">
+        <option value="examples" {% if mode == 'examples' %}selected{% endif %}>💡 Practical Examples & Products</option>
+        <option value="visual" {% if mode == 'visual' %}selected{% endif %}>🎨 Visual Merchandising & Spotlights</option>
+        <option value="action" {% if mode == 'action' %}selected{% endif %}>⚡ Action Checklist for Team</option>
+        <option value="growth" {% if mode == 'growth' %}selected{% endif %}>🚀 Marketing & Combo Growth</option>
+      </select>
+
+      <!-- Regenerate Report Button -->
+      <button type="button" id="btnRegenerateAiReport" onclick="regenerateAiReport()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:7px 14px; border-radius:8px; font-size:0.82rem; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.2);" title="Regenerate Report in Different Perspectives">
+        <span id="aiRegenSpinner" style="display:none; animation:spin 1s linear infinite;">🔄</span>
+        <span id="aiRegenText">🔄 Regenerate Report</span>
+      </button>
+
+      <!-- Language Switcher Tabs -->
       <div id="aiLangSwitcher" style="display:none; gap:6px; align-items:center;">
-        <button type="button" id="aiTabBtnEn" onclick="switchAiReportLang('en')" style="background:#6366f1; color:#fff; border:none; padding:5px 12px; border-radius:16px; font-size:0.80rem; font-weight:800; cursor:pointer;">
+        <button type="button" id="aiTabBtnEn" onclick="switchAiReportLang('en')" style="background:#6366f1; color:#fff; border:none; padding:6px 12px; border-radius:16px; font-size:0.80rem; font-weight:800; cursor:pointer;">
           🇬🇧 English Analysis
         </button>
-        <button type="button" id="aiTabBtnBn" onclick="switchAiReportLang('bn')" style="background:rgba(255,255,255,0.15); color:#fff; border:none; padding:5px 12px; border-radius:16px; font-size:0.80rem; font-weight:800; cursor:pointer;">
+        <button type="button" id="aiTabBtnBn" onclick="switchAiReportLang('bn')" style="background:rgba(255,255,255,0.15); color:#fff; border:none; padding:6px 12px; border-radius:16px; font-size:0.80rem; font-weight:800; cursor:pointer;">
           🇧🇩 Bengali Analysis
         </button>
       </div>
 
       <!-- Expand / Collapse Button with Down Arrow -->
-      <button type="button" id="aiReportToggleBtn" onclick="toggleAiReportVisibility()" style="background:#4338ca; border:1px solid #818cf8; color:#ffffff; padding:8px 16px; border-radius:8px; font-size:0.85rem; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+      <button type="button" id="aiReportToggleBtn" onclick="toggleAiReportVisibility()" style="background:#4338ca; border:1px solid #818cf8; color:#ffffff; padding:7px 14px; border-radius:8px; font-size:0.85rem; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 2px 6px rgba(0,0,0,0.2);">
         <span id="aiReportToggleText">Expand Advisory Report</span>
         <span id="aiReportToggleIcon" style="font-size:0.95rem; font-weight:bold;">▼</span>
       </button>
@@ -69,148 +83,202 @@
 
   <!-- Collapsible Content (Hidden by default, expandable by down arrow) -->
   <div id="aiReportCollapsibleBody" style="display:none; margin-top:18px; border-top:1px solid rgba(255,255,255,0.18); padding-top:16px;">
+    
+    <!-- Regeneration Notification Banner -->
+    <div id="aiRegenSuccessAlert" style="display:none; background:rgba(16,185,129,0.2); border:1px solid #34d399; color:#a7f3d0; padding:8px 14px; border-radius:8px; font-size:0.85rem; font-weight:700; margin-bottom:14px; align-items:center; gap:8px;">
+      <span>✨</span>
+      <span id="aiRegenSuccessMsg">AI Advisory Report successfully regenerated!</span>
+    </div>
+
     <!-- ENGLISH AI REPORT CONTENT -->
     <div id="aiReportContentEn" style="display:block;">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
-      
-      <!-- 1. What is Happening -->
-      <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#93c5fd; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>📊 1. Current State (What is Happening)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_en.current_state %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      <h3 id="aiTitleEn" style="margin:0 0 6px 0; font-size:1.1rem; color:#e0e7ff; font-weight:800;">{{ ai_report_en.title }}</h3>
+      <p id="aiTaglineEn" style="margin:0 0 14px 0; font-size:0.84rem; color:#94a3b8; font-weight:600;">{{ ai_report_en.summary_tagline }}</p>
 
-      <!-- 2. What Should Be Done -->
-      <div style="background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.30); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#86efac; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>🚀 2. Strategic Growth (What Should Be Done)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_en.should_do %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <!-- 3. What Should Be Dropped -->
-      <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.30); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#fca5a5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>🛑 3. Loss Elimination (What Should Be Dropped)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_en.should_drop %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <!-- 4. Where Changes Are Needed -->
-      <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#fde047; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>⚙️ 4. Key Adjustments (Where Changes Are Needed)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_en.where_to_change %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-    </div>
-
-    <!-- 5. Profit Maximization Roadmap -->
-    <div style="background:rgba(168,85,247,0.14); border:1.5px solid rgba(192,132,252,0.40); border-radius:12px; padding:16px; margin-top:14px;">
-      <div style="font-weight:800; font-size:0.98rem; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-        <span>📈 5. Profit Maximization Roadmap & Projections</span>
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
-        {% for item in ai_report_en.profit_roadmap %}
-        <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
-          {{ item }}
+      <!-- Visual Product & Merchandising Spotlights -->
+      <div id="aiSpotlightsEn" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px;">
+        {% for card in ai_report_en.visual_spotlights %}
+        <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:1.3rem;">{{ card.icon }}</span>
+              <span style="background:{{ card.badge_bg }}; color:{{ card.badge_color }}; font-size:0.70rem; font-weight:800; padding:2px 8px; border-radius:10px;">{{ card.badge }}</span>
+            </div>
+            <div style="font-size:0.92rem; font-weight:800; color:#f8fafc; margin-bottom:2px;">{{ card.title }}</div>
+            <div style="font-size:0.78rem; color:#94a3b8; margin-bottom:8px;">{{ card.detail }}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.25); border-left:3px solid {{ card.badge_color }}; padding:6px 8px; border-radius:4px; font-size:0.76rem; color:#e2e8f0; line-height:1.35;">
+            {{ card.example }}
+          </div>
         </div>
         {% endfor %}
       </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
+        <!-- 1. What is Happening -->
+        <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#93c5fd; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>📊 1. Current State (What is Happening)</span>
+          </div>
+          <ul id="aiCurrentStateEn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_en.current_state %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 2. What Should Be Done -->
+        <div style="background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.30); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#86efac; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>🚀 2. Strategic Growth (What Should Be Done)</span>
+          </div>
+          <ul id="aiShouldDoEn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_en.should_do %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 3. What Should Be Dropped -->
+        <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.30); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#fca5a5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>🛑 3. Loss Elimination (What Should Be Dropped)</span>
+          </div>
+          <ul id="aiShouldDropEn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_en.should_drop %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 4. Where Changes Are Needed -->
+        <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#fde047; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>⚙️ 4. Key Adjustments (Where Changes Are Needed)</span>
+          </div>
+          <ul id="aiWhereToChangeEn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_en.where_to_change %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. Profit Maximization Roadmap -->
+      <div style="background:rgba(168,85,247,0.14); border:1.5px solid rgba(192,132,252,0.40); border-radius:12px; padding:16px; margin-top:14px;">
+        <div style="font-weight:800; font-size:0.98rem; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>📈 5. Profit Maximization Roadmap & Projections</span>
+        </div>
+        <div id="aiProfitRoadmapEn" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+          {% for item in ai_report_en.profit_roadmap %}
+          <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
+            {{ item }}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- BENGALI AI REPORT CONTENT -->
-  <div id="aiReportContentBn" style="display:none;">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
-      
-      <!-- 1. কি কি হচ্ছে -->
-      <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#93c5fd; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>📊 ১. বর্তমানে কি কি হচ্ছে (Current State)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_bn.current_state %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+    <!-- BENGALI AI REPORT CONTENT -->
+    <div id="aiReportContentBn" style="display:none;">
+      <h3 id="aiTitleBn" style="margin:0 0 6px 0; font-size:1.1rem; color:#e0e7ff; font-weight:800;">{{ ai_report_bn.title }}</h3>
+      <p id="aiTaglineBn" style="margin:0 0 14px 0; font-size:0.84rem; color:#94a3b8; font-weight:600;">{{ ai_report_bn.summary_tagline }}</p>
 
-      <!-- 2. কি কি করা উচিত -->
-      <div style="background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.30); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#86efac; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>🚀 ২. লাভ বৃদ্ধির জন্য কি কি করা উচিত (Should Do)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_bn.should_do %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <!-- 3. কি কি বাদ দিতে হবে -->
-      <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.30); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#fca5a5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>🛑 ৩. ক্ষতি রোধে কি কি বাদ দিতে হবে (Should Drop)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_bn.should_drop %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <!-- 4. কোথায় কি কি পরিবর্তন আনতে হবে -->
-      <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30); border-radius:12px; padding:16px;">
-        <div style="font-weight:800; font-size:0.95rem; color:#fde047; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-          <span>⚙️ ৪. কোথায় কি কি পরিবর্তন আনতে হবে (Where to Change)</span>
-        </div>
-        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
-          {% for item in ai_report_bn.where_to_change %}
-          <li style="margin-bottom:6px;">{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-    </div>
-
-    <!-- 5. প্রফিট বৃদ্ধির রোডম্যাপ -->
-    <div style="background:rgba(168,85,247,0.14); border:1.5px solid rgba(192,132,252,0.40); border-radius:12px; padding:16px; margin-top:14px;">
-      <div style="font-weight:800; font-size:0.98rem; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-        <span>📈 ৫. প্রফিট বৃদ্ধির সুনির্দিষ্ট পথরেখা (Profit Roadmap)</span>
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
-        {% for item in ai_report_bn.profit_roadmap %}
-        <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
-          {{ item }}
+      <!-- Visual Product & Merchandising Spotlights in Bengali -->
+      <div id="aiSpotlightsBn" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px;">
+        {% for card in ai_report_bn.visual_spotlights %}
+        <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:1.3rem;">{{ card.icon }}</span>
+              <span style="background:{{ card.badge_bg }}; color:{{ card.badge_color }}; font-size:0.70rem; font-weight:800; padding:2px 8px; border-radius:10px;">{{ card.badge }}</span>
+            </div>
+            <div style="font-size:0.92rem; font-weight:800; color:#f8fafc; margin-bottom:2px;">{{ card.title }}</div>
+            <div style="font-size:0.78rem; color:#94a3b8; margin-bottom:8px;">{{ card.detail }}</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.25); border-left:3px solid {{ card.badge_color }}; padding:6px 8px; border-radius:4px; font-size:0.76rem; color:#e2e8f0; line-height:1.35;">
+            {{ card.example }}
+          </div>
         </div>
         {% endfor %}
       </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
+        <!-- 1. কি কি হচ্ছে -->
+        <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#93c5fd; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>📊 ১. বর্তমানে কি কি হচ্ছে (Current State)</span>
+          </div>
+          <ul id="aiCurrentStateBn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_bn.current_state %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 2. কি কি করা উচিত -->
+        <div style="background:rgba(34,197,94,0.10); border:1px solid rgba(34,197,94,0.30); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#86efac; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>🚀 ২. লাভ বৃদ্ধির জন্য কি কি করা উচিত (Should Do)</span>
+          </div>
+          <ul id="aiShouldDoBn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_bn.should_do %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 3. কি কি বাদ দিতে হবে -->
+        <div style="background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.30); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#fca5a5; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>🛑 ৩. ক্ষতি রোধে কি কি বাদ দিতে হবে (Should Drop)</span>
+          </div>
+          <ul id="aiShouldDropBn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_bn.should_drop %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 4. কোথায় কি কি পরিবর্তন আনতে হবে -->
+        <div style="background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30); border-radius:12px; padding:16px;">
+          <div style="font-weight:800; font-size:0.95rem; color:#fde047; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>⚙️ ৪. কোথায় কি কি পরিবর্তন আনতে হবে (Where to Change)</span>
+          </div>
+          <ul id="aiWhereToChangeBn" style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.5; color:#f1f5f9;">
+            {% for item in ai_report_bn.where_to_change %}
+            <li style="margin-bottom:6px;">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. প্রফিট বৃদ্ধির রোডম্যাপ -->
+      <div style="background:rgba(168,85,247,0.14); border:1.5px solid rgba(192,132,252,0.40); border-radius:12px; padding:16px; margin-top:14px;">
+        <div style="font-weight:800; font-size:0.98rem; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>📈 ৫. প্রফিট বৃদ্ধির সুনির্দিষ্ট পথরেখা (Profit Roadmap)</span>
+        </div>
+        <div id="aiProfitRoadmapBn" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+          {% for item in ai_report_bn.profit_roadmap %}
+          <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
+            {{ item }}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
-    </div>
+
   </div>
   <!-- End Collapsible Body -->
 </div>
 
+<style>
+@keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+
 <script>
+let currentAiReportLang = 'en';
+
 function toggleAiReportVisibility() {
   const body = document.getElementById('aiReportCollapsibleBody');
   const btnText = document.getElementById('aiReportToggleText');
@@ -240,6 +308,7 @@ function toggleAiReportVisibility() {
 }
 
 function switchAiReportLang(lang) {
+  currentAiReportLang = lang;
   const enDiv = document.getElementById('aiReportContentEn');
   const bnDiv = document.getElementById('aiReportContentBn');
   const enBtn = document.getElementById('aiTabBtnEn');
@@ -256,6 +325,125 @@ function switchAiReportLang(lang) {
     enBtn.style.background = '#6366f1';
     bnBtn.style.background = 'rgba(255,255,255,0.15)';
   }
+}
+
+function renderReportSpotlights(spotlights) {
+  if (!spotlights || !spotlights.length) return '';
+  return spotlights.map(card => `
+    <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; justify-content:space-between;">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-size:1.3rem;">${card.icon || '📌'}</span>
+          <span style="background:${card.badge_bg || 'rgba(99,102,241,0.2)'}; color:${card.badge_color || '#c7d2fe'}; font-size:0.70rem; font-weight:800; padding:2px 8px; border-radius:10px;">${card.badge || ''}</span>
+        </div>
+        <div style="font-size:0.92rem; font-weight:800; color:#f8fafc; margin-bottom:2px;">${card.title || ''}</div>
+        <div style="font-size:0.78rem; color:#94a3b8; margin-bottom:8px;">${card.detail || ''}</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.25); border-left:3px solid ${card.badge_color || '#818cf8'}; padding:6px 8px; border-radius:4px; font-size:0.76rem; color:#e2e8f0; line-height:1.35;">
+        ${card.example || ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderListItems(items) {
+  if (!items || !items.length) return '';
+  return items.map(it => `<li style="margin-bottom:6px;">${it}</li>`).join('');
+}
+
+function renderRoadmapCards(items) {
+  if (!items || !items.length) return '';
+  return items.map(it => `
+    <div style="background:rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:0.82rem; font-weight:700; color:#f8fafc; border-left:3px solid #c084fc;">
+      ${it}
+    </div>
+  `).join('');
+}
+
+function regenerateAiReport() {
+  const modeSelect = document.getElementById('aiReportModeSelect');
+  const mode = modeSelect ? modeSelect.value : 'examples';
+  const spinner = document.getElementById('aiRegenSpinner');
+  const btnText = document.getElementById('aiRegenText');
+  const btn = document.getElementById('btnRegenerateAiReport');
+  const period = new URLSearchParams(window.location.search).get('period') || 'monthly';
+
+  if (spinner) spinner.style.display = 'inline-block';
+  if (btnText) btnText.innerText = 'Generating...';
+  if (btn) btn.disabled = true;
+
+  // Make sure body is expanded
+  const body = document.getElementById('aiReportCollapsibleBody');
+  if (body && (body.style.display === 'none' || !body.style.display)) {
+    toggleAiReportVisibility();
+  }
+
+  fetch(`/reports/api/regenerate_ai_report?period=${encodeURIComponent(period)}&mode=${encodeURIComponent(mode)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.success) {
+        const en = data.ai_report_en;
+        const bn = data.ai_report_bn;
+
+        // Update English Content
+        if (en) {
+          const tEn = document.getElementById('aiTitleEn');
+          const tgEn = document.getElementById('aiTaglineEn');
+          if (tEn) tEn.innerText = en.title;
+          if (tgEn) tgEn.innerText = en.summary_tagline;
+          const sEn = document.getElementById('aiSpotlightsEn');
+          if (sEn) sEn.innerHTML = renderReportSpotlights(en.visual_spotlights);
+          const csEn = document.getElementById('aiCurrentStateEn');
+          if (csEn) csEn.innerHTML = renderListItems(en.current_state);
+          const sdEn = document.getElementById('aiShouldDoEn');
+          if (sdEn) sdEn.innerHTML = renderListItems(en.should_do);
+          const sdrEn = document.getElementById('aiShouldDropEn');
+          if (sdrEn) sdrEn.innerHTML = renderListItems(en.should_drop);
+          const wtcEn = document.getElementById('aiWhereToChangeEn');
+          if (wtcEn) wtcEn.innerHTML = renderListItems(en.where_to_change);
+          const rmEn = document.getElementById('aiProfitRoadmapEn');
+          if (rmEn) rmEn.innerHTML = renderRoadmapCards(en.profit_roadmap);
+        }
+
+        // Update Bengali Content
+        if (bn) {
+          const tBn = document.getElementById('aiTitleBn');
+          const tgBn = document.getElementById('aiTaglineBn');
+          if (tBn) tBn.innerText = bn.title;
+          if (tgBn) tgBn.innerText = bn.summary_tagline;
+          const sBn = document.getElementById('aiSpotlightsBn');
+          if (sBn) sBn.innerHTML = renderReportSpotlights(bn.visual_spotlights);
+          const csBn = document.getElementById('aiCurrentStateBn');
+          if (csBn) csBn.innerHTML = renderListItems(bn.current_state);
+          const sdBn = document.getElementById('aiShouldDoBn');
+          if (sdBn) sdBn.innerHTML = renderListItems(bn.should_do);
+          const sdrBn = document.getElementById('aiShouldDropBn');
+          if (sdrBn) sdrBn.innerHTML = renderListItems(bn.should_drop);
+          const wtcBn = document.getElementById('aiWhereToChangeBn');
+          if (wtcBn) wtcBn.innerHTML = renderListItems(bn.where_to_change);
+          const rmBn = document.getElementById('aiProfitRoadmapBn');
+          if (rmBn) rmBn.innerHTML = renderRoadmapCards(bn.profit_roadmap);
+        }
+
+        // Show Success Alert
+        const alert = document.getElementById('aiRegenSuccessAlert');
+        const alertMsg = document.getElementById('aiRegenSuccessMsg');
+        if (alert && alertMsg) {
+          const modeName = modeSelect ? modeSelect.options[modeSelect.selectedIndex].text : mode;
+          alertMsg.innerText = `Report regenerated in "${modeName}" mode!`;
+          alert.style.display = 'flex';
+          setTimeout(() => { alert.style.display = 'none'; }, 4000);
+        }
+      }
+    })
+    .catch(err => {
+      console.error('Failed to regenerate AI report:', err);
+    })
+    .finally(() => {
+      if (spinner) spinner.style.display = 'none';
+      if (btnText) btnText.innerText = '🔄 Regenerate Report';
+      if (btn) btn.disabled = false;
+    });
 }
 </script>
 
