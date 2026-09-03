@@ -1010,12 +1010,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                children: [
                                                                  const Icon(Icons.error_outline, color: Colors.red, size: 16),
                                                                  const SizedBox(width: 6),
-                                                                 Expanded(
+                                                                 const Expanded(
                                                                    child: Text(
-                                                                     outOfStockItemName != null
-                                                                         ? "Out of stock ($outOfStockItemName is out of stock)"
-                                                                         : "Out of stock (One or more items out of stock)",
-                                                                     style: const TextStyle(fontSize: 11.5, color: Colors.red, fontWeight: FontWeight.bold),
+                                                                     "Out of Stock",
+                                                                     style: TextStyle(fontSize: 11.5, color: Colors.red, fontWeight: FontWeight.bold),
                                                                    ),
                                                                  ),
                                                                ],

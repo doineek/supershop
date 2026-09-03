@@ -488,7 +488,7 @@ def render_storefront():
     for pkg in raw_pkgs:
         p_dict = dict(pkg)
         items = conn.execute("""
-            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.stock_qty
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.stock_qty, p.image_url, p.sku, p.unit
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
