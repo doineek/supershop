@@ -358,6 +358,36 @@ def parse_bogo_quantities(offer_value, offer_title, product_name=""):
     return 1, 1
 
 
+def calculate_paid_and_free_qty(quantity, offer_type, offer_value, offer_title, product_name=""):
+    """
+    Calculates paid_qty and free_qty for Buy X Get Y / BOGO offers.
+    Allows customers to avail free items without counting against paid order limits.
+    """
+    offer_t = (offer_type or "").lower()
+    offer_v = (offer_value or "").lower()
+    offer_ti = (offer_title or "").lower()
+    p_name = (product_name or "").lower()
+    
+    is_offer = (
+        offer_t in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or
+        ('buy' in offer_ti) or ('buy' in offer_v) or ('buy' in p_name) or
+        ('get' in offer_ti) or ('get' in offer_v)
+    )
+    if not is_offer:
+        return quantity, 0
+    
+    buy_qty, free_qty = parse_bogo_quantities(offer_value, offer_title, product_name)
+    total_set = buy_qty + free_qty
+    if total_set <= 0:
+        return quantity, 0
+    
+    sets = quantity // total_set
+    remainder = quantity % total_set
+    paid_qty = (sets * buy_qty) + min(remainder, buy_qty)
+    free_qty_total = quantity - paid_qty
+    return paid_qty, free_qty_total
+
+
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -2901,9 +2931,14 @@ def checkout():
                 conn.close()
                 return jsonify({"error": "A product in the cart no longer exists."}), 400
             quantity = int(item["quantity"])
-            if apply_to_pos and max_prod_qty > 0 and quantity > max_prod_qty:
+            offer_type = product["offer_type"] or ""
+            offer_value = product["offer_value"] or ""
+            offer_title = product["offer_title"] or ""
+            paid_qty, free_qty_total = calculate_paid_and_free_qty(quantity, offer_type, offer_value, offer_title, product["name"])
+
+            if apply_to_pos and max_prod_qty > 0 and paid_qty > max_prod_qty:
                 conn.close()
-                return jsonify({"error": f'Maximum allowed quantity for product "{product["name"]}" is {max_prod_qty} per order.'}), 400
+                return jsonify({"error": f'Maximum allowed purchase limit for product "{product["name"]}" is {max_prod_qty} paid units per order.'}), 400
             if product["stock_qty"] < quantity:
                 conn.close()
                 return jsonify({"error": f'Not enough stock for "{product["name"]}".'}), 400
@@ -2921,17 +2956,6 @@ def checkout():
                         "error": f'Scanned serial "{serial}" for "{product["name"]}" is no longer available. Please rescan or remove it from the cart.'
                     }), 400
                 valid_serials.append((serial, unit_row["id"]))
-
-            offer_type = product["offer_type"] or ""
-            offer_value = product["offer_value"] or ""
-            offer_title = product["offer_title"] or ""
-            paid_qty = quantity
-            if offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or ('buy' in offer_title.lower()) or ('buy' in offer_value.lower()):
-                buy_qty, free_qty = parse_bogo_quantities(offer_value, offer_title, product["name"])
-                total_set = buy_qty + free_qty
-                sets = quantity // total_set
-                remainder = quantity % total_set
-                paid_qty = (sets * buy_qty) + min(remainder, buy_qty)
 
             line_subtotal = product["sell_price"] * paid_qty
             vat_rate = product["vat_pct"] / 100.0 if product["vat_pct"] else 0
@@ -7142,20 +7166,28 @@ def api_place_order():
             prod_chk = None
             if prod_id is not None:
                 try:
-                    prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE id = ?", (int(prod_id),)).fetchone()
+                    prod_chk = conn.execute("SELECT id, name, stock_qty, offer_type, offer_value, offer_title FROM products WHERE id = ?", (int(prod_id),)).fetchone()
                 except Exception:
-                    prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE id = ?", (prod_id,)).fetchone()
+                    prod_chk = conn.execute("SELECT id, name, stock_qty, offer_type, offer_value, offer_title FROM products WHERE id = ?", (prod_id,)).fetchone()
             if not prod_chk and p_name_raw:
-                prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
+                prod_chk = conn.execute("SELECT id, name, stock_qty, offer_type, offer_value, offer_title FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
 
             if prod_chk:
                 p_key = f"prod_{prod_chk['id']}"
                 item_quantities_map[p_key] = item_quantities_map.get(p_key, 0) + qty
-                if max_order_qty_prod > 0 and item_quantities_map[p_key] > max_order_qty_prod:
+                
+                # Check limit against paid units so Buy X Get Y Free products can be availed
+                total_product_qty = item_quantities_map[p_key]
+                p_off_type = prod_chk["offer_type"] if "offer_type" in prod_chk.keys() else ""
+                p_off_val = prod_chk["offer_value"] if "offer_value" in prod_chk.keys() else ""
+                p_off_title = prod_chk["offer_title"] if "offer_title" in prod_chk.keys() else ""
+                paid_qty, free_qty = calculate_paid_and_free_qty(total_product_qty, p_off_type, p_off_val, p_off_title, prod_chk["name"])
+
+                if max_order_qty_prod > 0 and paid_qty > max_order_qty_prod:
                     conn.close()
                     return jsonify({
                         "success": False,
-                        "message": f'Maximum order limit reached: You can order at most {max_order_qty_prod} units of "{prod_chk["name"]}" per order.'
+                        "message": f'Maximum purchase limit reached: You can purchase at most {max_order_qty_prod} paid units of "{prod_chk["name"]}" per order.'
                     }), 400
 
                 curr_stk = int(prod_chk["stock_qty"] or 0)

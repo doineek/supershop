@@ -2921,6 +2921,21 @@
       return { isOffer: true, buyQty, freeQty, paidQty, freeQtyTotal };
     }
 
+    function getEffectiveMaxOrderQty(item, maxLimit) {
+      if (!maxLimit || maxLimit <= 0) return 0;
+      if (!item) return maxLimit;
+      const stats = getBuyXGetYStats({
+        ...item,
+        quantity: maxLimit
+      });
+      if (!stats.isOffer || !stats.buyQty || stats.buyQty <= 0) {
+        return maxLimit;
+      }
+      const sets = Math.floor(maxLimit / stats.buyQty);
+      const freeBonus = sets * stats.freeQty;
+      return maxLimit + freeBonus;
+    }
+
     // Dynamic Banner Promo Carousel with Touch Swipe & Mouse Drag
     const PROMO_INTERVAL_SEC = Math.max(1, parseInt("{{ promo_interval_sec or 2 }}") || 2);
     let promoIdx = 0;
@@ -4681,8 +4696,9 @@
           showQtyLimitModal(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be added to cart.`, 'Out of Stock');
           return false;
         }
-        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
-          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${prod.name}" per order.`, 'Order Limit Reached');
+        const effectiveLimit = getEffectiveMaxOrderQty(prod, MAX_ORDER_QTY_PRODUCT);
+        if (effectiveLimit > 0 && (currentQty + 1) > effectiveLimit) {
+          showQtyLimitModal(`Maximum purchase limit reached: You can purchase at most ${MAX_ORDER_QTY_PRODUCT} units (or up to ${effectiveLimit} units including free offer items) of "${prod.name}" per order.`, 'Order Limit Reached');
           return false;
         }
         if ((currentQty + 1) > prodStock) {
@@ -4696,8 +4712,9 @@
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
       } else {
-        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
-          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${strName}" per order.`, 'Order Limit Reached');
+        const effectiveLimit = getEffectiveMaxOrderQty({ name: strName, offer_type, offer_value, offer_title }, MAX_ORDER_QTY_PRODUCT);
+        if (effectiveLimit > 0 && (currentQty + 1) > effectiveLimit) {
+          showQtyLimitModal(`Maximum purchase limit reached: You can purchase at most ${MAX_ORDER_QTY_PRODUCT} units (or up to ${effectiveLimit} units including free offer items) of "${strName}" per order.`, 'Order Limit Reached');
           return false;
         }
       }
@@ -4720,7 +4737,12 @@
       saveCart();
 
       const totalItems = Object.values(cart).reduce((sum, it) => sum + it.quantity, 0);
-      showCartToast(`✓ "${cart[id].name}" added to cart!`, totalItems);
+      const offerStats = getBuyXGetYStats(cart[id]);
+      if (offerStats.isOffer && offerStats.buyQty > 0 && cart[id].quantity === offerStats.buyQty) {
+        showCartToast(`🎁 Offer Unlocked: Buy ${offerStats.buyQty} Get ${offerStats.freeQty} Free! You can now add ${offerStats.freeQty} FREE item(s) to your cart!`, totalItems);
+      } else {
+        showCartToast(`✓ "${cart[id].name}" added to cart!`, totalItems);
+      }
 
       const targetBtn = btnEl || document.getElementById(`btnAdd-${id}`);
       if (targetBtn) {
@@ -4745,8 +4767,9 @@
           showQtyLimitModal(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be ordered.`, 'Out of Stock');
           return false;
         }
-        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
-          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${prod.name}" per order.`, 'Order Limit Reached');
+        const effectiveLimit = getEffectiveMaxOrderQty(prod, MAX_ORDER_QTY_PRODUCT);
+        if (effectiveLimit > 0 && (currentQty + 1) > effectiveLimit) {
+          showQtyLimitModal(`Maximum purchase limit reached: You can purchase at most ${MAX_ORDER_QTY_PRODUCT} units (or up to ${effectiveLimit} units including free offer items) of "${prod.name}" per order.`, 'Order Limit Reached');
           return false;
         }
         if (!name || name === '') name = prod.name;
@@ -4756,8 +4779,9 @@
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
       } else {
-        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
-          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${strName}" per order.`, 'Order Limit Reached');
+        const effectiveLimit = getEffectiveMaxOrderQty({ name: strName, offer_type, offer_value, offer_title }, MAX_ORDER_QTY_PRODUCT);
+        if (effectiveLimit > 0 && (currentQty + 1) > effectiveLimit) {
+          showQtyLimitModal(`Maximum purchase limit reached: You can purchase at most ${MAX_ORDER_QTY_PRODUCT} units (or up to ${effectiveLimit} units including free offer items) of "${strName}" per order.`, 'Order Limit Reached');
           return false;
         }
       }
@@ -4857,8 +4881,9 @@
           } else {
             const prod = allProducts.find(p => String(p.id) === String(id));
             const pName = prod ? prod.name : cart[id].name;
-            if (MAX_ORDER_QTY_PRODUCT > 0 && (cart[id].quantity + delta) > MAX_ORDER_QTY_PRODUCT) {
-              showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${pName}" per order.`, 'Order Limit Reached');
+            const effectiveLimit = getEffectiveMaxOrderQty(prod || cart[id], MAX_ORDER_QTY_PRODUCT);
+            if (effectiveLimit > 0 && (cart[id].quantity + delta) > effectiveLimit) {
+              showQtyLimitModal(`Maximum purchase limit reached: You can purchase at most ${MAX_ORDER_QTY_PRODUCT} units (or up to ${effectiveLimit} units including free offer items) of "${pName}" per order.`, 'Order Limit Reached');
               return;
             }
             if (prod) {

@@ -256,6 +256,21 @@ function getBuyXGetYStats(item) {
   return { isOffer: true, buyQty, freeQty, paidQty, freeQtyTotal };
 }
 
+function getEffectiveMaxOrderQty(item, maxLimit) {
+  if (!maxLimit || maxLimit <= 0) return 0;
+  if (!item) return maxLimit;
+  const stats = getBuyXGetYStats({
+    ...item,
+    quantity: maxLimit
+  });
+  if (!stats.isOffer || !stats.buyQty || stats.buyQty <= 0) {
+    return maxLimit;
+  }
+  const sets = Math.floor(maxLimit / stats.buyQty);
+  const freeBonus = sets * stats.freeQty;
+  return maxLimit + freeBonus;
+}
+
 function addToCart(data) {
   const id = String(data.id);
   const isPkg = data.is_package || data.isPkg || id.startsWith("pkg_");
@@ -276,8 +291,9 @@ function addToCart(data) {
       alert(`Maximum order limit reached: You can order at most ${maxOrderQtyPackage} units of Combo Package "${cart[id].name}" per order.`);
       return;
     }
-    if (!isPkg && maxOrderQtyProduct > 0 && (cart[id].quantity + 1) > maxOrderQtyProduct) {
-      alert(`Maximum order limit reached: You can order at most ${maxOrderQtyProduct} units of "${cart[id].name}" per order.`);
+    const effMaxProd = getEffectiveMaxOrderQty(cart[id], maxOrderQtyProduct);
+    if (!isPkg && effMaxProd > 0 && (cart[id].quantity + 1) > effMaxProd) {
+      alert(`Maximum purchase limit reached: You can purchase at most ${maxOrderQtyProduct} units (or up to ${effMaxProd} units including free offer items) of "${cart[id].name}" per order.`);
       return;
     }
   }
@@ -382,10 +398,13 @@ document.getElementById("cartItemsBody").addEventListener("change", (e) => {
       val = maxOrderQtyPackage;
       alert(`Maximum order limit reached: You can order at most ${maxOrderQtyPackage} units of Combo Package "${item.name}" per order.`);
       input.value = val;
-    } else if (!item.is_package && maxOrderQtyProduct > 0 && val > maxOrderQtyProduct) {
-      val = maxOrderQtyProduct;
-      alert(`Maximum order limit reached: You can order at most ${maxOrderQtyProduct} units of "${item.name}" per order.`);
-      input.value = val;
+    } else if (!item.is_package && maxOrderQtyProduct > 0) {
+      const effMaxProd = getEffectiveMaxOrderQty(item, maxOrderQtyProduct);
+      if (effMaxProd > 0 && val > effMaxProd) {
+        val = effMaxProd;
+        alert(`Maximum purchase limit reached: You can purchase at most ${maxOrderQtyProduct} units (or up to ${effMaxProd} units including free offer items) of "${item.name}" per order.`);
+        input.value = val;
+      }
     }
   }
 
