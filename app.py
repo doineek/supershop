@@ -3927,6 +3927,10 @@ def settings_page():
             "shop_address": request.form.get("shop_address", "").strip(),
             "shop_phone": request.form.get("shop_phone", "").strip(),
             "customer_support_phone": request.form.get("customer_support_phone", "").strip(),
+            "admin_whatsapp_phone": request.form.get("admin_whatsapp_phone", "").strip(),
+            "whatsapp_provider": request.form.get("whatsapp_provider", "").strip(),
+            "whatsapp_instance_id": request.form.get("whatsapp_instance_id", "").strip(),
+            "whatsapp_api_token": request.form.get("whatsapp_api_token", "").strip(),
             "vat_reg_no": request.form.get("vat_reg_no", "").strip(),
             "delivery_charge": request.form.get("delivery_charge", "60").strip(),
             "promo_interval_sec": request.form.get("promo_interval_sec", "2").strip(),
@@ -6531,13 +6535,61 @@ def api_delivery_orders():
 OTP_STORE = {}
 VERIFIED_PHONES = set()
 
+
+def send_whatsapp_message_via_gateway(to_phone, message_text, settings):
+    """
+    Sends WhatsApp message automatically to customer's phone using configured Gateway (UltraMsg, Green API, Meta).
+    """
+    provider = (settings.get("whatsapp_provider") or "").lower().strip()
+    token = (settings.get("whatsapp_api_token") or "").strip()
+    instance_id = (settings.get("whatsapp_instance_id") or "").strip()
+
+    if not token:
+        return False, "No WhatsApp API token configured."
+
+    try:
+        import requests
+        clean_to = to_phone.strip()
+        if clean_to.startswith("+"):
+            clean_to = clean_to[1:]
+        if not clean_to.startswith("88") and clean_to.startswith("01"):
+            clean_to = f"88{clean_to}"
+
+        if provider == "ultramsg":
+            url = f"https://api.ultramsg.com/{instance_id}/messages/chat"
+            payload = {"token": token, "to": f"+{clean_to}", "body": message_text}
+            resp = requests.post(url, data=payload, timeout=10)
+            return resp.status_code == 200, resp.text
+        elif provider == "green_api":
+            url = f"https://api.green-api.com/waInstance{instance_id}/sendMessage/{token}"
+            payload = {"chatId": f"{clean_to}@c.us", "message": message_text}
+            resp = requests.post(url, json=payload, timeout=10)
+            return resp.status_code == 200, resp.text
+        elif provider in ["meta", "cloud_api"]:
+            url = f"https://graph.facebook.com/v18.0/{instance_id}/messages"
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": clean_to,
+                "type": "text",
+                "text": {"body": message_text}
+            }
+            resp = requests.post(url, headers=headers, json=payload, timeout=10)
+            return resp.status_code == 200, resp.text
+    except Exception as e:
+        print(f"[whatsapp_gateway] Error: {e}")
+        return False, str(e)
+
+    return False, "Unknown or unconfigured provider"
+
+
 @app.route("/api/customer/send-whatsapp-otp", methods=["POST"])
 @app.route("/api/customer/send-otp", methods=["POST"])
 @app.route("/api/customer/send-flash-call", methods=["POST"])
 @app.route("/api/customer/initiate-missed-call-verify", methods=["POST"])
 def api_customer_send_whatsapp_otp():
     """
-    Generates and dispatches WhatsApp OTP directly for mobile verification.
+    Generates and dispatches WhatsApp OTP directly from the Admin's configured WhatsApp number.
     """
     data = request.json or {}
     phone = data.get("phone", "").strip()
@@ -6576,22 +6628,39 @@ def api_customer_send_whatsapp_otp():
 
     import random
     otp_code = f"{random.randint(1000, 9999)}"
-    
+
     OTP_STORE[phone] = {
         "otp": otp_code,
         "created_at": datetime.now()
     }
 
-    # WhatsApp Direct Open & Notification Link
+    # Admin's configured WhatsApp phone
+    admin_phone = (shop_settings.get("admin_whatsapp_phone") or shop_settings.get("customer_support_phone") or shop_settings.get("shop_phone") or "01700000000").strip()
     shop_name = shop_settings.get("shop_name") or "DOINEEK Supershop"
-    whatsapp_url = f"https://wa.me/88{phone}?text=Your%20{shop_name.replace(' ', '%20')}%20Verification%20OTP%20is%20*{otp_code}*%20(Valid%20for%2010%20minutes)"
+
+    msg_text = f"Your {shop_name} Verification OTP is *{otp_code}*. (Valid for 10 minutes). Sent from Admin WhatsApp ({admin_phone})."
+
+    # Attempt automatic sending via configured WhatsApp Gateway
+    sent_via_gateway, gateway_res = send_whatsapp_message_via_gateway(phone, msg_text, shop_settings)
+
+    # WhatsApp Direct link to Admin
+    import re
+    digits_admin = re.sub(r'\D', '', admin_phone)
+    if digits_admin.startswith("880"):
+        clean_admin_phone = digits_admin[2:]
+    elif digits_admin.startswith("01"):
+        clean_admin_phone = digits_admin
+    else:
+        clean_admin_phone = digits_admin or "01700000000"
+    whatsapp_url = f"https://wa.me/88{clean_admin_phone}?text=Hello%20{shop_name.replace(' ', '%20')}!%20My%20registered%20mobile%20is%20{phone}.%20My%20Verification%20OTP%20is:%20*{otp_code}*"
 
     return jsonify({
         "success": True,
         "otp_code": otp_code,
+        "admin_phone": admin_phone,
         "whatsapp_url": whatsapp_url,
-        "message": f"WhatsApp OTP generated for {phone}. Please check WhatsApp to view code.",
-        # Backward compatibility
+        "sent_via_gateway": sent_via_gateway,
+        "message": f"WhatsApp OTP code generated from Admin WhatsApp ({admin_phone}) for {phone}.",
         "verification_code": otp_code,
         "target_phone": phone
     })

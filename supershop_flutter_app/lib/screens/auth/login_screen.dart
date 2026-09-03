@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
 import '../../services/api_service.dart';
-import '../../services/firebase_auth_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../customer/home_screen.dart';
 import '../delivery/delivery_home_screen.dart';
@@ -72,8 +71,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final TextEditingController confirmPassCtrl = TextEditingController();
 
     int otpStep = 1; // 1: Enter Phone, 2: Enter OTP, 3: Enter New Password
-    String verificationId = "";
-    bool isFirebaseNative = false;
 
     showDialog(
       context: context,
@@ -218,32 +215,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       return;
                     }
 
-                    await FirebaseAuthService.sendFirebasePhoneOtp(
-                      rawPhone: phone,
-                      purpose: 'forgot_password',
-                      onCodeSent: (vId, isNative) {
-                        setDialogState(() {
-                          verificationId = vId;
-                          isFirebaseNative = isNative;
-                          otpStep = 2;
-                        });
-                        if (dialogCtx.mounted) {
-                          ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                            const SnackBar(content: Text("Firebase SMS OTP sent to your mobile number. Check your SMS inbox."), backgroundColor: Colors.green),
-                          );
-                        }
-                      },
-                      onError: (err) {
-                        if (dialogCtx.mounted) {
-                          ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                            SnackBar(content: Text(err), backgroundColor: Colors.red),
-                          );
-                        }
-                      },
-                    );
+                    final res = await ApiService.sendCustomerOtp(phone: phone, purpose: 'forgot_password');
+                    if (res['success'] == true) {
+                      setDialogState(() {
+                        otpStep = 2;
+                      });
+                      if (dialogCtx.mounted) {
+                        ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                          SnackBar(content: Text(res['message'] ?? "WhatsApp OTP sent! Please check your WhatsApp."), backgroundColor: Colors.green),
+                        );
+                      }
+                    } else {
+                      if (dialogCtx.mounted) {
+                        ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                          SnackBar(content: Text(res['message'] ?? "Failed to send WhatsApp OTP."), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  child: const Text("Send Free Firebase OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
+                  child: const Text("Send WhatsApp OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )
               else if (otpStep == 2)
                 ElevatedButton(
@@ -257,12 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       return;
                     }
 
-                    var res = await FirebaseAuthService.verifyFirebasePhoneOtp(
-                      rawPhone: phone,
-                      verificationId: verificationId,
-                      smsCode: otp,
-                      isFirebaseNative: isFirebaseNative,
-                    );
+                    var res = await ApiService.verifyCustomerOtp(phone: phone, otp: otp);
 
                     if (res['success'] == true) {
                       setDialogState(() {
@@ -276,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
                     }
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
                   child: const Text("Verify OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )
               else if (otpStep == 3)

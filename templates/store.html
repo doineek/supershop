@@ -2285,13 +2285,13 @@
             </div>
 
             <div style="font-size:0.8rem; color:#166534; line-height:1.45; margin-bottom:12px;">
-              আপনার WhatsApp নম্বরে ৪ ডিজিটের ভেরিফিকেশন OTP পাঠানো হয়েছে। কোডটি দেখতে নিচের বাটনে ক্লিক করুন:
+              Admin WhatsApp (<strong id="adminWaPhoneTxt">017XXXXXXXX</strong>) থেকে আপনার WhatsApp নম্বরে ৪ ডিজিটের ভেরিফিকেশন OTP পাঠানো হয়েছে। কোডটি দেখে নিচে ইনপুট করুন:
             </div>
 
             <!-- Click to Open WhatsApp Button -->
             <div style="text-align:center; margin-bottom:14px;">
               <a href="#" id="btnOpenWhatsappApp" target="_blank" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:11px 16px; font-size:0.92rem; text-decoration:none; background:#16A34A; border-radius:10px; font-weight:800; box-shadow:0 3px 10px rgba(22,163,74,0.3);">
-                💬 Open WhatsApp to View OTP Code
+                💬 Open WhatsApp to Check OTP
               </a>
             </div>
 
@@ -3750,11 +3750,14 @@
         const data = await res.json();
         if (res.ok && data.success) {
           document.getElementById('whatsappOtpVerifyBox').style.display = 'block';
+          if (data.admin_phone) {
+            const adminTxt = document.getElementById('adminWaPhoneTxt');
+            if (adminTxt) adminTxt.textContent = data.admin_phone;
+          }
           
           const openWaBtn = document.getElementById('btnOpenWhatsappApp');
           if (data.whatsapp_url) {
             openWaBtn.href = data.whatsapp_url;
-            // Open WhatsApp in a new tab / app directly
             window.open(data.whatsapp_url, '_blank');
           }
 

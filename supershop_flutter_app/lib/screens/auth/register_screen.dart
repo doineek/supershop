@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../localization/app_localizations.dart';
 import '../../services/api_service.dart';
-import '../../services/firebase_auth_service.dart';
 import '../customer/home_screen.dart';
 import 'login_screen.dart';
 
@@ -43,141 +43,162 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     _otpController.clear();
 
-    await FirebaseAuthService.sendFirebasePhoneOtp(
-      rawPhone: phone,
-      purpose: 'registration',
-      onCodeSent: (verificationId, isFirebaseNative) {
-        if (!mounted) return;
-        setState(() {
-          _isSendingOtp = false;
-        });
+    final res = await ApiService.sendCustomerOtp(phone: phone, purpose: 'registration');
+    if (!mounted) return;
 
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogCtx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.sms, color: Colors.green),
-                SizedBox(width: 8),
-                Text("Firebase Phone Verification"),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Mobile Number: $phone", style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.mark_email_read, color: Colors.green, size: 20),
-                          SizedBox(width: 6),
-                          Text(
-                            "Firebase SMS OTP Dispatched",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
+    setState(() {
+      _isSendingOtp = false;
+    });
+
+    if (res['already_registered'] == true) {
+      _showAlreadyRegisteredDialog(phone, res['message'] ?? "Already registered with this mobile number or email.");
+      return;
+    }
+
+    if (res['success'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res['message'] ?? "Could not send WhatsApp OTP. Please try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final String adminPhone = (res['admin_phone'] ?? 'Admin').toString().trim();
+    final String whatsappUrl = (res['whatsapp_url'] ?? '').toString().trim();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.chat, color: Color(0xFF25D366)),
+            SizedBox(width: 8),
+            Text("WhatsApp Verification", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Mobile Number: $phone", style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.verified_user, color: Color(0xFF15803D), size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            "Sender: Admin WhatsApp ($adminPhone)",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF15803D)),
                           ),
-                        ],
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        "An OTP verification code was sent to your phone. Check your SMS inbox and enter the code below.",
-                        style: TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      "আপনার WhatsApp-এ ৪ ডিজিটের ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি দেখে নিচে দিন।",
+                      style: TextStyle(fontSize: 12, color: Colors.black87),
+                    ),
+                    if (whatsappUrl.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(whatsappUrl);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          icon: const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.white),
+                          label: const Text("Open WhatsApp to Check OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF16A34A),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-                const Text("Enter OTP verification code below:"),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _otpController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 4),
-                  decoration: const InputDecoration(
-                    hintText: "______",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogCtx),
-                child: const Text("Cancel"),
               ),
-              ElevatedButton(
-                onPressed: () async {
-                  String otp = _otpController.text.trim();
-                  if (otp.length < 4) {
-                    ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                      const SnackBar(content: Text("Please enter a valid OTP code"), backgroundColor: Colors.red),
-                    );
-                    return;
-                  }
-
-                  final nav = Navigator.of(dialogCtx);
-                  var vRes = await FirebaseAuthService.verifyFirebasePhoneOtp(
-                    rawPhone: phone,
-                    verificationId: verificationId,
-                    smsCode: otp,
-                    isFirebaseNative: isFirebaseNative,
-                  );
-                  if (!mounted) return;
-
-                  if (vRes['success'] == true) {
-                    nav.pop();
-                    setState(() {
-                      _isPhoneVerified = true;
-                    });
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Mobile number verified successfully! Complete your registration details."), backgroundColor: Colors.green),
-                      );
-                    }
-                  } else {
-                    if (dialogCtx.mounted) {
-                      ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                        SnackBar(content: Text(vRes['message'] ?? "Invalid OTP code. Please check your SMS."), backgroundColor: Colors.red),
-                      );
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: const Text("Verify OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 14),
+              const Text("Enter 4-digit WhatsApp OTP:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 8),
+                decoration: const InputDecoration(
+                  hintText: "____",
+                  border: OutlineInputBorder(),
+                ),
               ),
             ],
           ),
-        );
-      },
-      onError: (err) {
-        if (!mounted) return;
-        setState(() {
-          _isSendingOtp = false;
-        });
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              String otp = _otpController.text.trim();
+              if (otp.length != 4) {
+                ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                  const SnackBar(content: Text("Please enter the 4-digit OTP code"), backgroundColor: Colors.red),
+                );
+                return;
+              }
 
-        if (err.startsWith("ALREADY_REGISTERED:")) {
-          String cleanMsg = err.replaceFirst("ALREADY_REGISTERED:", "");
-          _showAlreadyRegisteredDialog(phone, cleanMsg);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(err), backgroundColor: Colors.red),
-          );
-        }
-      },
+              final nav = Navigator.of(dialogCtx);
+              var vRes = await ApiService.verifyCustomerOtp(phone: phone, otp: otp);
+              if (!mounted) return;
+
+              if (vRes['success'] == true) {
+                nav.pop();
+                setState(() {
+                  _isPhoneVerified = true;
+                });
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("✅ WhatsApp OTP verified successfully! Complete your registration details."), backgroundColor: Colors.green),
+                  );
+                }
+              } else {
+                if (dialogCtx.mounted) {
+                  ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                    SnackBar(content: Text(vRes['message'] ?? "Invalid OTP code. Please check WhatsApp."), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
+            child: const Text("Verify OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 

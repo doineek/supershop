@@ -23,6 +23,32 @@
       <label>Customer Support Helpline Number (   )</label>
       <input type="text" name="customer_support_phone" value="{{ settings.customer_support_phone or settings.shop_phone }}" placeholder="e.g. +8801700000000">
     </div>
+
+    <h2 style="margin-top:24px; margin-bottom:12px; color:#16a34a; border-top:1px solid #e2e8f0; padding-top:16px;">💬 WhatsApp OTP Verification Settings</h2>
+    <div class="field">
+      <label>Admin WhatsApp Number (Sender Phone)</label>
+      <input type="text" name="admin_whatsapp_phone" value="{{ settings.admin_whatsapp_phone or settings.customer_support_phone or settings.shop_phone or '01700000000' }}" placeholder="e.g. 01712345678" required>
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
+        💡 এই নম্বর থেকে Web ও App-এ কাস্টমার রেজিস্ট্রেশনের সময় WhatsApp-এ ৪ ডিজিটের ভেরিফিকেশন OTP যাবে।
+      </small>
+    </div>
+    <div class="field">
+      <label>WhatsApp Gateway API Provider (Optional - for Background Automation)</label>
+      <select name="whatsapp_provider" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; margin-top:4px; font-size:14px;">
+        <option value="" {% if not settings.whatsapp_provider %}selected{% endif %}>Direct wa.me (Free - Instant WhatsApp Open)</option>
+        <option value="ultramsg" {% if settings.whatsapp_provider == 'ultramsg' %}selected{% endif %}>UltraMsg API (Auto-send via WhatsApp)</option>
+        <option value="green_api" {% if settings.whatsapp_provider == 'green_api' %}selected{% endif %}>Green API (Auto-send via WhatsApp)</option>
+        <option value="meta" {% if settings.whatsapp_provider == 'meta' %}selected{% endif %}>Meta WhatsApp Cloud API (Official)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>WhatsApp Instance ID / Phone ID (Optional)</label>
+      <input type="text" name="whatsapp_instance_id" value="{{ settings.whatsapp_instance_id or '' }}" placeholder="Instance ID or Meta Phone ID">
+    </div>
+    <div class="field">
+      <label>WhatsApp API Token (Optional)</label>
+      <input type="text" name="whatsapp_api_token" value="{{ settings.whatsapp_api_token or '' }}" placeholder="API Token from UltraMsg / Green API / Meta">
+    </div>
     <div class="field">
       <label>VAT registration no. (BIN)</label>
       <input type="text" name="vat_reg_no" value="{{ settings.vat_reg_no }}">
