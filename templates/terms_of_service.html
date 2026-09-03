@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms of Service - {{ settings.shop_name or 'DOINEEK Supershop' }}</title>
+  <link rel="icon" type="image/png" href="/static/images/logo.png">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #16A34A;
+      --text: #1E293B;
+      --text-muted: #64748B;
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --border: #E2E8F0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 30px 16px 60px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 40px 32px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+    .logo-img { width: 48px; height: 48px; object-fit: contain; }
+    h1 { font-size: 1.85rem; font-weight: 800; color: var(--text); margin: 8px 0; }
+    h2 { font-size: 1.25rem; font-weight: 700; color: var(--text); margin-top: 28px; margin-bottom: 12px; }
+    p, li { font-size: 0.95rem; color: #334155; margin-bottom: 14px; }
+    ul { padding-left: 20px; margin-bottom: 16px; }
+    .back-btn { display: inline-flex; color: var(--primary); text-decoration: none; font-weight: 700; font-size: 0.9rem; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="/static/images/logo.png" alt="Logo" class="logo-img" onerror="this.style.display='none'">
+      <h1>Terms of Service</h1>
+      <div style="font-size:0.85rem; color:var(--text-muted);">Effective: September 2026</div>
+    </div>
+
+    <p>By accessing or using the <strong>{{ settings.shop_name or 'DOINEEK Supershop' }}</strong> web storefront or mobile application, you agree to comply with these terms.</p>
+
+    <h2>1. Account Registration &amp; Mobile Verification</h2>
+    <p>Users must provide accurate, active Bangladeshi mobile numbers. Verification is conducted securely via WhatsApp OTP.</p>
+
+    <h2>2. Pricing &amp; Products</h2>
+    <p>Product prices, promotional combo savings, and MRP are displayed accurately. We reserve the right to correct typographical or pricing errors.</p>
+
+    <h2>3. Order Delivery &amp; Cash on Delivery</h2>
+    <p>We provide home delivery across designated coverage zones. Cash on Delivery is supported upon verified order confirmation.</p>
+
+    <h2>4. Returns &amp; Refunds</h2>
+    <p>Perishable items can be returned upon delivery if damaged or unsatisfactory. Dry goods can be exchanged in accordance with our return policies.</p>
+
+    <a href="/store" class="back-btn">← Return to Storefront</a>
+  </div>
+</body>
+</html>

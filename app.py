@@ -4625,6 +4625,33 @@ def api_policies():
     })
 
 
+@app.route("/privacy-policy")
+@app.route("/privacy")
+def public_privacy_policy():
+    conn = get_connection()
+    settings = get_all_settings(conn)
+    conn.close()
+    return render_template("privacy_policy.html", settings=settings)
+
+
+@app.route("/terms-of-service")
+@app.route("/terms")
+def public_terms_of_service():
+    conn = get_connection()
+    settings = get_all_settings(conn)
+    conn.close()
+    return render_template("terms_of_service.html", settings=settings)
+
+
+@app.route("/data-deletion")
+@app.route("/user-data-deletion")
+def public_data_deletion():
+    conn = get_connection()
+    settings = get_all_settings(conn)
+    conn.close()
+    return render_template("data_deletion.html", settings=settings)
+
+
 # ===========================================================================
 # User & Staff Management (Admin Only)
 # ===========================================================================
