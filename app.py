@@ -6566,13 +6566,14 @@ def send_whatsapp_message_via_gateway(to_phone, message_text, settings):
             resp = requests.post(url, json=payload, timeout=10)
             return resp.status_code == 200, resp.text
         elif provider in ["meta", "cloud_api"]:
-            url = f"https://graph.facebook.com/v18.0/{instance_id}/messages"
+            url = f"https://graph.facebook.com/v20.0/{instance_id}/messages"
             headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
             payload = {
                 "messaging_product": "whatsapp",
+                "recipient_type": "individual",
                 "to": clean_to,
                 "type": "text",
-                "text": {"body": message_text}
+                "text": {"preview_url": False, "body": message_text}
             }
             resp = requests.post(url, headers=headers, json=payload, timeout=10)
             return resp.status_code == 200, resp.text
