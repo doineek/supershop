@@ -173,6 +173,28 @@
       <input type="text" id="imageUrlInput" name="image_url" placeholder="https://example.com/image.jpg or data:image/..." value="{{ product.image_url if product else '' }}">
     </div>
 
+    <div class="field" style="margin-top:10px; background:#f8fafc; padding:10px 14px; border-radius:8px; border:1px solid #e2e8f0;">
+      <label style="font-size:0.86rem; font-weight:700; color:#334155; margin-bottom:6px; display:block;">
+        🎨 Background Color for Transparent Images (Google / PNG / WebP):
+      </label>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <input type="color" id="imageBgColorInput" name="image_bg_color" value="{{ default_img_bg_color or '#FFFFFF' }}" style="width:38px; height:34px; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; padding:2px; background:white;" oninput="document.getElementById('imageBgColorHex').value=this.value.toUpperCase()">
+        <input type="text" id="imageBgColorHex" value="{{ default_img_bg_color or '#FFFFFF' }}" style="width:90px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem; font-family:monospace; font-weight:bold; text-transform:uppercase;" oninput="document.getElementById('imageBgColorInput').value=this.value">
+        <button type="button" onclick="setProductImgBgPreset('#FFFFFF')" style="padding:5px 10px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; border-radius:4px; font-size:0.80rem; cursor:pointer; font-weight:700;">White (#FFF)</button>
+        <button type="button" onclick="setProductImgBgPreset('#F8FAFC')" style="padding:5px 10px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; border-radius:4px; font-size:0.80rem; cursor:pointer; font-weight:700;">Off-White</button>
+        <button type="button" onclick="setProductImgBgPreset('#F1F5F9')" style="padding:5px 10px; border:1px solid #cbd5e1; background:#f1f5f9; color:#334155; border-radius:4px; font-size:0.80rem; cursor:pointer; font-weight:700;">Light Gray</button>
+      </div>
+      <small style="color:#64748b; font-size:0.78rem; display:block; margin-top:4px;">
+        💡 Google images or files with transparent backgrounds will automatically be filled with this color instead of turning black.
+      </small>
+    </div>
+    <script>
+      function setProductImgBgPreset(color) {
+        document.getElementById('imageBgColorInput').value = color;
+        document.getElementById('imageBgColorHex').value = color.toUpperCase();
+      }
+    </script>
+
     <div class="field" style="margin-top: 10px;">
       <label>Product Description</label>
       <textarea name="description" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" placeholder="Write product overview...">{{ product.description if product else '' }}</textarea>

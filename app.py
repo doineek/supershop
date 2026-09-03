@@ -42,16 +42,69 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-def process_uploaded_image_file(file_path, max_dim=800, quality=75):
+def parse_hex_color(color_str, default=(255, 255, 255)):
+    if not color_str:
+        return default
+    color_str = str(color_str).strip().lstrip('#')
+    if len(color_str) == 3:
+        color_str = ''.join([c*2 for c in color_str])
+    if len(color_str) == 6:
+        try:
+            return (int(color_str[0:2], 16), int(color_str[2:4], 16), int(color_str[4:6], 16))
+        except ValueError:
+            return default
+    return default
+
+
+def get_product_image_bg_color():
+    try:
+        conn = get_connection()
+        s_val = conn.execute("SELECT value FROM settings WHERE key = 'product_image_bg_color'").fetchone()
+        conn.close()
+        if s_val and s_val["value"]:
+            return s_val["value"].strip()
+    except Exception:
+        pass
+    return "#FFFFFF"
+
+
+def apply_image_background(im, bg_color=None):
+    """
+    Safely composites transparent images (RGBA, LA, or P with transparency)
+    onto a solid background color (defaulting to product_image_bg_color setting or pure white).
+    Prevents transparent images (such as Google image search PNG/WebP files) from turning black.
+    """
+    from PIL import Image
+    if bg_color is None:
+        bg_color = get_product_image_bg_color()
+    if isinstance(bg_color, str):
+        bg_color = parse_hex_color(bg_color)
+    elif not isinstance(bg_color, (tuple, list)) or len(bg_color) < 3:
+        bg_color = (255, 255, 255)
+    else:
+        bg_color = tuple(bg_color[:3])
+
+    if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+        rgba = im.convert("RGBA")
+        bg = Image.new("RGB", rgba.size, bg_color)
+        bg.paste(rgba, mask=rgba.split()[3])
+        return bg
+    elif im.mode != "RGB":
+        return im.convert("RGB")
+    return im
+
+
+def process_uploaded_image_file(file_path, max_dim=800, quality=75, bg_color=None):
     """
     Optimizes an uploaded image file and returns a persistent Base64 Data URI.
     Ensures images survive ephemeral server restarts (Render) and sync seamlessly across all terminals & devices.
+    Fills transparent backgrounds with white or user-defined color instead of black.
     """
     try:
         from PIL import Image
         import io, base64
         with Image.open(file_path) as im:
-            im = im.convert("RGB")
+            im = apply_image_background(im, bg_color)
             im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             out = io.BytesIO()
             im.save(out, format="JPEG", quality=quality, optimize=True)
@@ -115,15 +168,13 @@ def clean_and_normalize_image_url(raw_url):
     return url
 
 
-def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80):
+def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80, bg_color=None):
     """
     If the given string is an HTTP/HTTPS URL (e.g. from Google Images or any web source),
     downloads it immediately on the server, optimizes it with PIL, saves a persistent local copy
     in static/uploads/products/, and converts it into a persistent Base64 Data URI.
-    If it's already a data:image/... or local path, returns it as-is.
-    If downloading fails, returns the cleaned direct URL.
-    This guarantees that even if the image is deleted or blocked from the original source host (Google),
-    it is permanently cached on the server, in Firebase, in Web, and in App!
+    If it's a transparent data:image/..., also composites it onto white or user-defined color.
+    Transparent backgrounds from Google or web images are filled with white or user-defined color instead of black.
     """
     if not url_or_data or not isinstance(url_or_data, str):
         return url_or_data
@@ -134,11 +185,30 @@ def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80):
     # If comma-separated, process each image URL
     if "," in url and not url.startswith("data:image/"):
         parts = [p.strip() for p in url.split(",") if p.strip()]
-        cached_parts = [download_and_cache_external_image(p, max_dim, quality) for p in parts]
+        cached_parts = [download_and_cache_external_image(p, max_dim, quality, bg_color) for p in parts]
         return ", ".join(cached_parts)
 
-    # If already a data URI or local server path, return as-is
-    if url.startswith("data:image/") or url.startswith("/static/"):
+    # Handle transparent Base64 Data URI if pasted directly
+    if url.startswith("data:image/"):
+        if url.startswith("data:image/png") or url.startswith("data:image/webp") or url.startswith("data:image/gif"):
+            try:
+                from PIL import Image
+                import io, base64
+                _, b64 = url.split(",", 1)
+                data = base64.b64decode(b64.strip())
+                with Image.open(io.BytesIO(data)) as im:
+                    if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+                        im = apply_image_background(im, bg_color)
+                        im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                        out = io.BytesIO()
+                        im.save(out, format="JPEG", quality=quality, optimize=True)
+                        encoded = base64.b64encode(out.getvalue()).decode("utf-8")
+                        return f"data:image/jpeg;base64,{encoded}"
+            except Exception:
+                pass
+        return url
+
+    if url.startswith("/static/"):
         return url
 
     if not (url.startswith("http://") or url.startswith("https://")):
@@ -166,7 +236,7 @@ def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80):
                 return url
 
             with Image.open(io.BytesIO(data)) as im:
-                im = im.convert("RGB")
+                im = apply_image_background(im, bg_color)
                 im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
 
                 # Also save a permanent local file on the server
@@ -792,7 +862,8 @@ def new_product():
         low_stock_threshold = int(request.form["low_stock_threshold"] or 5)
         sl_number = int(request.form.get("sl_number") or 1)
         description = request.form.get("description", "").strip()
-        image_url = download_and_cache_external_image(request.form.get("image_url", ""))
+        image_bg_color = request.form.get("image_bg_color", "").strip() or None
+        image_url = download_and_cache_external_image(request.form.get("image_url", ""), bg_color=image_bg_color)
         
         # Auto-insert brand into brands table if new
         if brand:
@@ -813,7 +884,7 @@ def new_product():
                 filename = secure_filename(f"{sku}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
-                data_uri = process_uploaded_image_file(file_path)
+                data_uri = process_uploaded_image_file(file_path, bg_color=image_bg_color)
                 if data_uri:
                     uploaded_urls.append(data_uri)
                 else:
@@ -871,7 +942,8 @@ def new_product():
                 pass
             flash(f"Could not save product: {e}", "error")
     conn.close()
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=None)
+    default_img_bg_color = get_product_image_bg_color()
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=None, default_img_bg_color=default_img_bg_color)
 
 
 @app.route("/products/<int:product_id>/edit", methods=["GET", "POST"])
@@ -893,7 +965,8 @@ def edit_product(product_id):
         brand = request.form.get("brand", "").strip()
         unit = request.form.get("unit", "").strip()
         description = request.form.get("description", "").strip()
-        image_url = download_and_cache_external_image(request.form.get("image_url", ""))
+        image_bg_color = request.form.get("image_bg_color", "").strip() or None
+        image_url = download_and_cache_external_image(request.form.get("image_url", ""), bg_color=image_bg_color)
         
         # Auto-insert brand into brands table if new
         if brand:
@@ -911,7 +984,7 @@ def edit_product(product_id):
                 filename = secure_filename(f"{sku_clean}_{int(datetime.now().timestamp())}_{random.randint(10,99)}_{file.filename}")
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
-                data_uri = process_uploaded_image_file(file_path)
+                data_uri = process_uploaded_image_file(file_path, bg_color=image_bg_color)
                 if data_uri:
                     uploaded_urls.append(data_uri)
                 else:
@@ -1065,7 +1138,8 @@ def edit_product(product_id):
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
     conn.close()
-    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=product)
+    default_img_bg_color = get_product_image_bg_color()
+    return render_template("product_form.html", categories=categories, sub_categories=sub_categories, sub_sub_categories=sub_sub_categories, brands=brands, product=product, default_img_bg_color=default_img_bg_color)
 
 
 @app.route("/products/<int:product_id>/delete", methods=["POST"])
@@ -2503,7 +2577,7 @@ def api_image_proxy():
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
-            img = Image.open(io.BytesIO(data)).convert("RGB")
+            img = apply_image_background(Image.open(io.BytesIO(data)))
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=90, optimize=True)
             return Response(
@@ -3985,6 +4059,7 @@ def settings_page():
             "max_order_qty_product": request.form.get("max_order_qty_product", "0").strip(),
             "max_order_qty_package": request.form.get("max_order_qty_package", "0").strip(),
             "apply_max_qty_to_pos": "1" if request.form.get("apply_max_qty_to_pos") else "0",
+            "product_image_bg_color": request.form.get("product_image_bg_color", "#FFFFFF").strip() or "#FFFFFF",
         }
         update_settings(conn, values)
         conn.commit()

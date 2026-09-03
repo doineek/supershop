@@ -484,6 +484,7 @@ def init_db():
         "shop_phone": "+880-1XXX-XXXXXX",
         "vat_reg_no": "0",
         "delivery_charge": "60",
+        "product_image_bg_color": "#FFFFFF",
     }
     for key, value in default_settings.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -498,6 +499,7 @@ DEFAULT_SETTINGS = {
     "shop_phone": "+880-1XXX-XXXXXX",
     "vat_reg_no": "0",
     "delivery_charge": "60",
+    "product_image_bg_color": "#FFFFFF",
 }
 
 
