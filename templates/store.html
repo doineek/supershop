@@ -2247,7 +2247,7 @@
           </button>
         </form>
 
-        <!-- Register Form with Exclusive WhatsApp OTP Verification -->
+        <!-- Register Form with Solution 2: WhatsApp OTP or Direct Registration -->
         <form id="customerRegisterForm" style="display:none; text-align:left;" onsubmit="handleCustomerRegister(event)">
           <div class="form-group">
             <label class="form-label">Full Name*</label>
@@ -2263,10 +2263,11 @@
               </button>
             </div>
             <!-- Alternative option for non-WhatsApp users -->
-            <div id="noWhatsappLinkBox" style="margin-top:6px; text-align:right;">
-              <a href="javascript:void(0)" onclick="openMissedCallVerifyBox()" style="font-size:0.76rem; color:#0284C7; font-weight:700; text-decoration:underline;">
-                Don't have WhatsApp? Verify via Free Missed Call
-              </a>
+            <div id="noWhatsappLinkBox" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.75rem; color:#64748B;">Don't have WhatsApp?</span>
+              <button type="button" onclick="enableDirectRegistration()" style="background:none; border:none; color:#0284C7; font-weight:800; font-size:0.78rem; cursor:pointer; text-decoration:underline;">
+                ⚡ Register Directly (Call Confirm on Order)
+              </button>
             </div>
           </div>
 
@@ -2274,8 +2275,17 @@
           <div id="regVerifiedBadge" style="display:none; background:#ECFDF5; border:1px solid #A7F3D0; padding:10px 14px; border-radius:10px; margin-bottom:14px; align-items:center; gap:8px;">
             <span style="font-size:1.3rem;">✅</span>
             <div>
-              <div style="font-size:0.88rem; font-weight:800; color:#047857;">Mobile Number Verified!</div>
+              <div style="font-size:0.88rem; font-weight:800; color:#047857;">Phone Number Verified via WhatsApp!</div>
               <div style="font-size:0.75rem; color:#065F46;" id="regVerifiedPhoneTxt">017XXXXXXXX</div>
+            </div>
+          </div>
+
+          <!-- Direct Registration Notice Badge -->
+          <div id="regDirectNoticeBadge" style="display:none; background:#EFF6FF; border:1px solid #BFDBFE; padding:10px 14px; border-radius:10px; margin-bottom:14px; align-items:flex-start; gap:8px;">
+            <span style="font-size:1.2rem;">📞</span>
+            <div style="font-size:0.78rem; color:#1E40AF; line-height:1.4;">
+              <strong>Pending Phone Confirmation Mode:</strong><br>
+              You can create your account and order right now! When you place an order, our store helpline (01922606444) will make a quick confirmation call before dispatch.
             </div>
           </div>
 
@@ -2283,7 +2293,7 @@
           <div id="whatsappOtpVerifyBox" style="display:none; background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(22, 163, 74, 0.08);">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
               <div style="display:flex; align-items:center; gap:6px; font-size:0.92rem; font-weight:800; color:#15803D;">
-                <span>💬</span> <span>WhatsApp Verification</span>
+                <span>💬</span> <span>WhatsApp Instant Verification</span>
               </div>
               <span style="background:#DCFCE7; color:#166534; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:12px;">
                 100% FREE
@@ -2316,42 +2326,8 @@
               <button type="button" onclick="sendWhatsappOtp()" style="background:none; border:none; color:#15803D; font-weight:700; cursor:pointer; text-decoration:underline;">
                 🔄 Resend Code
               </button>
-              <button type="button" onclick="openMissedCallVerifyBox()" style="background:none; border:none; color:#0284C7; font-weight:700; cursor:pointer; text-decoration:underline;">
-                📞 Switch to Free Missed Call
-              </button>
-            </div>
-          </div>
-
-          <!-- Track 2: Free Helpline Missed-Call Verification Box -->
-          <div id="missedCallVerifyBox" style="display:none; background:#F0F9FF; border:1.5px solid #7DD3FC; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(2, 132, 199, 0.08);">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-              <div style="display:flex; align-items:center; gap:6px; font-size:0.92rem; font-weight:800; color:#0369A1;">
-                <span>📞</span> <span>Free Helpline Missed-Call Verification</span>
-              </div>
-              <span style="background:#E0F2FE; color:#0369A1; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:12px;">
-                NO WHATSAPP NEEDED
-              </span>
-            </div>
-
-            <div style="font-size:0.82rem; color:#0C4A6E; line-height:1.5; margin-bottom:12px;">
-              To confirm that your phone number is active and authentic, please place a <strong>free missed-call</strong> (give 1 ring and disconnect) from this phone to our Helpline:
-            </div>
-
-            <div style="text-align:center; background:#FFFFFF; border:1px dashed #0284C7; border-radius:10px; padding:12px; margin-bottom:12px;">
-              <div style="font-size:0.75rem; color:#64748B; font-weight:700; text-transform:uppercase;">Official Helpline Number</div>
-              <div style="font-size:1.3rem; font-weight:900; color:#0284C7; letter-spacing:1px;" id="helplinePhoneDisplay">01922606444</div>
-              <a href="tel:01922606444" id="btnCallHelplineLink" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; background:#0284C7; color:#FFFFFF; text-decoration:none; padding:7px 16px; border-radius:8px; font-size:0.82rem; font-weight:800;">
-                📞 Tap to Call Helpline
-              </a>
-            </div>
-
-            <button type="button" class="btn-submit" id="btnConfirmMissedCall" onclick="confirmMissedCallVerification()" style="background:#0284C7; font-weight:800; padding:11px 16px;">
-              ✅ I Have Placed the Missed Call (Verify)
-            </button>
-
-            <div style="text-align:right; margin-top:10px; font-size:0.75rem;">
-              <button type="button" onclick="openWhatsappVerifyBox()" style="background:none; border:none; color:#15803D; font-weight:700; cursor:pointer; text-decoration:underline;">
-                💬 Switch back to WhatsApp Verification
+              <button type="button" onclick="enableDirectRegistration()" style="background:none; border:none; color:#0284C7; font-weight:700; cursor:pointer; text-decoration:underline;">
+                ⚡ Skip WhatsApp &amp; Register Directly
               </button>
             </div>
           </div>
@@ -2361,8 +2337,8 @@
             <input type="password" class="form-control" id="regPasswordInput" placeholder="Password (minimum 6 characters)" required>
           </div>
 
-          <button type="submit" class="btn-submit" id="regSubmitBtn" style="background:#CBD5E1; cursor:not-allowed;" disabled>
-            Create Account (Please Verify Phone First)
+          <button type="submit" class="btn-submit" id="regSubmitBtn" style="background:var(--primary); cursor:pointer;">
+            Create Account
           </button>
         </form>
       </div>
@@ -3842,7 +3818,18 @@
       }
     }
 
-    function openMissedCallVerifyBox() {
+    function handleRegPhoneChange() {
+      isCustomerPhoneVerified = false;
+      verifiedCustomerPhone = '';
+      const vBadge = document.getElementById('regVerifiedBadge');
+      if (vBadge) vBadge.style.display = 'none';
+      const dirBadge = document.getElementById('regDirectNoticeBadge');
+      if (dirBadge) dirBadge.style.display = 'none';
+      const waBox = document.getElementById('whatsappOtpVerifyBox');
+      if (waBox) waBox.style.display = 'none';
+    }
+
+    function enableDirectRegistration() {
       const phone = document.getElementById('regPhoneInput').value.trim();
       if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
         alert("Please enter a valid 11-digit mobile number starting with '01' (e.g. 01712345678).");
@@ -3850,63 +3837,11 @@
         return;
       }
       document.getElementById('whatsappOtpVerifyBox').style.display = 'none';
-      document.getElementById('missedCallVerifyBox').style.display = 'block';
-    }
-
-    function openWhatsappVerifyBox() {
-      document.getElementById('missedCallVerifyBox').style.display = 'none';
-      sendWhatsappOtp();
-    }
-
-    async function confirmMissedCallVerification() {
-      const phone = document.getElementById('regPhoneInput').value.trim();
-      if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
-        alert("Please enter a valid 11-digit mobile number starting with '01'.");
-        return;
-      }
-
-      const btn = document.getElementById('btnConfirmMissedCall');
-      btn.disabled = true;
-      btn.textContent = 'Verifying Missed Call...';
-
-      try {
-        const res = await fetch('/api/customer/verify-missed-call', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          isCustomerPhoneVerified = true;
-          verifiedCustomerPhone = phone;
-
-          document.getElementById('missedCallVerifyBox').style.display = 'none';
-          document.getElementById('whatsappOtpVerifyBox').style.display = 'none';
-          document.getElementById('regPhoneInput').readOnly = true;
-          document.getElementById('btnTriggerVerify').style.display = 'none';
-          const noWa = document.getElementById('noWhatsappLinkBox');
-          if (noWa) noWa.style.display = 'none';
-
-          const badge = document.getElementById('regVerifiedBadge');
-          badge.style.display = 'flex';
-          document.getElementById('regVerifiedPhoneTxt').textContent = phone + ' (Verified via Helpline Call)';
-
-          const submitBtn = document.getElementById('regSubmitBtn');
-          submitBtn.disabled = false;
-          submitBtn.style.background = 'var(--primary)';
-          submitBtn.style.cursor = 'pointer';
-          submitBtn.textContent = 'Create Account';
-
-          alert('✅ Helpline verification completed successfully! You can now create your account.');
-        } else {
-          alert('Verification failed: ' + (data.message || 'Please try again.'));
-        }
-      } catch (err) {
-        alert('Server connection error. Please try again.');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '✅ I Have Placed the Missed Call (Verify)';
-      }
+      const dirBadge = document.getElementById('regDirectNoticeBadge');
+      if (dirBadge) dirBadge.style.display = 'flex';
+      const submitBtn = document.getElementById('regSubmitBtn');
+      submitBtn.textContent = 'Create Account (Pending Call Confirm)';
+      document.getElementById('regPasswordInput').focus();
     }
 
     async function confirmWhatsappOtpVerification() {
@@ -3935,22 +3870,22 @@
 
           // Update UI to locked verified state
           document.getElementById('whatsappOtpVerifyBox').style.display = 'none';
-          document.getElementById('missedCallVerifyBox').style.display = 'none';
           document.getElementById('regPhoneInput').readOnly = true;
           document.getElementById('btnTriggerVerify').style.display = 'none';
           const noWa = document.getElementById('noWhatsappLinkBox');
           if (noWa) noWa.style.display = 'none';
+          const dirBadge = document.getElementById('regDirectNoticeBadge');
+          if (dirBadge) dirBadge.style.display = 'none';
           
           const badge = document.getElementById('regVerifiedBadge');
           badge.style.display = 'flex';
           document.getElementById('regVerifiedPhoneTxt').textContent = phone;
 
-          // Unlock submit button
           const submitBtn = document.getElementById('regSubmitBtn');
           submitBtn.disabled = false;
           submitBtn.style.background = 'var(--primary)';
           submitBtn.style.cursor = 'pointer';
-          submitBtn.textContent = 'Create Account';
+          submitBtn.textContent = 'Create Account (Verified)';
           alert('✅ WhatsApp OTP verified successfully! You can now create your account.');
         } else {
           alert('Verification failed: ' + (data.message || 'Invalid OTP.'));
@@ -3970,9 +3905,16 @@
       const password = document.getElementById('regPasswordInput').value.trim();
       const btn = document.getElementById('regSubmitBtn');
 
-      if (!isCustomerPhoneVerified || phone !== verifiedCustomerPhone) {
-        alert('⚠️ Mobile number is not verified! Please click "Send OTP" and verify your 4-digit code first.');
-        sendWhatsappOtp();
+      if (!name) {
+        alert('Please enter your full name.');
+        return;
+      }
+      if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
+        alert("Please enter a valid 11-digit mobile number starting with '01' (e.g. 01712345678).");
+        return;
+      }
+      if (!password || password.length < 6) {
+        alert('Password must be at least 6 characters long.');
         return;
       }
 
@@ -3990,7 +3932,8 @@
           currentCustomer = { phone, name, email: '', address: '' };
           localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
           refreshAuthState();
-          alert('Account created successfully! Welcome, ' + name + '!');
+          closeCustomerAuthModal();
+          alert(data.message || ('Welcome, ' + name + '! Your account is active.'));
         } else {
           alert('Registration failed: ' + (data.message || 'Could not create account.'));
         }
@@ -4209,7 +4152,7 @@
                   <div style="text-align:right;">
                     <span style="font-size:1rem; font-weight:900; color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
                     <button type="button" onclick="toggleOrderDetailBox('${o.id}')" id="detailToggleBtn_${o.id}" style="display:block; margin-top:4px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:4px 10px; border-radius:6px; font-size:0.78rem; font-weight:700; cursor:pointer;">
-                      👁️ Details (বিস্তারিত) ▾
+                      👁️ Order Details ▾
                     </button>
                   </div>
                 </div>
@@ -4233,7 +4176,7 @@
                     </div>
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                       <span>Delivery Charge:</span>
-                      <strong>${(o.delivery_charge === 0 || o.delivery_charge === 0.0) ? '<span style="color:#16a34a; font-weight:800;">FREE (৳০)</span>' : 'TK ' + (o.delivery_charge || 0).toFixed(2)}</strong>
+                      <strong>${(o.delivery_charge === 0 || o.delivery_charge === 0.0) ? '<span style="color:#16a34a; font-weight:800;">FREE (TK 0)</span>' : 'TK ' + (o.delivery_charge || 0).toFixed(2)}</strong>
                     </div>
                     <div style="display:flex; justify-content:space-between; font-weight:800; color:#0f172a; border-top:1px solid #cbd5e1; padding-top:4px; margin-top:4px;">
                       <span>Total Amount:</span>
@@ -4267,10 +4210,10 @@
       if (!box) return;
       if (box.style.display === 'none' || !box.style.display) {
         box.style.display = 'block';
-        if (btn) btn.innerHTML = '▲ Hide Details (লুকান)';
+        if (btn) btn.innerHTML = '▲ Hide Details';
       } else {
         box.style.display = 'none';
-        if (btn) btn.innerHTML = '👁️ Details (বিস্তারিত) ▾';
+        if (btn) btn.innerHTML = '👁️ Order Details ▾';
       }
     }
 
@@ -4621,7 +4564,7 @@
       let delHtml = `TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)}`;
       if (subtotal > 0) {
         if (isFreeDelivery) {
-          delHtml = `<span style="color:#16a34a; font-weight:800;">FREE (৳০) <span style="text-decoration:line-through; color:#94a3b8; font-size:0.8rem; font-weight:normal;">TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)}</span></span>`;
+          delHtml = `<span style="color:#16a34a; font-weight:800;">FREE (TK 0) <span style="text-decoration:line-through; color:#94a3b8; font-size:0.8rem; font-weight:normal;">TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)}</span></span>`;
         } else if (FREE_DELIVERY_ACTIVE) {
           const needed = FREE_DELIVERY_MIN_AMOUNT - subtotal;
           delHtml = `TK ${DEFAULT_DELIVERY_CHARGE.toFixed(2)} <div style="font-size:0.75rem; color:#4f46e5; font-weight:700; margin-top:2px;">🚚 Add TK ${needed.toFixed(2)} for FREE Delivery!</div>`;

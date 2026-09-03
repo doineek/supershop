@@ -57,7 +57,7 @@ class _CartScreenState extends State<CartScreen> {
             ],
           ),
           content: const Text(
-            "কম্বো প্যাকেজে কুপন/ভাউচার প্রযোজ্য নয়।\n(Coupons or Vouchers cannot be applied to Combo Package orders.)"
+            "Coupons or Vouchers cannot be applied to Combo Package orders."
           ),
           actions: [
             TextButton(
@@ -113,7 +113,7 @@ class _CartScreenState extends State<CartScreen> {
                   Text("Coupon Not Applicable"),
                 ],
               ),
-              content: Text(data['message'] ?? "কুপন/ভাউচার '$code' আপনার কার্টের পণ্যের জন্য প্রযোজ্য নয়। (Voucher '$code' is not valid for items in your cart.)"),
+              content: Text(data['message'] ?? "Voucher '$code' is not valid for items in your cart."),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
@@ -330,6 +330,29 @@ class _CartScreenState extends State<CartScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text("Order Number: ${res['order_number']}"),
+              if (res['requires_call_confirmation'] == true || (res['call_notice'] != null && res['call_notice'].toString().isNotEmpty)) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFED7AA)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone_in_talk, color: Color(0xFFEA580C), size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          res['call_notice']?.toString() ?? "Our store helpline will call your mobile number to confirm your address before delivery dispatch.",
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF9A3412), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -773,7 +796,7 @@ class _CartScreenState extends State<CartScreen> {
                                     border: Border.all(color: Colors.green.shade300),
                                   ),
                                   child: const Text(
-                                    'FREE (৳০)',
+                                    'FREE (TK 0)',
                                     style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
                                   ),
                                 ),

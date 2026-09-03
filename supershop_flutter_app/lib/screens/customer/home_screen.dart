@@ -440,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("Location পরিবর্তন করতে অনুগ্রহ করে পূর্বে Login করুন।"),
+                            content: Text("Please log in first to change delivery location."),
                             duration: Duration(seconds: 2),
                           ),
                         );
@@ -507,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               const SizedBox(width: 8),
                               const Expanded(
                                 child: Text(
-                                  "Admin Mode Active (কাস্টমার ভিউ)",
+                                  "Admin Mode Active (Customer View)",
                                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
                                 ),
                               ),

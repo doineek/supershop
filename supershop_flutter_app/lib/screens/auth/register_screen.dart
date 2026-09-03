@@ -22,6 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _otpController = TextEditingController();
 
   bool _isPhoneVerified = false;
+  bool _isDirectRegistration = false;
   bool _isSendingOtp = false;
 
   void _sendFreeOtpAndVerify() async {
@@ -420,7 +421,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Registration completed successfully! Welcome."), backgroundColor: Colors.green),
+        SnackBar(
+          content: Text(res['message'] ?? "Registration completed successfully! Welcome."),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
       );
 
       Navigator.pushAndRemoveUntil(
@@ -566,37 +571,50 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       );
                       return;
                     }
-                    _showMissedCallDialog(phone, "01922606444");
+                    setState(() {
+                      _isPhoneVerified = true;
+                      _isDirectRegistration = true;
+                    });
                   },
-                  icon: const Icon(Icons.phone_in_talk, size: 16, color: Color(0xFF0284C7)),
+                  icon: const Icon(Icons.flash_on, size: 16, color: Color(0xFF0284C7)),
                   label: const Text(
-                    "Don't have WhatsApp? Verify via Free Missed Call",
+                    "Don't have WhatsApp? Register Directly (Call Confirm on Order)",
                     style: TextStyle(color: Color(0xFF0284C7), fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                 ),
               ),
             ],
 
-            // Step 2: Full Profile Information Section (Unlocked after OTP verified)
+            // Step 2: Full Profile Information Section (Unlocked after OTP verified or direct registration)
             if (_isPhoneVerified) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade100,
+                  color: _isDirectRegistration ? const Color(0xFFEFF6FF) : Colors.green.shade100,
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _isDirectRegistration ? const Color(0xFFBFDBFE) : Colors.green.shade300),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      "✅ Verified Phone: ${_phoneController.text.trim()}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                    Expanded(
+                      child: Text(
+                        _isDirectRegistration
+                            ? "📞 Phone: ${_phoneController.text.trim()} (Confirmation Call on Order)"
+                            : "✅ Verified Phone: ${_phoneController.text.trim()}",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: _isDirectRegistration ? const Color(0xFF1E40AF) : Colors.green.shade900,
+                        ),
+                      ),
                     ),
                     TextButton(
                       onPressed: () {
                         setState(() {
                           _isPhoneVerified = false;
+                          _isDirectRegistration = false;
                         });
                       },
                       child: const Text("Change Number", style: TextStyle(fontSize: 12, color: Colors.blue)),

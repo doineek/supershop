@@ -727,7 +727,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                         subtitle: const Text(
-                          'পণ্য, প্যাকেজ, ক্যাশিয়ার POS ও সেলস রিপোর্ট',
+                          'Products, Packages, Cashier POS & Sales Reports',
                           style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),

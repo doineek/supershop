@@ -29,7 +29,7 @@
       <label>Admin WhatsApp Number (Sender Phone)</label>
       <input type="text" name="admin_whatsapp_phone" value="{{ settings.admin_whatsapp_phone or settings.customer_support_phone or settings.shop_phone or '01700000000' }}" placeholder="e.g. 01712345678" required>
       <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
-        💡 এই নম্বর থেকে Web ও App-এ কাস্টমার রেজিস্ট্রেশনের সময় WhatsApp-এ ৪ ডিজিটের ভেরিফিকেশন OTP যাবে।
+        💡 Automated 4-digit verification OTP messages will be dispatched from this Admin WhatsApp number to customer WhatsApp accounts during registration.
       </small>
     </div>
     <div class="field">
@@ -143,24 +143,24 @@
 <!-- Point-in-Time Restore & Time Machine Card -->
 <div class="card" style="max-width:520px; margin-top:30px; border:2px solid #2563eb; background:#eff6ff; padding:20px; border-radius:12px;">
   <h3 style="color:#1d4ed8; margin-top:0; display:flex; align-items:center; gap:8px; font-size:16px;">
-    ⏰ Datetime Point-in-Time Restore (কালানুক্রমিক ডাটা রিস্টোর)
+    ⏰ Datetime Point-in-Time Restore
   </h3>
   <p style="font-size:13px; color:#1e40af; margin-bottom:16px; line-height:1.4;">
-    আপনার ইচ্ছানুযায়ী অতীতের কোনো তারিখ ও সময় (Date & Time) নির্বাচন করে সেই মুহূর্তের ডাটাবেজ স্টেট রিস্টোর ও রিকভার করুন।
+    Select any date and time or choose a previous snapshot to roll back and restore the database state.
   </p>
 
   <div style="margin-bottom:12px;">
     <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:6px; color:#0f172a;">
-      ১. অতীতের ব্যাকআপ স্ন্যাপশট থেকে নির্বাচন করুন:
+      1. Select from previous backup snapshots:
     </label>
     <select id="snapshotSelect" style="width:100%; padding:10px; border:1px solid #93c5fd; border-radius:8px; font-size:13px; background:white;">
-      <option value="">-- ব্যাকআপ স্ন্যাপশট লোড হচ্ছে... --</option>
+      <option value="">-- Loading backup snapshots... --</option>
     </select>
   </div>
 
   <div style="margin-bottom:16px;">
     <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:6px; color:#0f172a;">
-      ২. অথবা নির্দিষ্ট তারিখ ও সময় লিখুন (Custom Date & Time):
+      2. Or enter custom Date &amp; Time:
     </label>
     <input type="datetime-local" id="restoreDatetimeInput" style="width:100%; padding:10px; border:1px solid #93c5fd; border-radius:8px; font-size:13px; background:white;">
   </div>
@@ -373,13 +373,13 @@ async function loadSnapshotList() {
     const data = await res.json();
     const select = document.getElementById('snapshotSelect');
     if (data.success && data.snapshots.length > 0) {
-      select.innerHTML = '<option value="">-- পূর্বের স্ন্যাপশট থেকে নির্বাচন করুন --</option>';
+      select.innerHTML = '<option value="">-- Select from previous backup snapshots --</option>';
       data.snapshots.forEach(s => {
         const timeFormatted = new Date(s.snapshot_time).toLocaleString();
         select.innerHTML += `<option value="${s.id}">${timeFormatted} - ${s.label}</option>`;
       });
     } else {
-      select.innerHTML = '<option value="">(কোনো স্ন্যাপশট পাওয়া যায়নি - Create Snapshot-এ ক্লিক করুন)</option>';
+      select.innerHTML = '<option value="">(No backup snapshots found - click Create Snapshot)</option>';
     }
   } catch (err) {
     console.error('Failed to load snapshots:', err);
@@ -387,7 +387,7 @@ async function loadSnapshotList() {
 }
 
 async function createManualSnapshot() {
-  const label = prompt("পয়েন্ট-ইন-টাইম ব্যাকআপের জন্য বিবরণ/লেবেল লিখুন:", "Manual System Backup");
+  const label = prompt("Enter description/label for manual backup snapshot:", "Manual System Backup");
   if (label === null) return;
 
   const btn = document.getElementById('btnCreateSnapshot');
@@ -422,12 +422,12 @@ async function performSystemRestore() {
   const customDatetime = document.getElementById('restoreDatetimeInput').value;
 
   if (!selectedSnapId && !customDatetime) {
-    alert("অনুগ্রহ করে অতীতের একটি ব্যাকআপ স্ন্যাপশট অথবা নির্দিষ্ট Date & Time নির্বাচন করুন।");
+    alert("Please select a backup snapshot or enter a specific Date & Time.");
     return;
   }
 
-  const targetDesc = selectedSnapId ? "স্ন্যাপশট #" + selectedSnapId : customDatetime;
-  if (!confirm(`আপনি কি নিশ্চিত যে সিস্টেম ডাটাবেজ ${targetDesc} সময়ের অবস্থায় রিস্টোর করতে চান?`)) {
+  const targetDesc = selectedSnapId ? "Snapshot #" + selectedSnapId : customDatetime;
+  if (!confirm(`Are you sure you want to restore the system database to: ${targetDesc}?`)) {
     return;
   }
 

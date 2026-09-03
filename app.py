@@ -530,7 +530,7 @@ def render_storefront():
             "id": -999,
             "name": shop_settings.get("free_delivery_title") or "🚚 FREE HOME DELIVERY!",
             "category_name": f"Spend TK {min_amt:,.0f}+",
-            "offer_title": f"FREE DELIVERY (Order ৳{min_amt:,.0f}+)",
+            "offer_title": f"FREE DELIVERY (Order TK {min_amt:,.0f}+)",
             "offer_type": "free_delivery",
             "offer_value": "100% FREE",
             "is_free_delivery": 1,
@@ -1723,7 +1723,7 @@ def api_ai_generate_product_image():
         b64_1 = base64.b64encode(buf1.getvalue()).decode("utf-8")
         generated_images.append({
             "url": f"data:image/jpeg;base64,{b64_1}",
-            "label": "🏷️ With Clear Name & Weight Banner (প্যাকেটে নাম ও ওজনের স্পষ্ট ব্যানার সহ)"
+            "label": "🏷️ With Clear Name & Weight Banner"
         })
 
         # 2. Clean AI Photo Version
@@ -1732,7 +1732,7 @@ def api_ai_generate_product_image():
         b64_2 = base64.b64encode(buf2.getvalue()).decode("utf-8")
         generated_images.append({
             "url": f"data:image/jpeg;base64,{b64_2}",
-            "label": "📸 Clean Package Photo (আসল প্যাকেজ ফটো)"
+            "label": "📸 Clean Package Photo"
         })
 
     # 5. Fallback stylish studio canvas if online AI did not return enough images
@@ -2370,7 +2370,7 @@ def api_ai_generate_combo_image():
             b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
             generated_images.append({
                 "url": f"data:image/jpeg;base64,{b64_str}",
-                "label": "🎁 Smart Product Grid Collage (সকল আসল পণ্যের গ্রিড কোলাজ)"
+                "label": "🎁 Smart Product Grid Collage"
             })
             debug_log.append("grid_card success")
         except Exception as e:
@@ -2388,7 +2388,7 @@ def api_ai_generate_combo_image():
             b64_str2 = base64.b64encode(buf2.getvalue()).decode("utf-8")
             generated_images.append({
                 "url": f"data:image/jpeg;base64,{b64_str2}",
-                "label": "🛍️ Clean Product Showcase (হোয়াইট ব্যাকগ্রাউন্ড শোকেস)"
+                "label": "🛍️ Clean Product Showcase"
             })
             debug_log.append("showcase_card success")
         except Exception as e:
@@ -2406,7 +2406,7 @@ def api_ai_generate_combo_image():
             b64_str3 = base64.b64encode(buf3.getvalue()).decode("utf-8")
             generated_images.append({
                 "url": f"data:image/jpeg;base64,{b64_str3}",
-                "label": "🔥 Mega Value Offer Banner (সুপার অফার ব্যানার কোলাজ)"
+                "label": "🔥 Mega Value Offer Banner"
             })
             debug_log.append("banner_card success")
         except Exception as e:
@@ -2437,7 +2437,7 @@ def api_ai_generate_combo_image():
                     b64 = base64.b64encode(img_data).decode("utf-8")
                     generated_images.append({
                         "url": f"data:image/jpeg;base64,{b64}",
-                        "label": "✨ 3D AI Gift Hamper (এআই ফটো)"
+                        "label": "✨ 3D AI Gift Hamper"
                     })
         except Exception as e:
             print("Combo AI Generation Error:", e)
@@ -4325,7 +4325,7 @@ def api_apply_voucher():
         conn.close()
         return jsonify({
             "success": False,
-            "message": f"কম্বো প্যাকেজ অর্ডারে কুপন/ভাউচার '{code}' প্রযোজ্য নয়। (Voucher '{code}' cannot be applied when a Combo Package is in the cart.)"
+            "message": f"Voucher '{code}' cannot be applied when a Combo Package is in the cart."
         }), 400
 
     total_eligible_price = 0.0
@@ -4581,7 +4581,7 @@ def api_promotions():
             "id": -999,
             "name": s.get("free_delivery_title") or "🚚 FREE HOME DELIVERY!",
             "category_name": f"Spend TK {min_amt:,.0f}+",
-            "offer_title": f"FREE DELIVERY (Order ৳{min_amt:,.0f}+)",
+            "offer_title": f"FREE DELIVERY (Order TK {min_amt:,.0f}+)",
             "offer_type": "free_delivery",
             "offer_value": "100% FREE",
             "is_free_delivery": 1,
@@ -5073,92 +5073,48 @@ def build_ai_business_report(metrics: dict, lang: str = "en") -> dict:
     top_prod_names = ", ".join([p["name"] for p in top_prods[:3]]) if top_prods else "General Inventory"
     dead_prod_names = ", ".join([p["name"] for p in dead_stock[:3]]) if dead_stock else "None Identified"
     
-    if lang == "bn":
-        current_state = [
-            f"মোট বিক্রয় আয় (Revenue): ৳{rev:,.2f}, যা {tx_count}টি ইনভয়েস/অর্ডারের মাধ্যমে সম্পন্ন হয়েছে। গড় বাস্কেট সাইজ (AOV) প্রতি অর্ডারে ৳{aov:,.2f}।",
-            f"গ্রস প্রফিট মার্জিন: {gross_margin_pct:.1f}% (৳{gross_profit:,.2f}) এবং নিট মুনাফা মার্জিন: {net_margin_pct:.1f}% (৳{net_profit:,.2f})।",
-            f"চ্যানেল শেয়ার: অফলাইন POS কাউন্টার {pos_share_pct:.1f}% (৳{pos_rev:,.2f}) এবং অনলাইন মোবাইল অ্যাপ/ওয়েব {online_share_pct:.1f}% (৳{online_rev:,.2f}) অবদান রাখছে।",
-            f"টপ পারফর্মার পণ্য: {top_prod_names} সবচেয়ে দ্রুত গতিতে বিক্রি হচ্ছে এবং মূল ক্যাশ-ফ্লো ড্রাইভ করছে।",
-            f"অতিরিক্ত খরচ ও আয়: পরিচালন ব্যয় ৳{expense:,.2f} এবং অন্যান্য আয় ৳{income:,.2f}, যা নেট প্রফিটের সাথে সমন্বিত হয়েছে।"
-        ]
-        should_do = [
-            f"টপ সেলিং পণ্যের ({top_prod_names}) ডিলার/সাপ্লায়ারের সাথে সরাসরি ভলিউম ডিসকাউন্ট বা বাল্ক পারচেস রেট নিয়ে আরও ৩-৫% কম খরচে সংগ্রহ করুন।",
-            f"গড় অর্ডার সাইজ (AOV ৳{aov:,.2f}) আরও বাড়াতে ১০০০+ টাকার কেনাকাটায় ফ্রি ডেলিভারি ব্যানার ও ক্রস-সেল অফার সক্রিয় রাখুন।",
-            f"উচ্চ চাহিদাসম্পন্ন নিত্যপ্রয়োজনীয় পণ্যের সাথে হাই-মার্জিন প্রফিটেবল পণ্য মিলিয়ে কম্বো প্যাকেজ (Bundle Packs) তৈরি করুন।",
-            f"অনলাইন ডেলিভারি অ্যাপে পুশ নোটিফিকেশন ও ফ্ল্যাশ সেল অফার দিয়ে অনলাইন অর্ডার শেয়ার {online_share_pct:.1f}% থেকে ৩০%+ এ উন্নীত করুন।",
-            "ক্যাশিয়ার ও সেলস টিমের জন্য কাউন্টারে চুইংগাম/স্ন্যাকস জাতীয় লো-কস্ট হাই-মার্জিন ইম্পালস অ্যাড-অন রাখার ব্যবস্থা করুন।"
-        ]
-        should_drop = [
-            f"ডেড স্টক ({dead_prod_names}) তাকের জায়গা ও মূলধন আটকে রাখছে; এগুলি অবিলম্বে ১০-১৫% ডিসকাউন্টে ক্লিয়ারেন্স সেল বা বান্ডেল বানিয়ে বিক্রি করে ক্যাশ মুক্ত করুন।",
-            "যেসব পণ্যের প্রফিট মার্জিন ২%-এর নিচে কিন্তু নষ্ট হওয়ার ঝুঁকি বেশি (Perishable), সেগুলোর অতিরিক্ত স্টক রাখা বন্ধ করুন।",
-            "অপ্রয়োজনীয় ইউটিলিটি ও আন-ট্র্যাকড পরিচালন ব্যয় (বিনা ভাউচারের খরচ) অবিলম্বে বন্ধ করুন।",
-            "ধীরগতির আনপপুলার ব্র্যান্ডের একই জাতীয় বিকল্প পণ্য রাখা বন্ধ করে শুধু টপ ২-৩টি বিশ্বস্ত ব্র্যান্ডের পণ্য রাখুন।"
-        ]
-        where_to_change = [
-            "প্রাইসিং অপটিমাইজেশন: সুপারমার্কেট স্ট্যান্ডার্ড অনুযায়ী স্লো-মুভিং পণ্যের MRP ও সেল প্রাইস সমন্বয় করুন।",
-            "রি-অর্ডার পয়েন্ট পরিবর্তন: ফাস্ট সেলিং পণ্যের লো-স্টক থ্রেশহোল্ড (Alert Level) বৃদ্ধি করুন যেন কখনো আউট-অফ-স্টক না হয়।",
-            "ব্যানার ও হোমপেজ ডিসপ্লে: অ্যাপের প্রধান ব্যানারে হাই-প্রফিট গ্রোসারি ও এক্সক্লুসিভ কম্বো প্যাকেজ প্রদর্শন করুন।",
-            "সাপ্লায়ার পেমেন্ট সাইকেল: সাপ্লায়ারদের সাথে ১৫-৩০ দিনের ক্রেডিট টার্মস নিশ্চিত করে ওয়ার্কিং ক্যাপিটাল ফ্লো বৃদ্ধি করুন।"
-        ]
-        profit_roadmap = [
-            "ডেড স্টক ক্লিয়ারেন্স ও ক্যাশ রিকভারি: মূলধন বৃদ্ধি পাবে আনুমানিক ৳১৫,০০০ - ৳৫০,০০০।",
-            "টপ প্রোডাক্টের বাল্ক সাপ্লায়ার ডিসকাউন্ট: গ্রস মার্জিন বৃদ্ধি পাবে +২.৫% থেকে +৪.০%।",
-            "কম্বো বান্ডেল ও ফ্রি ডেলিভারি থ্রেশহোল্ড: প্রতি অর্ডারে রেভিনিউ বাড়বে +১৮% থেকে +২৫%।",
-            "সামগ্রিক নিট মুনাফা (Net Profit) আগামী প্রান্তিকে ২৫% - ৪০% বৃদ্ধির সুনির্দিষ্ট সম্ভাবনা রয়েছে।"
-        ]
-        return {
-            "lang": "bn",
-            "title": "🧠 ডুয়েনিক সুপারশপ - এআই ব্যবসায়িক বিশ্লেষণ ও লাভজনক পরামর্শ রিপোর্ট",
-            "summary_tagline": f"বর্তমান রেভিনিউ ৳{rev:,.2f} এবং নিট লাভ ৳{net_profit:,.2f} এর ভিত্তিতে বিস্তারিত বিশ্লেষণ",
-            "current_state": current_state,
-            "should_do": should_do,
-            "should_drop": should_drop,
-            "where_to_change": where_to_change,
-            "profit_roadmap": profit_roadmap
-        }
-    else:
-        current_state = [
-            f"Total Sales Revenue stands at TK {rev:,.2f} across {tx_count} customer transactions with an Average Order Value (AOV) of TK {aov:,.2f}.",
-            f"Profitability Metrics: Gross Profit Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and Net Profit Margin is {net_margin_pct:.1f}% (TK {net_profit:,.2f}).",
-            f"Channel Breakdown: Offline POS Counter accounts for {pos_share_pct:.1f}% (TK {pos_rev:,.2f}) while Online Mobile App/Web accounts for {online_share_pct:.1f}% (TK {online_rev:,.2f}).",
-            f"Top Revenue Drivers: Products like '{top_prod_names}' represent the highest turnover and consistent customer demand.",
-            f"Operational Allocations: Total ledger expenses are TK {expense:,.2f} counterbalanced by TK {income:,.2f} in other earnings."
-        ]
-        should_do = [
-            f"Negotiate 3-5% tiered bulk volume discounts directly with suppliers/distributors for top-performing items ({top_prod_names}).",
-            f"Capitalize on Free Delivery banners with a minimum basket threshold (e.g. TK 1,000+) to elevate average basket sizes beyond TK {aov:,.2f}.",
-            f"Package fast-moving staples together with high-margin specialty items into curated Combo Bundles.",
-            f"Leverage mobile push notifications and flash sales to scale online channel share from {online_share_pct:.1f}% to 30%+.",
-            "Place high-margin impulse-buy items (gum, mints, snacks) directly beside counter checkout registers."
-        ]
-        should_drop = [
-            f"Liquidate dead stock ({dead_prod_names}) locking shelf space by bundling them at 10-15% discount to recover tied-up capital.",
-            "Discontinue or strictly minimize perishable items yielding less than 2% gross margin that risk shelf spoilage.",
-            "Cut out untracked petty cash expenses and enforce strict digital ledger receipts.",
-            "Consolidate redundant brands in duplicate sub-categories; stock only the top 2-3 most trusted consumer brands."
-        ]
-        where_to_change = [
-            "Dynamic Pricing: Re-align sell prices and discount percentages on slow-moving inventory to accelerate inventory turns.",
-            "Safety Stock Thresholds: Increase minimum low-stock alerts for core commodities to prevent stockouts during peak hours.",
-            "App Banner Promotion: Feature high-margin combos and seasonal essentials prominently on mobile app headers.",
-            "Vendor Payment Credit Terms: Transition key accounts to 15-30 day trade credit to optimize cash working capital."
-        ]
-        profit_roadmap = [
-            "Dead Stock Liquidation: Unlocks TK 15,000 - TK 50,000 in immediate liquid working capital.",
-            "Bulk Procurement Savings: Enhances overall Gross Profit Margin by +2.5% to +4.0%.",
-            "Bundle Combos & Free Delivery Incentives: Estimated to lift average basket revenue by +18% to +25%.",
-            "Targeted Operational Improvements projected to increase Total Net Profit by 25% to 40% in next quarter."
-        ]
-        return {
-            "lang": "en",
-            "title": "🧠 DOINEEK Supershop - AI Executive Business Intelligence & Actionable Advisory Report",
-            "summary_tagline": f"Comprehensive Performance Analysis for Revenue TK {rev:,.2f} & Net Profit TK {net_profit:,.2f}",
-            "current_state": current_state,
-            "should_do": should_do,
-            "should_drop": should_drop,
-            "where_to_change": where_to_change,
-            "profit_roadmap": profit_roadmap
-        }
+    current_state = [
+        f"Total Sales Revenue stands at TK {rev:,.2f} across {tx_count} customer transactions with an Average Order Value (AOV) of TK {aov:,.2f}.",
+        f"Profitability Metrics: Gross Profit Margin is {gross_margin_pct:.1f}% (TK {gross_profit:,.2f}) and Net Profit Margin is {net_margin_pct:.1f}% (TK {net_profit:,.2f}).",
+        f"Channel Breakdown: Offline POS Counter accounts for {pos_share_pct:.1f}% (TK {pos_rev:,.2f}) while Online Mobile App/Web accounts for {online_share_pct:.1f}% (TK {online_rev:,.2f}).",
+        f"Top Revenue Drivers: Products like '{top_prod_names}' represent the highest turnover and consistent customer demand.",
+        f"Operational Allocations: Total ledger expenses are TK {expense:,.2f} counterbalanced by TK {income:,.2f} in other earnings."
+    ]
+    should_do = [
+        f"Negotiate 3-5% tiered bulk volume discounts directly with suppliers/distributors for top-performing items ({top_prod_names}).",
+        f"Capitalize on Free Delivery banners with a minimum basket threshold (e.g. TK 1,000+) to elevate average basket sizes beyond TK {aov:,.2f}.",
+        f"Package fast-moving staples together with high-margin specialty items into curated Combo Bundles.",
+        f"Leverage mobile push notifications and flash sales to scale online channel share from {online_share_pct:.1f}% to 30%+.",
+        "Place high-margin impulse-buy items (gum, mints, snacks) directly beside counter checkout registers."
+    ]
+    should_drop = [
+        f"Liquidate dead stock ({dead_prod_names}) locking shelf space by bundling them at 10-15% discount to recover tied-up capital.",
+        "Discontinue or strictly minimize perishable items yielding less than 2% gross margin that risk shelf spoilage.",
+        "Cut out untracked petty cash expenses and enforce strict digital ledger receipts.",
+        "Consolidate redundant brands in duplicate sub-categories; stock only the top 2-3 most trusted consumer brands."
+    ]
+    where_to_change = [
+        "Dynamic Pricing: Re-align sell prices and discount percentages on slow-moving inventory to accelerate inventory turns.",
+        "Safety Stock Thresholds: Increase minimum low-stock alerts for core commodities to prevent stockouts during peak hours.",
+        "App Banner Promotion: Feature high-margin combos and seasonal essentials prominently on mobile app headers.",
+        "Vendor Payment Credit Terms: Transition key accounts to 15-30 day trade credit to optimize cash working capital."
+    ]
+    profit_roadmap = [
+        "Dead Stock Liquidation: Unlocks TK 15,000 - TK 50,000 in immediate liquid working capital.",
+        "Bulk Procurement Savings: Enhances overall Gross Profit Margin by +2.5% to +4.0%.",
+        "Bundle Combos & Free Delivery Incentives: Estimated to lift average basket revenue by +18% to +25%.",
+        "Targeted Operational Improvements projected to increase Total Net Profit by 25% to 40% in next quarter."
+    ]
+    return {
+        "lang": "en",
+        "title": "🧠 DOINEEK Supershop - AI Executive Business Intelligence & Actionable Advisory Report",
+        "summary_tagline": f"Comprehensive Performance Analysis for Revenue TK {rev:,.2f} & Net Profit TK {net_profit:,.2f}",
+        "current_state": current_state,
+        "should_do": should_do,
+        "should_drop": should_drop,
+        "where_to_change": where_to_change,
+        "profit_roadmap": profit_roadmap
+    }
 
 
 @app.route("/reports/export_pdf")
@@ -5821,13 +5777,17 @@ def update_online_order_status(order_id):
             (new_status, datetime.now().isoformat(), order_id)
         )
 
-    if new_status in ("verified", "packed", "on_the_way", "delivered"):
+    if new_status in ("new", "verified", "packed", "on_the_way", "delivered"):
         deduct_online_order_stock(conn, order)
+        # Mark customer phone as verified
+        conn.execute("UPDATE customer_users SET is_verified = 1 WHERE phone = ?", (order["customer_phone"],))
     elif new_status == "cancelled":
         restore_online_order_stock(conn, order)
 
     conn.commit()
     conn.close()
+    if order["customer_phone"]:
+        remote_control.push_customer_user_to_cloud(order["customer_phone"])
     remote_control.push_online_order_to_cloud(order_id)
     flash(f"Order #{order_id} status updated to {new_status}.", "success")
     return redirect(url_for("online_orders"))
@@ -6314,6 +6274,16 @@ def api_place_order():
         elif customer_name and customer_name.strip() and (not chk_cust["name"] or chk_cust["name"].startswith("Customer ")):
             cur.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (customer_name.strip(), clean_phone))
 
+    # Check customer verification status
+    is_customer_verified = False
+    chk_cust_row = conn.execute("SELECT is_verified FROM customer_users WHERE phone = ?", (clean_phone,)).fetchone()
+    if chk_cust_row and chk_cust_row["is_verified"] == 1:
+        is_customer_verified = True
+    elif clean_phone in VERIFIED_PHONES:
+        is_customer_verified = True
+
+    initial_order_status = "new" if is_customer_verified else "pending_confirmation"
+
     # 2. Insert into online_orders
     cur.execute("""
         INSERT INTO online_orders (
@@ -6321,12 +6291,12 @@ def api_place_order():
             country, district, area, address_details, payment_method,
             payment_status, subtotal, delivery_charge, total_amount,
             order_status, delivery_otp, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         order_number, customer_name, clean_phone, customer_email,
         country, district, area, address_details, payment_method,
         "pending" if payment_method == "cod" else "paid",
-        subtotal, delivery_charge, total_amount, otp, created_at, created_at
+        subtotal, delivery_charge, total_amount, initial_order_status, otp, created_at, created_at
     ))
     order_id = cur.lastrowid
 
@@ -6404,14 +6374,20 @@ def api_place_order():
     if clean_phone and len(clean_phone) == 11 and clean_phone.startswith("01"):
         remote_control.push_customer_user_to_cloud(clean_phone)
 
+    call_notice = ""
+    if not is_customer_verified:
+        call_notice = "Your order has been recorded under 'Pending Phone Confirmation'. Our store helpline will call your mobile number to confirm your delivery address before dispatch."
+
     return jsonify({
         "success": True,
-        "message": "Order submitted successfully!",
+        "message": call_notice or "Order submitted successfully!",
         "order_number": order_number,
         "delivery_otp": otp,
         "subtotal": subtotal,
         "delivery_charge": delivery_charge,
-        "total_amount": total_amount
+        "total_amount": total_amount,
+        "requires_call_confirmation": (not is_customer_verified),
+        "call_notice": call_notice
     })
 
 
@@ -6781,13 +6757,12 @@ def api_auth_register():
             "message": "Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"
         }), 400
 
-    # Enforce Mobile Number Verification
-    if phone not in VERIFIED_PHONES:
-        return jsonify({
-            "success": False,
-            "not_verified": True,
-            "message": "Mobile number has not been verified yet. Please verify your mobile number via WhatsApp OTP first."
-        }), 400
+    # Solution 2: Two-Tier Genuine Verification
+    # If phone was verified via WhatsApp OTP -> is_verified = 1
+    # If registered directly without WhatsApp -> is_verified = 0 (Requires phone confirmation before dispatch)
+    is_verified = 1 if phone in VERIFIED_PHONES else 0
+    if phone in VERIFIED_PHONES:
+        VERIFIED_PHONES.discard(phone)
 
     conn = get_connection()
     # Check Customer Block Status
@@ -6806,17 +6781,21 @@ def api_auth_register():
         }), 400
 
     conn.execute(
-        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
-        (phone, name, email, generate_password_hash(password), password, datetime.now().isoformat())
+        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (phone, name, email, generate_password_hash(password), password, is_verified, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
     
-    # Verification fulfilled
-    VERIFIED_PHONES.discard(phone)
     remote_control.push_customer_user_to_cloud(phone)
 
-    return jsonify({"success": True, "message": "Registration successful! You can now log in."})
+    success_msg = "Registration successful! Your phone number is verified via WhatsApp." if is_verified == 1 else "Registration successful! Your account is active. Our store helpline will call your mobile number to confirm your address before your first delivery dispatch."
+    return jsonify({
+        "success": True,
+        "is_verified": is_verified,
+        "requires_call_confirmation": (is_verified == 0),
+        "message": success_msg
+    })
 
 
 @app.route("/api/auth/change-password", methods=["POST"])
