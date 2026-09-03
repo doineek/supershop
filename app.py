@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, date, timedelta
 from functools import wraps
 import os
+import io
 import re
 import sys
 import sqlite3
@@ -22,7 +23,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 # Fix Windows console encoding for Bengali/Unicode characters with real-time line buffering
 if sys.platform == "win32":
-    import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
@@ -1747,6 +1747,11 @@ def load_pil_image_safe(raw_img: str, name: str = "Product") -> Image.Image:
     Robustly loads a PIL image from a base64 data URI, local static/upload file path, or remote URL.
     Handles transparency gracefully by compositing onto a white background so product images never turn black.
     """
+    import io
+    import base64
+    import os
+    import re
+
     if not raw_img or not isinstance(raw_img, str):
         return None
     raw_img = raw_img.strip()
@@ -2143,6 +2148,8 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
 @login_required
 @admin_required
 def api_ai_generate_combo_image():
+    import io
+    import base64
     data = request.json or {}
     package_name = (data.get("package_name") or "Grocery Combo Deal").strip()
     package_price = float(data.get("package_price") or 0.0)
