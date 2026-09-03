@@ -4,8 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
 import '../../services/api_service.dart';
 import '../../services/firebase_auth_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../customer/home_screen.dart';
 import '../delivery/delivery_home_screen.dart';
+import '../admin/admin_hub_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -445,54 +447,104 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
 
-            // Top Right Corner Rider Mode Button
+            // Top Right Corner: Rider Mode & Admin/Cashier Panel
             Positioned(
               top: 12,
               right: 12,
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _isDeliveryMan = !_isDeliveryMan;
-                  });
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _isDeliveryMan ? Colors.orange.shade700 : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _isDeliveryMan ? Colors.orange.shade800 : Colors.grey.shade400,
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _isDeliveryMan ? Colors.orange.withAlpha(76) : Colors.black12,
-                        blurRadius: 6,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.two_wheeler,
-                        size: 20,
-                        color: _isDeliveryMan ? Colors.white : Colors.orange.shade800,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isDeliveryMan ? "Rider Mode (ACTIVE)" : "Rider Mode",
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: _isDeliveryMan ? Colors.white : Colors.black87,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // 1. Rider Mode Button (Orange Theme)
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _isDeliveryMan = !_isDeliveryMan;
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _isDeliveryMan ? Colors.orange.shade700 : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: _isDeliveryMan ? Colors.orange.shade800 : Colors.grey.shade400,
+                          width: 1.5,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _isDeliveryMan ? Colors.orange.withAlpha(76) : Colors.black12,
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.two_wheeler,
+                            size: 19,
+                            color: _isDeliveryMan ? Colors.white : Colors.orange.shade800,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isDeliveryMan ? "Rider Mode (ACTIVE)" : "Rider Mode",
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: _isDeliveryMan ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+
+                  const SizedBox(height: 8),
+
+                  // 2. Admin / Cashier Panel Button (Different Distinct Color: Navy / Dark Slate #1E293B with Amber Shield)
+                  InkWell(
+                    onTap: _openAdminLoginDialog,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFF334155),
+                          width: 1.5,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 6,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.shield,
+                            size: 18,
+                            color: Colors.amber,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            "Admin / Cashier Panel",
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -734,6 +786,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  String baseUrl = ApiService.candidateUrls.isNotEmpty ? ApiService.candidateUrls.first : "https://doineek.onrender.com";
+                  final uri = Uri.parse("${baseUrl.replaceAll(RegExp(r'/+$'), '')}/login");
+                  try {
+                    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    if (!launched) await launchUrl(uri, mode: LaunchMode.platformDefault);
+                  } catch (_) {}
+                },
+                icon: const Icon(Icons.open_in_browser, size: 16, color: Color(0xFF1E293B)),
+                label: const Text("Open Web Admin POS Directly", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+              ),
             ],
           ),
           actions: [
@@ -758,11 +823,17 @@ class _LoginScreenState extends State<LoginScreen> {
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setString('user_phone', u);
                         await prefs.setString('user_name', res['user']?['name'] ?? u);
+                        await prefs.setString('user_role', res['user']?['role'] ?? 'admin');
                         await prefs.setBool('is_admin_mode', true);
                         if (!mounted) return;
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const HomeScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => AdminHubScreen(
+                              username: res['user']?['name'] ?? u,
+                              role: res['user']?['role'] ?? 'admin',
+                            ),
+                          ),
                         );
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(

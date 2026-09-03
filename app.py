@@ -399,7 +399,11 @@ def render_storefront():
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
-        p_dict["included_items"] = [dict(i) for i in items]
+        inc_items = [dict(i) for i in items]
+        p_dict["included_items"] = inc_items
+        reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in inc_items)
+        p_dict["regular_total"] = reg_total
+        p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
         packages.append(p_dict)
         
     delivery_areas_rows = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
@@ -6834,7 +6838,11 @@ def packages_page():
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
-        p_dict["items"] = [dict(i) for i in items]
+        inc_items = [dict(i) for i in items]
+        p_dict["items"] = inc_items
+        reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in inc_items)
+        p_dict["regular_total"] = reg_total
+        p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
         packages_list.append(p_dict)
 
     edit_id = request.args.get("edit")
@@ -6986,6 +6994,9 @@ def api_packages():
                 it_d["image_url"] = request.host_url.rstrip("/") + p_img
             item_list.append(it_d)
         p_dict["items"] = item_list
+        reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in item_list)
+        p_dict["regular_total"] = reg_total
+        p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
         packages_list.append(p_dict)
     conn.close()
     return jsonify(packages_list)
@@ -7004,7 +7015,11 @@ def api_package_detail(package_id):
         FROM package_items pi JOIN products p ON pi.product_id = p.id
         WHERE pi.package_id = ?
     """, (package_id,)).fetchall()
-    p_dict["items"] = [dict(i) for i in items]
+    inc_items = [dict(i) for i in items]
+    p_dict["items"] = inc_items
+    reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in inc_items)
+    p_dict["regular_total"] = reg_total
+    p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
     conn.close()
     return jsonify({"success": True, "package": p_dict})
 

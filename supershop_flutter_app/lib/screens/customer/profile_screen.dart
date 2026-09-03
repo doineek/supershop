@@ -10,6 +10,7 @@ import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/location_selector_dialog.dart';
 import '../auth/login_screen.dart';
+import '../admin/admin_hub_screen.dart';
 import 'my_orders_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _shopName = 'DOINEEK';
   String _shopAddress = 'House 12, Road 5, Tangail';
   bool _isLoading = false;
+  bool _isAdminMode = false;
 
   final List<String> _presetAvatars = ['👤', '🧔', '👩', '🧑‍💼', '🐱', '🦊', '🚀', '💎', '👑', '🦸'];
 
@@ -55,6 +57,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (!mounted) return;
       setState(() {
+        _isAdminMode = prefs.getBool('is_admin_mode') ?? false;
         _userName = prefs.getString('user_name') ?? 'Customer User';
         _userPhone = userPhone;
         _userEmail = prefs.getString('user_email') ?? '';
@@ -708,6 +711,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  if (_isAdminMode) ...[
+                    Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.amber, width: 1.5),
+                      ),
+                      color: const Color(0xFF1E293B),
+                      child: ListTile(
+                        leading: const Icon(Icons.shield, color: Colors.amber, size: 28),
+                        title: const Text(
+                          'Admin & Cashier Workspace',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        subtitle: const Text(
+                          'পণ্য, প্যাকেজ, ক্যাশিয়ার POS ও সেলস রিপোর্ট',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const AdminHubScreen()),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   // Settings & Navigation Options List (Clean: Exactly 1 icon per item)
                   Card(

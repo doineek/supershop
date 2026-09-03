@@ -17,6 +17,7 @@ import 'my_orders_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import '../delivery/delivery_home_screen.dart';
+import '../admin/admin_hub_screen.dart';
 import '../auth/login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -53,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ];
 
   List<dynamic> _packagesList = [];
+  bool _isAdminMode = false;
 
   @override
   void initState() {
@@ -271,6 +273,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!mounted) return;
     setState(() {
+      _isAdminMode = prefs.getBool('is_admin_mode') ?? false;
       _userAvatar = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
       _userImageBase64 = prefs.getString('user_image_base64') ?? phoneImg;
     });
@@ -494,9 +497,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 children: [
                   Column(
                     children: [
-                      // Persistent Top Search Bar
+                      if (_isAdminMode)
                         Container(
-                          color: const Color(0xFF6B21A8),
+                          color: const Color(0xFF0F172A),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.shield, color: Colors.amber, size: 16),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  "Admin Mode Active (কাস্টমার ভিউ)",
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const AdminHubScreen()),
+                                  );
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade700,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.dashboard, size: 12, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text("Admin Hub ➔", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      // Persistent Top Search Bar
+                      Container(
+                        color: const Color(0xFF6B21A8),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                           child: Container(
                             height: 42,
@@ -850,7 +892,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                   padding: const EdgeInsets.symmetric(vertical: 2),
                                                   child: Text("• ${it['product_name']} × ${it['quantity']}", style: const TextStyle(fontSize: 13, color: Colors.black54)),
                                                 )),
-                                                const SizedBox(height: 12),
+                                                Builder(
+                                                  builder: (context) {
+                                                    double regTotal = 0.0;
+                                                    for (var it in items) {
+                                                      int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                      double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
+                                                      regTotal += pPrice * pQty;
+                                                    }
+                                                    if (regTotal <= 0 && pkg['regular_total'] != null) {
+                                                      regTotal = double.tryParse(pkg['regular_total']?.toString() ?? '0') ?? 0.0;
+                                                    }
+                                                    double savings = (regTotal - price) > 0 ? (regTotal - price) : 0.0;
+
+                                                    return Container(
+                                                      margin: const EdgeInsets.symmetric(vertical: 8),
+                                                      padding: const EdgeInsets.all(10),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFF0FDF4),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(color: const Color(0xFFBBF7D0)),
+                                                      ),
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Row(
+                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                            children: [
+                                                              const Text("Total Regular Price", style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                                                              Text(
+                                                                "TK ${regTotal > 0 ? regTotal.toStringAsFixed(2) : price.toStringAsFixed(2)}",
+                                                                style: const TextStyle(fontSize: 12.5, color: Colors.red, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.bold),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          const SizedBox(height: 3),
+                                                          Row(
+                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                            children: [
+                                                              const Text("Combo Special Price", style: TextStyle(fontSize: 13.5, color: Color(0xFF15803D), fontWeight: FontWeight.bold)),
+                                                              Text("TK ${price.toStringAsFixed(2)}", style: const TextStyle(fontSize: 15.5, color: Color(0xFF15803D), fontWeight: FontWeight.w900)),
+                                                            ],
+                                                          ),
+                                                          if (savings > 0) ...[
+                                                            const SizedBox(height: 5),
+                                                            Container(
+                                                              width: double.infinity,
+                                                              padding: const EdgeInsets.only(top: 5),
+                                                              decoration: const BoxDecoration(
+                                                                border: Border(top: BorderSide(color: Color(0xFFBBF7D0))),
+                                                              ),
+                                                              child: Text(
+                                                                "🎁 Customer Savings / Discount: TK ${savings.toStringAsFixed(2)} OFF!",
+                                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                                const SizedBox(height: 6),
                                                 SizedBox(
                                                   width: double.infinity,
                                                   child: ElevatedButton.icon(
