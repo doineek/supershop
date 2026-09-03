@@ -3739,8 +3739,40 @@
         const profPic = currentCustomer.profile_image || currentCustomer.avatar_url || currentCustomer.avatar_base64;
         if (profPic) {
           avContainer.innerHTML = `<img src="${profPic}" alt="Avatar">`;
+          if (profPic.startsWith('data:image/') || profPic.startsWith('blob:')) {
+            // Background sync local photo to server so Admin Panel immediately sees it
+            fetch('/api/customer/update-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: currentCustomer.phone,
+                name: currentCustomer.name || '',
+                profile_image: profPic,
+                avatar_base64: profPic
+              })
+            }).then(r => r.json()).then(data => {
+              if (data && data.success && data.user && data.user.profile_image) {
+                currentCustomer.profile_image = data.user.profile_image;
+                currentCustomer.avatar_url = data.user.profile_image;
+                localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+              }
+            }).catch(() => {});
+          }
         } else {
           avContainer.innerHTML = `<span>${(currentCustomer.name || 'C')[0].toUpperCase()}</span>`;
+          // If no local picture, retrieve from server in case uploaded elsewhere or by admin
+          if (currentCustomer.phone) {
+            fetch('/customers/api/profile?phone=' + encodeURIComponent(currentCustomer.phone))
+              .then(r => r.json())
+              .then(data => {
+                if (data && data.success && data.profile_image) {
+                  currentCustomer.profile_image = data.profile_image;
+                  currentCustomer.avatar_url = data.profile_image;
+                  localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+                  if (avContainer) avContainer.innerHTML = `<img src="${data.profile_image}" alt="Avatar">`;
+                }
+              }).catch(() => {});
+          }
         }
 
         if (currentCustomer.email) {
@@ -5139,7 +5171,8 @@
         area: areaZone,
         payment_method: paymentMethod,
         cart_items: items,
-        delivery_charge: orderDeliveryCharge
+        delivery_charge: orderDeliveryCharge,
+        customer_profile_image: (currentCustomer && (currentCustomer.profile_image || currentCustomer.avatar_url || currentCustomer.avatar_base64)) || ""
       };
 
       try {

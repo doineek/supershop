@@ -3626,6 +3626,21 @@ def customers_page():
         elif reg_info.get("avatar"):
             final_cust_img = reg_info.get("avatar").strip()
 
+        # Proactively retrieve profile picture from disk if not yet populated in DB record
+        if not final_cust_img and phone:
+            cust_uploads = os.path.join(app.root_path, "static", "uploads", "customers")
+            if os.path.exists(cust_uploads):
+                for f in sorted(os.listdir(cust_uploads), reverse=True):
+                    if f.startswith(f"cust_{phone}") or f.startswith(f"cust_{phone[-10:]}"):
+                        final_cust_img = f"/static/uploads/customers/{f}"
+                        # Persist back to database
+                        try:
+                            conn.execute("UPDATE customer_users SET profile_image = ?, avatar_url = ? WHERE phone = ?", (final_cust_img, final_cust_img, phone))
+                            conn.commit()
+                        except Exception:
+                            pass
+                        break
+
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
@@ -6995,6 +7010,27 @@ def api_place_order():
                 sale_id, valid_pid, item["quantity"], item["unit_price"], item["mrp_price"]
             ))
 
+
+    # Save customer profile image if submitted with order and not yet in record
+    cust_img = (data.get("customer_profile_image") or "").strip()
+    if cust_img and clean_phone:
+        try:
+            c_user = cur.execute("SELECT profile_image, avatar_url, avatar_base64 FROM customer_users WHERE phone = ?", (clean_phone,)).fetchone()
+            if c_user and not (c_user["profile_image"] or c_user["avatar_url"] or c_user["avatar_base64"]):
+                saved_p = cust_img
+                if cust_img.startswith("data:image"):
+                    up_dir = os.path.join(app.root_path, "static", "uploads", "customers")
+                    os.makedirs(up_dir, exist_ok=True)
+                    hdr, enc = cust_img.split(",", 1)
+                    im_data = base64.b64decode(enc)
+                    im = Image.open(io.BytesIO(im_data)).convert("RGB")
+                    im.thumbnail((500, 500))
+                    fn = f"cust_{clean_phone}_{int(time.time())}.jpg"
+                    im.save(os.path.join(up_dir, fn), "JPEG", quality=85)
+                    saved_p = f"/static/uploads/customers/{fn}"
+                cur.execute("UPDATE customer_users SET profile_image = ?, avatar_url = ?, avatar_base64 = ? WHERE phone = ?", (saved_p, saved_p, cust_img if cust_img.startswith("data:image") else saved_p, clean_phone))
+        except Exception as e:
+            print("[order_place] Error auto-saving customer photo:", e)
 
     conn.commit()
     conn.close()
