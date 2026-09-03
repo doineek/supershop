@@ -1,3 +1,4 @@
+import '../../widgets/quantity_limit_dialog.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -620,13 +621,7 @@ class _CartScreenState extends State<CartScreen> {
                                 onPressed: () {
                                   bool ok = cartProv.updateQuantity(item.product.id, item.quantity + 1);
                                   if (!ok) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(cartProv.lastError ?? 'Cannot add more: only ${item.product.stockQty} available in stock.'),
-                                        backgroundColor: Colors.red,
-                                        duration: const Duration(seconds: 2),
-                                      ),
-                                    );
+                                    showQuantityLimitDialog(context, cartProv.lastError ?? 'Cannot add more: only ${item.product.stockQty} available in stock.');
                                   }
                                 },
                               ),

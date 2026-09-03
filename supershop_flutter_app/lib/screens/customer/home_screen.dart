@@ -13,6 +13,7 @@ import '../../services/api_service.dart';
 import 'cart_screen.dart';
 import '../../widgets/app_image_loader.dart';
 import '../../widgets/location_selector_dialog.dart';
+import '../../widgets/quantity_limit_dialog.dart';
 import 'my_orders_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
@@ -1066,13 +1067,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                          ),
                                                                        );
                                                                      } else {
-                                                                       ScaffoldMessenger.of(context).showSnackBar(
-                                                                         SnackBar(
-                                                                           content: Text(cartProv.lastError ?? "Cannot add to cart: item is out of stock."),
-                                                                           backgroundColor: Colors.red,
-                                                                           duration: const Duration(seconds: 2),
-                                                                         ),
-                                                                       );
+                                                                       showQuantityLimitDialog(context, cartProv.lastError ?? "Cannot add to cart: item is out of stock.");
                                                                      }
                                                                    },
                                                              icon: Icon(isOutOfStock ? Icons.block : Icons.bolt, color: Colors.white),
@@ -1292,13 +1287,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                                 ),
                                                                               );
                                                                             } else {
-                                                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                                                SnackBar(
-                                                                                  content: Text(cartProv.lastError ?? 'Cannot add: item is out of stock.'),
-                                                                                  backgroundColor: Colors.red,
-                                                                                  duration: const Duration(seconds: 2),
-                                                                                ),
-                                                                              );
+                                                                              showQuantityLimitDialog(context, cartProv.lastError ?? 'Cannot add: item is out of stock.');
                                                                             }
                                                                           },
                                                                           style: ElevatedButton.styleFrom(
@@ -1335,13 +1324,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                                 MaterialPageRoute(builder: (_) => const CartScreen()),
                                                                               );
                                                                             } else {
-                                                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                                                SnackBar(
-                                                                                  content: Text(cartProv.lastError ?? 'Cannot proceed: item is out of stock.'),
-                                                                                  backgroundColor: Colors.red,
-                                                                                  duration: const Duration(seconds: 2),
-                                                                                ),
-                                                                              );
+                                                                              showQuantityLimitDialog(context, cartProv.lastError ?? 'Cannot proceed: item is out of stock.');
                                                                             }
                                                                           },
                                                                           style: ElevatedButton.styleFrom(
@@ -2045,13 +2028,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                                     ),
                                                   );
                                                 } else {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(cartProv.lastError ?? 'Cannot add: item is out of stock.'),
-                                                      backgroundColor: Colors.red,
-                                                      duration: const Duration(seconds: 2),
-                                                    ),
-                                                  );
+                                                  showQuantityLimitDialog(context, cartProv.lastError ?? 'Cannot add: item is out of stock.');
                                                 }
                                               },
                                               style: ElevatedButton.styleFrom(
@@ -2087,13 +2064,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                                     MaterialPageRoute(builder: (_) => const CartScreen()),
                                                   );
                                                 } else {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(cartProv.lastError ?? 'Cannot proceed: item is out of stock.'),
-                                                      backgroundColor: Colors.red,
-                                                      duration: const Duration(seconds: 2),
-                                                    ),
-                                                  );
+                                                  showQuantityLimitDialog(context, cartProv.lastError ?? 'Cannot proceed: item is out of stock.');
                                                 }
                                               },
                                               style: ElevatedButton.styleFrom(

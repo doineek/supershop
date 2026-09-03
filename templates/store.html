@@ -3509,15 +3509,19 @@
     function handleDetailAddCart() {
       if (!currentDetailProduct) return;
       const p = currentDetailProduct;
-      addProductCart(p.id);
-      closeProductDetailModal();
+      const ok = addProductCart(p.id);
+      if (ok !== false) {
+        closeProductDetailModal();
+      }
     }
 
     function handleDetailBuyNow() {
       if (!currentDetailProduct) return;
       const p = currentDetailProduct;
-      buyProductNow(p.id);
-      closeProductDetailModal();
+      const ok = buyProductNow(p.id);
+      if (ok !== false) {
+        closeProductDetailModal();
+      }
     }
 
     // Handle District Change & Populate Areas
@@ -4422,10 +4426,10 @@
         } else {
           const safeTitle = cleanTitle.replace(/'/g, "\\'");
           actionsEl.innerHTML = `
-            <button class="btn-add" style="flex:1; padding:12px; font-size:0.95rem; font-weight:800; border-radius:8px;" onclick="addPackageCart('${pkgId}', '${safeTitle}', ${pkgPrice}); showCartToast('⚡ Added combo package to cart!');">
+            <button class="btn-add" style="flex:1; padding:12px; font-size:0.95rem; font-weight:800; border-radius:8px;" onclick="addPackageCart('${pkgId}', '${safeTitle}', ${pkgPrice});">
               🛒 + Add
             </button>
-            <button class="btn-buy-now" style="flex:1; padding:12px; font-size:0.95rem; font-weight:800; border-radius:8px;" onclick="closePackageDetailModal(); buyPackageNow('${pkgId}', '${safeTitle}', ${pkgPrice});">
+            <button class="btn-buy-now" style="flex:1; padding:12px; font-size:0.95rem; font-weight:800; border-radius:8px;" onclick="if (buyPackageNow('${pkgId}', '${safeTitle}', ${pkgPrice}) !== false) closePackageDetailModal();">
               ⚡ Buy Now
             </button>
           `;
@@ -4538,21 +4542,42 @@
       refreshCartDisplay();
     }
 
+    function showQtyLimitModal(message, title = 'Order Limit Reached') {
+      const modal = document.getElementById('qtyLimitModal');
+      if (modal) {
+        const titleEl = document.getElementById('qtyLimitModalTitle');
+        const msgEl = document.getElementById('qtyLimitModalMsg');
+        if (titleEl) titleEl.textContent = title;
+        if (msgEl) msgEl.textContent = message;
+        modal.style.display = 'flex';
+      } else {
+        alert(message);
+      }
+    }
+
+    function closeQtyLimitModal() {
+      const modal = document.getElementById('qtyLimitModal');
+      if (modal) modal.style.display = 'none';
+    }
+
     function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '', btnEl = null) {
       const prod = allProducts.find(p => String(p.id) === String(id));
+      const strName = name || (prod ? prod.name : 'Product');
+      const currentQty = cart[id] ? parseInt(cart[id].quantity || 0) : 0;
+
       if (prod) {
         const prodStock = parseInt(prod.stock_qty || 0);
         if (prodStock <= 0) {
-          alert(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be added to bag.`);
-          return;
+          showQtyLimitModal(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be added to cart.`, 'Out of Stock');
+          return false;
         }
-        if (MAX_ORDER_QTY_PRODUCT > 0 && cart[id] && (cart[id].quantity + 1) > MAX_ORDER_QTY_PRODUCT) {
-          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${prod.name}" per order.`);
-          return;
+        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
+          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${prod.name}" per order.`, 'Order Limit Reached');
+          return false;
         }
-        if (cart[id] && (cart[id].quantity + 1) > prodStock) {
-          alert(`Cannot add more: Only ${prodStock} in stock for "${prod.name}".`);
-          return;
+        if ((currentQty + 1) > prodStock) {
+          showQtyLimitModal(`Cannot add more: Only ${prodStock} in stock for "${prod.name}".`, 'Stock Limit Reached');
+          return false;
         }
         if (!name || name === '') name = prod.name;
         if (!price || parseFloat(price) === 0) price = parseFloat(prod.sell_price) || 0;
@@ -4561,14 +4586,13 @@
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
       } else {
-        if (MAX_ORDER_QTY_PRODUCT > 0 && cart[id] && (cart[id].quantity + 1) > MAX_ORDER_QTY_PRODUCT) {
-          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${name || 'this item'}" per order.`);
-          return;
+        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
+          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${strName}" per order.`, 'Order Limit Reached');
+          return false;
         }
       }
       
       const numPrice = parseFloat(price) || (prod ? parseFloat(prod.sell_price) || 0 : 0);
-      const strName = name || (prod ? prod.name : 'Product');
       const strImg = img || (prod ? getFirstImageJS(prod.image_url) : '/static/images/logo.png');
 
       if (!cart[id]) {
@@ -4597,15 +4621,23 @@
           targetBtn.style.background = '';
         }, 1200);
       }
+      return true;
     }
 
     function buyProductNow(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
       const prod = allProducts.find(p => String(p.id) === String(id));
+      const strName = name || (prod ? prod.name : 'Product');
+      const currentQty = cart[id] ? parseInt(cart[id].quantity || 0) : 0;
+
       if (prod) {
         const prodStock = parseInt(prod.stock_qty || 0);
         if (prodStock <= 0) {
-          alert(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be ordered.`);
-          return;
+          showQtyLimitModal(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be ordered.`, 'Out of Stock');
+          return false;
+        }
+        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
+          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${prod.name}" per order.`, 'Order Limit Reached');
+          return false;
         }
         if (!name || name === '') name = prod.name;
         if (!price || parseFloat(price) === 0) price = parseFloat(prod.sell_price) || 0;
@@ -4613,16 +4645,14 @@
         if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
-      }
-
-      const currentQty = cart[id] ? cart[id].quantity : 0;
-      if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
-        alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${name || (prod ? prod.name : 'this product')}" per order.`);
-        return;
+      } else {
+        if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
+          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${strName}" per order.`, 'Order Limit Reached');
+          return false;
+        }
       }
 
       const numPrice = parseFloat(price) || (prod ? parseFloat(prod.sell_price) || 0 : 0);
-      const strName = name || (prod ? prod.name : 'Product');
       const strImg = img || (prod ? getFirstImageJS(prod.image_url) : '/static/images/logo.png');
 
       if (!cart[id]) {
@@ -4637,34 +4667,35 @@
       }
       saveCart();
       openCheckoutModal();
+      return true;
     }
 
     function addPackageCart(id, name, price) {
       const pkg = allPackagesData.find(p => String(p.id) === String(id));
+      const pkgKey = 'PKG_' + id;
+      const currentQty = cart[pkgKey] ? parseInt(cart[pkgKey].quantity || 0) : 0;
+
       if (pkg) {
         const pkgStock = parseInt(pkg.stock_qty || 0);
         if (pkg.is_out_of_stock || pkgStock <= 0) {
-          alert(`Sorry, Combo Package "${name}" is Out of Stock.`);
-          return;
+          showQtyLimitModal(`Sorry, Combo Package "${name}" is Out of Stock.`, 'Out of Stock');
+          return false;
         }
-        const pkgKey = 'PKG_' + id;
-        if (MAX_ORDER_QTY_PACKAGE > 0 && cart[pkgKey] && (cart[pkgKey].quantity + 1) > MAX_ORDER_QTY_PACKAGE) {
-          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`);
-          return;
+        if (MAX_ORDER_QTY_PACKAGE > 0 && (currentQty + 1) > MAX_ORDER_QTY_PACKAGE) {
+          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`, 'Order Limit Reached');
+          return false;
         }
-        if (cart[pkgKey] && (cart[pkgKey].quantity + 1) > pkgStock) {
-          alert(`Cannot add more: Only ${pkgStock} combo packages can be fulfilled with currently available stock.`);
-          return;
+        if ((currentQty + 1) > pkgStock) {
+          showQtyLimitModal(`Cannot add more: Only ${pkgStock} combo packages can be fulfilled with currently available stock.`, 'Stock Limit Reached');
+          return false;
         }
       } else {
-        const pkgKey = 'PKG_' + id;
-        if (MAX_ORDER_QTY_PACKAGE > 0 && cart[pkgKey] && (cart[pkgKey].quantity + 1) > MAX_ORDER_QTY_PACKAGE) {
-          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`);
-          return;
+        if (MAX_ORDER_QTY_PACKAGE > 0 && (currentQty + 1) > MAX_ORDER_QTY_PACKAGE) {
+          showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`, 'Order Limit Reached');
+          return false;
         }
       }
 
-      const pkgKey = 'PKG_' + id;
       if (!cart[pkgKey]) {
         cart[pkgKey] = { id: pkgKey, raw_id: id, name: '📦 ' + name, price: parseFloat(price), img: '', quantity: 1, is_pkg: true };
       } else {
@@ -4674,22 +4705,25 @@
 
       const totalItems = Object.values(cart).reduce((sum, it) => sum + it.quantity, 0);
       showCartToast(`✓ "${name}" added to cart!`, totalItems);
+      return true;
     }
 
     function buyPackageNow(id, name, price) {
       const pkg = allPackagesData.find(p => String(p.id) === String(id));
-      if (pkg && (pkg.is_out_of_stock || parseInt(pkg.stock_qty || 0) <= 0)) {
-        alert(`Sorry, Combo Package "${name}" is Out of Stock.`);
-        return;
-      }
       const pkgKey = 'PKG_' + id;
-      const currentQty = cart[pkgKey] ? cart[pkgKey].quantity : 0;
+      const currentQty = cart[pkgKey] ? parseInt(cart[pkgKey].quantity || 0) : 0;
+
+      if (pkg && (pkg.is_out_of_stock || parseInt(pkg.stock_qty || 0) <= 0)) {
+        showQtyLimitModal(`Sorry, Combo Package "${name}" is Out of Stock.`, 'Out of Stock');
+        return false;
+      }
       if (MAX_ORDER_QTY_PACKAGE > 0 && (currentQty + 1) > MAX_ORDER_QTY_PACKAGE) {
-        alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`);
-        return;
+        showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`, 'Order Limit Reached');
+        return false;
       }
       addPackageCart(id, name, price);
       openCheckoutModal();
+      return true;
     }
 
     function modifyQty(id, delta) {
@@ -4698,7 +4732,7 @@
           if (cart[id].is_pkg) {
             if (MAX_ORDER_QTY_PACKAGE > 0 && (cart[id].quantity + delta) > MAX_ORDER_QTY_PACKAGE) {
               const cleanPkgName = cart[id].name.replace('📦 ', '');
-              alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${cleanPkgName}" per order.`);
+              showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${cleanPkgName}" per order.`, 'Order Limit Reached');
               return;
             }
             const rawId = cart[id].raw_id;
@@ -4706,7 +4740,7 @@
             if (pkg) {
               const maxStock = parseInt(pkg.stock_qty || 0);
               if (maxStock <= 0 || (cart[id].quantity + delta) > maxStock) {
-                alert(`Cannot add more: Only ${maxStock} available in stock.`);
+                showQtyLimitModal(`Cannot add more: Only ${maxStock} available in stock.`, 'Stock Limit Reached');
                 return;
               }
             }
@@ -4714,13 +4748,13 @@
             const prod = allProducts.find(p => String(p.id) === String(id));
             const pName = prod ? prod.name : cart[id].name;
             if (MAX_ORDER_QTY_PRODUCT > 0 && (cart[id].quantity + delta) > MAX_ORDER_QTY_PRODUCT) {
-              alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${pName}" per order.`);
+              showQtyLimitModal(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${pName}" per order.`, 'Order Limit Reached');
               return;
             }
             if (prod) {
               const maxStock = parseInt(prod.stock_qty || 0);
               if (maxStock <= 0 || (cart[id].quantity + delta) > maxStock) {
-                alert(`Cannot add more: Only ${maxStock} available in stock for "${prod.name}".`);
+                showQtyLimitModal(`Cannot add more: Only ${maxStock} available in stock for "${prod.name}".`, 'Stock Limit Reached');
                 return;
               }
             }
@@ -5143,6 +5177,24 @@
       <span style="color:#FFF; font-size:0.85rem; font-weight:700;" id="zoomPercentTxt">100%</span>
       <button class="zoom-btn" onclick="adjustZoom(0.3)" title="Zoom In">🔍 +</button>
       <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom" style="font-size:0.85rem; margin-left:6px; border-left:1px solid rgba(255,255,255,0.3); padding-left:10px;">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- Maximum Quantity Limit Pop-up Modal -->
+  <div class="modal-backdrop" id="qtyLimitModal" style="display:none; z-index:999999; justify-content:center; align-items:center; background:rgba(15,23,42,0.7); backdrop-filter:blur(4px);" onclick="if(event.target === this) closeQtyLimitModal()">
+    <div style="background:#ffffff; border-radius:18px; padding:28px 24px; max-width:400px; width:90%; box-shadow:0 25px 50px -12px rgba(0,0,0,0.4); text-align:center; position:relative; border:2px solid #f59e0b;">
+      <div style="width:64px; height:64px; background:#fef3c7; border:2px solid #fde68a; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px auto; font-size:32px;">
+        ⚠️
+      </div>
+      <h3 id="qtyLimitModalTitle" style="margin:0 0 10px 0; font-size:1.25rem; font-weight:800; color:#0f172a;">
+        Limit Reached
+      </h3>
+      <p id="qtyLimitModalMsg" style="margin:0 0 22px 0; font-size:0.92rem; color:#475569; line-height:1.5;">
+        You cannot add more units of this item to your order.
+      </p>
+      <button type="button" onclick="closeQtyLimitModal()" style="background:#16a34a; color:#ffffff; border:none; padding:12px 24px; border-radius:10px; font-size:0.95rem; font-weight:800; cursor:pointer; width:100%; box-shadow:0 4px 6px -1px rgba(22,163,74,0.3); transition:all 0.2s ease;" onmouseover="this.style.background='#15803d';" onmouseout="this.style.background='#16a34a';">
+        OK, Got It
+      </button>
     </div>
   </div>
 

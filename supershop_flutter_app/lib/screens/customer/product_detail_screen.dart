@@ -1,3 +1,4 @@
+import '../../widgets/quantity_limit_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -446,12 +447,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               ),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(cartProv.lastError ?? 'Cannot add: item is out of stock.'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 2),
-                              ),
+                            showQuantityLimitDialog(
+                              context,
+                              cartProv.lastError ?? 'Cannot add: order limit reached or item out of stock.',
                             );
                           }
                         },
@@ -474,12 +472,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               MaterialPageRoute(builder: (_) => const CartScreen()),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(cartProv.lastError ?? 'Cannot proceed: item is out of stock.'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 2),
-                              ),
+                            showQuantityLimitDialog(
+                              context,
+                              cartProv.lastError ?? 'Cannot proceed: order limit reached or item out of stock.',
                             );
                           }
                         },
