@@ -384,6 +384,59 @@ def calculate_package_regular_total(items_list):
     return total
 
 
+def clean_and_normalize_image_url(raw_url):
+    """
+    Cleans and normalizes image URLs, extracting direct image links from
+    Google Images search results, Google redirects, and Google Drive links.
+    """
+    if not raw_url:
+        return ""
+    url = str(raw_url).strip()
+    if not url:
+        return ""
+
+    # If comma-separated, process each URL
+    if "," in url and not url.startswith("data:image/"):
+        parts = [p.strip() for p in url.split(",") if p.strip()]
+        return ", ".join(clean_and_normalize_image_url(p) for p in parts)
+
+    if url.startswith("data:image/"):
+        return url
+
+    # Google Images Search result (https://www.google.com/imgres?imgurl=... or google.com.bd/imgres?imgurl=...)
+    if "google." in url and "/imgres" in url:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "imgurl" in qs and qs["imgurl"]:
+                return urllib.parse.unquote(qs["imgurl"][0])
+        except Exception:
+            pass
+
+    # Google redirection link (https://www.google.com/url?sa=i&url=... or q=...)
+    if "google." in url and "/url" in url:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "url" in qs and qs["url"]:
+                return urllib.parse.unquote(qs["url"][0])
+            if "q" in qs and qs["q"]:
+                return urllib.parse.unquote(qs["q"][0])
+        except Exception:
+            pass
+
+    # Google Drive share link (https://drive.google.com/file/d/FILE_ID/view?usp=sharing)
+    if "drive.google.com/file/d/" in url:
+        try:
+            file_id = url.split("/file/d/")[1].split("/")[0]
+            if file_id:
+                return f"https://drive.google.com/uc?export=view&id={file_id}"
+        except Exception:
+            pass
+
+    return url
+
+
 def render_storefront():
     conn = get_connection()
     today_date = datetime.now().strftime("%Y-%m-%d")
@@ -691,7 +744,7 @@ def new_product():
         low_stock_threshold = int(request.form["low_stock_threshold"] or 5)
         sl_number = int(request.form.get("sl_number") or 1)
         description = request.form.get("description", "").strip()
-        image_url = request.form.get("image_url", "").strip()
+        image_url = clean_and_normalize_image_url(request.form.get("image_url", ""))
         
         # Auto-insert brand into brands table if new
         if brand:
@@ -792,7 +845,7 @@ def edit_product(product_id):
         brand = request.form.get("brand", "").strip()
         unit = request.form.get("unit", "").strip()
         description = request.form.get("description", "").strip()
-        image_url = request.form.get("image_url", "").strip()
+        image_url = clean_and_normalize_image_url(request.form.get("image_url", ""))
         
         # Auto-insert brand into brands table if new
         if brand:
@@ -4478,7 +4531,15 @@ def api_promotions():
         ORDER BY p.id DESC
     """).fetchall()
     
-    promos = [dict(r) for r in rows]
+    promos = []
+    for r in rows:
+        d = dict(r)
+        raw_img = (d.get("image_url") or "").strip()
+        if raw_img:
+            if "," in raw_img and not raw_img.startswith("data:image/"):
+                raw_img = raw_img.split(",")[0].strip()
+            d["image_url"] = clean_and_normalize_image_url(raw_img)
+        promos.append(d)
     
     free_del_active = (s.get("free_delivery_active") or "0") == "1"
     free_del_show_banner = (s.get("free_delivery_show_banner") or "1") == "1"

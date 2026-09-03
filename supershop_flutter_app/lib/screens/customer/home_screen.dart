@@ -584,6 +584,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             : "BUY 1 GET 1 FREE")
                                         : "🔥 SPECIAL OFFER");
                                 String imgUrl = (item["image_url"] ?? "").toString().trim();
+                                if (imgUrl.contains(',') && !imgUrl.startsWith('data:image/')) {
+                                  imgUrl = imgUrl.split(',').first.trim();
+                                }
                                 if (imgUrl.isNotEmpty && !imgUrl.startsWith('data:image/') && !imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
                                   imgUrl = imgUrl.startsWith('/') ? "${ApiService.baseUrl}$imgUrl" : "${ApiService.baseUrl}/$imgUrl";
                                 }

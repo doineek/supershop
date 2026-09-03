@@ -2771,9 +2771,40 @@
       return parts.map(s => s.trim()).filter(Boolean);
     }
 
+    function cleanImageUrlJS(url) {
+      if (!url) return '';
+      let clean = url.trim();
+      if (!clean) return '';
+      if (clean.includes('google.') && clean.includes('imgres')) {
+        try {
+          const u = new URL(clean);
+          const imgParam = u.searchParams.get('imgurl');
+          if (imgParam) return decodeURIComponent(imgParam);
+        } catch (_) {}
+      }
+      if (clean.includes('google.') && clean.includes('/url')) {
+        try {
+          const u = new URL(clean);
+          const target = u.searchParams.get('url') || u.searchParams.get('q');
+          if (target) return decodeURIComponent(target);
+        } catch (_) {}
+      }
+      if (clean.includes('drive.google.com/file/d/')) {
+        try {
+          const parts = clean.split('/file/d/');
+          if (parts.length > 1) {
+            const id = parts[1].split('/')[0];
+            if (id) return `https://drive.google.com/uc?export=view&id=${id}`;
+          }
+        } catch (_) {}
+      }
+      return clean;
+    }
+
     function getFirstImageJS(imgStr) {
       const list = splitImageUrlsJS(imgStr);
-      return list.length > 0 ? list[0] : '/static/images/logo.png';
+      const raw = list.length > 0 ? list[0] : '/static/images/logo.png';
+      return cleanImageUrlJS(raw);
     }
 
     // BOGO / Buy X Get Y Calculation Logic
