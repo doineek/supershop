@@ -7375,18 +7375,28 @@ def download_app_apk():
     """Direct 1-click APK download for Android users."""
     from flask import send_file
     apk_path = os.path.join(app.root_path, "static", "apk", "supershop_latest.apk")
-    if not os.path.exists(apk_path):
-        flutter_apk = os.path.join(app.root_path, "supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
-        if os.path.exists(flutter_apk):
+    flutter_apk = os.path.join(app.root_path, "supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
+    
+    if os.path.exists(flutter_apk):
+        if not os.path.exists(apk_path) or os.path.getmtime(flutter_apk) > os.path.getmtime(apk_path):
             import shutil
             os.makedirs(os.path.dirname(apk_path), exist_ok=True)
-            shutil.copy2(flutter_apk, apk_path)
-    return send_file(
-        apk_path,
+            try:
+                shutil.copy2(flutter_apk, apk_path)
+            except Exception:
+                pass
+
+    target_file = apk_path if os.path.exists(apk_path) else flutter_apk
+    response = send_file(
+        target_file,
         as_attachment=True,
         download_name="supershop_app.apk",
         mimetype="application/vnd.android.package-archive"
     )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
