@@ -711,31 +711,23 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 12),
 
                     if (!_isDeliveryMan) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                              );
-                            },
-                            child: Text(loc.translate('register')),
-                          ),
-                          TextButton.icon(
-                            onPressed: _openAdminLoginDialog,
-                            icon: const Icon(Icons.admin_panel_settings, size: 16, color: Color(0xFF1E293B)),
-                            label: const Text(
-                              "🔑 Admin & Cashier Mode ➔",
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E293B),
-                              ),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.person_add_alt_1, size: 18),
+                          label: Text(
+                            loc.translate('register'),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ],
