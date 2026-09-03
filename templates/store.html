@@ -4193,13 +4193,15 @@
       }
 
       let regTotal = 0;
-      if (pkgItem.package_items && pkgItem.package_items.length > 0) {
-        pkgItem.package_items.forEach(pi => {
-          regTotal += (parseFloat(pi.sell_price || 0) * parseInt(pi.item_qty || 1));
-        });
-      }
-      if (regTotal <= 0 && pkgItem.regular_total) {
+      if (pkgItem.regular_total && parseFloat(pkgItem.regular_total) > 0) {
         regTotal = parseFloat(pkgItem.regular_total);
+      } else if (pkgItem.package_items && pkgItem.package_items.length > 0) {
+        pkgItem.package_items.forEach(pi => {
+          const itemMrp = parseFloat(pi.mrp || 0);
+          const itemSell = parseFloat(pi.sell_price || 0);
+          const basePrice = itemMrp > 0 ? itemMrp : itemSell;
+          regTotal += (basePrice * parseInt(pi.item_qty || 1));
+        });
       }
       const savings = Math.max(0, regTotal - pkgPrice);
 
@@ -4254,6 +4256,7 @@
         product_name: pkg.name,
         package_name: pkg.name,
         package_price: pkg.package_price,
+        regular_total: pkg.regular_total,
         unit_price: pkg.package_price,
         package_image: pkg.image_url,
         image_url: pkg.image_url,
@@ -4263,6 +4266,7 @@
           prod_name: it.product_name,
           item_qty: it.quantity,
           sell_price: it.sell_price,
+          mrp: it.mrp,
           unit: it.unit || '',
           sku: it.sku || '',
           image_url: it.image_url || ''

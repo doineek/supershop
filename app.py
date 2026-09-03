@@ -390,6 +390,21 @@ def render_storefront():
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     categories_tree = get_categories_tree_data(conn)
     
+def calculate_package_regular_total(items_list):
+    """
+    Calculates total regular price for combo package items based on MRP (Maximum Retail Price),
+    falling back to sell_price only if MRP is 0 or not configured.
+    """
+    total = 0.0
+    for it in items_list:
+        mrp = float(it.get("mrp") or 0.0)
+        sell = float(it.get("sell_price") or 0.0)
+        base = mrp if mrp > 0 else sell
+        qty = int(it.get("quantity") or 1)
+        total += base * qty
+    return total
+
+
     raw_pkgs = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
     packages = []
     for pkg in raw_pkgs:
@@ -401,7 +416,7 @@ def render_storefront():
         """, (pkg["id"],)).fetchall()
         inc_items = [dict(i) for i in items]
         p_dict["included_items"] = inc_items
-        reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in inc_items)
+        reg_total = calculate_package_regular_total(inc_items)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
         packages.append(p_dict)
@@ -6840,7 +6855,7 @@ def packages_page():
         """, (pkg["id"],)).fetchall()
         inc_items = [dict(i) for i in items]
         p_dict["items"] = inc_items
-        reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in inc_items)
+        reg_total = calculate_package_regular_total(inc_items)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
         packages_list.append(p_dict)
@@ -6994,7 +7009,7 @@ def api_packages():
                 it_d["image_url"] = request.host_url.rstrip("/") + p_img
             item_list.append(it_d)
         p_dict["items"] = item_list
-        reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in item_list)
+        reg_total = calculate_package_regular_total(item_list)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
         packages_list.append(p_dict)
@@ -7017,7 +7032,7 @@ def api_package_detail(package_id):
     """, (package_id,)).fetchall()
     inc_items = [dict(i) for i in items]
     p_dict["items"] = inc_items
-    reg_total = sum(float(i.get("sell_price") or 0.0) * int(i.get("quantity") or 1) for i in inc_items)
+    reg_total = calculate_package_regular_total(inc_items)
     p_dict["regular_total"] = reg_total
     p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
     conn.close()

@@ -895,13 +895,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                 Builder(
                                                   builder: (context) {
                                                     double regTotal = 0.0;
-                                                    for (var it in items) {
-                                                      int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
-                                                      double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
-                                                      regTotal += pPrice * pQty;
-                                                    }
-                                                    if (regTotal <= 0 && pkg['regular_total'] != null) {
-                                                      regTotal = double.tryParse(pkg['regular_total']?.toString() ?? '0') ?? 0.0;
+                                                    if (pkg['regular_total'] != null && double.tryParse(pkg['regular_total'].toString()) != null && double.tryParse(pkg['regular_total'].toString())! > 0) {
+                                                      regTotal = double.tryParse(pkg['regular_total'].toString())!;
+                                                    } else {
+                                                      for (var it in items) {
+                                                        int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                        double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
+                                                        double pSell = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
+                                                        double basePrice = pMrp > 0 ? pMrp : pSell;
+                                                        regTotal += basePrice * pQty;
+                                                      }
                                                     }
                                                     double savings = (regTotal - price) > 0 ? (regTotal - price) : 0.0;
 
@@ -964,8 +967,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                         String pSku = it['sku'] ?? 'SKU';
                                                         String pName = it['product_name'] ?? 'Item';
                                                         int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                        double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
                                                         double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
-                                                        regTotal += pPrice * pQty;
+                                                        double basePrice = pMrp > 0 ? pMrp : pPrice;
+                                                        regTotal += basePrice * pQty;
                                                         itemSummaries.add("$pSku $pName (Qty:$pQty)");
                                                       }
                                                       String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
