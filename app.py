@@ -1414,6 +1414,9 @@ def get_font_helper(size=24, bold=True):
     import os
     from PIL import ImageFont
     font_paths = [
+        # Bundled project fonts (guaranteed in Git on both Windows and Linux / Render)
+        os.path.join(app.root_path, "static", "fonts", "arialbd.ttf" if bold else "arial.ttf"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "fonts", "arialbd.ttf" if bold else "arial.ttf"),
         # Windows standard fonts
         "C:\\Windows\\Fonts\\arialbd.ttf" if bold else "C:\\Windows\\Fonts\\arial.ttf",
         "C:\\Windows\\Fonts\\segoeuib.ttf" if bold else "C:\\Windows\\Fonts\\segoeui.ttf",
@@ -1434,6 +1437,30 @@ def get_font_helper(size=24, bold=True):
         return ImageFont.load_default()
     except Exception:
         return None
+
+
+def safe_draw_text(draw, pos, text, font=None, fill=None, anchor=None):
+    if text is None:
+        return
+    text = str(text)
+    try:
+        draw.text(pos, text, font=font, fill=fill, anchor=anchor)
+    except Exception:
+        try:
+            draw.text(pos, text, font=font, fill=fill)
+        except Exception:
+            try:
+                clean_text = text.encode("ascii", "ignore").decode("ascii")
+                draw.text(pos, clean_text, fill=fill)
+            except Exception:
+                pass
+
+
+def safe_draw_rounded_rectangle(draw, xy, radius=8, fill=None, outline=None, width=1):
+    try:
+        draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+    except Exception:
+        draw.rectangle(xy, fill=fill, outline=outline, width=width)
 
 
 def overlay_product_label(img, product_name, brand_name="", category=""):
@@ -1729,8 +1756,15 @@ def load_pil_image_safe(raw_img: str, name: str = "Product") -> Image.Image:
     # 1. Base64 Data URI
     if raw_img.startswith("data:image/"):
         try:
+            import re
             _, b64 = raw_img.split(",", 1)
-            raw_bytes = base64.b64decode(b64.strip())
+            b64_clean = re.sub(r'[^A-Za-z0-9+/]', '', b64)
+            rem = len(b64_clean) % 4
+            if rem == 1:
+                b64_clean = b64_clean[:-1]
+            elif rem in (2, 3):
+                b64_clean += "=" * (4 - rem)
+            raw_bytes = base64.b64decode(b64_clean)
             im = Image.open(io.BytesIO(raw_bytes))
             if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
                 rgba = im.convert("RGBA")
@@ -1820,6 +1854,21 @@ def load_pil_image_safe(raw_img: str, name: str = "Product") -> Image.Image:
     return None
 
 
+def get_safe_item_img(it):
+    img = it.get('image') if isinstance(it, dict) else None
+    if img is not None:
+        try:
+            return img.convert("RGB")
+        except Exception:
+            pass
+    # Guaranteed fallback placeholder image
+    ph = Image.new("RGB", (300, 300), (241, 245, 249))
+    d = ImageDraw.Draw(ph)
+    name = (it.get('name') if isinstance(it, dict) else '') or "Product"
+    safe_draw_text(d, (150, 150), name[:16], fill=(71, 85, 105), anchor="mm", font=get_font_helper(size=14, bold=True))
+    return ph
+
+
 def create_combo_package_collage(package_name: str, package_price: float, items_data: list) -> Image.Image:
     """
     Creates a clean, attractive multi-product grid collage card from actual product photos.
@@ -1835,10 +1884,10 @@ def create_combo_package_collage(package_name: str, package_price: float, items_
     draw.line([0, header_h, w, header_h], fill=(187, 247, 208), width=2)
 
     font_badge = get_font_helper(size=15, bold=True)
-    draw.text((20, header_h // 2), "🎁 SPECIAL COMBO DEAL", fill=(21, 128, 61), anchor="lm", font=font_badge)
+    safe_draw_text(draw, (20, header_h // 2), "SPECIAL COMBO DEAL", fill=(21, 128, 61), anchor="lm", font=font_badge)
 
     font_price = get_font_helper(size=19, bold=True)
-    draw.text((w - 20, header_h // 2), f"TK {package_price:,.2f}", fill=(22, 163, 74), anchor="rm", font=font_price)
+    safe_draw_text(draw, (w - 20, header_h // 2), f"TK {package_price:,.2f}", fill=(22, 163, 74), anchor="rm", font=font_price)
 
     # 2. Bottom Title Banner
     bottom_h = 60
@@ -1848,10 +1897,10 @@ def create_combo_package_collage(package_name: str, package_price: float, items_
 
     font_title = get_font_helper(size=18, bold=True)
     title_str = str(package_name)[:34]
-    draw.text((20, bottom_y0 + (bottom_h // 2)), title_str, fill=(15, 23, 42), anchor="lm", font=font_title)
+    safe_draw_text(draw, (20, bottom_y0 + (bottom_h // 2)), title_str, fill=(15, 23, 42), anchor="lm", font=font_title)
 
     font_sub = get_font_helper(size=12, bold=False)
-    draw.text((w - 20, bottom_y0 + (bottom_h // 2)), f"{len(items_data)} Products Included", fill=(100, 116, 139), anchor="rm", font=font_sub)
+    safe_draw_text(draw, (w - 20, bottom_y0 + (bottom_h // 2)), f"{len(items_data)} Products Included", fill=(100, 116, 139), anchor="rm", font=font_sub)
 
     # 3. Center Collage Canvas
     center_y0 = header_h + 10
@@ -1859,10 +1908,10 @@ def create_combo_package_collage(package_name: str, package_price: float, items_
     num = len(items_data)
 
     if num == 0:
-        draw.text((w // 2, center_y0 + center_h // 2), "Combo Grocery Bundle", fill=(148, 163, 184), anchor="mm", font=font_badge)
+        safe_draw_text(draw, (w // 2, center_y0 + center_h // 2), "Combo Grocery Bundle", fill=(148, 163, 184), anchor="mm", font=font_badge)
     elif num == 1:
         it = items_data[0]
-        img = it['image'].convert("RGB")
+        img = get_safe_item_img(it)
         max_w = w - 40
         max_h = center_h - 20
         img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
@@ -1875,13 +1924,13 @@ def create_combo_package_collage(package_name: str, package_price: float, items_
         for i, it in enumerate(items_data[:2]):
             x0 = 14 + i * (cell_w + 8)
             y0 = center_y0
-            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=10, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
-            img = it['image'].convert("RGB")
+            safe_draw_rounded_rectangle(draw, [x0, y0, x0 + cell_w, y0 + cell_h], radius=10, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 24, cell_h - 40), Image.Resampling.LANCZOS)
             card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 10 + (cell_h - 45 - img.height) // 2))
             lbl = it['name'][:18]
             font_lbl = get_font_helper(size=11, bold=True)
-            draw.text((x0 + cell_w // 2, y0 + cell_h - 16), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
+            safe_draw_text(draw, (x0 + cell_w // 2, y0 + cell_h - 16), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
     elif num in (3, 4):
         cols = 2
         cell_w = (w - 36) // 2
@@ -1894,13 +1943,13 @@ def create_combo_package_collage(package_name: str, package_price: float, items_
             else:
                 x0 = 14 + c * (cell_w + 8)
             y0 = center_y0 + r * (cell_h + 10)
-            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
-            img = it['image'].convert("RGB")
+            safe_draw_rounded_rectangle(draw, [x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 20, cell_h - 32), Image.Resampling.LANCZOS)
             card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 36 - img.height) // 2))
             lbl = it['name'][:20]
             font_lbl = get_font_helper(size=11, bold=True)
-            draw.text((x0 + cell_w // 2, y0 + cell_h - 12), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
+            safe_draw_text(draw, (x0 + cell_w // 2, y0 + cell_h - 12), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
     else:
         cols = 3
         cell_w = (w - 40) // 3
@@ -1910,13 +1959,13 @@ def create_combo_package_collage(package_name: str, package_price: float, items_
             c = i % cols
             x0 = 12 + c * (cell_w + 8)
             y0 = center_y0 + r * (cell_h + 10)
-            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
-            img = it['image'].convert("RGB")
+            safe_draw_rounded_rectangle(draw, [x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 16, cell_h - 28), Image.Resampling.LANCZOS)
             card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 32 - img.height) // 2))
             lbl = it['name'][:14]
             font_lbl = get_font_helper(size=10, bold=True)
-            draw.text((x0 + cell_w // 2, y0 + cell_h - 10), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
+            safe_draw_text(draw, (x0 + cell_w // 2, y0 + cell_h - 10), lbl, fill=(51, 65, 85), anchor="mm", font=font_lbl)
 
     draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
     return card
@@ -1934,16 +1983,16 @@ def create_showcase_combo_collage(package_name: str, package_price: float, items
     # Top Green Badge Header
     draw.rectangle([0, 0, w, 64], fill=(21, 128, 61))
     font_badge = get_font_helper(size=18, bold=True)
-    draw.text((20, 32), str(package_name)[:30], fill=(255, 255, 255), anchor="lm", font=font_badge)
+    safe_draw_text(draw, (20, 32), str(package_name)[:30], fill=(255, 255, 255), anchor="lm", font=font_badge)
 
     font_price = get_font_helper(size=20, bold=True)
-    draw.text((w - 20, 32), f"TK {package_price:,.2f}", fill=(254, 240, 138), anchor="rm", font=font_price)
+    safe_draw_text(draw, (w - 20, 32), f"TK {package_price:,.2f}", fill=(254, 240, 138), anchor="rm", font=font_price)
 
     # Bottom footer
     draw.rectangle([0, h - 44, w, h], fill=(241, 245, 249))
     draw.line([0, h - 44, w, h - 44], fill=(203, 213, 225), width=1)
     font_ft = get_font_helper(size=13, bold=True)
-    draw.text((w // 2, h - 22), f"🎁 Special Combo Bundle • {len(items_data)} Items Included", fill=(71, 85, 105), anchor="mm", font=font_ft)
+    safe_draw_text(draw, (w // 2, h - 22), f"Special Combo Bundle • {len(items_data)} Items Included", fill=(71, 85, 105), anchor="mm", font=font_ft)
 
     # Center area
     center_y0 = 64
@@ -1951,13 +2000,13 @@ def create_showcase_combo_collage(package_name: str, package_price: float, items
     num = len(items_data)
 
     if num == 1:
-        img = items_data[0]['image'].convert("RGB")
+        img = get_safe_item_img(items_data[0])
         img.thumbnail((w - 60, center_h - 40), Image.Resampling.LANCZOS)
         card.paste(img, ((w - img.width) // 2, center_y0 + (center_h - img.height) // 2))
     elif num == 2:
         cell_w = (w - 40) // 2
         for i, it in enumerate(items_data[:2]):
-            img = it['image'].convert("RGB")
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 20, center_h - 40), Image.Resampling.LANCZOS)
             cx = 20 + i * cell_w + (cell_w - img.width) // 2
             cy = center_y0 + (center_h - img.height) // 2
@@ -1965,15 +2014,15 @@ def create_showcase_combo_collage(package_name: str, package_price: float, items
     elif num == 3:
         top_w = (w - 40) // 2
         top_h = (center_h - 20) // 2
-        img0 = items_data[0]['image'].convert("RGB")
+        img0 = get_safe_item_img(items_data[0])
         img0.thumbnail((top_w - 20, top_h - 10), Image.Resampling.LANCZOS)
         card.paste(img0, (20 + (top_w - img0.width) // 2, center_y0 + 10 + (top_h - img0.height) // 2))
         
-        img1 = items_data[1]['image'].convert("RGB")
+        img1 = get_safe_item_img(items_data[1])
         img1.thumbnail((top_w - 20, top_h - 10), Image.Resampling.LANCZOS)
         card.paste(img1, (20 + top_w + (top_w - img1.width) // 2, center_y0 + 10 + (top_h - img1.height) // 2))
         
-        img2 = items_data[2]['image'].convert("RGB")
+        img2 = get_safe_item_img(items_data[2])
         img2.thumbnail((w - 100, top_h - 10), Image.Resampling.LANCZOS)
         card.paste(img2, ((w - img2.width) // 2, center_y0 + top_h + 10 + (top_h - img2.height) // 2))
     elif num <= 4:
@@ -1983,7 +2032,7 @@ def create_showcase_combo_collage(package_name: str, package_price: float, items
         for i, it in enumerate(items_data[:4]):
             r = i // cols
             c = i % cols
-            img = it['image'].convert("RGB")
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 20, cell_h - 20), Image.Resampling.LANCZOS)
             cx = 20 + c * cell_w + (cell_w - img.width) // 2
             cy = center_y0 + 10 + r * cell_h + (cell_h - img.height) // 2
@@ -1995,7 +2044,7 @@ def create_showcase_combo_collage(package_name: str, package_price: float, items
         for i, it in enumerate(items_data[:6]):
             r = i // cols
             c = i % cols
-            img = it['image'].convert("RGB")
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 14, cell_h - 14), Image.Resampling.LANCZOS)
             cx = 20 + c * cell_w + (cell_w - img.width) // 2
             cy = center_y0 + 10 + r * cell_h + (cell_h - img.height) // 2
@@ -2017,9 +2066,9 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
     header_h = 70
     draw.rectangle([0, 0, w, header_h], fill=(220, 38, 38))
     font_badge = get_font_helper(size=14, bold=True)
-    draw.text((w // 2, 22), "🔥 MEGA VALUE COMBO PACK 🔥", fill=(254, 240, 138), anchor="mm", font=font_badge)
+    safe_draw_text(draw, (w // 2, 22), "MEGA VALUE COMBO PACK", fill=(254, 240, 138), anchor="mm", font=font_badge)
     font_title = get_font_helper(size=17, bold=True)
-    draw.text((w // 2, 48), str(package_name)[:34], fill=(255, 255, 255), anchor="mm", font=font_title)
+    safe_draw_text(draw, (w // 2, 48), str(package_name)[:34], fill=(255, 255, 255), anchor="mm", font=font_title)
 
     # Bottom banner with Price
     bottom_h = 70
@@ -2027,12 +2076,12 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
     draw.rectangle([0, bottom_y0, w, h], fill=(15, 23, 42))
 
     font_pr_lbl = get_font_helper(size=12, bold=False)
-    draw.text((24, bottom_y0 + 22), "SPECIAL COMBO PRICE", fill=(148, 163, 184), anchor="lm", font=font_pr_lbl)
+    safe_draw_text(draw, (24, bottom_y0 + 22), "SPECIAL COMBO PRICE", fill=(148, 163, 184), anchor="lm", font=font_pr_lbl)
     font_pr = get_font_helper(size=22, bold=True)
-    draw.text((24, bottom_y0 + 48), f"TK {package_price:,.2f}", fill=(74, 222, 128), anchor="lm", font=font_pr)
+    safe_draw_text(draw, (24, bottom_y0 + 48), f"TK {package_price:,.2f}", fill=(74, 222, 128), anchor="lm", font=font_pr)
 
     font_items = get_font_helper(size=13, bold=True)
-    draw.text((w - 24, bottom_y0 + (bottom_h // 2)), f"🛒 {len(items_data)} Real Items Included", fill=(255, 255, 255), anchor="rm", font=font_items)
+    safe_draw_text(draw, (w - 24, bottom_y0 + (bottom_h // 2)), f"{len(items_data)} Real Items Included", fill=(255, 255, 255), anchor="rm", font=font_items)
 
     # Center products
     center_y0 = header_h + 10
@@ -2041,7 +2090,7 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
 
     if num == 1:
         it = items_data[0]
-        img = it['image'].convert("RGB")
+        img = get_safe_item_img(it)
         img.thumbnail((w - 60, center_h - 40), Image.Resampling.LANCZOS)
         card.paste(img, ((w - img.width) // 2, center_y0 + (center_h - img.height) // 2))
     elif num == 2:
@@ -2049,11 +2098,11 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
         for i, it in enumerate(items_data[:2]):
             x0 = 16 + i * (cell_w + 8)
             y0 = center_y0
-            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + center_h], radius=10, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
-            img = it['image'].convert("RGB")
+            safe_draw_rounded_rectangle(draw, [x0, y0, x0 + cell_w, y0 + center_h], radius=10, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 24, center_h - 44), Image.Resampling.LANCZOS)
             card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 10 + (center_h - 48 - img.height) // 2))
-            draw.text((x0 + cell_w // 2, y0 + center_h - 16), it['name'][:18], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=11, bold=True))
+            safe_draw_text(draw, (x0 + cell_w // 2, y0 + center_h - 16), it['name'][:18], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=11, bold=True))
     elif num in (3, 4):
         cols = 2
         cell_w = (w - 36) // 2
@@ -2066,11 +2115,11 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
             else:
                 x0 = 14 + c * (cell_w + 8)
             y0 = center_y0 + r * (cell_h + 10)
-            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
-            img = it['image'].convert("RGB")
+            safe_draw_rounded_rectangle(draw, [x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 20, cell_h - 32), Image.Resampling.LANCZOS)
             card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 36 - img.height) // 2))
-            draw.text((x0 + cell_w // 2, y0 + cell_h - 12), it['name'][:20], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=11, bold=True))
+            safe_draw_text(draw, (x0 + cell_w // 2, y0 + cell_h - 12), it['name'][:20], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=11, bold=True))
     else:
         cols = 3
         cell_w = (w - 40) // 3
@@ -2080,11 +2129,11 @@ def create_promotional_combo_banner(package_name: str, package_price: float, ite
             c = i % cols
             x0 = 12 + c * (cell_w + 8)
             y0 = center_y0 + r * (cell_h + 10)
-            draw.rounded_rectangle([x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
-            img = it['image'].convert("RGB")
+            safe_draw_rounded_rectangle(draw, [x0, y0, x0 + cell_w, y0 + cell_h], radius=8, fill=(248, 250, 252), outline=(226, 232, 240), width=1)
+            img = get_safe_item_img(it)
             img.thumbnail((cell_w - 16, cell_h - 28), Image.Resampling.LANCZOS)
             card.paste(img, (x0 + (cell_w - img.width) // 2, y0 + 6 + (cell_h - 32 - img.height) // 2))
-            draw.text((x0 + cell_w // 2, y0 + cell_h - 10), it['name'][:14], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=10, bold=True))
+            safe_draw_text(draw, (x0 + cell_w // 2, y0 + cell_h - 10), it['name'][:14], fill=(30, 41, 59), anchor="mm", font=get_font_helper(size=10, bold=True))
 
     draw.rectangle([0, 0, w - 1, h - 1], outline=(203, 213, 225), width=2)
     return card
