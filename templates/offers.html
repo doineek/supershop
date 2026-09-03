@@ -24,19 +24,19 @@
   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
     <div>
       <h3 style="margin:0; color:#0369a1; font-size:18px; display:flex; align-items:center; gap:8px;">
-        <span>🚚 Free Delivery Offer & Banner Promotion (ফ্রি ডেলিভারি অফার ও ব্যানার)</span>
+        <span>🚚 Free Delivery Offer & Banner Promotion</span>
       </h3>
       <p style="margin:4px 0 0 0; font-size:13px; color:#64748b;">
-        নির্দিষ্ট অংকের কেনাকাটায় (যেমন ৳১,০০০+) গ্রাহক ফ্রি ডেলিভারি পাবেন এবং অ্যাপ ও ওয়েবসাইটের টপ ব্যানারে অফারটি আকর্ষণীয়ভাবে প্রদর্শিত হবে।
+        Customers receive free delivery on qualifying order amounts, and the promotional offer is displayed on the top banner of the app and website.
       </p>
     </div>
     {% if (settings.get('free_delivery_active') or '0') == '1' %}
       <span style="background:#dcfce7; color:#15803d; font-weight:800; font-size:12px; padding:4px 12px; border-radius:20px; border:1px solid #86efac;">
-        ● ACTIVE (ফ্রি ডেলিভারি অফার চালু আছে)
+        ● ACTIVE
       </span>
     {% else %}
       <span style="background:#fee2e2; color:#b91c1c; font-weight:800; font-size:12px; padding:4px 12px; border-radius:20px; border:1px solid #fca5a5;">
-        ○ INACTIVE (অফারের সময় বন্ধ)
+        ○ INACTIVE
       </span>
     {% endif %}
   </div>
@@ -49,7 +49,7 @@
         <input type="checkbox" name="free_delivery_active" value="1" {{ 'checked' if (settings.get('free_delivery_active') or '0') == '1' }} style="width:18px; height:18px;">
         <span>Enable Free Delivery Offer</span>
       </label>
-      <div style="font-size:11.5px; color:#64748b; margin-top:4px;">চেক করলে নির্দিষ্ট পরিমাণের অর্ডারে ডেলিভারি ফি ৳০ হবে।</div>
+      <div style="font-size:11.5px; color:#64748b; margin-top:4px;">When enabled, delivery fee will be TK 0 for qualifying orders.</div>
     </div>
 
     <!-- Min Order Amount -->
@@ -76,7 +76,7 @@
         <input type="checkbox" name="free_delivery_show_banner" value="1" {{ 'checked' if (settings.get('free_delivery_show_banner') or '1') == '1' }} style="width:18px; height:18px;">
         <span>Show in Home Banner Slide</span>
       </label>
-      <div style="font-size:11.5px; color:#64748b; margin-top:4px;">App ও Web এর টপ ব্যানারে স্লাইডার হিসেবে দেখাবে।</div>
+      <div style="font-size:11.5px; color:#64748b; margin-top:4px;">Displays as an automatic carousel slide on the home banner.</div>
     </div>
 
     <!-- Custom Banner Image Selector -->
