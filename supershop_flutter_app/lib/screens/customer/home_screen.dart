@@ -1157,6 +1157,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                       ),
                                                                     ),
                                                                   ),
+                                                                  if (prod.stockQty <= 0)
+                                                                    Positioned.fill(
+                                                                      child: Container(
+                                                                        decoration: BoxDecoration(
+                                                                          color: Colors.white.withOpacity(0.75),
+                                                                          borderRadius: BorderRadius.circular(10),
+                                                                        ),
+                                                                        alignment: Alignment.center,
+                                                                        child: Container(
+                                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                                          decoration: BoxDecoration(
+                                                                            color: Colors.red.shade600,
+                                                                            borderRadius: BorderRadius.circular(6),
+                                                                          ),
+                                                                          child: const Text(
+                                                                            "Out of Stock",
+                                                                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ),
                                                                   if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)
                                                                     Positioned(
                                                                       top: 6,
@@ -1235,7 +1256,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                   borderRadius: BorderRadius.circular(6),
                                                                 ),
                                                                 child: Text(
-                                                                  prod.stockQty > 0 ? 'Stock: ${prod.stockQty}' : 'Out',
+                                                                  prod.stockQty > 0 ? 'Stock: ${prod.stockQty}' : 'Out of Stock',
                                                                   style: TextStyle(
                                                                     fontSize: 8.5,
                                                                     fontWeight: FontWeight.bold,
@@ -1899,7 +1920,28 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                           ),
                                         ),
                                       ),
-                                                if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)
+                                                                                       if (prod.stockQty <= 0)
+                                         Positioned.fill(
+                                           child: Container(
+                                             decoration: BoxDecoration(
+                                               color: Colors.white.withOpacity(0.75),
+                                               borderRadius: BorderRadius.circular(10),
+                                             ),
+                                             alignment: Alignment.center,
+                                             child: Container(
+                                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                               decoration: BoxDecoration(
+                                                 color: Colors.red.shade600,
+                                                 borderRadius: BorderRadius.circular(6),
+                                               ),
+                                               child: const Text(
+                                                 "Out of Stock",
+                                                 style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                               ),
+                                             ),
+                                           ),
+                                         ),
+                                                 if (prod.isOffer || prod.offerTitle.isNotEmpty || prod.offerType == 'bogo' || prod.offerType == 'buy_x_get_y' || savedAmount > 0)
                                 Positioned(
                                   top: 6,
                                   left: 6,
@@ -1977,7 +2019,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      prod.stockQty > 0 ? 'Stock: ${prod.stockQty}' : 'Out',
+                                      prod.stockQty > 0 ? 'Stock: ${prod.stockQty}' : 'Out of Stock',
                                       style: TextStyle(
                                         fontSize: 8.5,
                                         fontWeight: FontWeight.bold,

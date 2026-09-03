@@ -476,7 +476,7 @@ def render_storefront():
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN sub_categories s ON p.sub_category_id = s.id
         LEFT JOIN sub_sub_categories ss ON p.sub_sub_category_id = ss.id
-        WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?) AND p.stock_qty > 0
+        WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?)
         ORDER BY p.name
     """, (today_date,)).fetchall()
     

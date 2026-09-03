@@ -3440,12 +3440,38 @@
       const stock = parseInt(prod.stock_qty || 0);
       const stockBadge = document.getElementById('detailStockBadge');
       const stockTxt = document.getElementById('detailStockTxt');
+      const btnAdd = document.getElementById('modalBtnAdd');
+      const btnBuy = document.getElementById('modalBtnBuy');
+
       if (stock > 0) {
         stockBadge.className = 'stock-badge-pill stock-in';
         stockTxt.textContent = `In Stock (${stock} available)`;
+        if (btnAdd) {
+          btnAdd.disabled = false;
+          btnAdd.style.background = '';
+          btnAdd.style.color = '';
+          btnAdd.style.cursor = 'pointer';
+          btnAdd.innerHTML = '🛒 + Add to Bag';
+        }
+        if (btnBuy) {
+          btnBuy.disabled = false;
+          btnBuy.style.display = 'block';
+          btnBuy.innerHTML = '⚡ Buy Now';
+        }
       } else {
         stockBadge.className = 'stock-badge-pill stock-out';
         stockTxt.textContent = `Out of Stock`;
+        if (btnAdd) {
+          btnAdd.disabled = true;
+          btnAdd.style.background = '#e2e8f0';
+          btnAdd.style.color = '#94a3b8';
+          btnAdd.style.cursor = 'not-allowed';
+          btnAdd.textContent = 'Out of Stock';
+        }
+        if (btnBuy) {
+          btnBuy.disabled = true;
+          btnBuy.style.display = 'none';
+        }
       }
 
       // Description
