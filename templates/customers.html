@@ -35,12 +35,24 @@
     }
     results.innerHTML = list.map(c => `
       <div class="customer-suggestion" data-mobile="${c.mobile}"
-           style="padding:12px 16px; cursor:pointer; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <div style="font-weight:600;">${c.name || "Unnamed customer"}</div>
-          <div style="font-size:12.5px; color:var(--ink-soft);">${c.mobile}</div>
+           style="padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          ${c.profile_image && c.profile_image.trim() ? `
+            <img src="${c.profile_image}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; border:1px solid #cbd5e1;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
+            <div style="width:52px; height:28px; border-radius:4px; background:#f8fafc; border:1px dashed #94a3b8; display:none; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:8px; font-weight:800; text-transform:uppercase;">
+              <span>No Image</span>
+            </div>
+          ` : `
+            <div style="width:52px; height:28px; border-radius:4px; background:#f8fafc; border:1px dashed #94a3b8; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:8px; font-weight:800; text-transform:uppercase;">
+              <span>No Image</span>
+            </div>
+          `}
+          <div>
+            <div style="font-weight:600;">${c.name || "Unnamed customer"}</div>
+            <div style="font-size:12px; color:var(--ink-soft);">${c.mobile}</div>
+          </div>
         </div>
-        <div style="text-align:right; font-size:12.5px; color:var(--ink-soft);">
+        <div style="text-align:right; font-size:12px; color:var(--ink-soft);">
           ${c.visits} visit${c.visits != 1 ? "s" : ""}<br>TK ${c.total_spent.toFixed(2)}
         </div>
       </div>
@@ -148,7 +160,8 @@
   {% if customer_directory %}
   <table>
     <tr>
-      <th>Name</th>
+      <th style="text-align: center; width: 90px;">Profile Picture</th>
+      <th>Customer Name</th>
       <th>Mobile</th>
       <th>Password / Key</th>
       <th class="num">Visits / Orders</th>
@@ -159,21 +172,28 @@
       <th style="text-align: right;">Actions</th>
     </tr>
     {% for c in customer_directory %}
-    <tr style="cursor:pointer;" title="Click to view Customer Profile" onclick="if(!event.target.closest('button') && !event.target.closest('a')) openCustomerProfileModal('{{ c.customer_mobile }}')">
+    <tr style="cursor:pointer;" title="Click to view Customer Profile" onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) openCustomerProfileModal('{{ c.customer_mobile }}')">
+      <!-- Profile Picture Column with 'No Image' banner fallback -->
+      <td style="text-align: center; vertical-align: middle; padding: 8px;">
+        {% if c.profile_image and c.profile_image.strip() %}
+          <img src="{{ c.profile_image }}" alt="Photo" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1.5px solid #8b5cf6; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';">
+          <div style="width: 64px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1.5px dashed #94a3b8; display: none; flex-direction: column; align-items: center; justify-content: center; color: #64748b; font-size: 9px; font-weight: 800; text-transform: uppercase; margin: 0 auto; line-height: 1.1;">
+            <span style="font-size: 11px;">📷</span>
+            <span>No Image</span>
+          </div>
+        {% else %}
+          <div style="width: 64px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1.5px dashed #94a3b8; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b; font-size: 9px; font-weight: 800; text-transform: uppercase; margin: 0 auto; line-height: 1.1;">
+            <span style="font-size: 11px;">📷</span>
+            <span>No Image</span>
+          </div>
+        {% endif %}
+      </td>
+
       <td style="font-weight: 600;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          {% if c.profile_image and c.profile_image.strip() %}
-            <img src="{{ c.profile_image }}" alt="Avatar" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid #8b5cf6;" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';">
-            <div style="width:36px; height:36px; border-radius:50%; background:#f3e8ff; color:#6b21a8; display:none; align-items:center; justify-content:center; font-weight:700; font-size:14px; border:1px solid #cbd5e1;">
-              {{ c.customer_name[:1].upper() if c.customer_name else '👤' }}
-            </div>
-          {% else %}
-            <div style="width:36px; height:36px; border-radius:50%; background:#f3e8ff; color:#6b21a8; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; border:1px solid #cbd5e1;">
-              {{ c.customer_name[:1].upper() if c.customer_name else '👤' }}
-            </div>
-          {% endif %}
-          <span style="color:#7c3aed; text-decoration:underline;">{{ c.customer_name or '—' }}</span>
-        </div>
+        <span style="color:#7c3aed; text-decoration:underline; font-weight:700;">{{ c.customer_name or '—' }}</span>
+        {% if c.email %}
+          <div style="font-size:11px; color:#64748b; font-weight:normal; margin-top:2px;">{{ c.email }}</div>
+        {% endif %}
       </td>
       <td style="font-weight:600; color:#0f172a;">{{ c.customer_mobile }}</td>
       <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ c.password }}</code></td>
@@ -210,7 +230,7 @@
         <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
           <a class="btn btn-outline btn-small" href="{{ url_for('customers_page', q=c.customer_mobile) }}">History</a>
           {% if session.role == 'admin' %}
-            <button type="button" class="btn btn-outline btn-small" onclick="openEditCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name }}', '{{ c.email }}', '{{ c.password if c.password != '●●●●●●' and c.password != '—' else '' }}')">
+            <button type="button" class="btn btn-outline btn-small" onclick="openEditCustomerModal('{{ c.customer_mobile }}', '{{ c.customer_name|escape }}', '{{ c.email }}', '{{ c.password if c.password != '●●●●●●' and c.password != '—' else '' }}', '{{ c.profile_image|escape }}')">
               ✏️ Edit
             </button>
             {% if c.is_blocked %}
@@ -286,22 +306,27 @@
 
     <form method="POST" action="{{ url_for('create_customer_admin') }}">
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name ( ) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name *</label>
         <input type="text" name="name" required placeholder="e.g. Abul Kalam" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number (   ) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number *</label>
         <input type="text" name="phone" required maxlength="11" placeholder="e.g. 01712345678" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Email Address ( - Optional)</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Profile Picture URL / Link (Optional)</label>
+        <input type="text" name="profile_image" placeholder="https://... or /static/uploads/..." style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Email Address (Optional)</label>
         <input type="email" name="email" placeholder="e.g. customer@example.com" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:18px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password () *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password *</label>
         <input type="password" name="password" required placeholder="Minimum 4 characters" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
@@ -352,22 +377,27 @@
       <input type="hidden" name="old_phone" id="editCustomerOldPhone">
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name ( ) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name *</label>
         <input type="text" name="name" id="editCustomerName" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number (  ) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number *</label>
         <input type="text" name="phone" id="editCustomerPhone" required maxlength="11" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Email Address ( - Optional)</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Profile Picture URL / Link (Optional)</label>
+        <input type="text" name="profile_image" id="editCustomerProfileImage" placeholder="https://... or /static/uploads/..." style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Email Address (Optional)</label>
         <input type="email" name="email" id="editCustomerEmail" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:18px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password (     )</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password (Leave blank to keep unchanged)</label>
         <input type="text" name="password" id="editCustomerPassword" placeholder="Enter new password" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
@@ -387,9 +417,12 @@
     <button onclick="closeCustomerProfileModal()" style="position:absolute; top:16px; right:16px; background:#f1f5f9; border:none; width:32px; height:32px; border-radius:50%; font-weight:bold; cursor:pointer;">✕</button>
     
     <div style="text-align:center; margin-bottom:20px;">
-      <div id="cpAvatarContainer" style="width:80px; height:80px; margin:0 auto 12px auto; border-radius:50%; background:#f3e8ff; display:flex; align-items:center; justify-content:center; border:3px solid #7c3aed; overflow:hidden;">
-        <span id="cpAvatarText" style="font-size:36px; color:#7c3aed; font-weight:bold;">👤</span>
-        <img id="cpAvatarImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
+      <div id="cpAvatarContainer" style="width:110px; height:110px; margin:0 auto 12px auto; border-radius:12px; background:#f8fafc; display:flex; align-items:center; justify-content:center; border:2px solid #e2e8f0; overflow:hidden; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <img id="cpAvatarImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;" onerror="this.style.display='none'; document.getElementById('cpNoImageBanner').style.display='flex';">
+        <div id="cpNoImageBanner" style="display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; width:100%; height:100%; background:#f1f5f9; border:2px dashed #94a3b8; border-radius:10px;">
+          <span style="font-size:32px; line-height:1;">📷</span>
+          <span style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-top:6px;">No Image</span>
+        </div>
       </div>
       <h2 id="cpName" style="margin:0; font-size:20px; color:#0f172a; font-weight:800;">Customer Profile</h2>
       <span id="cpStatusBadge" style="margin-top:6px; display:inline-block; padding:4px 12px; border-radius:12px; font-weight:bold; font-size:12px; background:#dcfce7; color:#15803d;">Active</span>
@@ -438,7 +471,7 @@ async function openCustomerProfileModal(phone) {
   document.getElementById('cpTotalOrders').innerText = '...';
   document.getElementById('cpTotalSpent').innerText = '...';
   document.getElementById('cpAvatarImg').style.display = 'none';
-  document.getElementById('cpAvatarText').style.display = 'inline';
+  document.getElementById('cpNoImageBanner').style.display = 'flex';
 
   try {
     const res = await fetch('/customers/api/profile?phone=' + encodeURIComponent(phone));
@@ -468,11 +501,14 @@ async function openCustomerProfileModal(phone) {
         statusBadge.style.color = '#15803d';
       }
 
-      if (data.profile_image) {
+      if (data.profile_image && data.profile_image.trim()) {
         const img = document.getElementById('cpAvatarImg');
         img.src = data.profile_image;
         img.style.display = 'block';
-        document.getElementById('cpAvatarText').style.display = 'none';
+        document.getElementById('cpNoImageBanner').style.display = 'none';
+      } else {
+        document.getElementById('cpAvatarImg').style.display = 'none';
+        document.getElementById('cpNoImageBanner').style.display = 'flex';
       }
 
       document.getElementById('cpHistoryBtn').href = "{{ url_for('customers_page') }}?q=" + encodeURIComponent(phone);
@@ -508,10 +544,11 @@ function openDeleteCustomerModal(phone, name) {
 function closeDeleteCustomerModal() {
   document.getElementById('deleteCustomerModal').style.display = 'none';
 }
-function openEditCustomerModal(oldPhone, name, email, password) {
+function openEditCustomerModal(oldPhone, name, email, password, profileImage) {
   document.getElementById('editCustomerOldPhone').value = oldPhone;
   document.getElementById('editCustomerName').value = name || '';
   document.getElementById('editCustomerPhone').value = oldPhone || '';
+  document.getElementById('editCustomerProfileImage').value = profileImage || '';
   document.getElementById('editCustomerEmail').value = email || '';
   document.getElementById('editCustomerPassword').value = password || '';
   document.getElementById('editCustomerModal').style.display = 'flex';

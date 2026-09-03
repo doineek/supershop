@@ -3286,9 +3286,11 @@ def customers_api_search():
         visits = 0
         total_spent = 0.0
 
+        profile_image = ""
         u_match = [u for u in reg_users if u["phone"] == m]
         if u_match:
             name = u_match[0]["name"]
+            profile_image = u_match[0]["profile_image"] if "profile_image" in u_match[0].keys() else ""
         
         o_match = [o for o in online_cust if o["mobile"] == m]
         if o_match:
@@ -3305,6 +3307,7 @@ def customers_api_search():
         results.append({
             "name": name or ("Customer " + m),
             "mobile": m,
+            "profile_image": profile_image,
             "visits": visits,
             "total_spent": round(total_spent, 2)
         })
@@ -3651,6 +3654,7 @@ def create_customer_admin():
     phone = normalize_phone(request.form.get("phone", ""))
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "").strip()
+    profile_image = request.form.get("profile_image", "").strip()
 
     if not name or not phone or not password:
         flash("Name, Mobile Number, and Password are required.", "error")
@@ -3676,8 +3680,8 @@ def create_customer_admin():
         return redirect(url_for("customers_page"))
 
     conn.execute(
-        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
-        (phone, name, email, generate_password_hash(password), password, datetime.now().isoformat())
+        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, profile_image, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+        (phone, name, email, generate_password_hash(password), password, profile_image, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
@@ -3697,6 +3701,7 @@ def edit_customer_admin():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "").strip()
+    profile_image = request.form.get("profile_image", "").strip()
 
     if not old_phone or not name or not new_phone:
         flash("Customer Name and Mobile Number are required.", "error")
@@ -3713,21 +3718,25 @@ def edit_customer_admin():
         pw_hash = generate_password_hash(password) if password else generate_password_hash("123456")
         plain_pw = password if password else "123456"
         conn.execute(
-            "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
-            (new_phone, name, email, pw_hash, plain_pw, datetime.now().isoformat())
+            "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, profile_image, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            (new_phone, name, email, pw_hash, plain_pw, profile_image, datetime.now().isoformat())
         )
     else:
+        # If profile_image not sent in form, preserve existing
+        if "profile_image" not in request.form:
+            profile_image = cust["profile_image"] if "profile_image" in cust.keys() else ""
+
         if password:
             pw_hash = generate_password_hash(password)
             plain_pw = password
             conn.execute(
-                "UPDATE customer_users SET phone = ?, name = ?, email = ?, password_hash = ?, plain_password = ? WHERE phone = ?",
-                (new_phone, name, email, pw_hash, plain_pw, old_phone)
+                "UPDATE customer_users SET phone = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, profile_image = ? WHERE phone = ?",
+                (new_phone, name, email, pw_hash, plain_pw, profile_image, old_phone)
             )
         else:
             conn.execute(
-                "UPDATE customer_users SET phone = ?, name = ?, email = ? WHERE phone = ?",
-                (new_phone, name, email, old_phone)
+                "UPDATE customer_users SET phone = ?, name = ?, email = ?, profile_image = ? WHERE phone = ?",
+                (new_phone, name, email, profile_image, old_phone)
             )
 
     if old_phone != new_phone:
