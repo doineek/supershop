@@ -2101,6 +2101,7 @@ def api_ai_generate_combo_image():
     raw_images = list(data.get("item_images", []))
     product_ids = data.get("product_ids", [])
 
+    debug_log = []
     # 1. Fetch products info & images directly from SQLite DB (most complete source)
     resolved_products = []  # list of {'id': ..., 'name': ..., 'image_url': ...}
     valid_pids = []
@@ -2111,6 +2112,8 @@ def api_ai_generate_combo_image():
             except (ValueError, TypeError):
                 pass
 
+    debug_log.append(f"valid_pids: {valid_pids}")
+
     if valid_pids:
         try:
             conn = get_connection()
@@ -2120,6 +2123,7 @@ def api_ai_generate_combo_image():
                 valid_pids
             ).fetchall()
             conn.close()
+            debug_log.append(f"p_rows count: {len(p_rows)}")
             # Preserve the ordering of product_ids requested
             row_map = {int(r["id"]): r for r in p_rows}
             for pid in valid_pids:
@@ -2131,6 +2135,7 @@ def api_ai_generate_combo_image():
                         "image_url": r["image_url"] or ""
                     })
         except Exception as e:
+            debug_log.append(f"p_rows error: {str(e)}")
             print("Error fetching product images for combo:", e)
 
     # If product_ids query returned nothing or had missing items, lookup by items_list names
@@ -2158,6 +2163,7 @@ def api_ai_generate_combo_image():
                         })
             conn.close()
         except Exception as e:
+            debug_log.append(f"name match error: {str(e)}")
             print("Error matching combo product names from DB:", e)
 
     # Final fallback if still empty
@@ -2170,12 +2176,19 @@ def api_ai_generate_combo_image():
                 "image_url": raw_img or ""
             })
 
+    debug_log.append(f"resolved_products count: {len(resolved_products)}")
+
     # 2. Robustly Load Real PIL Images from actual product photos
     items_data = []  # list of {'name': str, 'image': PIL.Image, 'qty': 1}
-    for p_info in resolved_products:
+    for idx, p_info in enumerate(resolved_products):
         raw_img = p_info.get("image_url") or ""
         name = p_info.get("name") or "Product"
         im = load_pil_image_safe(raw_img, name)
+        # Fallback to client raw_images if local load failed
+        if im is None and idx < len(raw_images) and raw_images[idx]:
+            im = load_pil_image_safe(raw_images[idx], name)
+
+        debug_log.append(f"item {name} im loaded: {im is not None} (raw_img: {raw_img[:35]})")
 
         # If product has no image or failed to load, create a clean placeholder card
         if im is None:
@@ -2191,6 +2204,8 @@ def api_ai_generate_combo_image():
             "qty": 1
         })
 
+    debug_log.append(f"items_data count: {len(items_data)}")
+
     generated_images = []
 
     # Option 1: 🎁 Smart Multi-Item Grid Collage (from actual product photos)
@@ -2204,8 +2219,12 @@ def api_ai_generate_combo_image():
                 "url": f"data:image/jpeg;base64,{b64_str}",
                 "label": "🎁 Smart Product Grid Collage (সকল আসল পণ্যের গ্রিড কোলাজ)"
             })
+            debug_log.append("grid_card success")
         except Exception as e:
-            print("Error rendering grid collage card:", e)
+            import traceback
+            tb = traceback.format_exc()
+            debug_log.append(f"grid_card exception: {str(e)} -> {tb}")
+            print("Error rendering grid collage card:", e, tb)
 
     # Option 2: 🛍️ Clean Showcase Collage (from actual product photos)
     if items_data:
@@ -2218,8 +2237,12 @@ def api_ai_generate_combo_image():
                 "url": f"data:image/jpeg;base64,{b64_str2}",
                 "label": "🛍️ Clean Product Showcase (হোয়াইট ব্যাকগ্রাউন্ড শোকেস)"
             })
+            debug_log.append("showcase_card success")
         except Exception as e:
-            print("Error rendering showcase collage card:", e)
+            import traceback
+            tb = traceback.format_exc()
+            debug_log.append(f"showcase_card exception: {str(e)} -> {tb}")
+            print("Error rendering showcase collage card:", e, tb)
 
     # Option 3: 🔥 Mega Value Commercial Promo Banner (from actual product photos)
     if items_data:
@@ -2232,8 +2255,12 @@ def api_ai_generate_combo_image():
                 "url": f"data:image/jpeg;base64,{b64_str3}",
                 "label": "🔥 Mega Value Offer Banner (সুপার অফার ব্যানার কোলাজ)"
             })
+            debug_log.append("banner_card success")
         except Exception as e:
-            print("Error rendering promotional banner card:", e)
+            import traceback
+            tb = traceback.format_exc()
+            debug_log.append(f"banner_card exception: {str(e)} -> {tb}")
+            print("Error rendering promotional banner card:", e, tb)
 
     # Option 4: ✨ 3D AI Studio Hamper (Pollinations AI) - optional AI visual
     items_str = ", ".join([it["name"] for it in items_data[:5]]) if items_data else "assorted supermarket daily groceries"
@@ -2265,7 +2292,8 @@ def api_ai_generate_combo_image():
     return jsonify({
         "success": True,
         "images": generated_images,
-        "prompt": full_prompt
+        "prompt": full_prompt,
+        "debug_log": debug_log
     })
 
 
