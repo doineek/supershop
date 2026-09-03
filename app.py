@@ -732,8 +732,14 @@ def api_customer_update_profile():
     conn = get_connection()
     cust = conn.execute("SELECT * FROM customer_users WHERE phone = ? OR phone = ?", (phone, raw_phone)).fetchone()
     if not cust:
-        conn.close()
-        return jsonify({"success": False, "message": "Customer account not found."}), 404
+        # Auto-create registered customer user if not found yet
+        pw_hash = generate_password_hash("123456")
+        conn.execute(
+            "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, '123456', 1, ?)",
+            (phone, name or f"Customer {phone[-4:]}", email, pw_hash, datetime.now().isoformat())
+        )
+        conn.commit()
+        cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
 
     db_phone = cust["phone"]
     updates = []
@@ -750,7 +756,7 @@ def api_customer_update_profile():
         updates.append("avatar_url = ?")
         params.append(saved_img_url)
         updates.append("avatar_base64 = ?")
-        params.append(saved_img_url)
+        params.append(incoming_img if incoming_img.startswith("data:image") else saved_img_url)
     if address:
         updates.append("address = ?")
         params.append(address)
@@ -3610,10 +3616,20 @@ def customers_page():
             plain_pass = "123456"
         email_addr = reg_info.get("email", "") if reg_info else ""
 
+        prof_p = (reg_info.get("profile_image") or reg_info.get("avatar_url") or "").strip()
+        b64_p = (reg_info.get("avatar_base64") or "").strip()
+        final_cust_img = ""
+        if prof_p:
+            final_cust_img = prof_p
+        elif b64_p:
+            final_cust_img = b64_p
+        elif reg_info.get("avatar"):
+            final_cust_img = reg_info.get("avatar").strip()
+
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
-            "profile_image": (reg_info.get("profile_image") or reg_info.get("avatar_url") or reg_info.get("avatar_base64") or reg_info.get("avatar") or reg_info.get("image_url") or "").strip(),
+            "profile_image": final_cust_img,
             "email": email_addr,
             "password": plain_pass if plain_pass else "—",
             "visit_count": visits,
