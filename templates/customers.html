@@ -102,12 +102,13 @@
     <!-- Top Customer Profile Summary with Photo -->
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid #e2e8f0;">
       <div style="display:flex; align-items:center; gap:14px;">
-        <div style="width:60px; height:60px; border-radius:12px; border:2px solid #8b5cf6; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#f8fafc; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+        <div style="width:60px; height:60px; border-radius:12px; border:2px solid #8b5cf6; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#f8fafc; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.08); position:relative; {% if searched_cust and searched_cust.profile_image and searched_cust.profile_image.strip() %}cursor:pointer;{% endif %}" {% if searched_cust and searched_cust.profile_image and searched_cust.profile_image.strip() %}onclick="openPhotoZoomModal('{{ searched_cust.profile_image|escape }}', '{{ searched_cust.customer_mobile|escape }}', '{{ searched_cust.customer_name|escape }}')" title="Click to Zoom & Download Photo"{% endif %}>
           {% if searched_cust and searched_cust.profile_image and searched_cust.profile_image.strip() %}
             <img src="{{ searched_cust.profile_image }}" alt="Customer Photo" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <div style="display:none; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:9px; font-weight:800; text-transform:uppercase; width:100%; height:100%;">
               <span>📷 No Image</span>
             </div>
+            <span style="position:absolute; bottom:2px; right:2px; background:rgba(15,23,42,0.75); color:#fff; border-radius:4px; font-size:9px; padding:1px 3px; line-height:1; pointer-events:none;">🔍</span>
           {% else %}
             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:9px; font-weight:800; text-transform:uppercase; width:100%; height:100%;">
               <span>📷 No Image</span>
@@ -133,6 +134,11 @@
         </div>
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        {% if searched_cust and searched_cust.profile_image and searched_cust.profile_image.strip() %}
+        <button type="button" class="btn btn-small" style="background:#0284c7; color:#fff; border:none; padding:7px 12px; border-radius:6px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" onclick="openPhotoZoomModal('{{ searched_cust.profile_image|escape }}', '{{ searched_cust.customer_mobile|escape }}', '{{ searched_cust.customer_name|escape }}')">
+          🔍 Zoom & Download
+        </button>
+        {% endif %}
         <button type="button" class="btn btn-small" style="background:#4f46e5; color:#fff; border:none; padding:7px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openCustomerProfileModal('{{ searched_cust.customer_mobile if searched_cust else search }}')">
           👤 View Profile
         </button>
@@ -215,10 +221,13 @@
     </tr>
     {% for c in customer_directory %}
     <tr style="cursor:pointer;" title="Click to view Customer Profile" onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) openCustomerProfileModal('{{ c.customer_mobile }}')">
-      <!-- Profile Picture Column with 'No Image' banner fallback -->
+      <!-- Profile Picture Column with 'No Image' banner fallback and Zoom / Download -->
       <td style="text-align: center; vertical-align: middle; padding: 8px;">
         {% if c.profile_image and c.profile_image.strip() %}
-          <img src="{{ c.profile_image }}" alt="Photo" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1.5px solid #8b5cf6; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';">
+          <div style="position: relative; display: inline-block; cursor: pointer;" title="Click to Zoom & Download Photo" onclick="event.stopPropagation(); openPhotoZoomModal('{{ c.profile_image|escape }}', '{{ c.customer_mobile|escape }}', '{{ c.customer_name|escape }}')">
+            <img src="{{ c.profile_image }}" alt="Photo" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1.5px solid #8b5cf6; display: block; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: transform 0.15s ease;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'" onerror="this.parentElement.style.display='none'; if(this.parentElement.nextElementSibling) this.parentElement.nextElementSibling.style.display='inline-flex';">
+            <span style="position: absolute; bottom: 2px; right: 2px; background: rgba(15,23,42,0.75); color: #fff; border-radius: 4px; font-size: 9px; padding: 1px 3px; line-height: 1; pointer-events: none;">🔍</span>
+          </div>
           <div style="width: 64px; height: 32px; border-radius: 6px; background: #f8fafc; border: 1.5px dashed #94a3b8; display: none; flex-direction: column; align-items: center; justify-content: center; color: #64748b; font-size: 9px; font-weight: 800; text-transform: uppercase; margin: 0 auto; line-height: 1.1;">
             <span style="font-size: 11px;">📷</span>
             <span>No Image</span>
@@ -462,13 +471,21 @@
   <div style="background:#fff; width:90%; max-width:500px; padding:24px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); position:relative;">
     <button onclick="closeCustomerProfileModal()" style="position:absolute; top:16px; right:16px; background:#f1f5f9; border:none; width:32px; height:32px; border-radius:50%; font-weight:bold; cursor:pointer;">✕</button>
     
-    <div style="text-align:center; margin-bottom:20px;">
-      <div id="cpAvatarContainer" style="width:110px; height:110px; margin:0 auto 12px auto; border-radius:12px; background:#f8fafc; display:flex; align-items:center; justify-content:center; border:2px solid #e2e8f0; overflow:hidden; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-        <img id="cpAvatarImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;" onerror="this.style.display='none'; document.getElementById('cpNoImageBanner').style.display='flex';">
+    <div style="text-align:center; margin-bottom:16px;">
+      <div id="cpAvatarContainer" style="width:110px; height:110px; margin:0 auto 8px auto; border-radius:12px; background:#f8fafc; display:flex; align-items:center; justify-content:center; border:2px solid #e2e8f0; overflow:hidden; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.08); cursor:default;" title="Customer Photo">
+        <img id="cpAvatarImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;" onerror="this.style.display='none'; document.getElementById('cpNoImageBanner').style.display='flex'; document.getElementById('cpAvatarActions').style.display='none';">
         <div id="cpNoImageBanner" style="display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; width:100%; height:100%; background:#f1f5f9; border:2px dashed #94a3b8; border-radius:10px;">
           <span style="font-size:32px; line-height:1;">📷</span>
           <span style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-top:6px;">No Image</span>
         </div>
+      </div>
+      <div id="cpAvatarActions" style="display:none; justify-content:center; gap:8px; margin-bottom:8px;">
+        <button type="button" onclick="zoomCurrentCustomerPhoto()" class="btn btn-small" style="background:#4f46e5; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+          🔍 Zoom
+        </button>
+        <button type="button" onclick="downloadCurrentCustomerPhoto()" class="btn btn-small" style="background:#059669; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+          📥 Download
+        </button>
       </div>
       <h2 id="cpName" style="margin:0; font-size:20px; color:#0f172a; font-weight:800;">Customer Profile</h2>
       <span id="cpStatusBadge" style="margin-top:6px; display:inline-block; padding:4px 12px; border-radius:12px; font-weight:bold; font-size:12px; background:#dcfce7; color:#15803d;">Active</span>
@@ -552,9 +569,17 @@ async function openCustomerProfileModal(phone) {
         img.src = data.profile_image;
         img.style.display = 'block';
         document.getElementById('cpNoImageBanner').style.display = 'none';
+        document.getElementById('cpAvatarActions').style.display = 'flex';
+        document.getElementById('cpAvatarContainer').style.cursor = 'pointer';
+        document.getElementById('cpAvatarContainer').onclick = zoomCurrentCustomerPhoto;
+        document.getElementById('cpAvatarContainer').title = 'Click to Zoom & Download Photo';
       } else {
         document.getElementById('cpAvatarImg').style.display = 'none';
         document.getElementById('cpNoImageBanner').style.display = 'flex';
+        document.getElementById('cpAvatarActions').style.display = 'none';
+        document.getElementById('cpAvatarContainer').style.cursor = 'default';
+        document.getElementById('cpAvatarContainer').onclick = null;
+        document.getElementById('cpAvatarContainer').title = 'Customer Photo';
       }
 
       document.getElementById('cpHistoryBtn').href = "{{ url_for('customers_page') }}?q=" + encodeURIComponent(phone);
@@ -602,5 +627,170 @@ function openEditCustomerModal(oldPhone, name, email, password, profileImage) {
 function closeEditCustomerModal() {
   document.getElementById('editCustomerModal').style.display = 'none';
 }
+
+// --- Customer Profile Picture Zoom & Download Functionality ---
+let currentZoomScale = 1;
+let currentZoomImgUrl = '';
+let currentZoomPhone = '';
+let currentZoomName = '';
+
+function openPhotoZoomModal(imgUrl, phone, name) {
+  if (!imgUrl || !imgUrl.trim()) return;
+  currentZoomImgUrl = imgUrl;
+  currentZoomPhone = phone || '';
+  currentZoomName = name || 'Customer';
+  currentZoomScale = 1;
+
+  const modal = document.getElementById('photoZoomModal');
+  const img = document.getElementById('pzmImage');
+  const title = document.getElementById('pzmTitle');
+  const subtitle = document.getElementById('pzmSubtitle');
+  const zoomLevel = document.getElementById('pzmZoomLevel');
+
+  title.innerText = (currentZoomName ? currentZoomName + ' - ' : '') + 'Profile Picture';
+  subtitle.innerText = '📱 Mobile: ' + (currentZoomPhone || '—');
+  img.src = imgUrl;
+  img.style.transform = 'scale(1)';
+  zoomLevel.innerText = '100%';
+
+  modal.style.display = 'flex';
+}
+
+function closePhotoZoomModal() {
+  const modal = document.getElementById('photoZoomModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function changeZoom(delta) {
+  currentZoomScale = Math.max(0.5, Math.min(4.0, Math.round((currentZoomScale + delta) * 100) / 100));
+  const img = document.getElementById('pzmImage');
+  if (img) img.style.transform = `scale(${currentZoomScale})`;
+  const lvl = document.getElementById('pzmZoomLevel');
+  if (lvl) lvl.innerText = Math.round(currentZoomScale * 100) + '%';
+}
+
+function resetZoom() {
+  currentZoomScale = 1;
+  const img = document.getElementById('pzmImage');
+  if (img) img.style.transform = 'scale(1)';
+  const lvl = document.getElementById('pzmZoomLevel');
+  if (lvl) lvl.innerText = '100%';
+}
+
+function handleZoomWheel(e) {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 0.2 : -0.2;
+  changeZoom(delta);
+}
+
+function downloadPhotoFile(url, phone, name) {
+  if (!url) return;
+  const safePhone = (phone || 'customer').replace(/[^a-zA-Z0-9]/g, '');
+  const filename = `customer_${safePhone}_profile.jpg`;
+
+  if (url.startsWith('data:image')) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else {
+    fetch(url)
+      .then(res => res.blob())
+      .then(blob => {
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      })
+      .catch(() => {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+  }
+}
+
+function downloadZoomedPhoto() {
+  downloadPhotoFile(currentZoomImgUrl, currentZoomPhone, currentZoomName);
+}
+
+function zoomCurrentCustomerPhoto() {
+  const img = document.getElementById('cpAvatarImg');
+  const phone = document.getElementById('cpPhone').innerText;
+  const name = document.getElementById('cpName').innerText;
+  if (img && img.src && img.style.display !== 'none') {
+    openPhotoZoomModal(img.src, phone, name);
+  }
+}
+
+function downloadCurrentCustomerPhoto() {
+  const img = document.getElementById('cpAvatarImg');
+  const phone = document.getElementById('cpPhone').innerText;
+  const name = document.getElementById('cpName').innerText;
+  if (img && img.src && img.style.display !== 'none') {
+    downloadPhotoFile(img.src, phone, name);
+  }
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closePhotoZoomModal();
+  }
+});
 </script>
+
+<!-- Customer Profile Picture Zoom & Download Lightbox Modal -->
+<div id="photoZoomModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.85); backdrop-filter:blur(4px); z-index:2000; align-items:center; justify-content:center; flex-direction:column; padding:20px;" onclick="if(event.target===this) closePhotoZoomModal()">
+  <div style="background:#1e293b; color:#fff; width:95%; max-width:680px; border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.5); border:1px solid #334155; overflow:hidden; display:flex; flex-direction:column;">
+    
+    <!-- Header with Customer Info & Action Buttons -->
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid #334155; background:#0f172a;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:22px;">👤</span>
+        <div>
+          <h3 id="pzmTitle" style="margin:0; font-size:16px; font-weight:700; color:#f8fafc;">Customer Profile Picture</h3>
+          <div id="pzmSubtitle" style="font-size:12px; color:#94a3b8; margin-top:2px;">📱 Mobile: —</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" onclick="downloadZoomedPhoto()" title="Download Profile Picture" style="background:#10b981; color:#fff; border:none; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
+          📥 Download
+        </button>
+        <button type="button" onclick="closePhotoZoomModal()" title="Close (Esc)" style="background:#334155; color:#f8fafc; border:none; width:34px; height:34px; border-radius:8px; font-weight:bold; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+      </div>
+    </div>
+
+    <!-- Image Viewer Container with Zoom & Drag Pan Support -->
+    <div id="pzmImageWrapper" style="position:relative; width:100%; height:440px; background:#020617; display:flex; align-items:center; justify-content:center; overflow:hidden; user-select:none; cursor:grab;" onwheel="handleZoomWheel(event)">
+      <img id="pzmImage" src="" alt="Zoomed Customer Photo" style="max-width:90%; max-height:90%; object-fit:contain; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.5); transition:transform 0.15s ease-out; transform:scale(1);">
+    </div>
+
+    <!-- Toolbar: Zoom In, Zoom Out, Reset, Download -->
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#0f172a; border-top:1px solid #334155; font-size:13px; flex-wrap:wrap; gap:10px;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" onclick="changeZoom(0.25)" title="Zoom In (+)" style="background:#334155; color:#fff; border:none; width:34px; height:34px; border-radius:6px; font-weight:bold; font-size:18px; cursor:pointer;">+</button>
+        <button type="button" onclick="changeZoom(-0.25)" title="Zoom Out (-)" style="background:#334155; color:#fff; border:none; width:34px; height:34px; border-radius:6px; font-weight:bold; font-size:18px; cursor:pointer;">−</button>
+        <button type="button" onclick="resetZoom()" title="Reset Zoom" style="background:#334155; color:#cbd5e1; border:none; padding:7px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">↺ Reset</button>
+        <span id="pzmZoomLevel" style="color:#94a3b8; font-size:12px; font-family:monospace; margin-left:6px;">100%</span>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <span style="color:#64748b; font-size:11px;">Mouse wheel to zoom</span>
+        <button type="button" onclick="downloadZoomedPhoto()" style="background:#10b981; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:6px;">
+          📥 Download Image
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
 {% endblock %}
