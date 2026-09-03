@@ -62,31 +62,100 @@ def process_uploaded_image_file(file_path, max_dim=800, quality=75):
         return ""
 
 
+def clean_and_normalize_image_url(raw_url):
+    """
+    Cleans and normalizes image URLs, extracting direct image links from
+    Google Images search results, Google redirects, and Google Drive links.
+    """
+    if not raw_url:
+        return ""
+    url = str(raw_url).strip()
+    if not url:
+        return ""
+
+    # If comma-separated, process each URL
+    if "," in url and not url.startswith("data:image/"):
+        parts = [p.strip() for p in url.split(",") if p.strip()]
+        return ", ".join(clean_and_normalize_image_url(p) for p in parts)
+
+    if url.startswith("data:image/"):
+        return url
+
+    # Google Images Search result (https://www.google.com/imgres?imgurl=... or google.com.bd/imgres?imgurl=...)
+    if "google." in url and "/imgres" in url:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "imgurl" in qs and qs["imgurl"]:
+                return urllib.parse.unquote(qs["imgurl"][0])
+        except Exception:
+            pass
+
+    # Google redirection link (https://www.google.com/url?sa=i&url=... or q=...)
+    if "google." in url and "/url" in url:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "url" in qs and qs["url"]:
+                return urllib.parse.unquote(qs["url"][0])
+            if "q" in qs and qs["q"]:
+                return urllib.parse.unquote(qs["q"][0])
+        except Exception:
+            pass
+
+    # Google Drive share link (https://drive.google.com/file/d/FILE_ID/view?usp=sharing)
+    if "drive.google.com/file/d/" in url:
+        try:
+            file_id = url.split("/file/d/")[1].split("/")[0]
+            if file_id:
+                return f"https://drive.google.com/uc?export=view&id={file_id}"
+        except Exception:
+            pass
+
+    return url
+
+
 def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80):
     """
     If the given string is an HTTP/HTTPS URL (e.g. from Google Images or any web source),
-    downloads it immediately on the server, optimizes it with PIL, and converts it into
-    a persistent Base64 Data URI.
+    downloads it immediately on the server, optimizes it with PIL, saves a persistent local copy
+    in static/uploads/products/, and converts it into a persistent Base64 Data URI.
     If it's already a data:image/... or local path, returns it as-is.
-    If downloading fails, returns the original URL.
+    If downloading fails, returns the cleaned direct URL.
     This guarantees that even if the image is deleted or blocked from the original source host (Google),
     it is permanently cached on the server, in Firebase, in Web, and in App!
     """
     if not url_or_data or not isinstance(url_or_data, str):
         return url_or_data
     url = url_or_data.strip()
+    if not url:
+        return url
+
+    # If comma-separated, process each image URL
+    if "," in url and not url.startswith("data:image/"):
+        parts = [p.strip() for p in url.split(",") if p.strip()]
+        cached_parts = [download_and_cache_external_image(p, max_dim, quality) for p in parts]
+        return ", ".join(cached_parts)
+
+    # If already a data URI or local server path, return as-is
+    if url.startswith("data:image/") or url.startswith("/static/"):
+        return url
+
     if not (url.startswith("http://") or url.startswith("https://")):
         return url
 
     if "/api/proxy_image" in url:
         return url
 
+    # First clean and unwrap any Google redirect or search URL
+    url = clean_and_normalize_image_url(url)
+
     try:
         from PIL import Image
-        import io, base64, urllib.request
+        import io, base64, urllib.request, random, time
 
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
             'Referer': 'https://www.google.com/'
         }
@@ -99,6 +168,15 @@ def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80):
             with Image.open(io.BytesIO(data)) as im:
                 im = im.convert("RGB")
                 im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+                # Also save a permanent local file on the server
+                try:
+                    local_filename = f"cached_{int(time.time())}_{random.randint(1000,9999)}.jpg"
+                    local_path = os.path.join(app.config['UPLOAD_FOLDER'], local_filename)
+                    im.save(local_path, format="JPEG", quality=quality, optimize=True)
+                except Exception as save_err:
+                    print(f"[image_caching] Local file save warning: {save_err}")
+
                 out = io.BytesIO()
                 im.save(out, format="JPEG", quality=quality, optimize=True)
                 encoded = base64.b64encode(out.getvalue()).decode("utf-8")
@@ -382,59 +460,6 @@ def calculate_package_regular_total(items_list):
         qty = int(it.get("quantity") or 1)
         total += base * qty
     return total
-
-
-def clean_and_normalize_image_url(raw_url):
-    """
-    Cleans and normalizes image URLs, extracting direct image links from
-    Google Images search results, Google redirects, and Google Drive links.
-    """
-    if not raw_url:
-        return ""
-    url = str(raw_url).strip()
-    if not url:
-        return ""
-
-    # If comma-separated, process each URL
-    if "," in url and not url.startswith("data:image/"):
-        parts = [p.strip() for p in url.split(",") if p.strip()]
-        return ", ".join(clean_and_normalize_image_url(p) for p in parts)
-
-    if url.startswith("data:image/"):
-        return url
-
-    # Google Images Search result (https://www.google.com/imgres?imgurl=... or google.com.bd/imgres?imgurl=...)
-    if "google." in url and "/imgres" in url:
-        try:
-            parsed = urllib.parse.urlparse(url)
-            qs = urllib.parse.parse_qs(parsed.query)
-            if "imgurl" in qs and qs["imgurl"]:
-                return urllib.parse.unquote(qs["imgurl"][0])
-        except Exception:
-            pass
-
-    # Google redirection link (https://www.google.com/url?sa=i&url=... or q=...)
-    if "google." in url and "/url" in url:
-        try:
-            parsed = urllib.parse.urlparse(url)
-            qs = urllib.parse.parse_qs(parsed.query)
-            if "url" in qs and qs["url"]:
-                return urllib.parse.unquote(qs["url"][0])
-            if "q" in qs and qs["q"]:
-                return urllib.parse.unquote(qs["q"][0])
-        except Exception:
-            pass
-
-    # Google Drive share link (https://drive.google.com/file/d/FILE_ID/view?usp=sharing)
-    if "drive.google.com/file/d/" in url:
-        try:
-            file_id = url.split("/file/d/")[1].split("/")[0]
-            if file_id:
-                return f"https://drive.google.com/uc?export=view&id={file_id}"
-        except Exception:
-            pass
-
-    return url
 
 
 def render_storefront():
@@ -744,7 +769,7 @@ def new_product():
         low_stock_threshold = int(request.form["low_stock_threshold"] or 5)
         sl_number = int(request.form.get("sl_number") or 1)
         description = request.form.get("description", "").strip()
-        image_url = clean_and_normalize_image_url(request.form.get("image_url", ""))
+        image_url = download_and_cache_external_image(request.form.get("image_url", ""))
         
         # Auto-insert brand into brands table if new
         if brand:
@@ -845,7 +870,7 @@ def edit_product(product_id):
         brand = request.form.get("brand", "").strip()
         unit = request.form.get("unit", "").strip()
         description = request.form.get("description", "").strip()
-        image_url = clean_and_normalize_image_url(request.form.get("image_url", ""))
+        image_url = download_and_cache_external_image(request.form.get("image_url", ""))
         
         # Auto-insert brand into brands table if new
         if brand:
