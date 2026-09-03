@@ -15,6 +15,7 @@ import os
 import io
 import re
 import sys
+import time
 import sqlite3
 import base64
 import urllib.request
@@ -671,22 +672,57 @@ def render_storefront():
 @app.route("/api/customer/update-profile", methods=["POST"])
 def api_customer_update_profile():
     data = request.json or {}
-    phone = data.get("phone", "").strip()
+    raw_phone = data.get("phone", "").strip()
+    phone = normalize_phone(raw_phone)
+    if not phone:
+        phone = raw_phone
     name = data.get("name", "").strip()
     email = data.get("email", "").strip()
     avatar_base64 = data.get("avatar_base64", "").strip()
     avatar_url = data.get("avatar_url", "").strip()
+    profile_image = data.get("profile_image", "").strip()
     address = data.get("address", "").strip()
 
     if not phone:
         return jsonify({"success": False, "message": "Phone number is required."}), 400
 
+    # If an image was submitted (base64 or URL)
+    incoming_img = profile_image or avatar_base64 or avatar_url
+    saved_img_url = ""
+    if incoming_img and incoming_img.startswith("data:image"):
+        try:
+            upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
+            os.makedirs(upload_dir, exist_ok=True)
+            header, encoded = incoming_img.split(",", 1)
+            img_data = base64.b64decode(encoded)
+            img = Image.open(io.BytesIO(img_data))
+            if img.mode in ("RGBA", "LA", "P"):
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == "RGBA":
+                    bg.paste(img, mask=img.split()[3])
+                else:
+                    bg.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[3])
+                img = bg
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+            img.thumbnail((500, 500))
+            fn = f"cust_{phone}_{int(time.time())}.jpg"
+            save_path = os.path.join(upload_dir, fn)
+            img.save(save_path, "JPEG", quality=85)
+            saved_img_url = f"/static/uploads/customers/{fn}"
+        except Exception as e:
+            print("[customer_avatar] Failed to decode/save image:", e)
+            saved_img_url = incoming_img
+    elif incoming_img:
+        saved_img_url = incoming_img
+
     conn = get_connection()
-    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    cust = conn.execute("SELECT * FROM customer_users WHERE phone = ? OR phone = ?", (phone, raw_phone)).fetchone()
     if not cust:
         conn.close()
         return jsonify({"success": False, "message": "Customer account not found."}), 404
 
+    db_phone = cust["phone"]
     updates = []
     params = []
     if name:
@@ -695,33 +731,34 @@ def api_customer_update_profile():
     if email:
         updates.append("email = ?")
         params.append(email)
-    if avatar_url:
+    if saved_img_url:
+        updates.append("profile_image = ?")
+        params.append(saved_img_url)
         updates.append("avatar_url = ?")
-        params.append(avatar_url)
-    if avatar_base64:
+        params.append(saved_img_url)
         updates.append("avatar_base64 = ?")
-        params.append(avatar_base64)
+        params.append(saved_img_url)
     if address:
         updates.append("address = ?")
         params.append(address)
 
     if updates:
-        params.append(phone)
+        params.append(db_phone)
         conn.execute(f"UPDATE customer_users SET {', '.join(updates)} WHERE phone = ?", tuple(params))
         conn.commit()
 
-    updated_cust = conn.execute("SELECT id, phone, name, email, avatar_url, avatar_base64, address FROM customer_users WHERE phone = ?", (phone,)).fetchone()
+    updated_cust = conn.execute("SELECT id, phone, name, email, avatar_url, avatar_base64, profile_image, address FROM customer_users WHERE phone = ?", (db_phone,)).fetchone()
     conn.close()
     
     try:
-        remote_control.push_customer_user_to_cloud(phone)
+        remote_control.push_customer_user_to_cloud(db_phone)
     except Exception as e:
         print("[customer_update] Error syncing to cloud:", e)
 
     return jsonify({
         "success": True,
         "message": "Profile updated successfully!",
-        "user": dict(updated_cust) if updated_cust else {"phone": phone, "name": name}
+        "user": dict(updated_cust) if updated_cust else {"phone": db_phone, "name": name, "profile_image": saved_img_url}
     })
 
 
@@ -3354,7 +3391,10 @@ def customers_api_profile():
     district = user["district"] if user and "district" in user.keys() else ""
     area = user["area"] if user and "area" in user.keys() else ""
     address_details = user["address_details"] if user and "address_details" in user.keys() else ""
-    profile_image = user["profile_image"] if user and "profile_image" in user.keys() else ""
+    profile_image = ""
+    if user:
+        u_dict = dict(user)
+        profile_image = (u_dict.get("profile_image") or u_dict.get("avatar_url") or u_dict.get("avatar_base64") or u_dict.get("avatar") or u_dict.get("image_url") or "").strip()
 
     if not district or not area:
         latest_order = conn.execute("SELECT district, area, address_details FROM online_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
@@ -3552,7 +3592,7 @@ def customers_page():
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
-            "profile_image": reg_info.get("profile_image") or reg_info.get("avatar") or reg_info.get("image_url") or "",
+            "profile_image": (reg_info.get("profile_image") or reg_info.get("avatar_url") or reg_info.get("avatar_base64") or reg_info.get("avatar") or reg_info.get("image_url") or "").strip(),
             "email": email_addr,
             "password": plain_pass if plain_pass else "—",
             "visit_count": visits,
@@ -7470,12 +7510,18 @@ def api_auth_login():
     if cust["is_verified"] != 1:
         return jsonify({"success": False, "message": "Account is not verified. Please verify via OTP."}), 400
 
+    c_dict = dict(cust)
+    prof_img = (c_dict.get("profile_image") or c_dict.get("avatar_url") or c_dict.get("avatar_base64") or "").strip()
     return jsonify({
         "success": True,
         "user": {
-            "name": cust["name"],
-            "phone": cust["phone"],
-            "email": cust["email"]
+            "name": c_dict.get("name", ""),
+            "phone": c_dict.get("phone", ""),
+            "email": c_dict.get("email", ""),
+            "profile_image": prof_img,
+            "avatar_url": prof_img,
+            "avatar_base64": prof_img,
+            "address": c_dict.get("address", "")
         }
     })
 

@@ -3736,10 +3736,9 @@
         
         // Avatar display
         const avContainer = document.getElementById('profAvatarContainer');
-        if (currentCustomer.avatar_base64) {
-          avContainer.innerHTML = `<img src="${currentCustomer.avatar_base64}" alt="Avatar">`;
-        } else if (currentCustomer.avatar_url) {
-          avContainer.innerHTML = `<img src="${currentCustomer.avatar_url}" alt="Avatar">`;
+        const profPic = currentCustomer.profile_image || currentCustomer.avatar_url || currentCustomer.avatar_base64;
+        if (profPic) {
+          avContainer.innerHTML = `<img src="${profPic}" alt="Avatar">`;
         } else {
           avContainer.innerHTML = `<span>${(currentCustomer.name || 'C')[0].toUpperCase()}</span>`;
         }
@@ -3796,7 +3795,16 @@
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          currentCustomer = { phone, name: data.user.name || ('Customer ' + phone.slice(-4)), email: data.user.email || '', avatar_base64: data.user.avatar_base64 || '', address: data.user.address || '' };
+          const profImg = (data.user && (data.user.profile_image || data.user.avatar_url || data.user.avatar_base64)) || '';
+          currentCustomer = { 
+            phone, 
+            name: data.user.name || ('Customer ' + phone.slice(-4)), 
+            email: data.user.email || '', 
+            profile_image: profImg,
+            avatar_url: profImg,
+            avatar_base64: profImg, 
+            address: data.user.address || '' 
+          };
           localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
           refreshAuthState();
           alert('Welcome back, ' + currentCustomer.name + '!');
@@ -4027,29 +4035,65 @@
     // Profile Picture Upload Handler
     function handleProfilePictureUpload(e) {
       const file = e.target.files[0];
-      if (!file || !currentCustomer || !currentCustomer.phone) return;
+      if (!file) return;
+      if (!currentCustomer || !currentCustomer.phone) {
+        alert('Please log in first to update your profile picture.');
+        return;
+      }
 
       const reader = new FileReader();
-      reader.onload = async function(evt) {
-        const b64 = evt.target.result;
-        try {
-          const res = await fetch('/api/customer/update-profile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: currentCustomer.phone, avatar_base64: b64 })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            currentCustomer.avatar_base64 = b64;
-            localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
-            refreshAuthState();
-            alert('Profile picture updated successfully!');
+      reader.onload = function(evt) {
+        const rawB64 = evt.target.result;
+        const img = new Image();
+        img.onload = async function() {
+          const maxDim = 400;
+          let w = img.width;
+          let h = img.height;
+          if (w > h) {
+            if (w > maxDim) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            }
           } else {
-            alert('Failed to update picture: ' + (data.message || 'Server error'));
+            if (h > maxDim) {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
           }
-        } catch (err) {
-          alert('Could not upload picture.');
-        }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const resizedB64 = canvas.toDataURL('image/jpeg', 0.85);
+
+          try {
+            const res = await fetch('/api/customer/update-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                phone: currentCustomer.phone, 
+                avatar_base64: resizedB64,
+                profile_image: resizedB64 
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              const savedUrl = (data.user && (data.user.profile_image || data.user.avatar_url)) || resizedB64;
+              currentCustomer.avatar_base64 = savedUrl;
+              currentCustomer.avatar_url = savedUrl;
+              currentCustomer.profile_image = savedUrl;
+              localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+              refreshAuthState();
+              alert('Profile picture updated successfully!');
+            } else {
+              alert('Failed to update picture: ' + (data.message || 'Server error'));
+            }
+          } catch (err) {
+            alert('Could not upload picture. Please try again.');
+          }
+        };
+        img.src = rawB64;
       };
       reader.readAsDataURL(file);
     }

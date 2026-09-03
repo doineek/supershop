@@ -1330,6 +1330,9 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                     blocked_until = data.get("blocked_until", "")
                     block_reason = data.get("block_reason", "")
                     created_at = data.get("created_at") or datetime.now().isoformat()
+                    profile_image = data.get("profile_image") or data.get("avatar_url") or data.get("avatar_base64") or ""
+                    avatar_url = data.get("avatar_url") or profile_image
+                    avatar_base64 = data.get("avatar_base64") or profile_image
 
                     if existing:
                         conn.execute("""
@@ -1341,18 +1344,23 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                                 is_verified = ?,
                                 is_blocked = ?,
                                 blocked_until = ?,
-                                block_reason = ?
+                                block_reason = ?,
+                                profile_image = COALESCE(NULLIF(?, ''), profile_image),
+                                avatar_url = COALESCE(NULLIF(?, ''), avatar_url),
+                                avatar_base64 = COALESCE(NULLIF(?, ''), avatar_base64)
                             WHERE phone = ?
-                        """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, phone))
+                        """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
                     else:
                         conn.execute("""
                             INSERT INTO customer_users (
                                 phone, name, email, password_hash, plain_password,
-                                is_verified, is_blocked, blocked_until, block_reason, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                is_verified, is_blocked, blocked_until, block_reason, created_at,
+                                profile_image, avatar_url, avatar_base64
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
-                            is_verified, is_blocked, blocked_until, block_reason, created_at
+                            is_verified, is_blocked, blocked_until, block_reason, created_at,
+                            profile_image, avatar_url, avatar_base64
                         ))
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM customer_users WHERE phone = ?", (phone,))
@@ -1795,6 +1803,10 @@ def pull_all_from_cloud(blocking=False):
                             blocked_until = data.get("blocked_until", "")
                             block_reason = data.get("block_reason", "")
                             created_at = data.get("created_at") or datetime.now().isoformat()
+                            profile_image = data.get("profile_image") or data.get("avatar_url") or data.get("avatar_base64") or ""
+                            avatar_url = data.get("avatar_url") or profile_image
+                            avatar_base64 = data.get("avatar_base64") or profile_image
+
                             if existing:
                                 conn.execute("""
                                     UPDATE customer_users SET
@@ -1805,18 +1817,23 @@ def pull_all_from_cloud(blocking=False):
                                         is_verified = ?,
                                         is_blocked = ?,
                                         blocked_until = ?,
-                                        block_reason = ?
+                                        block_reason = ?,
+                                        profile_image = COALESCE(NULLIF(?, ''), profile_image),
+                                        avatar_url = COALESCE(NULLIF(?, ''), avatar_url),
+                                        avatar_base64 = COALESCE(NULLIF(?, ''), avatar_base64)
                                     WHERE phone = ?
-                                """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, phone))
+                                """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
                             else:
                                 conn.execute("""
                                     INSERT INTO customer_users (
                                         phone, name, email, password_hash, plain_password,
-                                        is_verified, is_blocked, blocked_until, block_reason, created_at
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        is_verified, is_blocked, blocked_until, block_reason, created_at,
+                                        profile_image, avatar_url, avatar_base64
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """, (
                                     phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
-                                    is_verified, is_blocked, blocked_until, block_reason, created_at
+                                    is_verified, is_blocked, blocked_until, block_reason, created_at,
+                                    profile_image, avatar_url, avatar_base64
                                 ))
 
                     # 7. Pull Users (Staff, Admin, Riders)
