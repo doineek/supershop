@@ -52,6 +52,8 @@ class Product {
     this.offerBase = 'mrp',
   });
 
+  bool get isPackage => name.startsWith('📦') || sku.toUpperCase() == 'COMBO';
+
   List<String> get imageList {
     if (imageUrl.isEmpty) return [];
     String raw = imageUrl.trim();

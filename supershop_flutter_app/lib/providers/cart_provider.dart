@@ -115,6 +115,9 @@ class CartProvider extends ChangeNotifier {
   double _customDeliveryCharge = 60.0;
   bool _freeDeliveryActive = false;
   double _freeDeliveryMinAmount = 1000.0;
+  int _maxOrderQtyProduct = 0;
+  int _maxOrderQtyPackage = 0;
+  String? _lastError;
 
   CartProvider() {
     refreshDeliveryCharge();
@@ -132,10 +135,19 @@ class CartProvider extends ChangeNotifier {
     if (settings.containsKey("free_delivery_min_amount")) {
       _freeDeliveryMinAmount = double.tryParse(settings["free_delivery_min_amount"].toString()) ?? 1000.0;
     }
+    if (settings.containsKey("max_order_qty_product")) {
+      _maxOrderQtyProduct = int.tryParse(settings["max_order_qty_product"].toString()) ?? 0;
+    }
+    if (settings.containsKey("max_order_qty_package")) {
+      _maxOrderQtyPackage = int.tryParse(settings["max_order_qty_package"].toString()) ?? 0;
+    }
     notifyListeners();
   }
 
   List<CartItem> get items => _items;
+  int get maxOrderQtyProduct => _maxOrderQtyProduct;
+  int get maxOrderQtyPackage => _maxOrderQtyPackage;
+  String? get lastError => _lastError;
 
   String get selectedCountry => _selectedCountry;
   String get selectedDistrict => _selectedDistrict;
@@ -163,12 +175,27 @@ class CartProvider extends ChangeNotifier {
   }
 
   bool addToCart(Product product) {
+    _lastError = null;
     if (product.stockQty <= 0) {
+      _lastError = 'Sorry, "${product.name}" is OUT OF STOCK.';
       return false;
     }
+
+    bool isPkg = product.isPackage || product.name.startsWith('📦');
+    int maxLimit = isPkg ? _maxOrderQtyPackage : _maxOrderQtyProduct;
+
     int index = _items.indexWhere((i) => i.product.id == product.id);
+    int currentQty = index >= 0 ? _items[index].quantity : 0;
+
+    if (maxLimit > 0 && (currentQty + 1) > maxLimit) {
+      String typeLabel = isPkg ? 'Combo Package' : 'product';
+      _lastError = 'Maximum order limit reached: You can order at most $maxLimit units of $typeLabel "${product.name}" per order.';
+      return false;
+    }
+
     if (index >= 0) {
       if (_items[index].quantity >= product.stockQty) {
+        _lastError = 'Cannot add more: only ${product.stockQty} available in stock.';
         return false;
       }
       _items[index].quantity++;
@@ -180,6 +207,7 @@ class CartProvider extends ChangeNotifier {
   }
 
   bool updateQuantity(int productId, int quantity) {
+    _lastError = null;
     int index = _items.indexWhere((i) => i.product.id == productId);
     if (index >= 0) {
       if (quantity <= 0) {
@@ -187,7 +215,18 @@ class CartProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        if (quantity > _items[index].product.stockQty) {
+        final prod = _items[index].product;
+        bool isPkg = prod.isPackage || prod.name.startsWith('📦');
+        int maxLimit = isPkg ? _maxOrderQtyPackage : _maxOrderQtyProduct;
+
+        if (maxLimit > 0 && quantity > maxLimit) {
+          String typeLabel = isPkg ? 'Combo Package' : 'product';
+          _lastError = 'Maximum order limit reached: You can order at most $maxLimit units of $typeLabel "${prod.name}" per order.';
+          return false;
+        }
+
+        if (quantity > prod.stockQty) {
+          _lastError = 'Cannot add more: only ${prod.stockQty} available in stock.';
           return false;
         }
         _items[index].quantity = quantity;

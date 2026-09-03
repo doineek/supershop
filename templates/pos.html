@@ -136,5 +136,8 @@
   </div>
 </div>
 
+<script>
+  window.POS_SETTINGS = {{ settings|tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/pos.js') }}"></script>
 {% endblock %}

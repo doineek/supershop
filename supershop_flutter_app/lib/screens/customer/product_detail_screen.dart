@@ -447,10 +447,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Cannot add: item is out of stock.'),
+                              SnackBar(
+                                content: Text(cartProv.lastError ?? 'Cannot add: item is out of stock.'),
                                 backgroundColor: Colors.red,
-                                duration: Duration(seconds: 1),
+                                duration: const Duration(seconds: 2),
                               ),
                             );
                           }
@@ -475,10 +475,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Cannot proceed: item is out of stock.'),
+                              SnackBar(
+                                content: Text(cartProv.lastError ?? 'Cannot proceed: item is out of stock.'),
                                 backgroundColor: Colors.red,
-                                duration: Duration(seconds: 1),
+                                duration: const Duration(seconds: 2),
                               ),
                             );
                           }

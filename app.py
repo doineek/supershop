@@ -2672,8 +2672,9 @@ def pos():
         p_dict["combo_stock"] = max(0, min_stock)
         packages.append(p_dict)
 
+    shop_settings = get_all_settings(conn)
     conn.close()
-    return render_template("pos.html", products=all_products, packages=packages)
+    return render_template("pos.html", products=all_products, packages=packages, settings=shop_settings)
 
 
 @app.route("/pos/checkout", methods=["POST"])
@@ -2695,6 +2696,11 @@ def checkout():
     conn = get_connection()
     cur = conn.cursor()
 
+    shop_settings = get_all_settings(conn)
+    apply_to_pos = str(shop_settings.get("apply_max_qty_to_pos", "0")).strip() in ("1", "true", "True")
+    max_pkg_qty = int(shop_settings.get("max_order_qty_package") or 0)
+    max_prod_qty = int(shop_settings.get("max_order_qty_product") or 0)
+
     sub_total = 0
     mrp_total = 0
     total_vat = 0
@@ -2709,6 +2715,9 @@ def checkout():
                 conn.close()
                 return jsonify({"error": "A combo package in the cart no longer exists."}), 400
             quantity = int(item["quantity"])
+            if apply_to_pos and max_pkg_qty > 0 and quantity > max_pkg_qty:
+                conn.close()
+                return jsonify({"error": f'Maximum allowed quantity for Combo Package "{pkg["name"]}" is {max_pkg_qty} per order.'}), 400
             pkg_items = cur.execute("""
                 SELECT pi.*, p.name as prod_name, p.stock_qty, p.cost_price, p.sell_price, p.mrp
                 FROM package_items pi 
@@ -2744,6 +2753,9 @@ def checkout():
                 conn.close()
                 return jsonify({"error": "A product in the cart no longer exists."}), 400
             quantity = int(item["quantity"])
+            if apply_to_pos and max_prod_qty > 0 and quantity > max_prod_qty:
+                conn.close()
+                return jsonify({"error": f'Maximum allowed quantity for product "{product["name"]}" is {max_prod_qty} per order.'}), 400
             if product["stock_qty"] < quantity:
                 conn.close()
                 return jsonify({"error": f'Not enough stock for "{product["name"]}".'}), 400
@@ -3970,6 +3982,9 @@ def settings_page():
             "policy_terms": request.form.get("policy_terms", "").strip(),
             "policy_warranty": request.form.get("policy_warranty", "").strip(),
             "policy_help_center": request.form.get("policy_help_center", "").strip(),
+            "max_order_qty_product": request.form.get("max_order_qty_product", "0").strip(),
+            "max_order_qty_package": request.form.get("max_order_qty_package", "0").strip(),
+            "apply_max_qty_to_pos": "1" if request.form.get("apply_max_qty_to_pos") else "0",
         }
         update_settings(conn, values)
         conn.commit()
@@ -6149,12 +6164,18 @@ def api_place_order():
     conn.commit()
 
     # =========================================================================
-    # 🚨 STRICT STOCK VALIDATION:
-    # 1. Reject if any product has stock <= 0 or requested > stock
-    # 2. Reject Combo Package if ANY constituent product has stock <= 0 or required > stock
-    # 3. Check aggregate demand across multiple cart items
+    # 🚨 STRICT STOCK & MAXIMUM ORDER QUANTITY VALIDATION:
+    # 1. Enforce max_order_qty_product and max_order_qty_package limits
+    # 2. Reject if any product has stock <= 0 or requested > stock
+    # 3. Reject Combo Package if ANY constituent product has stock <= 0 or required > stock
+    # 4. Check aggregate demand across multiple cart items
     # =========================================================================
+    shop_settings = get_all_settings(conn)
+    max_order_qty_prod = int(shop_settings.get("max_order_qty_product") or 0)
+    max_order_qty_pkg = int(shop_settings.get("max_order_qty_package") or 0)
+
     product_demands = {}  # product_id -> total_needed_qty
+    item_quantities_map = {}  # item_key -> total_qty
 
     for item in cart_items:
         prod_id = item.get("product_id") or item.get("id") or item.get("prod_id")
@@ -6185,6 +6206,15 @@ def api_place_order():
                 pkg_match = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0", (clean_pname, clean_pname, clean_pname)).fetchone()
 
         if pkg_match:
+            pkg_key = f"pkg_{pkg_match['id']}"
+            item_quantities_map[pkg_key] = item_quantities_map.get(pkg_key, 0) + qty
+            if max_order_qty_pkg > 0 and item_quantities_map[pkg_key] > max_order_qty_pkg:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'Maximum order limit reached: You can order at most {max_order_qty_pkg} units of Combo Package "{pkg_match["name"]}" per order.'
+                }), 400
+
             p_items_chk = conn.execute("""
                 SELECT pi.quantity, p.id, p.name, p.stock_qty
                 FROM package_items pi JOIN products p ON pi.product_id = p.id
@@ -6226,6 +6256,15 @@ def api_place_order():
                 prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
 
             if prod_chk:
+                p_key = f"prod_{prod_chk['id']}"
+                item_quantities_map[p_key] = item_quantities_map.get(p_key, 0) + qty
+                if max_order_qty_prod > 0 and item_quantities_map[p_key] > max_order_qty_prod:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Maximum order limit reached: You can order at most {max_order_qty_prod} units of "{prod_chk["name"]}" per order.'
+                    }), 400
+
                 curr_stk = int(prod_chk["stock_qty"] or 0)
                 if curr_stk <= 0:
                     conn.close()

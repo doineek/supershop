@@ -5,6 +5,11 @@ const CART_STORAGE_KEY = "supershop_cart";
 const CUSTOMER_ID_KEY = "supershop_customer_id";
 const CUSTOMER_MOBILE_KEY = "supershop_customer_mobile";
 
+const posSettings = window.POS_SETTINGS || {};
+const applyMaxQtyToPos = String(posSettings.apply_max_qty_to_pos || "0") === "1" || String(posSettings.apply_max_qty_to_pos || "") === "true";
+const maxOrderQtyProduct = parseInt(posSettings.max_order_qty_product || 0, 10) || 0;
+const maxOrderQtyPackage = parseInt(posSettings.max_order_qty_package || 0, 10) || 0;
+
 let cart = {};
 const savedCart = localStorage.getItem(CART_STORAGE_KEY);
 if (savedCart) {
@@ -266,6 +271,16 @@ function addToCart(data) {
     alert("No more stock available for " + cart[id].name);
     return;
   }
+  if (applyMaxQtyToPos) {
+    if (isPkg && maxOrderQtyPackage > 0 && (cart[id].quantity + 1) > maxOrderQtyPackage) {
+      alert(`Maximum order limit reached: You can order at most ${maxOrderQtyPackage} units of Combo Package "${cart[id].name}" per order.`);
+      return;
+    }
+    if (!isPkg && maxOrderQtyProduct > 0 && (cart[id].quantity + 1) > maxOrderQtyProduct) {
+      alert(`Maximum order limit reached: You can order at most ${maxOrderQtyProduct} units of "${cart[id].name}" per order.`);
+      return;
+    }
+  }
   if (data.serial && cart[id].serials.includes(data.serial)) {
     alert("This exact tag (" + data.serial + ") has already been scanned into the cart.");
     return;
@@ -362,6 +377,17 @@ document.getElementById("cartItemsBody").addEventListener("change", (e) => {
   let val = parseInt(input.value, 10);
   if (isNaN(val) || val < 1) val = 1;
   if (val > item.stock) { val = item.stock; alert("Max stock is " + item.stock); }
+  if (applyMaxQtyToPos) {
+    if (item.is_package && maxOrderQtyPackage > 0 && val > maxOrderQtyPackage) {
+      val = maxOrderQtyPackage;
+      alert(`Maximum order limit reached: You can order at most ${maxOrderQtyPackage} units of Combo Package "${item.name}" per order.`);
+      input.value = val;
+    } else if (!item.is_package && maxOrderQtyProduct > 0 && val > maxOrderQtyProduct) {
+      val = maxOrderQtyProduct;
+      alert(`Maximum order limit reached: You can order at most ${maxOrderQtyProduct} units of "${item.name}" per order.`);
+      input.value = val;
+    }
+  }
 
   if (val > item.quantity) {
     // Growing quantity manually (no scan) - add unassigned slots.

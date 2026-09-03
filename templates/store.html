@@ -2805,6 +2805,8 @@
     const DEFAULT_DELIVERY_CHARGE = parseFloat("{{ settings.delivery_charge|float if settings.delivery_charge else 60.0 }}");
     const FREE_DELIVERY_ACTIVE = {{ 'true' if (settings.free_delivery_active or '0') == '1' else 'false' }};
     const FREE_DELIVERY_MIN_AMOUNT = parseFloat("{{ settings.free_delivery_min_amount or 1000.0 }}");
+    const MAX_ORDER_QTY_PRODUCT = parseInt("{{ settings.max_order_qty_product or 0 }}") || 0;
+    const MAX_ORDER_QTY_PACKAGE = parseInt("{{ settings.max_order_qty_package or 0 }}") || 0;
 
     // Cart persistence & Auth State
     let cart = JSON.parse(localStorage.getItem('supershop_cart_en') || '{}');
@@ -4544,6 +4546,10 @@
           alert(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be added to bag.`);
           return;
         }
+        if (MAX_ORDER_QTY_PRODUCT > 0 && cart[id] && (cart[id].quantity + 1) > MAX_ORDER_QTY_PRODUCT) {
+          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${prod.name}" per order.`);
+          return;
+        }
         if (cart[id] && (cart[id].quantity + 1) > prodStock) {
           alert(`Cannot add more: Only ${prodStock} in stock for "${prod.name}".`);
           return;
@@ -4554,6 +4560,11 @@
         if (!offer_type && prod.offer_type) offer_type = prod.offer_type;
         if (!offer_value && prod.offer_value) offer_value = prod.offer_value;
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
+      } else {
+        if (MAX_ORDER_QTY_PRODUCT > 0 && cart[id] && (cart[id].quantity + 1) > MAX_ORDER_QTY_PRODUCT) {
+          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${name || 'this item'}" per order.`);
+          return;
+        }
       }
       
       const numPrice = parseFloat(price) || (prod ? parseFloat(prod.sell_price) || 0 : 0);
@@ -4604,6 +4615,12 @@
         if (!offer_title && prod.offer_title) offer_title = prod.offer_title;
       }
 
+      const currentQty = cart[id] ? cart[id].quantity : 0;
+      if (MAX_ORDER_QTY_PRODUCT > 0 && (currentQty + 1) > MAX_ORDER_QTY_PRODUCT) {
+        alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${name || (prod ? prod.name : 'this product')}" per order.`);
+        return;
+      }
+
       const numPrice = parseFloat(price) || (prod ? parseFloat(prod.sell_price) || 0 : 0);
       const strName = name || (prod ? prod.name : 'Product');
       const strImg = img || (prod ? getFirstImageJS(prod.image_url) : '/static/images/logo.png');
@@ -4631,8 +4648,18 @@
           return;
         }
         const pkgKey = 'PKG_' + id;
+        if (MAX_ORDER_QTY_PACKAGE > 0 && cart[pkgKey] && (cart[pkgKey].quantity + 1) > MAX_ORDER_QTY_PACKAGE) {
+          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`);
+          return;
+        }
         if (cart[pkgKey] && (cart[pkgKey].quantity + 1) > pkgStock) {
           alert(`Cannot add more: Only ${pkgStock} combo packages can be fulfilled with currently available stock.`);
+          return;
+        }
+      } else {
+        const pkgKey = 'PKG_' + id;
+        if (MAX_ORDER_QTY_PACKAGE > 0 && cart[pkgKey] && (cart[pkgKey].quantity + 1) > MAX_ORDER_QTY_PACKAGE) {
+          alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`);
           return;
         }
       }
@@ -4655,6 +4682,12 @@
         alert(`Sorry, Combo Package "${name}" is Out of Stock.`);
         return;
       }
+      const pkgKey = 'PKG_' + id;
+      const currentQty = cart[pkgKey] ? cart[pkgKey].quantity : 0;
+      if (MAX_ORDER_QTY_PACKAGE > 0 && (currentQty + 1) > MAX_ORDER_QTY_PACKAGE) {
+        alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${name}" per order.`);
+        return;
+      }
       addPackageCart(id, name, price);
       openCheckoutModal();
     }
@@ -4663,6 +4696,11 @@
       if (cart[id]) {
         if (delta > 0) {
           if (cart[id].is_pkg) {
+            if (MAX_ORDER_QTY_PACKAGE > 0 && (cart[id].quantity + delta) > MAX_ORDER_QTY_PACKAGE) {
+              const cleanPkgName = cart[id].name.replace('📦 ', '');
+              alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PACKAGE} units of Combo Package "${cleanPkgName}" per order.`);
+              return;
+            }
             const rawId = cart[id].raw_id;
             const pkg = allPackagesData.find(p => String(p.id) === String(rawId));
             if (pkg) {
@@ -4674,6 +4712,11 @@
             }
           } else {
             const prod = allProducts.find(p => String(p.id) === String(id));
+            const pName = prod ? prod.name : cart[id].name;
+            if (MAX_ORDER_QTY_PRODUCT > 0 && (cart[id].quantity + delta) > MAX_ORDER_QTY_PRODUCT) {
+              alert(`Maximum order limit reached: You can order at most ${MAX_ORDER_QTY_PRODUCT} units of "${pName}" per order.`);
+              return;
+            }
             if (prod) {
               const maxStock = parseInt(prod.stock_qty || 0);
               if (maxStock <= 0 || (cart[id].quantity + delta) > maxStock) {

@@ -62,6 +62,33 @@
       <input type="number" step="1" min="1" max="60" name="promo_interval_sec" value="{{ settings.promo_interval_sec or 2 }}" required>
     </div>
 
+    <h2 style="margin-top:24px; margin-bottom:12px; color:#0369a1; border-top:1px solid #e2e8f0; padding-top:16px;">
+      🛒 Maximum Order Quantity Limits (Online &amp; POS)
+    </h2>
+    <div class="field">
+      <label>Maximum Quantity per Regular Product in a Single Order</label>
+      <input type="number" step="1" min="0" name="max_order_qty_product" value="{{ settings.max_order_qty_product or 0 }}" placeholder="e.g. 5 (0 or empty = No Limit)">
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
+        💡 Enter maximum units a customer can order for any single product in one order. Set to 0 or leave empty for unlimited.
+      </small>
+    </div>
+    <div class="field">
+      <label>Maximum Quantity per Combo Package in a Single Order</label>
+      <input type="number" step="1" min="0" name="max_order_qty_package" value="{{ settings.max_order_qty_package or 0 }}" placeholder="e.g. 2 (0 or empty = No Limit)">
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
+        💡 Enter maximum units a customer can order for any single combo package in one order. Set to 0 or leave empty for unlimited.
+      </small>
+    </div>
+    <div class="field" style="background:#f8fafc; border:1px solid #e2e8f0; padding:12px; border-radius:8px; margin-top:10px;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:700; color:#0f172a; cursor:pointer; margin-bottom:0;">
+        <input type="checkbox" name="apply_max_qty_to_pos" value="1" {% if settings.apply_max_qty_to_pos == '1' or settings.apply_max_qty_to_pos == 'true' %}checked{% endif %} style="width:16px; height:16px; accent-color:#0369a1;">
+        Apply these maximum quantity limits to In-Store Offline POS Checkout
+      </label>
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:6px; margin-left:24px;">
+        💡 If checked, cashier checkout in offline POS will also block quantities exceeding the limit. If unchecked, POS will allow any quantity up to physical stock.
+      </small>
+    </div>
+
     <h2 style="margin-top:24px; margin-bottom:12px; color:#dc2626; border-top:1px solid #e2e8f0; padding-top:16px;">🔑 Gmail SMTP App Password (System Reset 2FA OTP)</h2>
     <div class="field">
       <label>Gmail 16-Character App Password (for doineek.supershop@gmail.com)</label>
