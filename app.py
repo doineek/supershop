@@ -6644,6 +6644,18 @@ def api_customer_send_whatsapp_otp():
     # Attempt automatic sending via configured WhatsApp Gateway
     sent_via_gateway, gateway_res = send_whatsapp_message_via_gateway(phone, msg_text, shop_settings)
 
+    meta_error_code = None
+    meta_error_msg = None
+    if not sent_via_gateway and gateway_res:
+        try:
+            import json
+            err_json = json.loads(gateway_res)
+            if "error" in err_json:
+                meta_error_code = err_json["error"].get("code")
+                meta_error_msg = err_json["error"].get("message")
+        except Exception:
+            pass
+
     # WhatsApp Direct link to Admin
     import re
     digits_admin = re.sub(r'\D', '', admin_phone)
@@ -6661,6 +6673,8 @@ def api_customer_send_whatsapp_otp():
         "admin_phone": admin_phone,
         "whatsapp_url": whatsapp_url,
         "sent_via_gateway": sent_via_gateway,
+        "meta_error_code": meta_error_code,
+        "meta_error_msg": meta_error_msg,
         "message": f"WhatsApp OTP code generated from Admin WhatsApp ({admin_phone}) for {phone}.",
         "verification_code": otp_code,
         "target_phone": phone

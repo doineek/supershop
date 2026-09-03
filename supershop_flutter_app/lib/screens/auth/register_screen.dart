@@ -67,6 +67,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     final String adminPhone = (res['admin_phone'] ?? 'Admin').toString().trim();
     final String whatsappUrl = (res['whatsapp_url'] ?? '').toString().trim();
+    final bool sentViaGateway = res['sent_via_gateway'] == true;
+    final int? metaErrorCode = res['meta_error_code'] != null ? int.tryParse(res['meta_error_code'].toString()) : null;
+    final String otpCode = (res['otp_code'] ?? '').toString();
 
     if (!mounted) return;
 
@@ -112,10 +115,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      "আপনার WhatsApp-এ ৪ ডিজিটের ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি দেখে নিচে দিন।",
-                      style: TextStyle(fontSize: 12, color: Colors.black87),
-                    ),
+                    if (sentViaGateway)
+                      const Text(
+                        "✅ আপনার WhatsApp ইনবক্সে ৪ ডিজিটের OTP পাঠানো হয়েছে। কোডটি দেখে নিচে দিন।",
+                        style: TextStyle(fontSize: 12, color: Color(0xFF15803D), fontWeight: FontWeight.bold),
+                      )
+                    else if (metaErrorCode == 131030)
+                      Text(
+                        "⚠️ Meta Dev Mode: টেস্ট নম্বরটি Meta হোয়াইটলিস্টে নেই।\nটেস্টিং OTP কোড: $otpCode",
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFB45309), fontWeight: FontWeight.bold),
+                      )
+                    else
+                      const Text(
+                        "আপনার WhatsApp-এ ৪ ডিজিটের ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি দেখে নিচে দিন।",
+                        style: TextStyle(fontSize: 12, color: Colors.black87),
+                      ),
                     if (whatsappUrl.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       SizedBox(

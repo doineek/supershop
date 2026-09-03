@@ -2284,9 +2284,10 @@
               </span>
             </div>
 
-            <div style="font-size:0.8rem; color:#166534; line-height:1.45; margin-bottom:12px;">
-              Admin WhatsApp (<strong id="adminWaPhoneTxt">017XXXXXXXX</strong>) থেকে আপনার WhatsApp নম্বরে ৪ ডিজিটের ভেরিফিকেশন OTP পাঠানো হয়েছে। কোডটি দেখে নিচে ইনপুট করুন:
+            <div style="font-size:0.8rem; color:#166534; line-height:1.45; margin-bottom:10px;">
+              Admin WhatsApp (<strong id="adminWaPhoneTxt">017XXXXXXXX</strong>) থেকে আপনার WhatsApp নম্বরে ৪ ডিজিটের ভেরিফিকেশন OTP পাঠানো হয়েছে।
             </div>
+            <div id="otpStatusNotice" style="margin-bottom:10px;"></div>
 
             <!-- Click to Open WhatsApp Button -->
             <div style="text-align:center; margin-bottom:14px;">
@@ -3755,10 +3756,27 @@
             if (adminTxt) adminTxt.textContent = data.admin_phone;
           }
           
+          const statusNotice = document.getElementById('otpStatusNotice');
+          if (data.sent_via_gateway) {
+            if (statusNotice) {
+              statusNotice.innerHTML = '<div style="background:#DCFCE7; border:1px solid #86EFAC; color:#15803D; padding:8px 12px; border-radius:8px; font-size:0.82rem; font-weight:700;">✅ আপনার WhatsApp ইনবক্সে ৪ ডিজিটের OTP পাঠানো হয়েছে।</div>';
+            }
+          } else if (data.meta_error_code === 131030) {
+            if (statusNotice) {
+              statusNotice.innerHTML = `<div style="background:#FEF3C7; border:1px solid #FCD34D; color:#92400E; padding:8px 12px; border-radius:8px; font-size:0.8rem; line-height:1.4;">
+                <strong>⚠️ Meta Developer Mode Note:</strong> এই টেস্ট নম্বরটি Meta হোয়াইটলিস্টে নেই।<br>
+                আপনার জন্য টেস্ট OTP কোড: <strong style="font-size:1.15rem; color:#B45309; letter-spacing:2px;">${data.otp_code}</strong>
+              </div>`;
+            }
+          } else {
+            if (statusNotice) {
+              statusNotice.innerHTML = '<div style="color:#166534; font-size:0.8rem;">কোডটি পেতে নিচের বাটনে ক্লিক করুন অথবা ইনপুট দিন:</div>';
+            }
+          }
+          
           const openWaBtn = document.getElementById('btnOpenWhatsappApp');
           if (data.whatsapp_url) {
             openWaBtn.href = data.whatsapp_url;
-            window.open(data.whatsapp_url, '_blank');
           }
 
           document.getElementById('regOtpInput').focus();
