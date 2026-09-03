@@ -292,6 +292,17 @@ def init_db():
         FOREIGN KEY (package_id) REFERENCES packages(id) ON DELETE CASCADE,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS rider_payouts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rider_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        payout_date TEXT NOT NULL,
+        payment_method TEXT NOT NULL DEFAULT 'Cash',
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (rider_id) REFERENCES users(id) ON DELETE CASCADE
+    );
     """)
 
     migrations = [
@@ -352,6 +363,7 @@ def init_db():
         "ALTER TABLE vouchers ADD COLUMN expiry_date TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE ledger_entries ADD COLUMN target_segment TEXT NOT NULL DEFAULT 'all'",
+        "ALTER TABLE online_orders ADD COLUMN rider_fee REAL NOT NULL DEFAULT 0.0",
     ]
     for statement in migrations:
         try:
@@ -485,6 +497,7 @@ def init_db():
         "vat_reg_no": "0",
         "delivery_charge": "60",
         "product_image_bg_color": "#FFFFFF",
+        "rider_delivery_fee": "50",
     }
     for key, value in default_settings.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -500,6 +513,7 @@ DEFAULT_SETTINGS = {
     "vat_reg_no": "0",
     "delivery_charge": "60",
     "product_image_bg_color": "#FFFFFF",
+    "rider_delivery_fee": "50",
 }
 
 

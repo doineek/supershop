@@ -68,6 +68,24 @@ def get_product_image_bg_color():
     return "#FFFFFF"
 
 
+def get_rider_delivery_fee_setting(conn=None):
+    close_after = False
+    if conn is None:
+        conn = get_connection()
+        close_after = True
+    try:
+        row = conn.execute("SELECT value FROM settings WHERE key = 'rider_delivery_fee'").fetchone()
+        if close_after:
+            conn.close()
+        if row and row["value"]:
+            return float(row["value"])
+    except Exception:
+        if close_after:
+            try: conn.close()
+            except: pass
+    return 50.0
+
+
 def apply_image_background(im, bg_color=None):
     """
     Safely composites transparent images (RGBA, LA, or P with transparency)
@@ -3781,30 +3799,105 @@ def riders_page():
         except: pass
     conn.commit()
 
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
+    filter_rider_id = request.args.get("rider_id", type=int)
+
+    default_fee = get_rider_delivery_fee_setting(conn)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    current_month_str = datetime.now().strftime("%Y-%m")
+
     riders = conn.execute("SELECT * FROM users WHERE role = 'delivery' ORDER BY id DESC").fetchall()
     riders_list = []
+
+    grand_total_delivered = 0
+    grand_total_earned = 0.0
+    grand_total_paid = 0.0
+    grand_total_due = 0.0
+
     for r in riders:
         r_dict = dict(r)
         r_phone = r_dict.get("username", "")
         r_id = r_dict.get("id")
         
-        # Fetch orders assigned or accepted by this rider
+        # Fetch all orders assigned or accepted by this rider
         rider_orders = conn.execute("""
             SELECT * FROM online_orders 
             WHERE assigned_rider_id = ? OR assigned_rider_phone = ?
             ORDER BY id DESC
         """, (r_id, r_phone)).fetchall()
         
+        # Fetch all payouts for this rider
+        payouts_rows = conn.execute("""
+            SELECT * FROM rider_payouts
+            WHERE rider_id = ?
+            ORDER BY payout_date DESC, id DESC
+        """, (r_id,)).fetchall()
+        
+        payouts_data = [dict(p) for p in payouts_rows]
+
         orders_data = []
-        total_delivered = 0
-        total_collected = 0.0
+        all_time_delivered = 0
+        all_time_earned = 0.0
+        all_time_collected = 0.0
+
+        period_delivered = 0
+        period_earned = 0.0
+        period_collected = 0.0
         
         for ord_row in rider_orders:
             o_dict = dict(ord_row)
-            if o_dict.get("order_status") == "delivered":
-                total_delivered += 1
-                total_collected += float(o_dict.get("total_amount", 0))
+            is_del = (o_dict.get("order_status") == "delivered")
+            ord_date = (o_dict.get("created_at") or "")[:10]
+            
+            # Determine rider fee for this order
+            o_fee = float(o_dict.get("rider_fee") or 0)
+            if o_fee <= 0 and is_del:
+                o_fee = default_fee
+            o_dict["effective_rider_fee"] = o_fee
+
+            if is_del:
+                all_time_delivered += 1
+                all_time_earned += o_fee
+                all_time_collected += float(o_dict.get("total_amount", 0))
+
+                # Check period filter
+                in_period = True
+                if start_date and ord_date < start_date:
+                    in_period = False
+                if end_date and ord_date > end_date:
+                    in_period = False
+                if in_period:
+                    period_delivered += 1
+                    period_earned += o_fee
+                    period_collected += float(o_dict.get("total_amount", 0))
+
             orders_data.append(o_dict)
+
+        all_time_paid = sum(float(p.get("amount", 0)) for p in payouts_data)
+        balance_due = max(0.0, round(all_time_earned - all_time_paid, 2))
+
+        # Payout breakdowns
+        paid_today = sum(float(p.get("amount", 0)) for p in payouts_data if (p.get("payout_date") or "")[:10] == today_str)
+        paid_this_month = sum(float(p.get("amount", 0)) for p in payouts_data if (p.get("payout_date") or "")[:7] == current_month_str)
+
+        period_paid = 0.0
+        filtered_payouts = []
+        for p in payouts_data:
+            p_date = (p.get("payout_date") or "")[:10]
+            in_period = True
+            if start_date and p_date < start_date:
+                in_period = False
+            if end_date and p_date > end_date:
+                in_period = False
+            if in_period:
+                period_paid += float(p.get("amount", 0))
+                filtered_payouts.append(p)
+
+        grand_total_delivered += all_time_delivered
+        grand_total_earned += all_time_earned
+        grand_total_paid += all_time_paid
+        grand_total_due += balance_due
 
         riders_list.append({
             "id": r_id,
@@ -3815,11 +3908,113 @@ def riders_page():
             "created_at": r_dict.get("created_at", ""),
             "orders": orders_data,
             "total_orders": len(orders_data),
-            "total_delivered": total_delivered,
-            "total_collected": total_collected
+            "total_delivered": all_time_delivered,
+            "total_earned": all_time_earned,
+            "total_paid": all_time_paid,
+            "balance_due": balance_due,
+            "paid_today": paid_today,
+            "paid_this_month": paid_this_month,
+            "total_collected": all_time_collected,
+            "payouts": payouts_data,
+            "period_delivered": period_delivered,
+            "period_earned": period_earned,
+            "period_paid": period_paid,
+            "period_collected": period_collected,
+            "filtered_payouts": filtered_payouts,
         })
     conn.close()
-    return render_template("riders.html", riders=riders_list)
+
+    summary_stats = {
+        "total_riders": len(riders_list),
+        "total_delivered": grand_total_delivered,
+        "total_earned": grand_total_earned,
+        "total_paid": grand_total_paid,
+        "total_due": grand_total_due,
+        "default_rider_fee": default_fee,
+        "start_date": start_date,
+        "end_date": end_date,
+        "filter_rider_id": filter_rider_id,
+    }
+
+    return render_template("riders.html", riders=riders_list, summary=summary_stats)
+
+
+@app.route("/riders/<int:rider_id>/pay", methods=["POST"])
+@login_required
+@admin_required
+def pay_rider(rider_id):
+    conn = get_connection()
+    rider = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+    if not rider:
+        conn.close()
+        flash("Rider not found.", "error")
+        return redirect(url_for("riders_page"))
+
+    try:
+        amount = float(request.form.get("amount") or 0)
+    except ValueError:
+        amount = 0.0
+
+    if amount <= 0:
+        conn.close()
+        flash("Payment amount must be greater than 0.", "error")
+        return redirect(url_for("riders_page"))
+
+    payment_method = request.form.get("payment_method", "Cash").strip() or "Cash"
+    note = request.form.get("note", "").strip()
+    payout_date = request.form.get("payout_date", "").strip() or datetime.now().strftime("%Y-%m-%d")
+    now_str = datetime.now().isoformat()
+    rider_name = rider["full_name"] or rider["username"]
+    rider_phone = rider["username"]
+
+    # 1. Record payout in rider_payouts
+    conn.execute("""
+        INSERT INTO rider_payouts (rider_id, amount, payout_date, payment_method, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (rider_id, amount, payout_date, payment_method, note, now_str))
+
+    # 2. Record as expense in ledger_entries for Riders riding cost
+    expense_title = f"Riders riding cost - {rider_name} ({rider_phone})"
+    if note:
+        expense_title += f" [{note}]"
+    conn.execute("""
+        INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+        VALUES ('expense', ?, ?, ?, ?, 'online')
+    """, (expense_title, amount, payout_date, now_str))
+
+    conn.commit()
+    conn.close()
+
+    remote_control.push_full_backup()
+    flash(f"Successfully paid TK {amount:,.2f} to {rider_name}. Recorded in reports as 'Riders riding cost' expense.", "success")
+    return redirect(url_for("riders_page", rider_id=rider_id))
+
+
+@app.route("/riders/payouts/<int:payout_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_rider_payout(payout_id):
+    conn = get_connection()
+    payout = conn.execute("SELECT * FROM rider_payouts WHERE id = ?", (payout_id,)).fetchone()
+    if payout:
+        rider_id = payout["rider_id"]
+        # Reverse corresponding expense in ledger_entries
+        conn.execute("""
+            DELETE FROM ledger_entries 
+            WHERE entry_type = 'expense' 
+              AND amount = ? 
+              AND entry_date = ? 
+              AND title LIKE 'Riders riding cost%'
+        """, (payout["amount"], payout["payout_date"]))
+        conn.execute("DELETE FROM rider_payouts WHERE id = ?", (payout_id,))
+        conn.commit()
+        conn.close()
+        remote_control.push_full_backup()
+        flash(f"Payout record of TK {payout['amount']:,.2f} removed and ledger expense reversed.", "success")
+        return redirect(url_for("riders_page", rider_id=rider_id))
+    conn.close()
+    flash("Payout record not found.", "error")
+    return redirect(url_for("riders_page"))
 
 
 @app.route("/riders/create", methods=["POST"])
@@ -4060,6 +4255,7 @@ def settings_page():
             "max_order_qty_package": request.form.get("max_order_qty_package", "0").strip(),
             "apply_max_qty_to_pos": "1" if request.form.get("apply_max_qty_to_pos") else "0",
             "product_image_bg_color": request.form.get("product_image_bg_color", "#FFFFFF").strip() or "#FFFFFF",
+            "rider_delivery_fee": request.form.get("rider_delivery_fee", "50").strip() or "50",
         }
         update_settings(conn, values)
         conn.commit()
@@ -5729,7 +5925,14 @@ def api_rider_update_order_status():
             conn.close()
             return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit OTP from customer app."}), 400
 
-    if status in ["verified", "packed", "on_the_way", "delivered", "cancelled"]:
+    if status == "delivered":
+        r_fee = get_rider_delivery_fee_setting(conn)
+        conn.execute(
+            "UPDATE online_orders SET order_status = ?, payment_status = CASE WHEN payment_status = 'pending' THEN 'paid' ELSE payment_status END, rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
+            (status, r_fee, datetime.now().isoformat(), order_id)
+        )
+        conn.commit()
+    elif status in ["verified", "packed", "on_the_way", "cancelled"]:
         conn.execute(
             "UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?",
             (status, datetime.now().isoformat(), order_id)
@@ -5880,9 +6083,10 @@ def update_online_order_status(order_id):
         return redirect(url_for("online_orders"))
 
     if new_status == "delivered":
+        r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
-            "UPDATE online_orders SET order_status = ?, payment_status = 'paid', updated_at = ? WHERE id = ?",
-            (new_status, datetime.now().isoformat(), order_id)
+            "UPDATE online_orders SET order_status = ?, payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
+            (new_status, r_fee, datetime.now().isoformat(), order_id)
         )
     else:
         conn.execute(
@@ -6019,9 +6223,10 @@ def verify_online_order_otp(order_id):
     conn = get_connection()
     order = conn.execute("SELECT delivery_otp FROM online_orders WHERE id = ?", (order_id,)).fetchone()
     if order and order["delivery_otp"] == input_otp:
+        r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
-            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', updated_at = ? WHERE id = ?",
-            (datetime.now().isoformat(), order_id)
+            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
+            (r_fee, datetime.now().isoformat(), order_id)
         )
         conn.commit()
         conn.close()
@@ -6987,9 +7192,10 @@ def api_verify_otp():
     conn = get_connection()
     order = conn.execute("SELECT id, delivery_otp FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
     if order and order["delivery_otp"] == otp:
+        r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
-            "UPDATE online_orders SET order_status = 'delivered', updated_at = ? WHERE id = ?",
-            (datetime.now().isoformat(), order["id"])
+            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
+            (r_fee, datetime.now().isoformat(), order["id"])
         )
         conn.commit()
         conn.close()

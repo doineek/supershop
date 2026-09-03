@@ -1,68 +1,216 @@
 {% extends "base.html" %}
-{% block title %}Delivery Riders{% endblock %}
+{% block title %}Delivery Riders Management{% endblock %}
 {% block content %}
-<div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+<div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
   <div>
-    <h1>🛵 Delivery Riders Management</h1>
-    <p class="subtitle">Create, view, and manage delivery riders. Only Admin-created riders can log in to the Rider App.</p>
+    <h1 style="display:flex; align-items:center; gap:8px; margin:0; font-size:1.6rem; color:#0f172a;">
+      🛵 Delivery Riders Management
+    </h1>
+    <p class="subtitle" style="margin:4px 0 0 0; color:#64748b; font-size:0.9rem;">
+      Track rider performance, commission per delivered order (TK {{ "%.0f"|format(summary.default_rider_fee) }}), payouts, and expenses.
+    </p>
   </div>
-  <button type="button" class="btn btn-primary" onclick="openCreateRiderModal()" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:10px 18px; border-radius:8px; background:#15803d; color:#fff; border:none; cursor:pointer;">
-    ➕ Create New Delivery Rider
-  </button>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <a href="{{ url_for('settings_page') }}" class="btn btn-outline" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:9px 14px; border-radius:8px; text-decoration:none;">
+      ⚙️ Set Rider Rate (TK {{ "%.0f"|format(summary.default_rider_fee) }})
+    </a>
+    <button type="button" class="btn btn-primary" onclick="openCreateRiderModal()" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:9px 18px; border-radius:8px; background:#15803d; color:#fff; border:none; cursor:pointer;">
+      ➕ Add Delivery Rider
+    </button>
+  </div>
 </div>
 
-<div class="card" style="padding:20px;">
+<!-- Summary Metrics Bar -->
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px;">
+  <div class="card" style="padding:14px; background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border-left:4px solid #3b82f6; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+    <div style="font-size:0.75rem; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Active Riders</div>
+    <div style="font-size:1.5rem; font-weight:800; color:#1e293b; margin-top:4px;">{{ summary.total_riders }}</div>
+    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">Registered fleet</div>
+  </div>
+
+  <div class="card" style="padding:14px; background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border-left:4px solid #06b6d4; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+    <div style="font-size:0.75rem; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Total Delivered</div>
+    <div style="font-size:1.5rem; font-weight:800; color:#0284c7; margin-top:4px;">{{ summary.total_delivered }} <span style="font-size:0.9rem; font-weight:600;">Orders</span></div>
+    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">Successfully delivered</div>
+  </div>
+
+  <div class="card" style="padding:14px; background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border-left:4px solid #8b5cf6; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+    <div style="font-size:0.75rem; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Total Commission Earned</div>
+    <div style="font-size:1.5rem; font-weight:800; color:#6d28d9; margin-top:4px;">TK {{ "{:,.2f}".format(summary.total_earned) }}</div>
+    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">Accrued trip compensation</div>
+  </div>
+
+  <div class="card" style="padding:14px; background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border-left:4px solid #10b981; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+    <div style="font-size:0.75rem; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Total Paid to Riders</div>
+    <div style="font-size:1.5rem; font-weight:800; color:#059669; margin-top:4px;">TK {{ "{:,.2f}".format(summary.total_paid) }}</div>
+    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">Expensed as Riding Cost</div>
+  </div>
+
+  <div class="card" style="padding:14px; background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border-left:4px solid {% if summary.total_due > 0 %}#ef4444{% else %}#10b981{% endif %}; box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+    <div style="font-size:0.75rem; color:#64748b; text-transform:uppercase; font-weight:700; letter-spacing:0.5px;">Current Balance Due</div>
+    <div style="font-size:1.5rem; font-weight:800; color:{% if summary.total_due > 0 %}#dc2626{% else %}#059669{% endif %}; margin-top:4px;">
+      TK {{ "{:,.2f}".format(summary.total_due) }}
+    </div>
+    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">
+      {% if summary.total_due > 0 %}Pending settlement{% else %}All accounts settled{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Search, Rider Dropdown Selector, and Date Range Filter Card -->
+<div class="card" style="padding:16px; margin-bottom:20px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px;">
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; justify-content:space-between;">
+    <!-- Left: Rider Search & Quick Dropdown Select -->
+    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1; min-width:300px;">
+      <div style="flex:1; min-width:180px;">
+        <label style="display:block; font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px;">
+          🔍 Search Rider by Name or Mobile:
+        </label>
+        <input type="text" id="riderSearchInput" placeholder="Type rider name or 017..." oninput="filterRidersTable()" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem;">
+      </div>
+
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px;">
+          🛵 Select Rider Profile from Dropdown:
+        </label>
+        <select id="riderSelectDropdown" onchange="onRiderDropdownSelected(this.value)" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem; background:#fff;">
+          <option value="">-- View Detailed Rider Profile --</option>
+          {% for r in riders %}
+          <option value="{{ r.id }}">🛵 {{ r.full_name }} ({{ r.username }}) - Due: TK {{ "%.0f"|format(r.balance_due) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <!-- Right: Date Selection Range Filter -->
+    <form method="GET" action="{{ url_for('riders_page') }}" style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end;">
+      <div>
+        <label style="display:block; font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px;">From Date:</label>
+        <input type="date" name="start_date" id="filterStartDate" value="{{ summary.start_date or '' }}" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem;">
+      </div>
+      <div>
+        <label style="display:block; font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px;">To Date:</label>
+        <input type="date" name="end_date" id="filterEndDate" value="{{ summary.end_date or '' }}" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem;">
+      </div>
+      <button type="submit" class="btn btn-primary" style="padding:8px 14px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:700; font-size:0.85rem; cursor:pointer;">
+        Filter
+      </button>
+      <a href="{{ url_for('riders_page') }}" class="btn btn-outline" style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.85rem; text-decoration:none; color:#475569;">
+        Reset
+      </a>
+    </form>
+  </div>
+
+  <!-- Quick Date Presets -->
+  <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+    <span style="font-size:0.76rem; color:#64748b; font-weight:700;">Date Presets:</span>
+    <button type="button" onclick="setDatePreset('all')" style="padding:3px 8px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:4px; font-size:0.75rem; cursor:pointer; font-weight:600;">All Time</button>
+    <button type="button" onclick="setDatePreset('today')" style="padding:3px 8px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:4px; font-size:0.75rem; cursor:pointer; font-weight:600;">Today</button>
+    <button type="button" onclick="setDatePreset('this_week')" style="padding:3px 8px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:4px; font-size:0.75rem; cursor:pointer; font-weight:600;">This Week</button>
+    <button type="button" onclick="setDatePreset('this_month')" style="padding:3px 8px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:4px; font-size:0.75rem; cursor:pointer; font-weight:600;">This Month</button>
+    {% if summary.start_date or summary.end_date %}
+    <span style="font-size:0.78rem; background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:4px; margin-left:6px; font-weight:700;">
+      Filtered: {{ summary.start_date or 'Start' }} to {{ summary.end_date or 'Today' }}
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Riders Table Card -->
+<div class="card" style="padding:0; overflow-x:auto; border-radius:10px; border:1px solid #e2e8f0;">
   {% if riders %}
-  <table>
+  <table style="width:100%; border-collapse:collapse; text-align:left;" id="ridersTable">
     <thead>
-      <tr>
-        <th>Rider Name</th>
-        <th>Mobile / Username</th>
-        <th>Password / Key</th>
-        <th style="text-align:center;">Orders Handled</th>
-        <th style="text-align:center;">Status</th>
-        <th>Created Date</th>
-        <th style="text-align:right;">Actions</th>
+      <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#475569; font-size:0.82rem; text-transform:uppercase; letter-spacing:0.5px;">
+        <th style="padding:12px 14px;">Rider Name</th>
+        <th style="padding:12px 14px;">Mobile / Login</th>
+        <th style="padding:12px 14px;">Password</th>
+        <th style="padding:12px 14px; text-align:center;">Delivered Orders</th>
+        <th style="padding:12px 14px; text-align:right;">Total Earned</th>
+        <th style="padding:12px 14px; text-align:right;">Total Paid</th>
+        <th style="padding:12px 14px; text-align:right;">Balance Due</th>
+        <th style="padding:12px 14px; text-align:center;">Status</th>
+        <th style="padding:12px 14px; text-align:right; min-width:220px;">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for r in riders %}
-      <tr>
-        <td style="font-weight:700; color:#1e293b;">
-          🛵 {{ r.full_name if r.full_name else r.username }}
-        </td>
-        <td>{{ r.username }}</td>
-        <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ r.plain_password or '123456' }}</code></td>
-        <td style="text-align:center;">
-          <div style="font-size:0.83rem;">
-            📦 Total: <strong>{{ r.total_orders }}</strong> | ✅ Delivered: <strong style="color:#16a34a;">{{ r.total_delivered }}</strong>
-            {% if r.total_collected > 0 %}
-            <div style="font-size:0.78rem; color:#16a34a; font-weight:700; margin-top:2px;">Cash: TK {{ "%.0f"|format(r.total_collected) }}</div>
-            {% endif %}
+      <tr id="rider-row-{{ r.id }}" class="rider-table-row" style="border-bottom:1px solid #f1f5f9; transition:background 0.2s;" data-name="{{ r.full_name|lower }}" data-phone="{{ r.username }}">
+        <td style="padding:12px 14px; font-weight:700; color:#0f172a;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="width:34px; height:34px; border-radius:50%; background:#e0e7ff; color:#4338ca; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.9rem;">
+              {{ (r.full_name or r.username)[:1]|upper }}
+            </div>
+            <div>
+              <div style="font-size:0.92rem; font-weight:700;">{{ r.full_name }}</div>
+              <div style="font-size:0.75rem; color:#64748b;">ID #{{ r.id }} | Joined: {{ r.created_at[:10] if r.created_at else '—' }}</div>
+            </div>
           </div>
         </td>
-        <td style="text-align:center;">
+        <td style="padding:12px 14px; font-family:monospace; font-weight:600; color:#1e293b;">
+          {{ r.username }}
+        </td>
+        <td style="padding:12px 14px;">
+          <code style="background:#f1f5f9; padding:4px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ r.plain_password or '123456' }}</code>
+        </td>
+        <td style="padding:12px 14px; text-align:center;">
+          <div style="font-size:0.90rem; font-weight:700; color:#15803d;">
+            ✅ {{ r.total_delivered }} <span style="font-size:0.75rem; color:#64748b; font-weight:normal;">/ {{ r.total_orders }} handled</span>
+          </div>
+          {% if r.total_collected > 0 %}
+          <div style="font-size:0.74rem; color:#0369a1; font-weight:600; margin-top:2px;">
+            COD: TK {{ "{:,.0f}".format(r.total_collected) }}
+          </div>
+          {% endif %}
+        </td>
+        <td style="padding:12px 14px; text-align:right; font-weight:700; color:#6d28d9; font-size:0.92rem;">
+          TK {{ "{:,.2f}".format(r.total_earned) }}
+        </td>
+        <td style="padding:12px 14px; text-align:right; font-weight:700; color:#059669; font-size:0.92rem;">
+          TK {{ "{:,.2f}".format(r.total_paid) }}
+        </td>
+        <td style="padding:12px 14px; text-align:right;">
+          {% if r.balance_due > 0 %}
+          <span style="background:#fee2e2; color:#dc2626; padding:4px 8px; border-radius:6px; font-weight:800; font-size:0.90rem; display:inline-block;">
+            TK {{ "{:,.2f}".format(r.balance_due) }}
+          </span>
+          {% else %}
+          <span style="background:#dcfce7; color:#15803d; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.80rem; display:inline-block;">
+            ✅ Settled
+          </span>
+          {% endif %}
+        </td>
+        <td style="padding:12px 14px; text-align:center;">
           {% if r.is_active == 1 %}
             <span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">
-              ✅ ACTIVE
+              ACTIVE
             </span>
           {% else %}
             <span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700;">
-              ⛔ INACTIVE
+              INACTIVE
             </span>
           {% endif %}
         </td>
-        <td>{{ r.created_at[:10] if r.created_at else '—' }}</td>
-        <td style="text-align:right;">
-          <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
-            <button type="button" class="btn btn-small" style="background:#2563eb; color:#fff; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:0.8rem;" onclick='openRiderOrdersModal({{ r|tojson|safe }})'>
-              📋 Order Details ({{ r.total_orders }})
+        <td style="padding:12px 14px; text-align:right;">
+          <div style="display:inline-flex; gap:6px; justify-content:flex-end; align-items:center;">
+            <!-- Pay Button -->
+            <button type="button" class="btn btn-small" onclick="openPayRiderModal({{ r.id }}, '{{ r.full_name|escape }}', '{{ r.username }}', {{ r.total_earned }}, {{ r.total_paid }}, {{ r.balance_due }})" style="background:{% if r.balance_due > 0 %}#15803d{% else %}#0284c7{% endif %}; color:#fff; border:none; padding:5px 12px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.80rem; display:inline-flex; align-items:center; gap:4px;">
+              💵 Pay {% if r.balance_due > 0 %}(TK {{ "%.0f"|format(r.balance_due) }}){% endif %}
             </button>
-            <button type="button" class="btn btn-outline btn-small" onclick="openEditRiderModal({{ r.id }}, '{{ r.full_name }}', '{{ r.username }}', {{ r.is_active }})">
-              ✏️ Edit
+
+            <!-- Detailed Profile Button -->
+            <button type="button" class="btn btn-small" onclick='openRiderProfileModal({{ r|tojson|safe }})' style="background:#4f46e5; color:#fff; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.80rem;">
+              👤 Profile ({{ r.payouts|length }} Pays)
             </button>
-            <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-weight:bold;" onclick="openDeleteRiderModal({{ r.id }}, '{{ r.full_name or r.username }}')">
-              🗑️ Delete
+
+            <!-- Edit Button -->
+            <button type="button" class="btn btn-outline btn-small" onclick="openEditRiderModal({{ r.id }}, '{{ r.full_name|escape }}', '{{ r.username }}', {{ r.is_active }})" style="padding:5px 8px; border-radius:6px; font-size:0.80rem;">
+              ✏️
+            </button>
+
+            <!-- Delete Button -->
+            <button type="button" class="btn btn-small" onclick="openDeleteRiderModal({{ r.id }}, '{{ (r.full_name or r.username)|escape }}')" style="background:#ef4444; color:#fff; border:none; padding:5px 8px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:0.80rem;">
+              🗑️
             </button>
           </div>
         </td>
@@ -71,37 +219,197 @@
     </tbody>
   </table>
   {% else %}
-  <div style="text-align:center; padding:30px; color:#64748b;">
-    <p style="font-size:16px; font-weight:bold; margin-bottom:6px;">No Delivery Riders Created Yet</p>
-    <p style="font-size:14px; margin-bottom:16px;">Click the button below to add your first delivery rider.</p>
-    <button type="button" class="btn btn-primary" onclick="openCreateRiderModal()" style="background:#15803d; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-weight:bold; cursor:pointer;">
+  <div style="text-align:center; padding:40px 20px; color:#64748b;">
+    <p style="font-size:18px; font-weight:bold; margin-bottom:6px; color:#0f172a;">No Delivery Riders Created Yet</p>
+    <p style="font-size:14px; margin-bottom:18px;">Click below to add your first delivery rider.</p>
+    <button type="button" class="btn btn-primary" onclick="openCreateRiderModal()" style="background:#15803d; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; cursor:pointer;">
       ➕ Add First Delivery Rider
     </button>
   </div>
   {% endif %}
 </div>
 
-<!-- Create Rider Modal -->
+<!-- ================= MODALS ================= -->
+
+<!-- 1. Pay Rider Modal -->
+<div id="payRiderModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); z-index:1100; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:#fff; width:100%; max-width:480px; padding:24px; border-radius:14px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
+      <h3 style="margin:0; color:#15803d; font-size:1.2rem; font-weight:bold;">
+        💵 Disburse Rider Riding Payment
+      </h3>
+      <button type="button" onclick="closePayRiderModal()" style="background:transparent; border:none; font-size:1.3rem; cursor:pointer; color:#64748b;">✕</button>
+    </div>
+
+    <!-- Rider summary pill -->
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:16px;">
+      <div style="font-size:1rem; font-weight:bold; color:#0f172a;" id="payRiderNameLabel">Rider Name</div>
+      <div style="font-size:0.82rem; color:#64748b; margin-top:2px;" id="payRiderPhoneLabel">Mobile: 017...</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px; text-align:center;">
+        <div style="background:#fff; padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
+          <div style="font-size:0.72rem; color:#64748b; font-weight:700;">EARNED</div>
+          <div style="font-size:0.90rem; font-weight:800; color:#6d28d9;" id="payRiderEarned">TK 0</div>
+        </div>
+        <div style="background:#fff; padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
+          <div style="font-size:0.72rem; color:#64748b; font-weight:700;">PAID</div>
+          <div style="font-size:0.90rem; font-weight:800; color:#059669;" id="payRiderPaid">TK 0</div>
+        </div>
+        <div style="background:#fff; padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
+          <div style="font-size:0.72rem; color:#64748b; font-weight:700;">BALANCE DUE</div>
+          <div style="font-size:0.90rem; font-weight:800; color:#dc2626;" id="payRiderDue">TK 0</div>
+        </div>
+      </div>
+    </div>
+
+    <form id="payRiderForm" method="POST" action="">
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:0.85rem; font-weight:700; color:#334155; margin-bottom:4px;">
+          Payout Amount (TK) *
+        </label>
+        <input type="number" step="0.5" min="1" name="amount" id="payAmountInput" required style="width:100%; padding:10px; border:2px solid #15803d; border-radius:8px; font-size:1.15rem; font-weight:bold; color:#0f172a;">
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="display:block; font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px;">
+            Payment Method
+          </label>
+          <select name="payment_method" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem;">
+            <option value="Cash">💵 Cash</option>
+            <option value="bKash">📱 bKash</option>
+            <option value="Nagad">📱 Nagad</option>
+            <option value="Rocket">📱 Rocket</option>
+            <option value="Bank Transfer">🏦 Bank Transfer</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px;">
+            Payout Date
+          </label>
+          <input type="date" name="payout_date" id="payDateInput" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem;">
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.82rem; font-weight:700; color:#334155; margin-bottom:4px;">
+          Payment Note / Transaction Reference (Optional)
+        </label>
+        <input type="text" name="note" placeholder="e.g. Delivery payout for completed orders" style="width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.88rem;">
+        <small style="color:#64748b; font-size:0.75rem; display:block; margin-top:4px;">
+          💡 This payment is automatically expensed to <strong>Reports: Riders riding cost</strong>.
+        </small>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button type="button" class="btn btn-outline" onclick="closePayRiderModal()" style="padding:10px 18px; border-radius:8px; font-weight:700;">
+          Cancel
+        </button>
+        <button type="submit" class="btn" style="background:#15803d; color:#fff; border:none; padding:10px 22px; border-radius:8px; font-weight:800; cursor:pointer;">
+          Confirm & Pay
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 2. Detailed Rider Profile & Performance Modal -->
+<div id="riderProfileModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:1050; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:#fff; width:100%; max-width:850px; max-height:90vh; overflow-y:auto; padding:24px; border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3);">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #f1f5f9; padding-bottom:14px; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div id="profileAvatar" style="width:48px; height:48px; border-radius:50%; background:#4f46e5; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.4rem;">
+          R
+        </div>
+        <div>
+          <h2 id="profileFullName" style="margin:0; color:#0f172a; font-size:1.35rem; font-weight:bold;">Rider Name</h2>
+          <p id="profileMeta" style="font-size:0.85rem; color:#64748b; margin:2px 0 0 0;">Mobile: 017... | ID: #1</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeRiderProfileModal()" style="background:#f1f5f9; color:#475569; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; cursor:pointer;">✕ Close</button>
+    </div>
+
+    <!-- Multi-View Breakdown Cards -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:20px;">
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+        <div style="font-size:0.72rem; color:#64748b; font-weight:700;">TOTAL DELIVERED</div>
+        <div id="profileDeliveredCount" style="font-size:1.25rem; font-weight:800; color:#0284c7; margin-top:2px;">0</div>
+        <div id="profileOrdersTotal" style="font-size:0.72rem; color:#64748b;">0 total orders handled</div>
+      </div>
+
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+        <div style="font-size:0.72rem; color:#64748b; font-weight:700;">TOTAL COMMISSION</div>
+        <div id="profileTotalEarned" style="font-size:1.25rem; font-weight:800; color:#6d28d9; margin-top:2px;">TK 0</div>
+        <div style="font-size:0.72rem; color:#64748b;">Accrued trip compensation</div>
+      </div>
+
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+        <div style="font-size:0.72rem; color:#64748b; font-weight:700;">TOTAL AMOUNT PAID</div>
+        <div id="profileTotalPaid" style="font-size:1.25rem; font-weight:800; color:#059669; margin-top:2px;">TK 0</div>
+        <div id="profilePaidWays" style="font-size:0.72rem; color:#64748b;">Across 0 payouts</div>
+      </div>
+
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+        <div style="font-size:0.72rem; color:#64748b; font-weight:700;">CURRENT BALANCE DUE</div>
+        <div id="profileBalanceDue" style="font-size:1.25rem; font-weight:800; color:#dc2626; margin-top:2px;">TK 0</div>
+        <div style="font-size:0.72rem; color:#64748b;">Pending payout</div>
+      </div>
+    </div>
+
+    <!-- Quick breakdown by time period -->
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:20px; display:flex; gap:16px; flex-wrap:wrap; font-size:0.85rem;">
+      <div>📅 <strong>Paid Today:</strong> <span id="profilePaidToday" style="font-weight:bold; color:#1d4ed8;">TK 0.00</span></div>
+      <div>📅 <strong>Paid This Month:</strong> <span id="profilePaidMonth" style="font-weight:bold; color:#1d4ed8;">TK 0.00</span></div>
+      <div>💵 <strong>Cash Collected (COD):</strong> <span id="profileTotalCod" style="font-weight:bold; color:#15803d;">TK 0.00</span></div>
+      <div style="margin-left:auto;">
+        <button type="button" id="profilePayBtn" class="btn btn-small" style="background:#15803d; color:#fff; border:none; padding:4px 12px; border-radius:6px; font-weight:bold; cursor:pointer;">
+          💵 Pay Rider Now
+        </button>
+      </div>
+    </div>
+
+    <!-- View Switcher Tabs -->
+    <div style="display:flex; border-bottom:2px solid #e2e8f0; margin-bottom:14px;">
+      <button type="button" id="tabBtnPayouts" onclick="switchProfileTab('payouts')" style="padding:10px 18px; border:none; background:none; font-weight:bold; font-size:0.92rem; color:#2563eb; border-bottom:3px solid #2563eb; cursor:pointer;">
+        💰 Payout History Ledger (<span id="profilePayoutsCount">0</span>)
+      </button>
+      <button type="button" id="tabBtnOrders" onclick="switchProfileTab('orders')" style="padding:10px 18px; border:none; background:none; font-weight:bold; font-size:0.92rem; color:#64748b; border-bottom:3px solid transparent; cursor:pointer;">
+        📦 Delivered Orders (<span id="profileOrdersCount">0</span>)
+      </button>
+    </div>
+
+    <!-- Tab 1: Payout History -->
+    <div id="profileTabPayouts">
+      <div id="profilePayoutsList"></div>
+    </div>
+
+    <!-- Tab 2: Orders List -->
+    <div id="profileTabOrders" style="display:none;">
+      <div id="profileOrdersList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. Create Rider Modal -->
 <div id="createRiderModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
   <div style="background:#fff; width:90%; max-width:440px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
     <h3 style="margin-top:0; color:#15803d; font-size:1.15rem; font-weight:bold;">🛵 Create New Delivery Rider</h3>
     <p style="font-size:0.85rem; color:#475569; margin-bottom:16px;">
-      Riders cannot register themselves from the app. Only Admin can create credentials.
+      Riders cannot register themselves from the mobile app. Only Admin can create login credentials.
     </p>
 
     <form method="POST" action="{{ url_for('create_rider_admin') }}">
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Rider Full Name ( ) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Rider Full Name *</label>
         <input type="text" name="full_name" required placeholder="e.g. Karim Delivery" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number / Username ( ) *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Mobile Number / Username *</label>
         <input type="text" name="username" required maxlength="11" placeholder="e.g. 01712345678" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:18px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Password () *</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Login Password *</label>
         <input type="password" name="password" required placeholder="Minimum 4 characters" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
@@ -113,7 +421,7 @@
   </div>
 </div>
 
-<!-- Edit Rider Modal -->
+<!-- 4. Edit Rider Modal -->
 <div id="editRiderModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
   <div style="background:#fff; width:90%; max-width:440px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
     <h3 style="margin-top:0; color:#1d4ed8; font-size:1.15rem; font-weight:bold;">✏️ Edit Delivery Rider Account</h3>
@@ -132,15 +440,15 @@
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">New Password (     )</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">New Password (leave empty to keep unchanged)</label>
         <input type="password" name="password" placeholder="Leave empty to keep unchanged" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:18px;">
         <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Account Status</label>
         <select name="is_active" id="editRiderIsActive" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
-          <option value="1">✅ Active</option>
-          <option value="0">⛔ Inactive / Suspended</option>
+          <option value="1">ACTIVE</option>
+          <option value="0">INACTIVE / Suspended</option>
         </select>
       </div>
 
@@ -152,7 +460,7 @@
   </div>
 </div>
 
-<!-- Delete Rider Confirmation Modal -->
+<!-- 5. Delete Rider Confirmation Modal -->
 <div id="deleteRiderModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
   <div style="background:#fff; width:90%; max-width:420px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.15);">
     <h3 style="margin-top:0; color:#dc2626; font-size:1.15rem; font-weight:bold;">🗑️ Confirm Delete Rider</h3>
@@ -171,71 +479,246 @@
   </div>
 </div>
 
-<!-- Rider Accepted & Delivered Orders Detail Modal -->
-<div id="riderOrdersModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-  <div style="background:#fff; width:92%; max-width:680px; max-height:85vh; overflow-y:auto; padding:24px; border-radius:16px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2);">
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px;">
-      <div>
-        <h3 id="riderOrdersTitle" style="margin:0; color:#1e40af; font-size:1.2rem; font-weight:bold;">🛵 Rider Accepted & Delivered Orders</h3>
-        <p id="riderOrdersSubtitle" style="font-size:0.85rem; color:#64748b; margin:2px 0 0 0;">Mobile: 01712345678</p>
-      </div>
-      <button type="button" onclick="closeRiderOrdersModal()" style="background:#ef4444; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; cursor:pointer;">✕ Close</button>
-    </div>
-
-    <div id="riderOrdersBody"></div>
-  </div>
-</div>
-
+<!-- JavaScript Logic -->
 <script>
-function openRiderOrdersModal(rider) {
-  document.getElementById('riderOrdersTitle').innerText = '🛵 ' + (rider.full_name || rider.username) + ' - Accepted & Delivered Orders';
-  document.getElementById('riderOrdersSubtitle').innerText = 'Mobile: ' + rider.username + ' | Total Orders Handled: ' + rider.total_orders + ' | Delivered: ' + rider.total_delivered + ' (Cash: TK ' + rider.total_collected.toFixed(0) + ')';
+// Live Rider Search
+function filterRidersTable() {
+  const query = (document.getElementById('riderSearchInput').value || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('.rider-table-row');
+  rows.forEach(row => {
+    const name = row.getAttribute('data-name') || '';
+    const phone = row.getAttribute('data-phone') || '';
+    if (!query || name.includes(query) || phone.includes(query)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
 
-  let bodyDiv = document.getElementById('riderOrdersBody');
-  if (!rider.orders || rider.orders.length === 0) {
-    bodyDiv.innerHTML = '<div style="padding:30px; text-align:center; color:#64748b; font-size:0.95rem;">        ।</div>';
+// Dropdown Selection: Scroll to row or open profile
+const ALL_RIDERS_DATA = {{ riders|tojson|safe }};
+function onRiderDropdownSelected(riderId) {
+  if (!riderId) return;
+  const rider = ALL_RIDERS_DATA.find(r => String(r.id) === String(riderId));
+  if (rider) {
+    // Highlight table row
+    const row = document.getElementById('rider-row-' + riderId);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.backgroundColor = '#eff6ff';
+      setTimeout(() => { row.style.backgroundColor = ''; }, 2000);
+    }
+    // Open detailed profile modal
+    openRiderProfileModal(rider);
+  }
+}
+
+// Date Presets
+function setDatePreset(type) {
+  const startInput = document.getElementById('filterStartDate');
+  const endInput = document.getElementById('filterEndDate');
+  const now = new Date();
+  const formatDate = d => d.toISOString().split('T')[0];
+
+  if (type === 'all') {
+    startInput.value = '';
+    endInput.value = '';
+  } else if (type === 'today') {
+    const today = formatDate(now);
+    startInput.value = today;
+    endInput.value = today;
+  } else if (type === 'this_week') {
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diff));
+    startInput.value = formatDate(monday);
+    endInput.value = formatDate(new Date());
+  } else if (type === 'this_month') {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    startInput.value = formatDate(firstDay);
+    endInput.value = formatDate(new Date());
+  }
+  startInput.form.submit();
+}
+
+// Open Pay Modal
+function openPayRiderModal(riderId, name, phone, earned, paid, due) {
+  document.getElementById('payRiderForm').action = '/riders/' + riderId + '/pay';
+  document.getElementById('payRiderNameLabel').innerText = '🛵 ' + name;
+  document.getElementById('payRiderPhoneLabel').innerText = 'Mobile: ' + phone;
+  document.getElementById('payRiderEarned').innerText = 'TK ' + Number(earned).toFixed(2);
+  document.getElementById('payRiderPaid').innerText = 'TK ' + Number(paid).toFixed(2);
+  document.getElementById('payRiderDue').innerText = 'TK ' + Number(due).toFixed(2);
+  document.getElementById('payAmountInput').value = due > 0 ? due.toFixed(2) : '50.00';
+  document.getElementById('payDateInput').value = new Date().toISOString().split('T')[0];
+  document.getElementById('payRiderModal').style.display = 'flex';
+}
+function closePayRiderModal() {
+  document.getElementById('payRiderModal').style.display = 'none';
+}
+
+// Open Detailed Rider Profile Modal
+let currentProfileRider = null;
+function openRiderProfileModal(rider) {
+  currentProfileRider = rider;
+  document.getElementById('profileAvatar').innerText = (rider.full_name || rider.username).substring(0, 1).toUpperCase();
+  document.getElementById('profileFullName').innerText = '🛵 ' + (rider.full_name || rider.username);
+  document.getElementById('profileMeta').innerText = 'Mobile: ' + rider.username + ' | Account ID: #' + rider.id + ' | Registered: ' + (rider.created_at ? rider.created_at.substring(0, 10) : '—');
+  
+  document.getElementById('profileDeliveredCount').innerText = rider.total_delivered;
+  document.getElementById('profileOrdersTotal').innerText = rider.total_orders + ' total orders handled';
+  
+  document.getElementById('profileTotalEarned').innerText = 'TK ' + Number(rider.total_earned).toFixed(2);
+  document.getElementById('profileTotalPaid').innerText = 'TK ' + Number(rider.total_paid).toFixed(2);
+  document.getElementById('profilePaidWays').innerText = 'Across ' + (rider.payouts ? rider.payouts.length : 0) + ' payouts';
+  
+  document.getElementById('profileBalanceDue').innerText = 'TK ' + Number(rider.balance_due).toFixed(2);
+  document.getElementById('profilePaidToday').innerText = 'TK ' + Number(rider.paid_today || 0).toFixed(2);
+  document.getElementById('profilePaidMonth').innerText = 'TK ' + Number(rider.paid_this_month || 0).toFixed(2);
+  document.getElementById('profileTotalCod').innerText = 'TK ' + Number(rider.total_collected || 0).toFixed(2);
+
+  document.getElementById('profilePayoutsCount').innerText = rider.payouts ? rider.payouts.length : 0;
+  document.getElementById('profileOrdersCount').innerText = rider.total_delivered;
+
+  document.getElementById('profilePayBtn').onclick = () => {
+    closeRiderProfileModal();
+    openPayRiderModal(rider.id, rider.full_name, rider.username, rider.total_earned, rider.total_paid, rider.balance_due);
+  };
+
+  renderProfilePayouts(rider);
+  renderProfileOrders(rider);
+
+  switchProfileTab('payouts');
+  document.getElementById('riderProfileModal').style.display = 'flex';
+}
+
+function closeRiderProfileModal() {
+  document.getElementById('riderProfileModal').style.display = 'none';
+}
+
+function switchProfileTab(tab) {
+  if (tab === 'payouts') {
+    document.getElementById('profileTabPayouts').style.display = 'block';
+    document.getElementById('profileTabOrders').style.display = 'none';
+    document.getElementById('tabBtnPayouts').style.color = '#2563eb';
+    document.getElementById('tabBtnPayouts').style.borderBottom = '3px solid #2563eb';
+    document.getElementById('tabBtnOrders').style.color = '#64748b';
+    document.getElementById('tabBtnOrders').style.borderBottom = '3px solid transparent';
   } else {
-    let html = '';
-    rider.orders.forEach(o => {
-      let statusColor = o.order_status === 'delivered' ? '#16a34a' : (o.order_status === 'on_the_way' ? '#06b6d4' : '#2563eb');
-      let createdStr = o.created_at ? o.created_at.substring(0, 16).replace('T', ' ') : '—';
-      html += `
-        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 8px;">
-            <div>
-              <span style="font-weight: bold; color: #1e40af; font-size: 1.05rem;">📦 Order #${o.order_number}</span>
-              <span style="font-size: 0.8rem; color: #64748b; margin-left: 8px;">📅 ${createdStr}</span>
-            </div>
-            <span style="background: ${statusColor}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: bold; text-transform: uppercase;">
+    document.getElementById('profileTabPayouts').style.display = 'none';
+    document.getElementById('profileTabOrders').style.display = 'block';
+    document.getElementById('tabBtnOrders').style.color = '#2563eb';
+    document.getElementById('tabBtnOrders').style.borderBottom = '3px solid #2563eb';
+    document.getElementById('tabBtnPayouts').style.color = '#64748b';
+    document.getElementById('tabBtnPayouts').style.borderBottom = '3px solid transparent';
+  }
+}
+
+function renderProfilePayouts(rider) {
+  const container = document.getElementById('profilePayoutsList');
+  if (!rider.payouts || rider.payouts.length === 0) {
+    container.innerHTML = `
+      <div style="padding:32px; text-align:center; color:#64748b; background:#f8fafc; border-radius:8px;">
+        <p style="font-weight:bold; margin-bottom:4px;">No Payouts Recorded Yet</p>
+        <p style="font-size:0.85rem; margin:0;">Click "Pay Rider Now" to record commission disbursement for delivered orders.</p>
+      </div>
+    `;
+    return;
+  }
+
+  let html = `
+    <table style="width:100%; border-collapse:collapse; font-size:0.86rem;">
+      <thead>
+        <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#475569; text-align:left;">
+          <th style="padding:8px 10px;">Payout Date</th>
+          <th style="padding:8px 10px; text-align:right;">Amount (TK)</th>
+          <th style="padding:8px 10px;">Method</th>
+          <th style="padding:8px 10px;">Note / Memo</th>
+          <th style="padding:8px 10px; text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  rider.payouts.forEach(p => {
+    html += `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:9px 10px; font-weight:700; color:#0f172a;">
+          📅 ${p.payout_date || '—'}
+        </td>
+        <td style="padding:9px 10px; text-align:right; font-weight:800; color:#059669; font-size:0.92rem;">
+          TK ${Number(p.amount).toFixed(2)}
+        </td>
+        <td style="padding:9px 10px;">
+          <span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-weight:700; font-size:0.75rem;">
+            ${p.payment_method || 'Cash'}
+          </span>
+        </td>
+        <td style="padding:9px 10px; color:#475569;">
+          ${p.note || '—'}
+        </td>
+        <td style="padding:9px 10px; text-align:right;">
+          <form method="POST" action="/riders/payouts/${p.id}/delete" onsubmit="return confirm('Are you sure you want to reverse this payout of TK ${Number(p.amount).toFixed(2)}?');" style="display:inline;">
+            <button type="submit" style="background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; font-weight:bold;">
+              Reverse
+            </button>
+          </form>
+        </td>
+      </tr>
+    `;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderProfileOrders(rider) {
+  const container = document.getElementById('profileOrdersList');
+  if (!rider.orders || rider.orders.length === 0) {
+    container.innerHTML = '<div style="padding:30px; text-align:center; color:#64748b;">No orders handled by this rider yet.</div>';
+    return;
+  }
+
+  let html = '';
+  rider.orders.forEach(o => {
+    const isDel = (o.order_status === 'delivered');
+    const statusColor = isDel ? '#16a34a' : (o.order_status === 'on_the_way' ? '#06b6d4' : '#2563eb');
+    const createdStr = o.created_at ? o.created_at.substring(0, 16).replace('T', ' ') : '—';
+    const riderFee = Number(o.effective_rider_fee || 0).toFixed(2);
+
+    html += `
+      <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; margin-bottom: 8px;">
+          <div>
+            <span style="font-weight: bold; color: #1e40af; font-size: 0.95rem;">📦 Order #${o.order_number}</span>
+            <span style="font-size: 0.78rem; color: #64748b; margin-left: 8px;">📅 ${createdStr}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            ${isDel ? `<span style="background:#ede9fe; color:#6d28d9; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:700;">Fee: +TK ${riderFee}</span>` : ''}
+            <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">
               ${o.order_status}
             </span>
           </div>
+        </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.88rem;">
-            <div>
-              <div>👤 <strong>Customer:</strong> ${o.customer_name}</div>
-              <div>📞 <strong>Mobile:</strong> <a href="tel:${o.customer_phone}" style="color: #2563eb; font-weight: bold;">${o.customer_phone}</a></div>
-              <div>📍 <strong>Address:</strong> ${o.address_details}, ${o.area}, ${o.district}</div>
-            </div>
-            <div>
-              <div>💵 <strong>Cash Collection:</strong> <span style="color: #16a34a; font-weight: bold;">TK ${o.total_amount.toFixed(2)}</span></div>
-              <div>💳 <strong>Payment Method:</strong> ${o.payment_method || 'COD'}</div>
-              <div>🔑 <strong>Delivery OTP:</strong> <strong style="font-family: monospace; color: #dc2626; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">${o.delivery_otp}</strong></div>
-            </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.84rem;">
+          <div>
+            <div>👤 <strong>Customer:</strong> ${o.customer_name}</div>
+            <div>📞 <strong>Mobile:</strong> <a href="tel:${o.customer_phone}" style="color: #2563eb; font-weight: bold;">${o.customer_phone}</a></div>
+            <div>📍 <strong>Address:</strong> ${o.address_details}, ${o.area}</div>
+          </div>
+          <div>
+            <div>💵 <strong>COD Collection:</strong> <span style="color: #16a34a; font-weight: bold;">TK ${Number(o.total_amount).toFixed(2)}</span></div>
+            <div>💳 <strong>Method:</strong> ${o.payment_method || 'COD'}</div>
+            <div>🔑 <strong>Delivery OTP:</strong> <strong style="font-family: monospace; color: #dc2626; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">${o.delivery_otp}</strong></div>
           </div>
         </div>
-      `;
-    });
-    bodyDiv.innerHTML = html;
-  }
-
-  document.getElementById('riderOrdersModal').style.display = 'flex';
+      </div>
+    `;
+  });
+  container.innerHTML = html;
 }
 
-function closeRiderOrdersModal() {
-  document.getElementById('riderOrdersModal').style.display = 'none';
-}
-
+// Create, Edit, Delete Modal Helpers
 function openCreateRiderModal() { document.getElementById('createRiderModal').style.display = 'flex'; }
 function closeCreateRiderModal() { document.getElementById('createRiderModal').style.display = 'none'; }
 
@@ -254,5 +737,14 @@ function openDeleteRiderModal(id, name) {
   document.getElementById('deleteRiderModal').style.display = 'flex';
 }
 function closeDeleteRiderModal() { document.getElementById('deleteRiderModal').style.display = 'none'; }
+
+// Auto open profile if passed in URL query param
+window.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const riderIdParam = urlParams.get('rider_id');
+  if (riderIdParam) {
+    onRiderDropdownSelected(riderIdParam);
+  }
+});
 </script>
 {% endblock %}
