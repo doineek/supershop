@@ -2255,12 +2255,18 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">WhatsApp Mobile Number (11 Digits)*</label>
+            <label class="form-label">Mobile Number (11 Digits)*</label>
             <div style="display:flex; gap:8px;">
               <input type="tel" class="form-control" id="regPhoneInput" placeholder="01700000000" maxlength="11" pattern="01[3-9][0-9]{8}" oninput="handleRegPhoneChange()" required style="flex:1;">
               <button type="button" class="btn-submit" id="btnTriggerVerify" onclick="sendWhatsappOtp()" style="width:auto; padding:0 14px; font-size:0.82rem; background:#16A34A; white-space:nowrap; display:flex; align-items:center; gap:4px;">
-                <span>💬</span> <span>Send OTP</span>
+                <span>💬</span> <span>Verify via WhatsApp</span>
               </button>
+            </div>
+            <!-- Alternative option for non-WhatsApp users -->
+            <div id="noWhatsappLinkBox" style="margin-top:6px; text-align:right;">
+              <a href="javascript:void(0)" onclick="openMissedCallVerifyBox()" style="font-size:0.76rem; color:#0284C7; font-weight:700; text-decoration:underline;">
+                Don't have WhatsApp? Verify via Free Missed Call
+              </a>
             </div>
           </div>
 
@@ -2268,31 +2274,32 @@
           <div id="regVerifiedBadge" style="display:none; background:#ECFDF5; border:1px solid #A7F3D0; padding:10px 14px; border-radius:10px; margin-bottom:14px; align-items:center; gap:8px;">
             <span style="font-size:1.3rem;">✅</span>
             <div>
-              <div style="font-size:0.88rem; font-weight:800; color:#047857;">WhatsApp Number Verified!</div>
+              <div style="font-size:0.88rem; font-weight:800; color:#047857;">Mobile Number Verified!</div>
               <div style="font-size:0.75rem; color:#065F46;" id="regVerifiedPhoneTxt">017XXXXXXXX</div>
             </div>
           </div>
 
-          <!-- WhatsApp OTP Verification Box (Shown when Send OTP clicked) -->
+          <!-- Track 1: WhatsApp Verification Box -->
           <div id="whatsappOtpVerifyBox" style="display:none; background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(22, 163, 74, 0.08);">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
               <div style="display:flex; align-items:center; gap:6px; font-size:0.92rem; font-weight:800; color:#15803D;">
-                <span>💬</span> <span>WhatsApp OTP Verification</span>
+                <span>💬</span> <span>WhatsApp Verification</span>
               </div>
               <span style="background:#DCFCE7; color:#166534; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:12px;">
-                FREE OTP
+                100% FREE
               </span>
             </div>
 
             <div style="font-size:0.8rem; color:#166534; line-height:1.45; margin-bottom:10px;">
-              Admin WhatsApp (<strong id="adminWaPhoneTxt">017XXXXXXXX</strong>) থেকে আপনার WhatsApp নম্বরে ৪ ডিজিটের ভেরিফিকেশন OTP পাঠানো হয়েছে।
+              Official Admin WhatsApp: <strong id="adminWaPhoneTxt">01922606444</strong>.<br>
+              A 4-digit verification code has been dispatched. Enter the code below or click the button to message Admin on WhatsApp:
             </div>
             <div id="otpStatusNotice" style="margin-bottom:10px;"></div>
 
             <!-- Click to Open WhatsApp Button -->
             <div style="text-align:center; margin-bottom:14px;">
               <a href="#" id="btnOpenWhatsappApp" target="_blank" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:11px 16px; font-size:0.92rem; text-decoration:none; background:#16A34A; border-radius:10px; font-weight:800; box-shadow:0 3px 10px rgba(22,163,74,0.3);">
-                💬 Open WhatsApp to Check OTP
+                💬 Send Verification Code to Admin via WhatsApp
               </a>
             </div>
 
@@ -2300,25 +2307,62 @@
             <div style="display:flex; gap:8px; margin-bottom:10px;">
               <input type="text" class="form-control" id="regOtpInput" placeholder="Enter 4-Digit OTP" maxlength="4" style="text-align:center; font-weight:900; font-size:1.15rem; letter-spacing:3px; background:#FFFFFF;">
               <button type="button" class="btn-submit" id="btnConfirmOtp" onclick="confirmWhatsappOtpVerification()" style="width:auto; padding:0 18px; font-size:0.88rem; background:#047857; font-weight:800; white-space:nowrap;">
-                Verify OTP
+                Verify Code
               </button>
             </div>
 
-            <!-- Resend Link -->
-            <div style="text-align:right;">
-              <button type="button" onclick="sendWhatsappOtp()" style="background:none; border:none; color:#15803D; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:underline;">
-                🔄 Resend OTP via WhatsApp
+            <!-- Resend & Switch Link -->
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem;">
+              <button type="button" onclick="sendWhatsappOtp()" style="background:none; border:none; color:#15803D; font-weight:700; cursor:pointer; text-decoration:underline;">
+                🔄 Resend Code
+              </button>
+              <button type="button" onclick="openMissedCallVerifyBox()" style="background:none; border:none; color:#0284C7; font-weight:700; cursor:pointer; text-decoration:underline;">
+                📞 Switch to Free Missed Call
+              </button>
+            </div>
+          </div>
+
+          <!-- Track 2: Free Helpline Missed-Call Verification Box -->
+          <div id="missedCallVerifyBox" style="display:none; background:#F0F9FF; border:1.5px solid #7DD3FC; border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 4px 14px rgba(2, 132, 199, 0.08);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.92rem; font-weight:800; color:#0369A1;">
+                <span>📞</span> <span>Free Helpline Missed-Call Verification</span>
+              </div>
+              <span style="background:#E0F2FE; color:#0369A1; font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:12px;">
+                NO WHATSAPP NEEDED
+              </span>
+            </div>
+
+            <div style="font-size:0.82rem; color:#0C4A6E; line-height:1.5; margin-bottom:12px;">
+              To confirm that your phone number is active and authentic, please place a <strong>free missed-call</strong> (give 1 ring and disconnect) from this phone to our Helpline:
+            </div>
+
+            <div style="text-align:center; background:#FFFFFF; border:1px dashed #0284C7; border-radius:10px; padding:12px; margin-bottom:12px;">
+              <div style="font-size:0.75rem; color:#64748B; font-weight:700; text-transform:uppercase;">Official Helpline Number</div>
+              <div style="font-size:1.3rem; font-weight:900; color:#0284C7; letter-spacing:1px;" id="helplinePhoneDisplay">01922606444</div>
+              <a href="tel:01922606444" id="btnCallHelplineLink" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; background:#0284C7; color:#FFFFFF; text-decoration:none; padding:7px 16px; border-radius:8px; font-size:0.82rem; font-weight:800;">
+                📞 Tap to Call Helpline
+              </a>
+            </div>
+
+            <button type="button" class="btn-submit" id="btnConfirmMissedCall" onclick="confirmMissedCallVerification()" style="background:#0284C7; font-weight:800; padding:11px 16px;">
+              ✅ I Have Placed the Missed Call (Verify)
+            </button>
+
+            <div style="text-align:right; margin-top:10px; font-size:0.75rem;">
+              <button type="button" onclick="openWhatsappVerifyBox()" style="background:none; border:none; color:#15803D; font-weight:700; cursor:pointer; text-decoration:underline;">
+                💬 Switch back to WhatsApp Verification
               </button>
             </div>
           </div>
 
           <div class="form-group">
             <label class="form-label">Create Password*</label>
-            <input type="password" class="form-control" id="regPasswordInput" placeholder="Password (minimum 6 digits)" required>
+            <input type="password" class="form-control" id="regPasswordInput" placeholder="Password (minimum 6 characters)" required>
           </div>
 
           <button type="submit" class="btn-submit" id="regSubmitBtn" style="background:#CBD5E1; cursor:not-allowed;" disabled>
-            Create Account (Verify WhatsApp First)
+            Create Account (Please Verify Phone First)
           </button>
         </form>
       </div>
@@ -3759,19 +3803,26 @@
           const statusNotice = document.getElementById('otpStatusNotice');
           if (data.sent_via_gateway) {
             if (statusNotice) {
-              statusNotice.innerHTML = '<div style="background:#DCFCE7; border:1px solid #86EFAC; color:#15803D; padding:8px 12px; border-radius:8px; font-size:0.82rem; font-weight:700;">✅ আপনার WhatsApp ইনবক্সে ৪ ডিজিটের OTP পাঠানো হয়েছে।</div>';
+              statusNotice.innerHTML = '<div style="background:#DCFCE7; border:1px solid #86EFAC; color:#15803D; padding:8px 12px; border-radius:8px; font-size:0.82rem; font-weight:700;">✅ A 4-digit verification OTP was dispatched to your WhatsApp.</div>';
             }
           } else if (data.meta_error_code === 131030) {
             if (statusNotice) {
               statusNotice.innerHTML = `<div style="background:#FEF3C7; border:1px solid #FCD34D; color:#92400E; padding:8px 12px; border-radius:8px; font-size:0.8rem; line-height:1.4;">
-                <strong>⚠️ Meta Developer Mode Note:</strong> এই টেস্ট নম্বরটি Meta হোয়াইটলিস্টে নেই।<br>
-                আপনার জন্য টেস্ট OTP কোড: <strong style="font-size:1.15rem; color:#B45309; letter-spacing:2px;">${data.otp_code}</strong>
+                <strong>⚠️ Meta Developer Mode:</strong> This test number is pending in the Meta whitelist.<br>
+                Your Test Verification OTP: <strong style="font-size:1.15rem; color:#B45309; letter-spacing:2px;">${data.otp_code}</strong>
               </div>`;
             }
           } else {
             if (statusNotice) {
-              statusNotice.innerHTML = '<div style="color:#166534; font-size:0.8rem;">কোডটি পেতে নিচের বাটনে ক্লিক করুন অথবা ইনপুট দিন:</div>';
+              statusNotice.innerHTML = '<div style="color:#166534; font-size:0.8rem;">Click the button below to message Admin on WhatsApp or enter the code:</div>';
             }
+          }
+
+          if (data.admin_phone) {
+            const hDisp = document.getElementById('helplinePhoneDisplay');
+            if (hDisp) hDisp.textContent = data.admin_phone;
+            const hLink = document.getElementById('btnCallHelplineLink');
+            if (hLink) hLink.href = 'tel:' + data.admin_phone;
           }
           
           const openWaBtn = document.getElementById('btnOpenWhatsappApp');
@@ -3787,7 +3838,74 @@
         alert('Server connection error. Please try again.');
       } finally {
         triggerBtn.disabled = false;
-        triggerBtn.innerHTML = '<span>💬</span> <span>Send OTP</span>';
+        triggerBtn.innerHTML = '<span>💬</span> <span>Verify via WhatsApp</span>';
+      }
+    }
+
+    function openMissedCallVerifyBox() {
+      const phone = document.getElementById('regPhoneInput').value.trim();
+      if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
+        alert("Please enter a valid 11-digit mobile number starting with '01' (e.g. 01712345678).");
+        document.getElementById('regPhoneInput').focus();
+        return;
+      }
+      document.getElementById('whatsappOtpVerifyBox').style.display = 'none';
+      document.getElementById('missedCallVerifyBox').style.display = 'block';
+    }
+
+    function openWhatsappVerifyBox() {
+      document.getElementById('missedCallVerifyBox').style.display = 'none';
+      sendWhatsappOtp();
+    }
+
+    async function confirmMissedCallVerification() {
+      const phone = document.getElementById('regPhoneInput').value.trim();
+      if (!phone || phone.length !== 11 || !phone.startsWith('01') || isNaN(phone)) {
+        alert("Please enter a valid 11-digit mobile number starting with '01'.");
+        return;
+      }
+
+      const btn = document.getElementById('btnConfirmMissedCall');
+      btn.disabled = true;
+      btn.textContent = 'Verifying Missed Call...';
+
+      try {
+        const res = await fetch('/api/customer/verify-missed-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          isCustomerPhoneVerified = true;
+          verifiedCustomerPhone = phone;
+
+          document.getElementById('missedCallVerifyBox').style.display = 'none';
+          document.getElementById('whatsappOtpVerifyBox').style.display = 'none';
+          document.getElementById('regPhoneInput').readOnly = true;
+          document.getElementById('btnTriggerVerify').style.display = 'none';
+          const noWa = document.getElementById('noWhatsappLinkBox');
+          if (noWa) noWa.style.display = 'none';
+
+          const badge = document.getElementById('regVerifiedBadge');
+          badge.style.display = 'flex';
+          document.getElementById('regVerifiedPhoneTxt').textContent = phone + ' (Verified via Helpline Call)';
+
+          const submitBtn = document.getElementById('regSubmitBtn');
+          submitBtn.disabled = false;
+          submitBtn.style.background = 'var(--primary)';
+          submitBtn.style.cursor = 'pointer';
+          submitBtn.textContent = 'Create Account';
+
+          alert('✅ Helpline verification completed successfully! You can now create your account.');
+        } else {
+          alert('Verification failed: ' + (data.message || 'Please try again.'));
+        }
+      } catch (err) {
+        alert('Server connection error. Please try again.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ I Have Placed the Missed Call (Verify)';
       }
     }
 
@@ -3817,8 +3935,11 @@
 
           // Update UI to locked verified state
           document.getElementById('whatsappOtpVerifyBox').style.display = 'none';
+          document.getElementById('missedCallVerifyBox').style.display = 'none';
           document.getElementById('regPhoneInput').readOnly = true;
           document.getElementById('btnTriggerVerify').style.display = 'none';
+          const noWa = document.getElementById('noWhatsappLinkBox');
+          if (noWa) noWa.style.display = 'none';
           
           const badge = document.getElementById('regVerifiedBadge');
           badge.style.display = 'flex';
@@ -3838,7 +3959,7 @@
         alert('Server connection error.');
       } finally {
         confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Verify OTP';
+        confirmBtn.textContent = 'Verify Code';
       }
     }
 

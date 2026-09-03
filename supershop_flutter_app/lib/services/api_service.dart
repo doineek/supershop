@@ -515,6 +515,20 @@ class ApiService {
     return {'success': false, 'message': 'Network error'};
   }
 
+  static Future<Map<String, dynamic>> verifyMissedCall({
+    required String phone,
+  }) async {
+    try {
+      final res = await httpPost('/api/customer/verify-missed-call', body: jsonEncode({
+        'phone': phone,
+      }));
+      if (res != null) return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'Network error'};
+  }
+
   static Future<Map<String, dynamic>> acceptRiderOrder({
     required int orderId,
     required String riderName,

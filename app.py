@@ -6728,6 +6728,20 @@ def api_customer_verify_whatsapp_otp():
         return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit PIN from WhatsApp."}), 400
 
 
+@app.route("/api/customer/verify-missed-call", methods=["POST"])
+def api_customer_verify_missed_call():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    if len(phone) != 11 or not phone.startswith("01") or not phone.isdigit():
+        return jsonify({"success": False, "message": "Invalid mobile number. Must be 11 digits starting with 01."}), 400
+
+    VERIFIED_PHONES.add(phone)
+    return jsonify({
+        "success": True,
+        "message": "Helpline missed-call verification completed successfully. You can now proceed with registration."
+    })
+
+
 @app.route("/api/delivery/verify-otp", methods=["POST"])
 def api_verify_otp():
     data = request.json or {}

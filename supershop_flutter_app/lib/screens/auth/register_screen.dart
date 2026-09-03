@@ -117,17 +117,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 6),
                     if (sentViaGateway)
                       const Text(
-                        "✅ আপনার WhatsApp ইনবক্সে ৪ ডিজিটের OTP পাঠানো হয়েছে। কোডটি দেখে নিচে দিন।",
+                        "✅ A 4-digit verification code has been dispatched to your WhatsApp. Enter the code below.",
                         style: TextStyle(fontSize: 12, color: Color(0xFF15803D), fontWeight: FontWeight.bold),
                       )
                     else if (metaErrorCode == 131030)
                       Text(
-                        "⚠️ Meta Dev Mode: টেস্ট নম্বরটি Meta হোয়াইটলিস্টে নেই।\nটেস্টিং OTP কোড: $otpCode",
+                        "⚠️ Meta Developer Mode: Test number is pending in whitelist.\nYour Test OTP Code: $otpCode",
                         style: const TextStyle(fontSize: 12, color: Color(0xFFB45309), fontWeight: FontWeight.bold),
                       )
                     else
                       const Text(
-                        "আপনার WhatsApp-এ ৪ ডিজিটের ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি দেখে নিচে দিন।",
+                        "Please click the button below to message Admin on WhatsApp or enter the 4-digit code.",
                         style: TextStyle(fontSize: 12, color: Colors.black87),
                       ),
                     if (whatsappUrl.isNotEmpty) ...[
@@ -142,7 +142,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             }
                           },
                           icon: const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.white),
-                          label: const Text("Open WhatsApp to Check OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          label: const Text("Message Admin on WhatsApp", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF16A34A),
                             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -151,6 +151,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(dialogCtx);
+                          _showMissedCallDialog(phone, adminPhone);
+                        },
+                        icon: const Icon(Icons.phone_forwarded, size: 14, color: Color(0xFF0284C7)),
+                        label: const Text(
+                          "Don't have WhatsApp? Verify via Helpline Call",
+                          style: TextStyle(color: Color(0xFF0284C7), fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -210,6 +224,109 @@ class _RegisterScreenState extends State<RegisterScreen> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
             child: const Text("Verify OTP", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMissedCallDialog(String phone, String adminPhone) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.phone_in_talk, color: Color(0xFF0284C7)),
+            SizedBox(width: 8),
+            Text("Helpline Verification", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Mobile Number: $phone", style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF7DD3FC)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "To confirm that your phone number is active and genuine, please place a free missed-call (give 1 ring and disconnect) to our Helpline:",
+                    style: TextStyle(fontSize: 12, color: Color(0xFF0C4A6E), height: 1.4),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      adminPhone,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0284C7), letterSpacing: 1),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final uri = Uri.parse("tel:$adminPhone");
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri);
+                        }
+                      },
+                      icon: const Icon(Icons.call, size: 16, color: Colors.white),
+                      label: const Text("Call Helpline Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final nav = Navigator.of(dialogCtx);
+              var res = await ApiService.verifyMissedCall(phone: phone);
+              if (!mounted) return;
+
+              if (res['success'] == true) {
+                nav.pop();
+                setState(() {
+                  _isPhoneVerified = true;
+                });
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("✅ Phone verified via Helpline Call! Please complete your registration details."),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } else {
+                if (dialogCtx.mounted) {
+                  ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                    SnackBar(content: Text(res['message'] ?? "Verification failed."), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF047857)),
+            child: const Text("I Have Placed the Missed Call", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -371,14 +488,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           Text(
                             _isPhoneVerified
                                 ? "Step 2: Complete Profile Details"
-                                : "Step 1: Phone OTP Verification",
+                                : "Step 1: Phone Verification (Free)",
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             _isPhoneVerified
                                 ? "Enter your name and password to finalize registration."
-                                : "Enter your mobile number and verify via Firebase OTP.",
+                                : "Verify your mobile number via WhatsApp or Free Missed Call.",
                             style: const TextStyle(fontSize: 12, color: Colors.black54),
                           ),
                         ],
@@ -424,13 +541,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           width: 20,
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
-                      : const Icon(Icons.security_sharp, color: Colors.white),
+                      : const Icon(Icons.chat, color: Colors.white),
                   label: Text(
-                    _isSendingOtp ? "Sending OTP..." : "Send Firebase Free OTP & Verify",
+                    _isSendingOtp ? "Connecting..." : "Verify via WhatsApp (Free)",
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: const Color(0xFF16A34A),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    String phone = _phoneController.text.trim();
+                    if (phone.length != 11 || !phone.startsWith('01') || int.tryParse(phone) == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    _showMissedCallDialog(phone, "01922606444");
+                  },
+                  icon: const Icon(Icons.phone_in_talk, size: 16, color: Color(0xFF0284C7)),
+                  label: const Text(
+                    "Don't have WhatsApp? Verify via Free Missed Call",
+                    style: TextStyle(color: Color(0xFF0284C7), fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                 ),
               ),
