@@ -1892,10 +1892,14 @@
       </div>
       <div class="packages-container">
         {% for pkg in packages %}
-        <div class="package-card" style="cursor:pointer;" onclick="openStorePackageDetails('{{ pkg.id }}')">
-          <span class="pkg-badge">🎁 SUPER SAVER</span>
+        <div class="package-card" style="cursor:pointer; {% if pkg.is_out_of_stock %}opacity:0.88; border-color:#fca5a5;{% endif %}" onclick="openStorePackageDetails('{{ pkg.id }}')">
+          {% if pkg.is_out_of_stock %}
+            <span class="pkg-badge" style="background:#ef4444; color:white;">⚠️ OUT OF STOCK</span>
+          {% else %}
+            <span class="pkg-badge">🎁 SUPER SAVER</span>
+          {% endif %}
           
-          <div class="pkg-img-box" style="width:100%; height:140px; border-radius:10px; overflow:hidden; background:#f8fafc; border:1px solid #fed7aa; margin-bottom:10px; display:flex; align-items:center; justify-content:center;">
+          <div class="pkg-img-box" style="width:100%; height:140px; border-radius:10px; overflow:hidden; background:#f8fafc; border:1px solid {% if pkg.is_out_of_stock %}#fca5a5{% else %}#fed7aa{% endif %}; margin-bottom:10px; display:flex; align-items:center; justify-content:center; position:relative;">
             {% if pkg.image_url %}
               <img src="{{ pkg.image_url }}" alt="{{ pkg.name }}" style="width:100%; height:100%; object-fit:contain; padding:4px;" onerror="this.onerror=null; this.src='/static/images/logo.png';">
             {% else %}
@@ -1904,13 +1908,18 @@
                 <div style="font-size:0.75rem; font-weight:700; color:#ea580c; margin-top:2px;">Special Combo Deal</div>
               </div>
             {% endif %}
+            {% if pkg.is_out_of_stock %}
+              <div style="position:absolute; inset:0; background:rgba(255,255,255,0.75); display:flex; align-items:center; justify-content:center; font-weight:800; color:#dc2626; font-size:12.5px;">
+                ❌ Out of Stock
+              </div>
+            {% endif %}
           </div>
 
           <div>
             <div class="pkg-title">{{ pkg.name }}</div>
             <div class="pkg-items-desc">
               {% for item in pkg.included_items %}
-                • {{ item.product_name }} ({{ item.quantity }}x)<br>
+                • {{ item.product_name }} ({{ item.quantity }}x){% if item.stock_qty <= 0 %} <span style="color:#ef4444; font-weight:bold;">(0 in stock)</span>{% endif %}<br>
               {% endfor %}
             </div>
           </div>
@@ -1930,18 +1939,29 @@
               🎁 Customer Savings / Discount: TK {{ "%.2f"|format(savings) }} OFF!
             </div>
             {% endif %}
+            {% if pkg.is_out_of_stock %}
+            <div style="font-size:11.5px; font-weight:bold; color:#dc2626; margin-top:4px; padding-top:4px; border-top:1px dashed #fca5a5;">
+              ⚠️ Currently unavailable ({{ pkg.out_of_stock_item or 'Item' }} is out of stock)
+            </div>
+            {% endif %}
           </div>
 
           <div class="pkg-footer" onclick="event.stopPropagation();">
             <div class="pkg-price">TK {{ "%.2f"|format(pkg.package_price) }}</div>
-            <div style="display:flex; gap:6px;">
-              <button class="btn-add" style="padding:6px 10px;" onclick="event.stopPropagation(); addPackageCart('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
-                + Add
+            {% if pkg.is_out_of_stock %}
+              <button style="background:#e2e8f0; color:#94a3b8; border:none; padding:7px 14px; border-radius:6px; font-weight:bold; cursor:not-allowed; font-size:12px;" disabled>
+                Out of Stock
               </button>
-              <button class="btn-buy-now" style="padding:6px 12px;" onclick="event.stopPropagation(); buyPackageNow('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
-                Buy Now
-              </button>
-            </div>
+            {% else %}
+              <div style="display:flex; gap:6px;">
+                <button class="btn-add" style="padding:6px 10px;" onclick="event.stopPropagation(); addPackageCart('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+                  + Add
+                </button>
+                <button class="btn-buy-now" style="padding:6px 12px;" onclick="event.stopPropagation(); buyPackageNow('{{ pkg.id }}', '{{ pkg.name|e }}', {{ pkg.package_price }})">
+                  Buy Now
+                </button>
+              </div>
+            {% endif %}
           </div>
         </div>
         {% endfor %}
@@ -1972,19 +1992,26 @@
              data-offer-value="{{ p.offer_value or '' }}"
              data-offer-title="{{ p.offer_title or '' }}"
              onclick="openProductDetailModal({{ p.id }})"
-             style="cursor:pointer;">
+             style="cursor:pointer; {% if p.stock_qty <= 0 %}opacity:0.85;{% endif %}">
           
-          <div class="prod-img-box">
-            {% if p.offer_title %}
+          <div class="prod-img-box" style="position:relative;">
+            {% if p.stock_qty <= 0 %}
+              <span class="promo-tag" style="background:#ef4444; color:white;">OUT OF STOCK</span>
+            {% elif p.offer_title %}
               <span class="promo-tag">{{ p.offer_title }}</span>
             {% elif p.mrp and p.mrp > p.sell_price %}
               <span class="promo-tag">{{ "%.0f"|format(((p.mrp - p.sell_price) / p.mrp) * 100) }}% OFF</span>
             {% endif %}
             <img src="{{ p.image_url|first_image }}" alt="{{ p.name }}" class="prod-img" onerror="this.src='/static/images/logo.png'">
+            {% if p.stock_qty <= 0 %}
+              <div style="position:absolute; inset:0; background:rgba(255,255,255,0.7); display:flex; align-items:center; justify-content:center; font-weight:bold; color:#dc2626; font-size:12px;">
+                Out of Stock
+              </div>
+            {% endif %}
           </div>
 
           <div class="prod-name" title="{{ p.name }}">{{ p.name }}</div>
-          <div class="prod-sku">{{ p.unit or '1 Unit' }} • SKU: {{ p.sku }}</div>
+          <div class="prod-sku">{{ p.unit or '1 Unit' }} • SKU: {{ p.sku }}{% if p.stock_qty <= 0 %} • <span style="color:#ef4444; font-weight:bold;">Out of Stock</span>{% endif %}</div>
 
           <div class="prod-price-area">
             <span class="price-current">TK {{ "%.2f"|format(p.sell_price) }}</span>
@@ -1995,12 +2022,18 @@
 
           <!-- Dual Action Buttons: Add to Cart & Buy Now -->
           <div class="card-actions-row" id="btnWrap-{{ p.id }}" onclick="event.stopPropagation()">
-            <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '', {{ p.sell_price }}, '', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}', this)">
-              + Add
-            </button>
-            <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '', {{ p.sell_price }})">
-              Buy Now
-            </button>
+            {% if p.stock_qty <= 0 %}
+              <button style="width:100%; background:#e2e8f0; color:#94a3b8; border:none; padding:8px; border-radius:8px; font-weight:bold; cursor:not-allowed; font-size:12px;" disabled>
+                Out of Stock
+              </button>
+            {% else %}
+              <button class="btn-add" id="btnAdd-{{ p.id }}" onclick="addProductCart('{{ p.id }}', '', {{ p.sell_price }}, '', '{{ p.offer_type or '' }}', '{{ p.offer_value or '' }}', '{{ p.offer_title or '' }}', this)">
+                + Add
+              </button>
+              <button class="btn-buy-now" onclick="buyProductNow('{{ p.id }}', '', {{ p.sell_price }})">
+                Buy Now
+              </button>
+            {% endif %}
           </div>
 
         </div>
@@ -4432,6 +4465,15 @@
     function addProductCart(id, name, price, img, offer_type = '', offer_value = '', offer_title = '', btnEl = null) {
       const prod = allProducts.find(p => String(p.id) === String(id));
       if (prod) {
+        const prodStock = parseInt(prod.stock_qty || 0);
+        if (prodStock <= 0) {
+          alert(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be added to bag.`);
+          return;
+        }
+        if (cart[id] && (cart[id].quantity + 1) > prodStock) {
+          alert(`Cannot add more: Only ${prodStock} in stock for "${prod.name}".`);
+          return;
+        }
         if (!name || name === '') name = prod.name;
         if (!price || parseFloat(price) === 0) price = parseFloat(prod.sell_price) || 0;
         if (!img || img === '') img = getFirstImageJS(prod.image_url);
@@ -4475,6 +4517,11 @@
     function buyProductNow(id, name, price, img, offer_type = '', offer_value = '', offer_title = '') {
       const prod = allProducts.find(p => String(p.id) === String(id));
       if (prod) {
+        const prodStock = parseInt(prod.stock_qty || 0);
+        if (prodStock <= 0) {
+          alert(`Sorry, "${prod.name}" is OUT OF STOCK and cannot be ordered.`);
+          return;
+        }
         if (!name || name === '') name = prod.name;
         if (!price || parseFloat(price) === 0) price = parseFloat(prod.sell_price) || 0;
         if (!img || img === '') img = getFirstImageJS(prod.image_url);
@@ -4502,6 +4549,21 @@
     }
 
     function addPackageCart(id, name, price) {
+      const pkg = allPackagesData.find(p => String(p.id) === String(id));
+      if (pkg) {
+        const pkgStock = parseInt(pkg.stock_qty || 0);
+        if (pkg.is_out_of_stock || pkgStock <= 0) {
+          const outItem = pkg.out_of_stock_item || 'one or more items';
+          alert(`Sorry, Combo Package "${name}" is OUT OF STOCK because "${outItem}" is out of stock.`);
+          return;
+        }
+        const pkgKey = 'PKG_' + id;
+        if (cart[pkgKey] && (cart[pkgKey].quantity + 1) > pkgStock) {
+          alert(`Cannot add more: Only ${pkgStock} combo packages can be fulfilled with currently available stock.`);
+          return;
+        }
+      }
+
       const pkgKey = 'PKG_' + id;
       if (!cart[pkgKey]) {
         cart[pkgKey] = { id: pkgKey, raw_id: id, name: '📦 ' + name, price: parseFloat(price), img: '', quantity: 1, is_pkg: true };
@@ -4515,12 +4577,40 @@
     }
 
     function buyPackageNow(id, name, price) {
+      const pkg = allPackagesData.find(p => String(p.id) === String(id));
+      if (pkg && (pkg.is_out_of_stock || parseInt(pkg.stock_qty || 0) <= 0)) {
+        const outItem = pkg.out_of_stock_item || 'one or more items';
+        alert(`Sorry, Combo Package "${name}" is OUT OF STOCK because "${outItem}" is out of stock.`);
+        return;
+      }
       addPackageCart(id, name, price);
       openCheckoutModal();
     }
 
     function modifyQty(id, delta) {
       if (cart[id]) {
+        if (delta > 0) {
+          if (cart[id].is_pkg) {
+            const rawId = cart[id].raw_id;
+            const pkg = allPackagesData.find(p => String(p.id) === String(rawId));
+            if (pkg) {
+              const maxStock = parseInt(pkg.stock_qty || 0);
+              if (maxStock <= 0 || (cart[id].quantity + delta) > maxStock) {
+                alert(`Cannot add more: Only ${maxStock} available in stock.`);
+                return;
+              }
+            }
+          } else {
+            const prod = allProducts.find(p => String(p.id) === String(id));
+            if (prod) {
+              const maxStock = parseInt(prod.stock_qty || 0);
+              if (maxStock <= 0 || (cart[id].quantity + delta) > maxStock) {
+                alert(`Cannot add more: Only ${maxStock} available in stock for "${prod.name}".`);
+                return;
+              }
+            }
+          }
+        }
         cart[id].quantity += delta;
         if (cart[id].quantity <= 0) {
           delete cart[id];

@@ -488,7 +488,7 @@ def render_storefront():
     for pkg in raw_pkgs:
         p_dict = dict(pkg)
         items = conn.execute("""
-            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.stock_qty
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
@@ -497,6 +497,29 @@ def render_storefront():
         reg_total = calculate_package_regular_total(inc_items)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
+
+        # Calculate combo package stock: if even one item has stock <= 0, combo stock is 0
+        min_pkg_stock = 999999
+        out_of_stock_item = None
+        for it in inc_items:
+            req_qty = int(it.get("quantity") or 1)
+            curr_stock = int(it.get("stock_qty") or 0)
+            if curr_stock <= 0:
+                min_pkg_stock = 0
+                out_of_stock_item = it.get("product_name")
+                break
+            possible_pkg = curr_stock // req_qty
+            if possible_pkg < min_pkg_stock:
+                min_pkg_stock = possible_pkg
+                if min_pkg_stock == 0:
+                    out_of_stock_item = it.get("product_name")
+
+        if min_pkg_stock == 999999 or not inc_items:
+            min_pkg_stock = 0
+
+        p_dict["stock_qty"] = max(0, min_pkg_stock)
+        p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)
+        p_dict["out_of_stock_item"] = out_of_stock_item
         packages.append(p_dict)
         
     delivery_areas_rows = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
@@ -6098,7 +6121,7 @@ def api_place_order():
     customer_email = (data.get("customer_email") or data.get("email") or "").strip()
     address_details = (data.get("address_details") or data.get("address") or data.get("location") or "Delivery Address").strip()
     payment_method = (data.get("payment_method") or "cod").lower()
-    cart_items = data.get("cart_items") or data.get("items") or data.get("products") or []
+    cart_items = data.get("cart_items") or data.get("items") or data.get("products") or data.get("cart") or []
 
     if not customer_phone:
         return jsonify({"success": False, "message": "Please enter a valid Phone number."}), 400
@@ -6125,6 +6148,118 @@ def api_place_order():
             pass
     conn.commit()
 
+    # =========================================================================
+    # 🚨 STRICT STOCK VALIDATION:
+    # 1. Reject if any product has stock <= 0 or requested > stock
+    # 2. Reject Combo Package if ANY constituent product has stock <= 0 or required > stock
+    # 3. Check aggregate demand across multiple cart items
+    # =========================================================================
+    product_demands = {}  # product_id -> total_needed_qty
+
+    for item in cart_items:
+        prod_id = item.get("product_id") or item.get("id") or item.get("prod_id")
+        qty = int(item.get("quantity") or item.get("qty") or item.get("count") or 1)
+        if qty <= 0:
+            qty = 1
+        p_name_raw = (item.get("product_name") or item.get("name") or item.get("title") or "").strip()
+
+        is_pkg_check = (
+            item.get("is_package") is True or
+            item.get("type") == "package" or
+            item.get("package_id") is not None or
+            str(prod_id).startswith("pkg_") or
+            str(prod_id).startswith("PKG_") or
+            p_name_raw.startswith("📦") or
+            p_name_raw.startswith("ONLINE - Package")
+        )
+
+        pkg_match = None
+        if is_pkg_check:
+            pkg_id_clean = item.get("package_id") or str(prod_id).replace("pkg_", "").replace("PKG_", "")
+            try:
+                pkg_match = conn.execute("SELECT * FROM packages WHERE id = ?", (int(pkg_id_clean),)).fetchone()
+            except Exception:
+                pass
+            if not pkg_match and p_name_raw:
+                clean_pname = p_name_raw.replace("📦", "").strip()
+                pkg_match = conn.execute("SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0", (clean_pname, clean_pname, clean_pname)).fetchone()
+
+        if pkg_match:
+            p_items_chk = conn.execute("""
+                SELECT pi.quantity, p.id, p.name, p.stock_qty
+                FROM package_items pi JOIN products p ON pi.product_id = p.id
+                WHERE pi.package_id = ?
+            """, (pkg_match["id"],)).fetchall()
+
+            if not p_items_chk:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'Combo Package "{pkg_match["name"]}" has no active items and cannot be ordered.'
+                }), 400
+
+            for pi in p_items_chk:
+                curr_stk = int(pi["stock_qty"] or 0)
+                needed = int(pi["quantity"] or 1) * qty
+                if curr_stk <= 0:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Cannot order Combo Package "{pkg_match["name"]}" because product "{pi["name"]}" is OUT OF STOCK (0 in stock).'
+                    }), 400
+                if curr_stk < needed:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Cannot order Combo Package "{pkg_match["name"]}": Insufficient stock for "{pi["name"]}" ({curr_stk} available, {needed} required).'
+                    }), 400
+                pid = pi["id"]
+                product_demands[pid] = product_demands.get(pid, 0) + needed
+        else:
+            prod_chk = None
+            if prod_id is not None:
+                try:
+                    prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE id = ?", (int(prod_id),)).fetchone()
+                except Exception:
+                    prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE id = ?", (prod_id,)).fetchone()
+            if not prod_chk and p_name_raw:
+                prod_chk = conn.execute("SELECT id, name, stock_qty FROM products WHERE LOWER(name) = LOWER(?)", (p_name_raw,)).fetchone()
+
+            if prod_chk:
+                curr_stk = int(prod_chk["stock_qty"] or 0)
+                if curr_stk <= 0:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Product "{prod_chk["name"]}" is OUT OF STOCK (0 in stock).'
+                    }), 400
+                if curr_stk < qty:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Cannot order "{prod_chk["name"]}": Insufficient stock ({curr_stk} available, {qty} requested).'
+                    }), 400
+                pid = prod_chk["id"]
+                product_demands[pid] = product_demands.get(pid, 0) + qty
+
+    # Check aggregate demand across all items in cart
+    for pid, total_needed in product_demands.items():
+        chk_p = conn.execute("SELECT name, stock_qty FROM products WHERE id = ?", (pid,)).fetchone()
+        if chk_p:
+            curr_stk = int(chk_p["stock_qty"] or 0)
+            if curr_stk <= 0:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'Product "{chk_p["name"]}" is OUT OF STOCK.'
+                }), 400
+            if curr_stk < total_needed:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'Insufficient stock for "{chk_p["name"]}". Only {curr_stk} available in stock, but {total_needed} required across your order.'
+                }), 400
+
     import random
     otp = f"{random.randint(1000, 9999)}"
     now_str = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -6146,13 +6281,14 @@ def api_place_order():
             item.get("type") == "package" or
             item.get("package_id") is not None or
             str(prod_id).startswith("pkg_") or
+            str(prod_id).startswith("PKG_") or
             p_name_raw.startswith("📦") or
             p_name_raw.startswith("ONLINE - Package")
         )
 
         pkg = None
         if is_pkg_flag:
-            pkg_id_clean = item.get("package_id") or str(prod_id).replace("pkg_", "")
+            pkg_id_clean = item.get("package_id") or str(prod_id).replace("pkg_", "").replace("PKG_", "")
             try:
                 pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (int(pkg_id_clean),)).fetchone()
             except Exception:
@@ -6234,7 +6370,9 @@ def api_place_order():
             "mrp_price": mrp_price,
             "quantity": actual_qty,
             "paid_qty": paid_qty,
-            "total_price": line_total
+            "total_price": line_total,
+            "is_package": True if pkg else False,
+            "package_id": pkg["id"] if pkg else None
         })
 
     if not processed_items:
@@ -6314,7 +6452,15 @@ def api_place_order():
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
 
-        if chk_p:
+        if item.get("is_package") and item.get("package_id"):
+            pkg_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (item["package_id"],)).fetchall()
+            for pi in pkg_items:
+                cur.execute(
+                    "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                    (pi["quantity"] * item["quantity"], pi["product_id"])
+                )
+                remote_control.push_product_to_cloud(pi["product_id"])
+        elif chk_p:
             cur.execute(
                 "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
                 (item["quantity"], valid_pid)
@@ -7187,18 +7333,39 @@ def api_packages():
             p_dict["image_url"] = request.host_url.rstrip("/") + img
 
         items = conn.execute("""
-            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku, p.stock_qty
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
         item_list = []
+        min_pkg_stock = 999999
+        out_of_stock_item = None
         for i in items:
             it_d = dict(i)
             p_img = (it_d.get("image_url") or "").strip()
             if p_img and p_img.startswith("/static/"):
                 it_d["image_url"] = request.host_url.rstrip("/") + p_img
             item_list.append(it_d)
+
+            req_qty = int(it_d.get("quantity") or 1)
+            curr_stock = int(it_d.get("stock_qty") or 0)
+            if curr_stock <= 0:
+                min_pkg_stock = 0
+                out_of_stock_item = it_d.get("product_name")
+            else:
+                possible_pkg = curr_stock // req_qty
+                if possible_pkg < min_pkg_stock:
+                    min_pkg_stock = possible_pkg
+                    if min_pkg_stock == 0:
+                        out_of_stock_item = it_d.get("product_name")
+
+        if min_pkg_stock == 999999 or not item_list:
+            min_pkg_stock = 0
+
         p_dict["items"] = item_list
+        p_dict["stock_qty"] = max(0, min_pkg_stock)
+        p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)
+        p_dict["out_of_stock_item"] = out_of_stock_item
         reg_total = calculate_package_regular_total(item_list)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
@@ -7216,12 +7383,33 @@ def api_package_detail(package_id):
         return jsonify({"success": False, "message": "Package not found"}), 404
     p_dict = dict(pkg)
     items = conn.execute("""
-        SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku
+        SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.image_url, p.sku, p.stock_qty
         FROM package_items pi JOIN products p ON pi.product_id = p.id
         WHERE pi.package_id = ?
     """, (package_id,)).fetchall()
     inc_items = [dict(i) for i in items]
+    min_pkg_stock = 999999
+    out_of_stock_item = None
+    for it_d in inc_items:
+        req_qty = int(it_d.get("quantity") or 1)
+        curr_stock = int(it_d.get("stock_qty") or 0)
+        if curr_stock <= 0:
+            min_pkg_stock = 0
+            out_of_stock_item = it_d.get("product_name")
+        else:
+            possible_pkg = curr_stock // req_qty
+            if possible_pkg < min_pkg_stock:
+                min_pkg_stock = possible_pkg
+                if min_pkg_stock == 0:
+                    out_of_stock_item = it_d.get("product_name")
+
+    if min_pkg_stock == 999999 or not inc_items:
+        min_pkg_stock = 0
+
     p_dict["items"] = inc_items
+    p_dict["stock_qty"] = max(0, min_pkg_stock)
+    p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)
+    p_dict["out_of_stock_item"] = out_of_stock_item
     reg_total = calculate_package_regular_total(inc_items)
     p_dict["regular_total"] = reg_total
     p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))

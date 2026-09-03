@@ -416,48 +416,83 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         ),
         child: SizedBox(
           height: 48,
-          child: Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    cartProv.addToCart(product);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${product.name} added to cart'),
-                        backgroundColor: Colors.green,
-                        duration: const Duration(seconds: 1),
+          child: product.stockQty <= 0
+              ? SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey.shade300,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text(
+                      "Out of Stock",
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                    ),
+                  ),
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          bool added = cartProv.addToCart(product);
+                          if (added) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${product.name} added to cart'),
+                                backgroundColor: Colors.green,
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Cannot add: item is out of stock.'),
+                                backgroundColor: Colors.red,
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.shopping_cart, size: 18, color: Colors.white),
+                        label: Text(
+                          loc.translate('add_to_cart'),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.shopping_cart, size: 18, color: Colors.white),
-                  label: Text(
-                    loc.translate('add_to_cart'),
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          bool added = cartProv.addToCart(product);
+                          if (added) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const CartScreen()),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Cannot proceed: item is out of stock.'),
+                                backgroundColor: Colors.red,
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.flash_on, size: 18, color: Colors.white),
+                        label: const Text(
+                          "Buy Now",
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    cartProv.addToCart(product);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const CartScreen()),
-                    );
-                  },
-                  icon: const Icon(Icons.flash_on, size: 18, color: Colors.white),
-                  label: const Text(
-                    "Buy Now",
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

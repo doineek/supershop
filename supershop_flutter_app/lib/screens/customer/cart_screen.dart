@@ -198,6 +198,58 @@ class _CartScreenState extends State<CartScreen> {
 
     if (cartProv.items.isEmpty) return;
 
+    // Check stock for all items before placing order
+    for (var item in cartProv.items) {
+      if (item.product.stockQty <= 0) {
+        showDialog(
+          context: context,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red),
+                SizedBox(width: 8),
+                Text("Out of Stock Item"),
+              ],
+            ),
+            content: Text('Item "${item.product.name}" is OUT OF STOCK. Please remove it from your shopping bag before placing the order.'),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text("OK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+      if (item.quantity > item.product.stockQty) {
+        showDialog(
+          context: context,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.orange),
+                SizedBox(width: 8),
+                Text("Insufficient Stock"),
+              ],
+            ),
+            content: Text('Item "${item.product.name}" has only ${item.product.stockQty} in stock, but ${item.quantity} requested. Please reduce the quantity in your bag.'),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                child: const Text("OK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     String savedPhone = prefs.getString('user_phone') ?? '';
 
@@ -531,6 +583,13 @@ class _CartScreenState extends State<CartScreen> {
                               children: [
                                 Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                 Text('TK ${item.product.sellPrice.toStringAsFixed(0)} × ${item.quantity}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                if (item.product.stockQty <= 0)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 3),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.shade200)),
+                                    child: const Text("⚠️ OUT OF STOCK", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+                                  ),
                                 if (item.isBuyOffer) ...[
                                   const SizedBox(height: 2),
                                   Text(
@@ -558,7 +617,18 @@ class _CartScreenState extends State<CartScreen> {
                               Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline, size: 20),
-                                onPressed: () => cartProv.updateQuantity(item.product.id, item.quantity + 1),
+                                onPressed: () {
+                                  bool ok = cartProv.updateQuantity(item.product.id, item.quantity + 1);
+                                  if (!ok) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Cannot add more: only ${item.product.stockQty} available in stock.'),
+                                        backgroundColor: Colors.red,
+                                        duration: const Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                },
                               ),
                             ],
                           ),

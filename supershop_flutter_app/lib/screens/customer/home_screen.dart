@@ -960,59 +960,136 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                   },
                                                 ),
                                                 const SizedBox(height: 6),
-                                                SizedBox(
-                                                  width: double.infinity,
-                                                  child: ElevatedButton.icon(
-                                                    onPressed: () {
-                                                      List<String> itemSummaries = [];
-                                                      double regTotal = 0.0;
-                                                      for (var it in items) {
-                                                        String pSku = it['sku'] ?? 'SKU';
-                                                        String pName = it['product_name'] ?? 'Item';
-                                                        int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
-                                                        double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
-                                                        double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
-                                                        double basePrice = pMrp > 0 ? pMrp : pPrice;
-                                                        regTotal += basePrice * pQty;
-                                                        itemSummaries.add("$pSku $pName (Qty:$pQty)");
-                                                      }
-                                                      String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
+                                                Builder(
+                                                  builder: (context) {
+                                                     int comboStock = 999;
+                                                     String? outOfStockItemName;
+                                                     for (var it in items) {
+                                                       int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                       int itStock = int.tryParse(it['stock_qty']?.toString() ?? '0') ?? 0;
+                                                       if (itStock <= 0) {
+                                                         comboStock = 0;
+                                                         outOfStockItemName = it['product_name'] ?? 'Item';
+                                                         break;
+                                                       }
+                                                       int possible = itStock ~/ pQty;
+                                                       if (possible < comboStock) {
+                                                         comboStock = possible;
+                                                         if (comboStock == 0) {
+                                                           outOfStockItemName = it['product_name'] ?? 'Item';
+                                                         }
+                                                       }
+                                                     }
+                                                     if (comboStock == 999 || items.isEmpty) comboStock = 0;
+                                                     if (pkg['stock_qty'] != null) {
+                                                       int serverStock = int.tryParse(pkg['stock_qty'].toString()) ?? 0;
+                                                       if (serverStock < comboStock) comboStock = serverStock;
+                                                     }
+                                                     if (pkg['is_out_of_stock'] == true) {
+                                                       comboStock = 0;
+                                                       if (pkg['out_of_stock_item'] != null) {
+                                                         outOfStockItemName = pkg['out_of_stock_item'].toString();
+                                                       }
+                                                     }
+                                                     bool isOutOfStock = comboStock <= 0;
 
-                                                      Product pkgProduct = Product(
-                                                        id: pkg['id'],
-                                                        sku: skuSerialFormat,
-                                                        name: "📦 $name",
-                                                        sellPrice: price,
-                                                        mrp: regTotal > price ? regTotal : price,
-                                                        stockQty: 99,
-                                                      );
+                                                     return Column(
+                                                       crossAxisAlignment: CrossAxisAlignment.start,
+                                                       children: [
+                                                         if (isOutOfStock)
+                                                           Container(
+                                                             width: double.infinity,
+                                                             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                                             margin: const EdgeInsets.only(bottom: 8),
+                                                             decoration: BoxDecoration(
+                                                               color: Colors.red.shade50,
+                                                               borderRadius: BorderRadius.circular(6),
+                                                               border: Border.all(color: Colors.red.shade200),
+                                                             ),
+                                                             child: Row(
+                                                               children: [
+                                                                 const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                                                                 const SizedBox(width: 6),
+                                                                 Expanded(
+                                                                   child: Text(
+                                                                     outOfStockItemName != null
+                                                                         ? "Out of stock ($outOfStockItemName is out of stock)"
+                                                                         : "Out of stock (One or more items out of stock)",
+                                                                     style: const TextStyle(fontSize: 11.5, color: Colors.red, fontWeight: FontWeight.bold),
+                                                                   ),
+                                                                 ),
+                                                               ],
+                                                             ),
+                                                           ),
+                                                         SizedBox(
+                                                           width: double.infinity,
+                                                           child: ElevatedButton.icon(
+                                                             onPressed: isOutOfStock
+                                                                 ? null
+                                                                 : () {
+                                                                     List<String> itemSummaries = [];
+                                                                     double regTotal = 0.0;
+                                                                     for (var it in items) {
+                                                                       String pSku = it['sku'] ?? 'SKU';
+                                                                       String pName = it['product_name'] ?? 'Item';
+                                                                       int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                                       double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
+                                                                       double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
+                                                                       double basePrice = pMrp > 0 ? pMrp : pPrice;
+                                                                       regTotal += basePrice * pQty;
+                                                                       itemSummaries.add("$pSku $pName (Qty:$pQty)");
+                                                                     }
+                                                                     String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
 
-                                                      cartProv.addToCart(pkgProduct);
-                                                      ScaffoldMessenger.of(context).showSnackBar(
-                                                        SnackBar(
-                                                          content: Text("⚡ Combo Package '$name' added to cart!"),
-                                                          backgroundColor: Colors.green,
-                                                          action: SnackBarAction(
-                                                            label: "Checkout",
-                                                            textColor: Colors.white,
-                                                            onPressed: () {
-                                                              setState(() {
-                                                                _bottomNavIndex = 2;
-                                                              });
-                                                            },
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                    icon: const Icon(Icons.bolt, color: Colors.white),
-                                                    label: const Text("Order Combo Package Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: Colors.green,
-                                                      padding: const EdgeInsets.symmetric(vertical: 10),
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                    ),
-                                                  ),
-                                                ),
+                                                                     Product pkgProduct = Product(
+                                                                       id: pkg['id'],
+                                                                       sku: skuSerialFormat,
+                                                                       name: "📦 $name",
+                                                                       sellPrice: price,
+                                                                       mrp: regTotal > price ? regTotal : price,
+                                                                       stockQty: comboStock,
+                                                                     );
+
+                                                                     bool added = cartProv.addToCart(pkgProduct);
+                                                                     if (added) {
+                                                                       ScaffoldMessenger.of(context).showSnackBar(
+                                                                         SnackBar(
+                                                                           content: Text("⚡ Combo Package '$name' added to cart!"),
+                                                                           backgroundColor: Colors.green,
+                                                                           action: SnackBarAction(
+                                                                             label: "Checkout",
+                                                                             textColor: Colors.white,
+                                                                             onPressed: () {
+                                                                               setState(() {
+                                                                                 _bottomNavIndex = 2;
+                                                                               });
+                                                                             },
+                                                                           ),
+                                                                         ),
+                                                                       );
+                                                                     } else {
+                                                                       ScaffoldMessenger.of(context).showSnackBar(
+                                                                         const SnackBar(
+                                                                           content: Text("Cannot add to cart: item is out of stock."),
+                                                                           backgroundColor: Colors.red,
+                                                                         ),
+                                                                       );
+                                                                     }
+                                                                   },
+                                                             icon: Icon(isOutOfStock ? Icons.block : Icons.bolt, color: Colors.white),
+                                                             label: Text(
+                                                               isOutOfStock ? "Out of Stock" : "Order Combo Package Now",
+                                                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                                             ),
+                                                             style: ElevatedButton.styleFrom(
+                                                               backgroundColor: isOutOfStock ? Colors.grey.shade400 : Colors.green,
+                                                             ),
+                                                           ),
+                                                         ),
+                                                       ],
+                                                     );
+                                                   },
+                                                 ),
                                               ],
                                             ),
                                           ),
@@ -1179,75 +1256,116 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                                                           // High-Contrast Buttons Row (Cart vs Buy Now)
                                                           Row(
-                                                            children: [
-                                                              // Cart Button (Deep Royal Purple)
-                                                              Expanded(
-                                                                child: SizedBox(
-                                                                  height: 32,
-                                                                  child: ElevatedButton(
-                                                                    onPressed: () {
-                                                                      cartProv.addToCart(prod);
-                                                                      ScaffoldMessenger.of(context).showSnackBar(
-                                                                        SnackBar(
-                                                                          content: Text('${prod.name} added to cart'),
-                                                                          duration: const Duration(seconds: 1),
+                                                            children: prod.stockQty <= 0
+                                                                ? [
+                                                                    Expanded(
+                                                                      child: SizedBox(
+                                                                        height: 32,
+                                                                        child: ElevatedButton(
+                                                                          onPressed: null,
+                                                                          style: ElevatedButton.styleFrom(
+                                                                            backgroundColor: Colors.grey.shade300,
+                                                                            elevation: 0,
+                                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                            padding: EdgeInsets.zero,
+                                                                          ),
+                                                                          child: Text(
+                                                                            "Out of Stock",
+                                                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                                                                          ),
                                                                         ),
-                                                                      );
-                                                                    },
-                                                                    style: ElevatedButton.styleFrom(
-                                                                      backgroundColor: const Color(0xFF6B21A8),
-                                                                      elevation: 0,
-                                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                                      padding: EdgeInsets.zero,
+                                                                      ),
                                                                     ),
-                                                                    child: const Row(
-                                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                                      children: [
-                                                                        Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
-                                                                        SizedBox(width: 3),
-                                                                        Text(
-                                                                          "Cart",
-                                                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                  ]
+                                                                : [
+                                                                    // Cart Button (Deep Royal Purple)
+                                                                    Expanded(
+                                                                      child: SizedBox(
+                                                                        height: 32,
+                                                                        child: ElevatedButton(
+                                                                          onPressed: () {
+                                                                            bool added = cartProv.addToCart(prod);
+                                                                            if (added) {
+                                                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                                                SnackBar(
+                                                                                  content: Text('${prod.name} added to cart'),
+                                                                                  duration: const Duration(seconds: 1),
+                                                                                ),
+                                                                              );
+                                                                            } else {
+                                                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                                                const SnackBar(
+                                                                                  content: Text('Cannot add: item is out of stock.'),
+                                                                                  backgroundColor: Colors.red,
+                                                                                  duration: Duration(seconds: 1),
+                                                                                ),
+                                                                              );
+                                                                            }
+                                                                          },
+                                                                          style: ElevatedButton.styleFrom(
+                                                                            backgroundColor: const Color(0xFF6B21A8),
+                                                                            elevation: 0,
+                                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                            padding: EdgeInsets.zero,
+                                                                          ),
+                                                                          child: const Row(
+                                                                            mainAxisAlignment: MainAxisAlignment.center,
+                                                                            children: [
+                                                                              Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
+                                                                              SizedBox(width: 3),
+                                                                              Text(
+                                                                                "Cart",
+                                                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                              ),
+                                                                            ],
+                                                                          ),
                                                                         ),
-                                                                      ],
+                                                                      ),
                                                                     ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                              const SizedBox(width: 5),
-                                                              // Buy Now Button (Vibrant Coral Orange Gradient)
-                                                              Expanded(
-                                                                child: SizedBox(
-                                                                  height: 32,
-                                                                  child: ElevatedButton(
-                                                                    onPressed: () {
-                                                                      cartProv.addToCart(prod);
-                                                                      Navigator.push(
-                                                                        context,
-                                                                        MaterialPageRoute(builder: (_) => const CartScreen()),
-                                                                      );
-                                                                    },
-                                                                    style: ElevatedButton.styleFrom(
-                                                                      backgroundColor: const Color(0xFFFF5722),
-                                                                      elevation: 0,
-                                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                                      padding: EdgeInsets.zero,
-                                                                    ),
-                                                                    child: const Row(
-                                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                                      children: [
-                                                                        Icon(Icons.bolt, size: 13, color: Colors.white),
-                                                                        SizedBox(width: 2),
-                                                                        Text(
-                                                                          "Buy Now",
-                                                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                    const SizedBox(width: 5),
+                                                                    // Buy Now Button (Vibrant Coral Orange Gradient)
+                                                                    Expanded(
+                                                                      child: SizedBox(
+                                                                        height: 32,
+                                                                        child: ElevatedButton(
+                                                                          onPressed: () {
+                                                                            bool added = cartProv.addToCart(prod);
+                                                                            if (added) {
+                                                                              Navigator.push(
+                                                                                context,
+                                                                                MaterialPageRoute(builder: (_) => const CartScreen()),
+                                                                              );
+                                                                            } else {
+                                                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                                                const SnackBar(
+                                                                                  content: Text('Cannot proceed: item is out of stock.'),
+                                                                                  backgroundColor: Colors.red,
+                                                                                  duration: Duration(seconds: 1),
+                                                                                ),
+                                                                              );
+                                                                            }
+                                                                          },
+                                                                          style: ElevatedButton.styleFrom(
+                                                                            backgroundColor: const Color(0xFFFF5722),
+                                                                            elevation: 0,
+                                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                            padding: EdgeInsets.zero,
+                                                                          ),
+                                                                          child: const Row(
+                                                                            mainAxisAlignment: MainAxisAlignment.center,
+                                                                            children: [
+                                                                              Icon(Icons.bolt, size: 13, color: Colors.white),
+                                                                              SizedBox(width: 2),
+                                                                              Text(
+                                                                                "Buy Now",
+                                                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                                              ),
+                                                                            ],
+                                                                          ),
                                                                         ),
-                                                                      ],
+                                                                      ),
                                                                     ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ],
+                                                                  ],
                                                           ),
                                                         ],
                                                       ),
@@ -1892,73 +2010,114 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
 
                               // Cart & Buy Now Buttons Row
                               Row(
-                                children: [
-                                  Expanded(
-                                    child: SizedBox(
-                                      height: 32,
-                                      child: ElevatedButton(
-                                        onPressed: () {
-                                          cartProv.addToCart(prod);
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('${prod.name} added to cart'),
-                                              duration: const Duration(seconds: 1),
+                                children: prod.stockQty <= 0
+                                    ? [
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 32,
+                                            child: ElevatedButton(
+                                              onPressed: null,
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.grey.shade300,
+                                                elevation: 0,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: EdgeInsets.zero,
+                                              ),
+                                              child: Text(
+                                                "Out of Stock",
+                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                                              ),
                                             ),
-                                          );
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF6B21A8),
-                                          elevation: 0,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          padding: EdgeInsets.zero,
+                                          ),
                                         ),
-                                        child: const Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
-                                            SizedBox(width: 3),
-                                            Text(
-                                              "Cart",
-                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                      ]
+                                    : [
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 32,
+                                            child: ElevatedButton(
+                                              onPressed: () {
+                                                bool added = cartProv.addToCart(prod);
+                                                if (added) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text('${prod.name} added to cart'),
+                                                      duration: const Duration(seconds: 1),
+                                                    ),
+                                                  );
+                                                } else {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Cannot add: item is out of stock.'),
+                                                      backgroundColor: Colors.red,
+                                                      duration: Duration(seconds: 1),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF6B21A8),
+                                                elevation: 0,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: EdgeInsets.zero,
+                                              ),
+                                              child: const Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
+                                                  SizedBox(width: 3),
+                                                  Text(
+                                                    "Cart",
+                                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Expanded(
-                                    child: SizedBox(
-                                      height: 32,
-                                      child: ElevatedButton(
-                                        onPressed: () {
-                                          cartProv.addToCart(prod);
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(builder: (_) => const CartScreen()),
-                                          );
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFFFF5722),
-                                          elevation: 0,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                        child: const Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.bolt, size: 13, color: Colors.white),
-                                            SizedBox(width: 2),
-                                            Text(
-                                              "Buy Now",
-                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                        const SizedBox(width: 5),
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 32,
+                                            child: ElevatedButton(
+                                              onPressed: () {
+                                                bool added = cartProv.addToCart(prod);
+                                                if (added) {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(builder: (_) => const CartScreen()),
+                                                  );
+                                                } else {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Cannot proceed: item is out of stock.'),
+                                                      backgroundColor: Colors.red,
+                                                      duration: Duration(seconds: 1),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFFFF5722),
+                                                elevation: 0,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: EdgeInsets.zero,
+                                              ),
+                                              child: const Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.bolt, size: 13, color: Colors.white),
+                                                  SizedBox(width: 2),
+                                                  Text(
+                                                    "Buy Now",
+                                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                      ],
                               ),
                             ],
                           ),

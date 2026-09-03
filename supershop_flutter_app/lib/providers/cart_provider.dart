@@ -162,26 +162,40 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addToCart(Product product) {
+  bool addToCart(Product product) {
+    if (product.stockQty <= 0) {
+      return false;
+    }
     int index = _items.indexWhere((i) => i.product.id == product.id);
     if (index >= 0) {
+      if (_items[index].quantity >= product.stockQty) {
+        return false;
+      }
       _items[index].quantity++;
     } else {
       _items.add(CartItem(product: product));
     }
     notifyListeners();
+    return true;
   }
 
-  void updateQuantity(int productId, int quantity) {
+  bool updateQuantity(int productId, int quantity) {
     int index = _items.indexWhere((i) => i.product.id == productId);
     if (index >= 0) {
       if (quantity <= 0) {
         _items.removeAt(index);
+        notifyListeners();
+        return true;
       } else {
+        if (quantity > _items[index].product.stockQty) {
+          return false;
+        }
         _items[index].quantity = quantity;
+        notifyListeners();
+        return true;
       }
-      notifyListeners();
     }
+    return false;
   }
 
   void clearCart() {
