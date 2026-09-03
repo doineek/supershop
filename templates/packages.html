@@ -63,6 +63,27 @@
           <textarea id="pkgDescInput" name="description" rows="2" placeholder="e.g. Contains 5 kg Rice, 1 L Oil, 1 kg Sugar" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px;">{{ edit_pkg.description if edit_pkg else '' }}</textarea>
         </div>
 
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0;">
+          <div>
+            <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px; color:#0f172a;">
+              Target Sale Quantity Limit (Quota)
+            </label>
+            <input type="number" min="0" id="pkgMaxSaleLimitInput" name="max_sale_limit" value="{{ edit_pkg.max_sale_limit if edit_pkg and edit_pkg.max_sale_limit is defined else '0' }}" placeholder="0 = Unlimited" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; color:#2563eb;">
+            <span style="font-size:11px; color:#64748b; line-height:1.2; display:block; margin-top:3px;">
+              Max units to sell. Shows "Out of Stock" once reached. Set 0 for unlimited.
+            </span>
+          </div>
+          <div>
+            <label style="display:block; font-weight:600; margin-bottom:4px; font-size:13px; color:#0f172a;">
+              Sold Quantity So Far
+            </label>
+            <input type="number" min="0" id="pkgSoldQtyInput" name="sold_quantity" value="{{ edit_pkg.sold_quantity if edit_pkg and edit_pkg.sold_quantity is defined else '0' }}" placeholder="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold;">
+            <span style="font-size:11px; color:#64748b; line-height:1.2; display:block; margin-top:3px;">
+              Units sold. You can reset to 0 to restart the quota.
+            </span>
+          </div>
+        </div>
+
         <div style="margin-bottom:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <label style="display:block; font-weight:600;">Package Image</label>
@@ -164,6 +185,7 @@
             <tr style="background:#f8fafc; text-align:left;">
               <th style="padding:10px;">Package</th>
               <th style="padding:10px;">Included Items</th>
+              <th style="padding:10px; text-align:center;">Quota & Stock</th>
               <th style="padding:10px; text-align:right;">Combo Price</th>
               <th style="padding:10px; text-align:right;">Actions</th>
             </tr>
@@ -201,6 +223,23 @@
                   <li>{{ item.product_name }} × {{ item.quantity }} (TK {{ item.sell_price }})</li>
                   {% endfor %}
                 </ul>
+              </td>
+              <td style="padding:10px; text-align:center;">
+                {% if pkg.max_sale_limit and pkg.max_sale_limit > 0 %}
+                  {% if pkg.sold_quantity >= pkg.max_sale_limit %}
+                    <span style="background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; font-weight:800; font-size:11px; padding:4px 8px; border-radius:8px; display:inline-block; line-height:1.2;">
+                      🔴 Out of Stock<br><span style="font-size:10px; font-weight:600;">Quota Reached (Sold: {{ pkg.sold_quantity }}/{{ pkg.max_sale_limit }})</span>
+                    </span>
+                  {% else %}
+                    <span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700; font-size:11px; padding:4px 8px; border-radius:8px; display:inline-block; line-height:1.2;">
+                      🎯 {{ pkg.max_sale_limit - pkg.sold_quantity }} left of quota<br><span style="font-size:10px; color:#64748b;">Sold: {{ pkg.sold_quantity }} / {{ pkg.max_sale_limit }}</span>
+                    </span>
+                  {% endif %}
+                {% else %}
+                  <span style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-weight:600; font-size:11px; padding:4px 8px; border-radius:8px; display:inline-block; line-height:1.2;">
+                    ♾️ Unlimited Quota<br><span style="font-size:10px; color:#64748b;">Item Stock: {{ pkg.stock_qty }}</span>
+                  </span>
+                {% endif %}
               </td>
               <td style="padding:10px; text-align:right;">
                 <div style="font-size:11px; color:#64748b; text-decoration:line-through;">Reg: TK {{ "%.2f"|format(pkg.regular_total if pkg.regular_total else pkg.package_price) }}</div>
@@ -402,6 +441,8 @@ function loadPkgForEdit(pkg) {
   document.getElementById('pkgPriceInput').value = pkg.package_price || '';
   document.getElementById('pkgDescInput').value = pkg.description || '';
   document.getElementById('pkgImageInput').value = pkg.image_url || '';
+  if (document.getElementById('pkgMaxSaleLimitInput')) document.getElementById('pkgMaxSaleLimitInput').value = pkg.max_sale_limit || 0;
+  if (document.getElementById('pkgSoldQtyInput')) document.getElementById('pkgSoldQtyInput').value = pkg.sold_quantity || 0;
 
   if (pkg.image_url) {
     const preview = document.getElementById('pkgImgPreviewEl');

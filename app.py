@@ -606,6 +606,19 @@ def render_storefront():
         if min_pkg_stock == 999999 or not inc_items:
             min_pkg_stock = 0
 
+        # Enforce Admin-defined combo package sale quantity limit (quota)
+        max_limit = int(p_dict.get("max_sale_limit") or 0)
+        sold_qty = int(p_dict.get("sold_quantity") or 0)
+        if max_limit > 0:
+            remaining_quota = max(0, max_limit - sold_qty)
+            if remaining_quota <= 0:
+                min_pkg_stock = 0
+                out_of_stock_item = f"Set sale limit of {max_limit} reached"
+            else:
+                min_pkg_stock = min(min_pkg_stock, remaining_quota)
+
+        p_dict["max_sale_limit"] = max_limit
+        p_dict["sold_quantity"] = sold_qty
         p_dict["stock_qty"] = max(0, min_pkg_stock)
         p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)
         p_dict["out_of_stock_item"] = out_of_stock_item
@@ -2997,6 +3010,14 @@ def checkout():
                 first_p = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
                 pkg_fk_pid = first_p["id"] if first_p else 1
 
+            pkg_id = ld.get("pkg_id")
+            if not pkg_id and pkg_name:
+                pkg_row = cur.execute("SELECT id FROM packages WHERE name = ?", (pkg_name,)).fetchone()
+                if pkg_row:
+                    pkg_id = pkg_row["id"]
+            if pkg_id:
+                cur.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (quantity, pkg_id))
+
             cur.execute("""
                 INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
                 VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
@@ -3604,7 +3625,14 @@ def customers_page():
             "block_reason": block_reason,
         })
 
-    customer_directory.sort(key=lambda x: (x["last_visit"], reg_user_dict.get(x["customer_mobile"], {}).get("id", 0)), reverse=True)
+    if search:
+        s_clean = search.lower().strip()
+        customer_directory.sort(key=lambda x: (
+            0 if (s_clean == x["customer_mobile"] or s_clean in x["customer_mobile"].lower() or (x["customer_name"] and s_clean in x["customer_name"].lower())) else 1,
+            0 if x.get("last_visit") else 1
+        ))
+    else:
+        customer_directory.sort(key=lambda x: (x["last_visit"], reg_user_dict.get(x["customer_mobile"], {}).get("id", 0)), reverse=True)
     conn.close()
 
     matched_total_spent = sum(o["total_amount"] for o in matched_orders)
@@ -3696,6 +3724,15 @@ def create_customer_admin():
     password = request.form.get("password", "").strip()
     profile_image = request.form.get("profile_image", "").strip()
 
+    file = request.files.get("profile_image_file")
+    if file and file.filename:
+        upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
+        os.makedirs(upload_dir, exist_ok=True)
+        fn = f"cust_{phone}_{int(time.time())}_{secure_filename(file.filename)}"
+        file_path = os.path.join(upload_dir, fn)
+        file.save(file_path)
+        profile_image = f"/static/uploads/customers/{fn}"
+
     if not name or not phone or not password:
         flash("Name, Mobile Number, and Password are required.", "error")
         return redirect(url_for("customers_page"))
@@ -3720,8 +3757,8 @@ def create_customer_admin():
         return redirect(url_for("customers_page"))
 
     conn.execute(
-        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, profile_image, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-        (phone, name, email, generate_password_hash(password), password, profile_image, datetime.now().isoformat())
+        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, profile_image, avatar_url, avatar_base64, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+        (phone, name, email, generate_password_hash(password), password, profile_image, profile_image, profile_image, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
@@ -3743,6 +3780,15 @@ def edit_customer_admin():
     password = request.form.get("password", "").strip()
     profile_image = request.form.get("profile_image", "").strip()
 
+    file = request.files.get("profile_image_file")
+    if file and file.filename:
+        upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
+        os.makedirs(upload_dir, exist_ok=True)
+        fn = f"cust_{new_phone}_{int(time.time())}_{secure_filename(file.filename)}"
+        file_path = os.path.join(upload_dir, fn)
+        file.save(file_path)
+        profile_image = f"/static/uploads/customers/{fn}"
+
     if not old_phone or not name or not new_phone:
         flash("Customer Name and Mobile Number are required.", "error")
         return redirect(url_for("customers_page"))
@@ -3758,25 +3804,25 @@ def edit_customer_admin():
         pw_hash = generate_password_hash(password) if password else generate_password_hash("123456")
         plain_pw = password if password else "123456"
         conn.execute(
-            "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, profile_image, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-            (new_phone, name, email, pw_hash, plain_pw, profile_image, datetime.now().isoformat())
+            "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, profile_image, avatar_url, avatar_base64, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+            (new_phone, name, email, pw_hash, plain_pw, profile_image, profile_image, profile_image, datetime.now().isoformat())
         )
     else:
-        # If profile_image not sent in form, preserve existing
-        if "profile_image" not in request.form:
-            profile_image = cust["profile_image"] if "profile_image" in cust.keys() else ""
+        # If no new file or url provided, preserve existing image
+        if not profile_image:
+            profile_image = cust["profile_image"] or cust["avatar_url"] or cust["avatar_base64"] or ""
 
         if password:
             pw_hash = generate_password_hash(password)
             plain_pw = password
             conn.execute(
-                "UPDATE customer_users SET phone = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, profile_image = ? WHERE phone = ?",
-                (new_phone, name, email, pw_hash, plain_pw, profile_image, old_phone)
+                "UPDATE customer_users SET phone = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, profile_image = ?, avatar_url = ?, avatar_base64 = ? WHERE phone = ?",
+                (new_phone, name, email, pw_hash, plain_pw, profile_image, profile_image, profile_image, old_phone)
             )
         else:
             conn.execute(
-                "UPDATE customer_users SET phone = ?, name = ?, email = ?, profile_image = ? WHERE phone = ?",
-                (new_phone, name, email, profile_image, old_phone)
+                "UPDATE customer_users SET phone = ?, name = ?, email = ?, profile_image = ?, avatar_url = ?, avatar_base64 = ? WHERE phone = ?",
+                (new_phone, name, email, profile_image, profile_image, profile_image, old_phone)
             )
 
     if old_phone != new_phone:
@@ -5910,6 +5956,8 @@ def online_orders():
 
         o_dict["items"] = item_list
         o_dict["order_items"] = item_list
+        c_user = conn.execute("SELECT profile_image, avatar_url, avatar_base64 FROM customer_users WHERE phone = ?", (o_dict.get("customer_phone", ""),)).fetchone()
+        o_dict["customer_profile_image"] = (c_user["profile_image"] or c_user["avatar_url"] or c_user["avatar_base64"]) if c_user else ""
         orders_list.append(o_dict)
     riders = conn.execute("SELECT * FROM users WHERE role = 'delivery' AND is_active = 1").fetchall()
     conn.close()
@@ -6052,6 +6100,7 @@ def deduct_online_order_stock(conn, order):
             pkg = conn.execute("SELECT id FROM packages WHERE name = ? OR instr(?, name) > 0", (item["product_name"], item["product_name"])).fetchone()
 
         if pkg:
+            conn.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (qty, pkg["id"]))
             p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pkg["id"],)).fetchall()
             for pi in p_items:
                 conn.execute(
@@ -6059,6 +6108,7 @@ def deduct_online_order_stock(conn, order):
                     (pi["quantity"] * qty, pi["product_id"])
                 )
                 remote_control.push_product_to_cloud(pi["product_id"])
+            remote_control.push_packages_to_cloud()
         else:
             conn.execute(
                 "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
@@ -6125,6 +6175,7 @@ def restore_online_order_stock(conn, order):
             qty = item["quantity"]
             pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
             if pkg:
+                conn.execute("UPDATE packages SET sold_quantity = MAX(0, sold_quantity - ?) WHERE id = ?", (qty, pkg["id"]))
                 p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pid,)).fetchall()
                 for pi in p_items:
                     conn.execute(
@@ -6132,6 +6183,7 @@ def restore_online_order_stock(conn, order):
                         (pi["quantity"] * qty, pi["product_id"])
                     )
                     remote_control.push_product_to_cloud(pi["product_id"])
+                remote_control.push_packages_to_cloud()
             else:
                 conn.execute(
                     "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
@@ -6573,6 +6625,24 @@ def api_place_order():
                     "message": f'Maximum order limit reached: You can order at most {max_order_qty_pkg} units of Combo Package "{pkg_match["name"]}" per order.'
                 }), 400
 
+            # Enforce Admin-defined quota / sale limit
+            max_limit = int(pkg_match["max_sale_limit"] if "max_sale_limit" in pkg_match.keys() else 0)
+            sold_qty = int(pkg_match["sold_quantity"] if "sold_quantity" in pkg_match.keys() else 0)
+            if max_limit > 0:
+                quota_left = max(0, max_limit - sold_qty)
+                if quota_left <= 0:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Combo Package "{pkg_match["name"]}" is OUT OF STOCK (Maximum sales limit of {max_limit} units reached).'
+                    }), 400
+                if item_quantities_map[pkg_key] > quota_left:
+                    conn.close()
+                    return jsonify({
+                        "success": False,
+                        "message": f'Only {quota_left} unit(s) remaining for Combo Package "{pkg_match["name"]}" before reaching sales limit.'
+                    }), 400
+
             p_items_chk = conn.execute("""
                 SELECT pi.quantity, p.id, p.name, p.stock_qty
                 FROM package_items pi JOIN products p ON pi.product_id = p.id
@@ -6850,6 +6920,7 @@ def api_place_order():
         """, (order_id, valid_pid, item["product_name"], item["unit_price"], item["mrp_price"], item["quantity"], item["total_price"]))
 
         if item.get("is_package") and item.get("package_id"):
+            cur.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (item["quantity"], item["package_id"]))
             pkg_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (item["package_id"],)).fetchall()
             for pi in pkg_items:
                 cur.execute(
@@ -6857,6 +6928,7 @@ def api_place_order():
                     (pi["quantity"] * item["quantity"], pi["product_id"])
                 )
                 remote_control.push_product_to_cloud(pi["product_id"])
+            remote_control.push_packages_to_cloud()
         elif chk_p:
             cur.execute(
                 "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
@@ -7542,6 +7614,9 @@ def packages_page():
         image_url = request.form.get("image_url", "").strip()
         prod_ids = request.form.getlist("product_ids")
 
+        max_sale_limit = int(request.form.get("max_sale_limit") or 0)
+        sold_quantity = int(request.form.get("sold_quantity") or 0)
+
         file = request.files.get("package_image_file")
         if file and file.filename:
             import os, time
@@ -7563,9 +7638,9 @@ def packages_page():
         if name and package_price > 0 and prod_ids:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO packages (name, description, image_url, package_price, is_active, created_at)
-                VALUES (?, ?, ?, ?, 1, ?)
-            """, (name, description, image_url, package_price, datetime.now().isoformat()))
+                INSERT INTO packages (name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, created_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+            """, (name, description, image_url, package_price, max_sale_limit, sold_quantity, datetime.now().isoformat()))
             pkg_id = cur.lastrowid
 
             for pid in prod_ids:
@@ -7589,7 +7664,7 @@ def packages_page():
     for pkg in pkg_rows:
         p_dict = dict(pkg)
         items = conn.execute("""
-            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url, p.stock_qty
             FROM package_items pi JOIN products p ON pi.product_id = p.id
             WHERE pi.package_id = ?
         """, (pkg["id"],)).fetchall()
@@ -7598,6 +7673,44 @@ def packages_page():
         reg_total = calculate_package_regular_total(inc_items)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
+
+        # Stock and quota calculation
+        max_limit = int(p_dict.get("max_sale_limit") or 0)
+        sold_qty = int(p_dict.get("sold_quantity") or 0)
+        p_dict["max_sale_limit"] = max_limit
+        p_dict["sold_quantity"] = sold_qty
+
+        min_pkg_stock = 999999
+        out_of_stock_item = None
+        for it in inc_items:
+            req_qty = int(it.get("quantity") or 1)
+            curr_stock = int(it.get("stock_qty") or 0)
+            if curr_stock <= 0:
+                min_pkg_stock = 0
+                out_of_stock_item = it.get("product_name")
+                break
+            possible_pkg = curr_stock // req_qty
+            if possible_pkg < min_pkg_stock:
+                min_pkg_stock = possible_pkg
+
+        if min_pkg_stock == 999999 or not inc_items:
+            min_pkg_stock = 0
+
+        if max_limit > 0:
+            remaining_quota = max(0, max_limit - sold_qty)
+            if remaining_quota <= 0:
+                min_pkg_stock = 0
+                p_dict["quota_reached"] = True
+                out_of_stock_item = f"Set sale limit of {max_limit} reached"
+            else:
+                min_pkg_stock = min(min_pkg_stock, remaining_quota)
+                p_dict["quota_reached"] = False
+        else:
+            p_dict["quota_reached"] = False
+
+        p_dict["stock_qty"] = max(0, min_pkg_stock)
+        p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)
+        p_dict["out_of_stock_item"] = out_of_stock_item
         packages_list.append(p_dict)
 
     edit_id = request.args.get("edit")
@@ -7609,7 +7722,7 @@ def packages_page():
             if edit_pkg_row:
                 edit_pkg = dict(edit_pkg_row)
                 items = conn.execute("""
-                    SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url
+                    SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url, p.stock_qty
                     FROM package_items pi JOIN products p ON pi.product_id = p.id
                     WHERE pi.package_id = ?
                 """, (edit_id,)).fetchall()
@@ -7637,6 +7750,8 @@ def edit_package(package_id):
     package_price = float(request.form.get("package_price") or 0)
     image_url = request.form.get("image_url", "").strip()
     prod_ids = request.form.getlist("product_ids")
+    max_sale_limit = int(request.form.get("max_sale_limit") or 0)
+    sold_quantity = int(request.form.get("sold_quantity") or 0)
 
     file = request.files.get("package_image_file")
     if file and file.filename:
@@ -7661,9 +7776,9 @@ def edit_package(package_id):
     if name and package_price > 0 and prod_ids:
         cur = conn.cursor()
         cur.execute("""
-            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?
+            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, max_sale_limit = ?, sold_quantity = ?
             WHERE id = ?
-        """, (name, description, image_url, package_price, package_id))
+        """, (name, description, image_url, package_price, max_sale_limit, sold_quantity, package_id))
         
         cur.execute("DELETE FROM package_items WHERE package_id = ?", (package_id,))
         for pid in prod_ids:
@@ -7766,6 +7881,19 @@ def api_packages():
         if min_pkg_stock == 999999 or not item_list:
             min_pkg_stock = 0
 
+        # Enforce quota / sale limit set by admin
+        max_limit = int(p_dict.get("max_sale_limit") or 0)
+        sold_qty = int(p_dict.get("sold_quantity") or 0)
+        if max_limit > 0:
+            remaining_quota = max(0, max_limit - sold_qty)
+            if remaining_quota <= 0:
+                min_pkg_stock = 0
+                out_of_stock_item = f"Set sale limit of {max_limit} combo packages reached"
+            else:
+                min_pkg_stock = min(min_pkg_stock, remaining_quota)
+
+        p_dict["max_sale_limit"] = max_limit
+        p_dict["sold_quantity"] = sold_qty
         p_dict["items"] = item_list
         p_dict["stock_qty"] = max(0, min_pkg_stock)
         p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)
@@ -7810,6 +7938,19 @@ def api_package_detail(package_id):
     if min_pkg_stock == 999999 or not inc_items:
         min_pkg_stock = 0
 
+    # Enforce quota / sale limit set by admin
+    max_limit = int(p_dict.get("max_sale_limit") or 0)
+    sold_qty = int(p_dict.get("sold_quantity") or 0)
+    if max_limit > 0:
+        remaining_quota = max(0, max_limit - sold_qty)
+        if remaining_quota <= 0:
+            min_pkg_stock = 0
+            out_of_stock_item = f"Set sale limit of {max_limit} combo packages reached"
+        else:
+            min_pkg_stock = min(min_pkg_stock, remaining_quota)
+
+    p_dict["max_sale_limit"] = max_limit
+    p_dict["sold_quantity"] = sold_qty
     p_dict["items"] = inc_items
     p_dict["stock_qty"] = max(0, min_pkg_stock)
     p_dict["is_out_of_stock"] = (min_pkg_stock <= 0)

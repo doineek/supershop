@@ -1108,18 +1108,20 @@ def _on_packages_change(doc_snapshots, changes, read_time):
                     image_url = data.get("image_url", "")
                     package_price = float(data.get("package_price") or 0)
                     is_active = int(data.get("is_active", 1))
+                    max_sale_limit = int(data.get("max_sale_limit") or 0)
+                    sold_quantity = int(data.get("sold_quantity") or 0)
                     if name and package_price > 0:
                         existing = conn.execute("SELECT id FROM packages WHERE id = ?", (pkg_id,)).fetchone()
                         if existing:
                             conn.execute("""
-                                UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?
+                                UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?, max_sale_limit = ?, sold_quantity = ?
                                 WHERE id = ?
-                            """, (name, description, image_url, package_price, is_active, pkg_id))
+                            """, (name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, pkg_id))
                         else:
                             conn.execute("""
-                                INSERT INTO packages (id, name, description, image_url, package_price, is_active, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, (pkg_id, name, description, image_url, package_price, is_active, datetime.now().isoformat()))
+                                INSERT INTO packages (id, name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (pkg_id, name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, datetime.now().isoformat()))
                         conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
                         items = data.get("items", [])
                         for item in items:
@@ -1772,8 +1774,10 @@ def pull_all_from_cloud(blocking=False):
                         desc = data.get("description", "")
                         img = data.get("image_url", "")
                         is_active = int(data.get("is_active", 1))
+                        max_sale_limit = int(data.get("max_sale_limit") or 0)
+                        sold_quantity = int(data.get("sold_quantity") or 0)
                         if pkg_id and name:
-                            conn.execute("INSERT OR REPLACE INTO packages (id, name, package_price, description, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (pkg_id, name, price, desc, img, is_active, datetime.now().isoformat()))
+                            conn.execute("INSERT OR REPLACE INTO packages (id, name, package_price, description, image_url, is_active, max_sale_limit, sold_quantity, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (pkg_id, name, price, desc, img, is_active, max_sale_limit, sold_quantity, datetime.now().isoformat()))
                             conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
                             for item in (data.get("items") or []):
                                 pid = item.get("product_id")

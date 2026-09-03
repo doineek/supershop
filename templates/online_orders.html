@@ -66,11 +66,21 @@
         </td>
         
         <td style="padding: 14px 16px; vertical-align: top;">
-          <div style="font-weight: 600; color: #0f172a;">{{ order.customer_name }}</div>
-          <div style="font-size: 0.85rem; color: #2563eb; display:flex; align-items:center; gap:4px; margin-top:2px;">
-            <span>📞 {{ order.customer_phone }}</span>
-            <a href="tel:{{ order.customer_phone }}" style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700; text-decoration:none;">Call</a>
-            <a href="https://wa.me/88{{ order.customer_phone }}" target="_blank" style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700; text-decoration:none;">WhatsApp</a>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+            {% if order.customer_profile_image and order.customer_profile_image.strip() %}
+              <img src="{{ order.customer_profile_image }}" alt="Photo" style="width:38px; height:38px; border-radius:8px; object-fit:cover; border:1.5px solid #8b5cf6; flex-shrink:0;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <div style="width:38px; height:38px; border-radius:8px; background:#f1f5f9; border:1px dashed #94a3b8; display:none; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#64748b; flex-shrink:0;">📷</div>
+            {% else %}
+              <div style="width:38px; height:38px; border-radius:8px; background:#f1f5f9; border:1px dashed #94a3b8; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#64748b; flex-shrink:0;">📷</div>
+            {% endif %}
+            <div>
+              <div style="font-weight: 600; color: #0f172a;">{{ order.customer_name }}</div>
+              <div style="font-size: 0.85rem; color: #2563eb; display:flex; align-items:center; gap:4px; margin-top:2px;">
+                <span>📞 {{ order.customer_phone }}</span>
+                <a href="tel:{{ order.customer_phone }}" style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700; text-decoration:none;">Call</a>
+                <a href="https://wa.me/88{{ order.customer_phone }}" target="_blank" style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700; text-decoration:none;">WhatsApp</a>
+              </div>
+            </div>
           </div>
           {% if order.order_status == 'pending_confirmation' %}
           <div style="font-size:0.74rem; color:#c2410c; font-weight:800; margin-top:4px;">

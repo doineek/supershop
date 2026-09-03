@@ -88,21 +88,63 @@
 </script>
 
 {% if search %}
-  <div class="card" style="padding:20px; margin-bottom:28px;">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-      <div>
-        <h2 style="font-size:18px; margin-bottom:4px; font-weight:700;">📦 All Order History for "{{ search }}"</h2>
-        <p class="subtitle" style="margin-bottom:0;">
-          Total {{ matched_orders|length }} order(s) found · Total spend TK {{ "%.2f"|format(matched_total_spent) }}
-        </p>
+  <div class="card" style="padding:20px; margin-bottom:28px; border:1.5px solid #cbd5e1; box-shadow:0 4px 12px rgba(0,0,0,0.06);">
+    {% set ns = namespace(searched_cust=None) %}
+    {% for c in customer_directory %}
+      {% if c.customer_mobile == search or search in c.customer_mobile or (c.customer_name and search.lower() in c.customer_name.lower()) %}
+        {% if not ns.searched_cust %}
+          {% set ns.searched_cust = c %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {% set searched_cust = ns.searched_cust %}
+
+    <!-- Top Customer Profile Summary with Photo -->
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid #e2e8f0;">
+      <div style="display:flex; align-items:center; gap:14px;">
+        <div style="width:60px; height:60px; border-radius:12px; border:2px solid #8b5cf6; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#f8fafc; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+          {% if searched_cust and searched_cust.profile_image and searched_cust.profile_image.strip() %}
+            <img src="{{ searched_cust.profile_image }}" alt="Customer Photo" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div style="display:none; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:9px; font-weight:800; text-transform:uppercase; width:100%; height:100%;">
+              <span>📷 No Image</span>
+            </div>
+          {% else %}
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:9px; font-weight:800; text-transform:uppercase; width:100%; height:100%;">
+              <span>📷 No Image</span>
+            </div>
+          {% endif %}
+        </div>
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h2 style="font-size:18px; margin:0; font-weight:800; color:#0f172a;">
+              {{ searched_cust.customer_name if searched_cust else search }}
+            </h2>
+            {% if searched_cust and searched_cust.is_blocked %}
+              <span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:bold; padding:2px 8px; border-radius:10px;">Blocked</span>
+            {% else %}
+              <span style="background:#dcfce7; color:#15803d; font-size:11px; font-weight:bold; padding:2px 8px; border-radius:10px;">Active Account</span>
+            {% endif %}
+          </div>
+          <div style="color:#64748b; font-size:13px; margin-top:2px;">
+            📱 Mobile: <strong>{{ searched_cust.customer_mobile if searched_cust else search }}</strong>
+            {% if searched_cust and searched_cust.email %} · ✉️ {{ searched_cust.email }}{% endif %}
+            · 🛍️ {{ matched_orders|length }} order(s) · 💰 Total spend: <strong style="color:#15803d;">TK {{ "%.2f"|format(matched_total_spent) }}</strong>
+          </div>
+        </div>
       </div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        {% if session.role == 'admin' %}
-        <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openDeleteCustomerModal('{{ search }}', '{{ search }}')">
-          🗑️ Delete Customer Account
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="btn btn-small" style="background:#4f46e5; color:#fff; border:none; padding:7px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openCustomerProfileModal('{{ searched_cust.customer_mobile if searched_cust else search }}')">
+          👤 View Profile
+        </button>
+        {% if session.role == 'admin' and searched_cust %}
+        <button type="button" class="btn btn-small" style="background:#1d4ed8; color:#fff; border:none; padding:7px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openEditCustomerModal('{{ searched_cust.customer_mobile }}', '{{ searched_cust.customer_name|escape }}', '{{ searched_cust.email }}', '{{ searched_cust.password if searched_cust.password != '●●●●●●' and searched_cust.password != '—' else '' }}', '{{ searched_cust.profile_image|escape }}')">
+          ✏️ Edit & Change Picture
+        </button>
+        <button type="button" class="btn btn-small" style="background:#dc2626; color:#fff; border:none; padding:7px 12px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="openDeleteCustomerModal('{{ searched_cust.customer_mobile }}', '{{ searched_cust.customer_name|escape }}')">
+          🗑️ Delete Account
         </button>
         {% endif %}
-        <a href="{{ url_for('customers_page') }}" class="btn btn-outline btn-small">Clear Filter</a>
+        <a href="{{ url_for('customers_page') }}" class="btn btn-outline btn-small" style="padding:7px 12px;">Clear Filter</a>
       </div>
     </div>
 
@@ -304,7 +346,7 @@
       Admin created accounts are automatically verified (no OTP required). The customer can log in to the App immediately using this phone and password.
     </p>
 
-    <form method="POST" action="{{ url_for('create_customer_admin') }}">
+    <form method="POST" action="{{ url_for('create_customer_admin') }}" enctype="multipart/form-data">
       <div style="margin-bottom:12px;">
         <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Customer Name *</label>
         <input type="text" name="name" required placeholder="e.g. Abul Kalam" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
@@ -316,8 +358,10 @@
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Profile Picture URL / Link (Optional)</label>
-        <input type="text" name="profile_image" placeholder="https://... or /static/uploads/..." style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Upload Profile Picture from Computer (Optional)</label>
+        <input type="file" name="profile_image_file" accept="image/*" style="width:100%; padding:8px; border:1.5px dashed #cbd5e1; border-radius:6px; background:#f8fafc; font-size:0.82rem; margin-bottom:6px;">
+        <label style="display:block; font-size:0.80rem; color:#64748b; margin-bottom:2px;">Or Picture Link / URL:</label>
+        <input type="text" name="profile_image" placeholder="https://... or /static/uploads/..." style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">
@@ -373,7 +417,7 @@
       ✏️ Edit Customer Information
     </h3>
 
-    <form method="POST" action="{{ url_for('edit_customer_admin') }}">
+    <form method="POST" action="{{ url_for('edit_customer_admin') }}" enctype="multipart/form-data">
       <input type="hidden" name="old_phone" id="editCustomerOldPhone">
 
       <div style="margin-bottom:12px;">
@@ -387,8 +431,10 @@
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Profile Picture URL / Link (Optional)</label>
-        <input type="text" name="profile_image" id="editCustomerProfileImage" placeholder="https://... or /static/uploads/..." style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Upload New Profile Picture from Computer (Optional)</label>
+        <input type="file" name="profile_image_file" accept="image/*" style="width:100%; padding:8px; border:1.5px dashed #cbd5e1; border-radius:6px; background:#f8fafc; font-size:0.82rem; margin-bottom:6px;">
+        <label style="display:block; font-size:0.80rem; color:#64748b; margin-bottom:2px;">Or Picture Link / URL:</label>
+        <input type="text" name="profile_image" id="editCustomerProfileImage" placeholder="https://... or /static/uploads/..." style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
       <div style="margin-bottom:12px;">

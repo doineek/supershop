@@ -281,6 +281,8 @@ def init_db():
         image_url TEXT NOT NULL DEFAULT '',
         package_price REAL NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
+        max_sale_limit INTEGER NOT NULL DEFAULT 0,
+        sold_quantity INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     );
 
@@ -365,6 +367,8 @@ def init_db():
         "ALTER TABLE ledger_entries ADD COLUMN target_segment TEXT NOT NULL DEFAULT 'all'",
         "ALTER TABLE online_orders ADD COLUMN rider_fee REAL NOT NULL DEFAULT 0.0",
         "ALTER TABLE customer_users ADD COLUMN profile_image TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE packages ADD COLUMN max_sale_limit INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE packages ADD COLUMN sold_quantity INTEGER NOT NULL DEFAULT 0",
     ]
     for statement in migrations:
         try:
