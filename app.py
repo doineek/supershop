@@ -369,6 +369,21 @@ def get_categories_tree_data(conn):
     return cat_list
 
 
+def calculate_package_regular_total(items_list):
+    """
+    Calculates total regular price for combo package items based on MRP (Maximum Retail Price),
+    falling back to sell_price only if MRP is 0 or not configured.
+    """
+    total = 0.0
+    for it in items_list:
+        mrp = float(it.get("mrp") or 0.0)
+        sell = float(it.get("sell_price") or 0.0)
+        base = mrp if mrp > 0 else sell
+        qty = int(it.get("quantity") or 1)
+        total += base * qty
+    return total
+
+
 def render_storefront():
     conn = get_connection()
     today_date = datetime.now().strftime("%Y-%m-%d")
@@ -389,21 +404,6 @@ def render_storefront():
     
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     categories_tree = get_categories_tree_data(conn)
-    
-def calculate_package_regular_total(items_list):
-    """
-    Calculates total regular price for combo package items based on MRP (Maximum Retail Price),
-    falling back to sell_price only if MRP is 0 or not configured.
-    """
-    total = 0.0
-    for it in items_list:
-        mrp = float(it.get("mrp") or 0.0)
-        sell = float(it.get("sell_price") or 0.0)
-        base = mrp if mrp > 0 else sell
-        qty = int(it.get("quantity") or 1)
-        total += base * qty
-    return total
-
 
     raw_pkgs = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
     packages = []
