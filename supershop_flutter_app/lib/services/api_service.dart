@@ -293,10 +293,7 @@ class ApiService {
   }
 
   static Stream<List<Product>> productsStream() async* {
-    while (true) {
-      yield await fetchProducts();
-      await Future.delayed(const Duration(seconds: 5));
-    }
+    yield await fetchProducts();
   }
 
   static Future<List<DeliveryArea>> fetchDeliveryAreas() async {

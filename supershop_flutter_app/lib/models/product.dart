@@ -131,4 +131,32 @@ class Product {
       offerBase: (json['offer_base'] ?? 'mrp').toString(),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'sku': sku,
+      'name': name,
+      'brand': brand,
+      'unit': unit,
+      'category_id': categoryId,
+      'category_name': categoryName,
+      'sub_category_id': subCategoryId,
+      'sub_category_name': subCategoryName,
+      'sub_sub_category_id': subSubCategoryId,
+      'sub_sub_category_name': subSubCategoryName,
+      'mrp': mrp,
+      'sell_price': sellPrice,
+      'stock_qty': stockQty,
+      'description': description,
+      'image_url': imageUrl,
+      'is_trending': isTrending ? 1 : 0,
+      'is_flash_sale': isFlashSale ? 1 : 0,
+      'is_offer': isOffer ? 1 : 0,
+      'offer_title': offerTitle,
+      'offer_type': offerType,
+      'offer_value': offerValue,
+      'offer_base': offerBase,
+    };
+  }
 }

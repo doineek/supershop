@@ -467,7 +467,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.green.shade300),
                         ),
-                        child: const Text("v1.0.10 (Build 11)", style: TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: const Text("v1.0.11 (Build 12)", style: TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
                     ],
                   ),
@@ -910,7 +910,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ListTile(
                           leading: const Icon(Icons.info_outline, color: Colors.teal),
                           title: const Text('About / App Version', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: const Text('Version 1.0.10 (Build 11) • Official Release'),
+                          subtitle: const Text('Version 1.0.11 (Build 12) • Official Release'),
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
@@ -919,7 +919,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               border: Border.all(color: Colors.teal.shade200),
                             ),
                             child: const Text(
-                              'v1.0.10',
+                              'v1.0.11',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal),
                             ),
                           ),

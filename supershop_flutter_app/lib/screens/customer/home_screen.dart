@@ -14,7 +14,6 @@ import 'cart_screen.dart';
 import '../../widgets/app_image_loader.dart';
 import '../../widgets/location_selector_dialog.dart';
 import '../../widgets/quantity_limit_dialog.dart';
-import 'my_orders_screen.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import '../delivery/delivery_home_screen.dart';
@@ -38,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _sortBy = "default";
   List<dynamic> _categoriesTree = [];
   bool _isLoadingCategories = false;
+  List<Product> _allProducts = [];
+  bool _isLoadingProducts = false;
   Timer? _retryTimer;
   int _retryCount = 0;
 
@@ -137,6 +138,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
         } catch (_) {}
       }
+
+      // Load cached products
+      final cachedProds = prefs.getString('cached_products_json');
+      if (cachedProds != null && cachedProds.isNotEmpty) {
+        try {
+          final list = jsonDecode(cachedProds) as List<dynamic>? ?? [];
+          if (list.isNotEmpty && mounted) {
+            setState(() {
+              _allProducts = list.map((e) => Product.fromJson(Map<String, dynamic>.from(e))).toList();
+            });
+          }
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 
@@ -144,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       if (_categoriesTree.isEmpty) _isLoadingCategories = true;
+      if (_allProducts.isEmpty) _isLoadingProducts = true;
     });
 
     try {
@@ -161,9 +176,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 4. Fetch Shop Settings
       final settings = await ApiService.fetchShopSettings();
 
+      // 5. Fetch Products
+      final prods = await ApiService.fetchProducts();
+
       if (!mounted) return;
       setState(() {
         _isLoadingCategories = false;
+        _isLoadingProducts = false;
         if (promoList.isNotEmpty) {
           _promoList = promoList;
           _promoIntervalSec = interval > 0 ? interval : 2;
@@ -175,6 +194,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (pkgs.isNotEmpty) {
           _packagesList = pkgs;
         }
+        if (prods.isNotEmpty) {
+          _allProducts = prods;
+        }
         if (settings.isNotEmpty) {
           _shopName = settings['shop_name'] ?? "DOINEEK Supershop";
           _facebookUrl = (settings['facebook_url'] ?? '').toString();
@@ -183,6 +205,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _instagramUrl = (settings['instagram_url'] ?? '').toString();
         }
       });
+
+      if (prods.isNotEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          prefs.setString('cached_products_json', jsonEncode(prods.map((p) => p.toJson()).toList()));
+        } catch (_) {}
+      }
 
       // If data is still missing (e.g. server was sleeping during cold start), auto-retry in background
       bool hasMissingData = _promoList.isEmpty || _categoriesTree.isEmpty;
@@ -475,10 +504,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         actions: const [],
       ),
-      body: StreamBuilder<List<Product>>(
-        stream: ApiService.productsStream(),
-        builder: (context, snapshot) {
-          final allProducts = snapshot.data ?? [];
+      body: Builder(
+        builder: (context) {
+          final allProducts = _allProducts;
           final filteredProducts = _filterProducts(allProducts);
 
           List<Product> sortedProducts = List.from(filteredProducts);
@@ -583,7 +611,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         ? (item["offer_value"] != null && item["offer_value"].toString().trim().isNotEmpty
                                             ? item["offer_value"].toString().trim()
                                             : "BUY 1 GET 1 FREE")
-                                        : (item["is_package"] == 1 || item["offer_type"] == "combo_package"
+                                        : (item["is_package"] == 1 || item["is_package"]?.toString() == "1" || item["offer_type"] == "combo_package"
                                             ? "🎁 COMBO SPECIAL OFFER"
                                             : "🔥 SPECIAL OFFER"));
                                 String rawImg = (item["image_url"] ?? "").toString().trim();
@@ -594,7 +622,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                                 double mrp = double.tryParse(item["mrp"]?.toString() ?? "0") ?? 0.0;
                                 double sellPrice = double.tryParse(item["sell_price"]?.toString() ?? "0") ?? 0.0;
-                                bool isCombo = item["is_package"] == 1 || item["offer_type"] == "combo_package";
+                                bool isCombo = item["is_package"] == 1 || item["is_package"]?.toString() == "1" || item["offer_type"] == "combo_package";
 
                                 return InkWell(
                                   onTap: () {
@@ -859,35 +887,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                         // Real-time Products / Packages Grid
                         Expanded(
-                          child: _selectedTab == 'packages'
-                              ? (_packagesList.isEmpty
-                                  ? Container(
-                                      padding: const EdgeInsets.all(32),
-                                      alignment: Alignment.center,
-                                      child: const Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                          child: RefreshIndicator(
+                            onRefresh: () => _loadAllData(retryIfEmpty: false),
+                            child: _selectedTab == 'packages'
+                                ? (_packagesList.isEmpty
+                                    ? ListView(
+                                        physics: const AlwaysScrollableScrollPhysics(),
                                         children: [
-                                          Icon(Icons.card_giftcard, size: 64, color: Colors.purple),
-                                          SizedBox(height: 12),
-                                          Text(
-                                            "🎁 Currently no combo package available.",
-                                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
-                                            textAlign: TextAlign.center,
+                                          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                                          const Center(
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.card_giftcard, size: 64, color: Colors.purple),
+                                                SizedBox(height: 12),
+                                                Text(
+                                                  "🎁 Currently no combo package available.",
+                                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ],
-                                      ),
-                                    )
-                                  : ListView.builder(
-                                      padding: const EdgeInsets.all(12),
-                                      itemCount: _packagesList.length,
-                                      itemBuilder: (context, index) {
-                                        final pkg = _packagesList[index];
-                                        final name = pkg['name'] ?? 'Combo Bundle';
-                                        final desc = pkg['description'] ?? '';
-                                        final price = double.tryParse(pkg['package_price']?.toString() ?? '0') ?? 0.0;
-                                        final items = pkg['items'] as List<dynamic>? ?? [];
+                                      )
+                                    : ListView.builder(
+                                        physics: const AlwaysScrollableScrollPhysics(),
+                                        padding: const EdgeInsets.all(12),
+                                        itemCount: _packagesList.length,
+                                        itemBuilder: (context, index) {
+                                          final pkg = _packagesList[index];
+                                          final name = pkg['name'] ?? 'Combo Bundle';
+                                          final desc = pkg['description'] ?? '';
+                                          final price = double.tryParse(pkg['package_price']?.toString() ?? '0') ?? 0.0;
+                                          final items = pkg['items'] as List<dynamic>? ?? [];
 
-                                        return Card(
+                                          return Card(
                                           margin: const EdgeInsets.only(bottom: 12),
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.green.shade200)),
                                           child: Padding(
@@ -1109,12 +1144,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         );
                                       },
                                     ))
-                              : snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
+                              : _isLoadingProducts && _allProducts.isEmpty
                                   ? const Center(child: CircularProgressIndicator())
                                   : filteredProducts.isEmpty
-                                      ? const Center(child: Text("No products found"))
+                                      ? ListView(
+                                          physics: const AlwaysScrollableScrollPhysics(),
+                                          children: const [
+                                            SizedBox(height: 80),
+                                            Center(child: Text("No products found", style: TextStyle(color: Colors.grey, fontSize: 15))),
+                                          ],
+                                        )
                                       : CustomScrollView(
-                                      slivers: [
+                                          physics: const AlwaysScrollableScrollPhysics(),
+                                          slivers: [
                                         SliverPadding(
                                           padding: const EdgeInsets.all(10),
                                           sliver: SliverGrid(
@@ -1456,9 +1498,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         ),
                                       ],
                                     ),
-                        ),
-                      ],
-                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                   _buildCategoryDirectoryView(),
                   const CartScreen(),
                   const ProfileScreen(),
@@ -1779,6 +1822,13 @@ class CategoryProductsScreen extends StatefulWidget {
 
 class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   String _sortBy = 'default';
+  late Future<List<Product>> _productsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _productsFuture = ApiService.fetchProducts();
+  }
 
   List<Product> _filterCategoryProducts(List<Product> allProducts) {
     List<Product> list = allProducts;
@@ -1823,8 +1873,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
         ),
       ),
-      body: StreamBuilder<List<Product>>(
-        stream: ApiService.productsStream(),
+      body: FutureBuilder<List<Product>>(
+        future: _productsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -1833,10 +1883,23 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           final displayProducts = _filterCategoryProducts(allProducts);
 
           if (displayProducts.isEmpty) {
-            return const Center(
-              child: Text(
-                "No products found in this category",
-                style: TextStyle(fontSize: 14, color: Colors.grey),
+            return RefreshIndicator(
+              onRefresh: () async {
+                setState(() {
+                  _productsFuture = ApiService.fetchProducts();
+                });
+              },
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 100),
+                  Center(
+                    child: Text(
+                      "No products found in this category",
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ),
+                ],
               ),
             );
           }
@@ -1885,8 +1948,15 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
 
               // Product Grid
               Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(10),
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    setState(() {
+                      _productsFuture = ApiService.fetchProducts();
+                    });
+                  },
+                  child: GridView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(10),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     childAspectRatio: 0.59,
@@ -2170,6 +2240,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   },
                 ),
               ),
+            ),
             ],
           );
         },
