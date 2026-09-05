@@ -283,6 +283,7 @@ def init_db():
         is_active INTEGER NOT NULL DEFAULT 1,
         max_sale_limit INTEGER NOT NULL DEFAULT 0,
         sold_quantity INTEGER NOT NULL DEFAULT 0,
+        show_in_banner INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     );
 
@@ -369,6 +370,7 @@ def init_db():
         "ALTER TABLE customer_users ADD COLUMN profile_image TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE packages ADD COLUMN max_sale_limit INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE packages ADD COLUMN sold_quantity INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE packages ADD COLUMN show_in_banner INTEGER NOT NULL DEFAULT 0",
     ]
     for statement in migrations:
         try:

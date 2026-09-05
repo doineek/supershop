@@ -583,7 +583,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         ? (item["offer_value"] != null && item["offer_value"].toString().trim().isNotEmpty
                                             ? item["offer_value"].toString().trim()
                                             : "BUY 1 GET 1 FREE")
-                                        : "🔥 SPECIAL OFFER");
+                                        : (item["is_package"] == 1 || item["offer_type"] == "combo_package"
+                                            ? "🎁 COMBO SPECIAL OFFER"
+                                            : "🔥 SPECIAL OFFER"));
                                 String rawImg = (item["image_url"] ?? "").toString().trim();
                                 if (rawImg.isEmpty && item["images"] != null) {
                                   rawImg = item["images"].toString().trim();
@@ -592,6 +594,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                                 double mrp = double.tryParse(item["mrp"]?.toString() ?? "0") ?? 0.0;
                                 double sellPrice = double.tryParse(item["sell_price"]?.toString() ?? "0") ?? 0.0;
+                                bool isCombo = item["is_package"] == 1 || item["offer_type"] == "combo_package";
 
                                 return InkWell(
                                   onTap: () {
@@ -601,6 +604,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           content: Text("🚚 ${item['name'] ?? 'Free Delivery'} - ${item['description'] ?? 'Add items to cart to claim!'}"),
                                           backgroundColor: Colors.teal.shade800,
                                           duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    if (isCombo) {
+                                      setState(() {
+                                        _selectedTab = 'packages';
+                                      });
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text("${item['name'] ?? 'Combo Package'} - Showing Combo Deals!"),
+                                          backgroundColor: Colors.purple.shade700,
+                                          duration: const Duration(seconds: 2),
                                         ),
                                       );
                                       return;
@@ -618,7 +634,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
-                                        colors: [Colors.green.shade800, Colors.teal.shade900],
+                                        colors: isCombo
+                                            ? [Colors.purple.shade800, Colors.deepPurple.shade900]
+                                            : [Colors.green.shade800, Colors.teal.shade900],
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ),

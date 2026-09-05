@@ -103,6 +103,115 @@
   </form>
 </div>
 
+<!-- Combo Package Banner Promotions Section -->
+<div style="background: white; border-radius: 12px; padding: 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px; border: 2px solid #8b5cf6;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+    <div>
+      <h3 style="margin:0; color:#6d28d9; font-size:18px; display:flex; align-items:center; gap:8px;">
+        <span>🎁 Combo Package Banner Promotions</span>
+      </h3>
+      <p style="margin:4px 0 0 0; font-size:13px; color:#64748b;">
+        Feature active combo bundles in the top carousel banner on Web Store and Mobile App with 1-click. Customers can tap the banner to instantly view package details or shop combo deals.
+      </p>
+    </div>
+    <a href="{{ url_for('packages_page') }}" class="btn btn-outline" style="font-size:13px; font-weight:700; text-decoration:none;">
+      ➕ Manage All Combo Packages ➔
+    </a>
+  </div>
+
+  <div class="table-responsive" style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead>
+        <tr style="background:#f8fafc; text-align:left; border-bottom:2px solid #cbd5e1;">
+          <th style="padding:10px 14px;">Package</th>
+          <th style="padding:10px 14px;">Included Items</th>
+          <th style="padding:10px 14px; text-align:right;">Price & Savings</th>
+          <th style="padding:10px 14px; text-align:center;">Package Status</th>
+          <th style="padding:10px 14px; text-align:center;">Top Banner Carousel</th>
+          <th style="padding:10px 14px; text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if packages %}
+          {% for pkg in packages %}
+          <tr style="border-bottom:1px solid #e2e8f0; {% if pkg.show_in_banner %}background:#faf5ff;{% endif %}">
+            <td style="padding:10px 14px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <img src="{{ pkg.image_url if pkg.image_url else '/static/images/logo.png' }}" alt="{{ pkg.name }}" style="width:44px; height:44px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1; background:white;" onerror="this.src='/static/images/logo.png'">
+                <div>
+                  <div style="font-weight:700; color:#0f172a; font-size:14px;">{{ pkg.name }}</div>
+                  {% if pkg.description %}
+                  <div style="font-size:11.5px; color:#64748b; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ pkg.description }}</div>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+            <td style="padding:10px 14px; font-size:12px; color:#334155;">
+              {% if pkg.items %}
+                <span style="font-weight:600;">{{ pkg.items|length }} items:</span>
+                <span style="color:#64748b;">
+                  {% for it in pkg.items[:3] %}{{ it.product_name }} (x{{ it.quantity }}){% if not loop.last %}, {% endif %}{% endfor %}
+                  {% if pkg.items|length > 3 %}...{% endif %}
+                </span>
+              {% else %}
+                <span style="color:#94a3b8;">No items</span>
+              {% endif %}
+            </td>
+            <td style="padding:10px 14px; text-align:right;">
+              {% if pkg.regular_total and pkg.regular_total > pkg.package_price %}
+              <div style="font-size:11px; color:#64748b; text-decoration:line-through;">Reg: TK {{ "%.2f"|format(pkg.regular_total) }}</div>
+              {% endif %}
+              <div style="font-weight:800; color:#16a34a; font-size:14px;">TK {{ "%.2f"|format(pkg.package_price) }}</div>
+              {% if pkg.savings and pkg.savings > 0 %}
+              <div style="font-size:11px; font-weight:800; color:#dc2626;">Save TK {{ "%.2f"|format(pkg.savings) }}!</div>
+              {% endif %}
+            </td>
+            <td style="padding:10px 14px; text-align:center;">
+              {% if pkg.is_active %}
+              <span style="background:#dcfce7; color:#15803d; font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; border:1px solid #bbf7d0;">Active</span>
+              {% else %}
+              <span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; border:1px solid #fecaca;">Deactivated</span>
+              {% endif %}
+            </td>
+            <td style="padding:10px 14px; text-align:center;">
+              {% if pkg.show_in_banner %}
+              <span style="background:#f3e8ff; color:#7e22ce; font-weight:800; font-size:11.5px; padding:4px 12px; border-radius:14px; border:1px solid #d8b4fe; display:inline-flex; align-items:center; gap:4px;">
+                📣 Active in Banner
+              </span>
+              {% else %}
+              <span style="background:#f1f5f9; color:#64748b; font-weight:600; font-size:11.5px; padding:4px 10px; border-radius:14px; border:1px solid #e2e8f0;">
+                Hidden
+              </span>
+              {% endif %}
+            </td>
+            <td style="padding:10px 14px; text-align:right; white-space:nowrap;">
+              <form method="POST" action="{{ url_for('toggle_package_banner', package_id=pkg.id) }}" style="display:inline; margin-right:6px;">
+                {% if pkg.show_in_banner %}
+                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; font-weight:700;" title="Remove from carousel banner">
+                  ✕ Remove from Banner
+                </button>
+                {% else %}
+                <button type="submit" class="btn btn-small" style="background:#f3e8ff; color:#6b21a8; border:1px solid #d8b4fe; font-weight:700;" title="Show in carousel banner on web & app">
+                  📣 Add to Banner
+                </button>
+                {% endif %}
+              </form>
+              <a href="{{ url_for('packages_page') }}?edit={{ pkg.id }}" class="btn btn-outline btn-small" style="font-weight:700; text-decoration:none;">✏️ Edit</a>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">
+              No combo packages created yet. <a href="{{ url_for('packages_page') }}" style="color:#7c3aed; font-weight:bold;">Create a Combo Package</a> to promote it here!
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Voucher Management Section -->
 <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px;">
   <h3 style="margin-top:0; color:#7c3aed; font-size:16px;">🎟️ Customer Discount Vouchers & Delivery Charge Coupons</h3>

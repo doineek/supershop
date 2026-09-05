@@ -1110,18 +1110,19 @@ def _on_packages_change(doc_snapshots, changes, read_time):
                     is_active = int(data.get("is_active", 1))
                     max_sale_limit = int(data.get("max_sale_limit") or 0)
                     sold_quantity = int(data.get("sold_quantity") or 0)
+                    show_in_banner = int(data.get("show_in_banner") or 0)
                     if name and package_price > 0:
                         existing = conn.execute("SELECT id FROM packages WHERE id = ?", (pkg_id,)).fetchone()
                         if existing:
                             conn.execute("""
-                                UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?, max_sale_limit = ?, sold_quantity = ?
+                                UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, is_active = ?, max_sale_limit = ?, sold_quantity = ?, show_in_banner = ?
                                 WHERE id = ?
-                            """, (name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, pkg_id))
+                            """, (name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, show_in_banner, pkg_id))
                         else:
                             conn.execute("""
-                                INSERT INTO packages (id, name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (pkg_id, name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, datetime.now().isoformat()))
+                                INSERT INTO packages (id, name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, show_in_banner, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (pkg_id, name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, show_in_banner, datetime.now().isoformat()))
                         conn.execute("DELETE FROM package_items WHERE package_id = ?", (pkg_id,))
                         items = data.get("items", [])
                         for item in items:

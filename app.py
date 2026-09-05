@@ -587,6 +587,60 @@ def calculate_package_regular_total(items_list):
     return total
 
 
+def get_combo_package_banner_slides(conn):
+    """
+    Fetches active combo packages that have show_in_banner enabled,
+    formatting them as banner slide items compatible with both web store and mobile app banners.
+    """
+    try:
+        pkg_banner_rows = conn.execute("""
+            SELECT p.*
+            FROM packages p
+            WHERE p.is_active = 1 AND p.show_in_banner = 1
+            ORDER BY p.id DESC
+        """).fetchall()
+    except Exception:
+        return []
+
+    slides = []
+    for pkg in pkg_banner_rows:
+        p_dict = dict(pkg)
+        items = conn.execute("""
+            SELECT pi.*, pr.name AS product_name, pr.sell_price, pr.mrp, pr.image_url, pr.sku
+            FROM package_items pi JOIN products pr ON pi.product_id = pr.id
+            WHERE pi.package_id = ?
+        """, (p_dict["id"],)).fetchall()
+        inc_items = [dict(i) for i in items]
+        reg_total = calculate_package_regular_total(inc_items)
+        pkg_price = float(p_dict.get("package_price") or 0.0)
+        mrp = reg_total if reg_total > pkg_price else pkg_price
+        savings = max(0.0, reg_total - pkg_price)
+
+        pkg_img = (p_dict.get("image_url") or "").strip()
+        if not pkg_img and inc_items:
+            pkg_img = (inc_items[0].get("image_url") or "").strip()
+        if not pkg_img:
+            pkg_img = "/static/images/logo.png"
+        pkg_img = clean_and_normalize_image_url(pkg_img)
+
+        slides.append({
+            "id": f"pkg_{p_dict['id']}",
+            "package_id": p_dict["id"],
+            "name": f"🎁 {p_dict['name']}",
+            "category_name": "Combo Package",
+            "offer_title": f"COMBO SAVE TK {savings:,.0f}" if savings > 0 else "🎁 COMBO SPECIAL OFFER",
+            "offer_type": "combo_package",
+            "offer_value": f"TK {pkg_price:,.0f}",
+            "is_package": 1,
+            "is_offer": 1,
+            "sell_price": pkg_price,
+            "mrp": mrp,
+            "image_url": pkg_img,
+            "description": p_dict.get("description") or f"Includes {len(inc_items)} items for only TK {pkg_price:,.0f}!"
+        })
+    return slides
+
+
 def render_storefront():
     conn = get_connection()
     today_date = datetime.now().strftime("%Y-%m-%d")
@@ -676,6 +730,8 @@ def render_storefront():
         ORDER BY p.id DESC
     """).fetchall()
     promos = [dict(r) for r in promo_rows]
+    for c_slide in get_combo_package_banner_slides(conn):
+        promos.append(c_slide)
 
     shop_settings = get_all_settings(conn)
     
@@ -4660,6 +4716,23 @@ def offers_page():
     sub_categories = [dict(s) for s in conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()]
     sub_sub_categories = [dict(ss) for ss in conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()]
     vouchers = [dict(v) for v in conn.execute("SELECT * FROM vouchers ORDER BY id DESC").fetchall()]
+    
+    pkg_rows = conn.execute("SELECT * FROM packages ORDER BY id DESC").fetchall()
+    packages_list = []
+    for pkg in pkg_rows:
+        p_dict = dict(pkg)
+        items = conn.execute("""
+            SELECT pi.*, p.name AS product_name, p.sell_price, p.mrp, p.sku, p.image_url
+            FROM package_items pi JOIN products p ON pi.product_id = p.id
+            WHERE pi.package_id = ?
+        """, (pkg["id"],)).fetchall()
+        inc_items = [dict(i) for i in items]
+        p_dict["items"] = inc_items
+        reg_total = calculate_package_regular_total(inc_items)
+        p_dict["regular_total"] = reg_total
+        p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
+        packages_list.append(p_dict)
+
     settings = get_all_settings(conn)
     conn.close()
     return render_template(
@@ -4670,6 +4743,7 @@ def offers_page():
         sub_categories=sub_categories,
         sub_sub_categories=sub_sub_categories,
         vouchers=vouchers,
+        packages=packages_list,
         settings=settings
     )
 
@@ -5061,6 +5135,9 @@ def api_promotions():
         if raw_img:
             d["image_url"] = clean_and_normalize_image_url(raw_img)
         promos.append(d)
+    
+    for c_slide in get_combo_package_banner_slides(conn):
+        promos.append(c_slide)
     
     free_del_active = (s.get("free_delivery_active") or "0") == "1"
     free_del_show_banner = (s.get("free_delivery_show_banner") or "1") == "1"
@@ -8138,6 +8215,7 @@ def packages_page():
 
         max_sale_limit = int(request.form.get("max_sale_limit") or 0)
         sold_quantity = int(request.form.get("sold_quantity") or 0)
+        show_in_banner = 1 if request.form.get("show_in_banner") else 0
 
         file = request.files.get("package_image_file")
         if file and file.filename:
@@ -8160,9 +8238,9 @@ def packages_page():
         if name and package_price > 0 and prod_ids:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO packages (name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, created_at)
-                VALUES (?, ?, ?, ?, 1, ?, ?, ?)
-            """, (name, description, image_url, package_price, max_sale_limit, sold_quantity, datetime.now().isoformat()))
+                INSERT INTO packages (name, description, image_url, package_price, is_active, max_sale_limit, sold_quantity, show_in_banner, created_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+            """, (name, description, image_url, package_price, max_sale_limit, sold_quantity, show_in_banner, datetime.now().isoformat()))
             pkg_id = cur.lastrowid
 
             for pid in prod_ids:
@@ -8274,6 +8352,7 @@ def edit_package(package_id):
     prod_ids = request.form.getlist("product_ids")
     max_sale_limit = int(request.form.get("max_sale_limit") or 0)
     sold_quantity = int(request.form.get("sold_quantity") or 0)
+    show_in_banner = 1 if request.form.get("show_in_banner") else 0
 
     file = request.files.get("package_image_file")
     if file and file.filename:
@@ -8298,9 +8377,9 @@ def edit_package(package_id):
     if name and package_price > 0 and prod_ids:
         cur = conn.cursor()
         cur.execute("""
-            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, max_sale_limit = ?, sold_quantity = ?
+            UPDATE packages SET name = ?, description = ?, image_url = ?, package_price = ?, max_sale_limit = ?, sold_quantity = ?, show_in_banner = ?
             WHERE id = ?
-        """, (name, description, image_url, package_price, max_sale_limit, sold_quantity, package_id))
+        """, (name, description, image_url, package_price, max_sale_limit, sold_quantity, show_in_banner, package_id))
         
         cur.execute("DELETE FROM package_items WHERE package_id = ?", (package_id,))
         for pid in prod_ids:
@@ -8318,6 +8397,31 @@ def edit_package(package_id):
         flash("Please enter package name, price, and select at least 1 product.", "error")
     conn.close()
     return redirect(url_for("packages_page"))
+
+
+@app.route("/packages/<int:package_id>/toggle-banner", methods=["POST"])
+@login_required
+@admin_required
+def toggle_package_banner(package_id):
+    conn = get_connection()
+    pkg = conn.execute("SELECT id, name, show_in_banner FROM packages WHERE id = ?", (package_id,)).fetchone()
+    if not pkg:
+        conn.close()
+        flash("Package not found.", "error")
+        return redirect(request.referrer or url_for("packages_page"))
+    
+    curr = int(pkg["show_in_banner"] or 0)
+    new_banner = 0 if curr == 1 else 1
+    conn.execute("UPDATE packages SET show_in_banner = ? WHERE id = ?", (new_banner, package_id))
+    conn.commit()
+    conn.close()
+    
+    # Push updated packages to Cloud Firestore
+    remote_control.push_packages_to_cloud()
+    
+    banner_text = "Added to Top Carousel Banner on Web & App" if new_banner == 1 else "Removed from Top Carousel Banner"
+    flash(f"Combo package '{pkg['name']}' {banner_text}.", "success")
+    return redirect(request.referrer or url_for("packages_page"))
 
 
 @app.route("/packages/<int:package_id>/toggle-status", methods=["POST"])

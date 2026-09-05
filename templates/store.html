@@ -2993,10 +2993,14 @@
         slideBox.classList.add(direction === 'left' ? 'slide-anim-left' : 'slide-anim-right');
       }
 
-      const offerBadge = item.offer_title ? item.offer_title.toUpperCase() : (item.offer_type === 'bogo' ? (item.offer_value ? item.offer_value.toUpperCase() : 'BUY 1 GET 1 FREE') : '🔥 SPECIAL OFFER');
+      const offerBadge = item.offer_title ? item.offer_title.toUpperCase() : (item.offer_type === 'bogo' ? (item.offer_value ? item.offer_value.toUpperCase() : 'BUY 1 GET 1 FREE') : (item.is_package || item.offer_type === 'combo_package' ? '🎁 COMBO SPECIAL OFFER' : '🔥 SPECIAL OFFER'));
       document.getElementById('bannerBadgeTxt').textContent = offerBadge;
       document.getElementById('bannerTitleTxt').textContent = item.name || 'Special Offer Item';
-      document.getElementById('bannerSubtitleTxt').textContent = item.category_name ? `Category: ${item.category_name}` : 'Grab this limited-time discount now!';
+      if (item.is_package || item.offer_type === 'combo_package') {
+        document.getElementById('bannerSubtitleTxt').textContent = item.description || 'Exclusive Combo Bundle Deal! Click to view bundle.';
+      } else {
+        document.getElementById('bannerSubtitleTxt').textContent = item.category_name ? `Category: ${item.category_name}` : 'Grab this limited-time discount now!';
+      }
       document.getElementById('bannerPriceTxt').textContent = `TK ${(item.sell_price || 0).toFixed(2)}`;
       
       const mrpEl = document.getElementById('bannerMrpTxt');
@@ -3147,10 +3151,21 @@
       }
       const item = activePromotions[promoIdx];
       if (item) {
-        if (item.id === -999) {
+        if (item.id === -999 || item.offer_type === 'free_delivery') {
           showToast('🚚 Free Delivery active on orders of TK ' + (FREE_DELIVERY_MIN_AMOUNT || 1000) + '+! Add products to cart.', 'success');
           const grid = document.getElementById('productsGrid');
           if (grid) grid.scrollIntoView({ behavior: 'smooth' });
+          return;
+        }
+        if (item.is_package || item.offer_type === 'combo_package' || item.package_id) {
+          const pkgId = item.package_id || parseInt(String(item.id).replace('pkg_', ''));
+          if (typeof openStorePackageDetails === 'function' && pkgId) {
+            openStorePackageDetails(pkgId);
+          } else {
+            setFilterTab('packages', document.getElementById('tab-packages'));
+            const sec = document.getElementById('packagesSection');
+            if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+          }
           return;
         }
         if (item.id) {

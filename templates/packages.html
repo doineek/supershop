@@ -99,6 +99,21 @@
           </div>
         </div>
 
+        <!-- Show in Top Carousel Banner Option -->
+        <div style="margin-bottom:14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <label for="pkgShowInBanner" style="font-weight:700; font-size:13px; color:#166534; cursor:pointer; display:flex; align-items:center; gap:6px; margin:0;">
+              <span>📣 Show in Top Carousel Banner</span>
+            </label>
+            <span style="font-size:11px; color:#15803d; display:block; margin-top:2px;">
+              Prominently display this combo bundle in the top promotional carousel on Web Store and Mobile App.
+            </span>
+          </div>
+          <div>
+            <input type="checkbox" id="pkgShowInBanner" name="show_in_banner" value="1" {% if edit_pkg and edit_pkg.show_in_banner %}checked{% endif %} style="width:20px; height:20px; cursor:pointer; accent-color:#16a34a;">
+          </div>
+        </div>
+
         <!-- Searchable Product Selection -->
         <div style="margin-bottom:16px; position:relative;">
           <label style="display:block; font-weight:600; margin-bottom:4px;">Search & Add Included Products*</label>
@@ -212,6 +227,9 @@
                       {% else %}
                       <span style="background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #fecaca;">Deactivated</span>
                       {% endif %}
+                      {% if pkg.show_in_banner %}
+                      <span style="background:#e0e7ff; color:#3730a3; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; border:1px solid #c7d2fe;">📣 Banner Active</span>
+                      {% endif %}
                     </div>
                     <div style="font-size:12px; color:#64748b; margin-top:2px;">{{ pkg.description }}</div>
                   </div>
@@ -250,6 +268,18 @@
                 {% endif %}
               </td>
               <td style="padding:10px; text-align:right; white-space:nowrap;">
+                <!-- Banner Toggle Button -->
+                <form method="POST" action="{{ url_for('toggle_package_banner', package_id=pkg.id) }}" style="display:inline; margin-right:4px;">
+                  {% if pkg.show_in_banner %}
+                  <button type="submit" class="btn btn-small" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-weight:700;" title="Remove from Top Carousel Banner">
+                    📣 Banner Off
+                  </button>
+                  {% else %}
+                  <button type="submit" class="btn btn-small" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;" title="Show in Top Carousel Banner on Web & App">
+                    📣 Banner On
+                  </button>
+                  {% endif %}
+                </form>
                 <!-- Deactivate / Activate Toggle Button -->
                 <form method="POST" action="{{ url_for('toggle_package_status', package_id=pkg.id) }}" style="display:inline; margin-right:4px;">
                   {% if pkg.is_active %}
