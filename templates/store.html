@@ -2249,9 +2249,9 @@
           <div class="tile-icon-box">ℹ️</div>
           <div class="tile-content">
             <div class="tile-title">About / App Version</div>
-            <div class="tile-subtitle">Version 1.0.10 (Build 11) • Official Release</div>
+            <div class="tile-subtitle">{{ settings.app_version_full or 'Version 1.0.11 (Build 12) • Official Release' }}</div>
           </div>
-          <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.75rem; padding:3px 8px; border-radius:6px; border:1px solid #bae6fd;">v1.0.10</span>
+          <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.75rem; padding:3px 8px; border-radius:6px; border:1px solid #bae6fd;">{{ settings.app_version_short or 'v1.0.11' }}</span>
         </div>
 
       </div>
@@ -2409,9 +2409,9 @@
           <div class="tile-icon-box">ℹ️</div>
           <div class="tile-content">
             <div class="tile-title">About / App Version</div>
-            <div class="tile-subtitle">Version 1.0.10 (Build 11) • Official Release</div>
+            <div class="tile-subtitle">{{ settings.app_version_full or 'Version 1.0.11 (Build 12) • Official Release' }}</div>
           </div>
-          <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.75rem; padding:3px 8px; border-radius:6px; border:1px solid #bae6fd;">v1.0.10</span>
+          <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.75rem; padding:3px 8px; border-radius:6px; border:1px solid #bae6fd;">{{ settings.app_version_short or 'v1.0.11' }}</span>
         </div>
       </div>
 
@@ -2548,7 +2548,7 @@
       <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin:16px 0; text-align:left;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:0.82rem; color:#64748b; font-weight:600;">App Version:</span>
-          <span style="background:#dcfce7; color:#15803d; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:10px; border:1px solid #86efac;">v1.0.10 (Build 11)</span>
+          <span style="background:#dcfce7; color:#15803d; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:10px; border:1px solid #86efac;">{{ settings.app_version or 'v1.0.11 (Build 12)' }}</span>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:0.82rem; color:#64748b; font-weight:600;">Release Status:</span>

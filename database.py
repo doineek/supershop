@@ -5,6 +5,8 @@ Everything related to talking to our SQLite database lives here.
 SQLite stores the entire database in a single file (supershop.db).
 """
 
+import os
+import json
 import sqlite3
 from datetime import datetime
 import math
@@ -513,6 +515,62 @@ def init_db():
     conn.close()
 
 
+def get_app_version_info():
+    """
+    Dynamically read the latest app version and build number from
+    supershop_flutter_app/pubspec.yaml or static/flutter_web/version.json.
+    Automatically stays in sync whenever the app is built or updated.
+    """
+    version = "1.0.11"
+    build_number = "12"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Read pubspec.yaml if present
+    pubspec_path = os.path.join(base_dir, "supershop_flutter_app", "pubspec.yaml")
+    if os.path.exists(pubspec_path):
+        try:
+            with open(pubspec_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line_clean = line.strip()
+                    if line_clean.startswith("version:"):
+                        val = line_clean.split(":", 1)[1].strip().strip('"').strip("'")
+                        if "+" in val:
+                            parts = val.split("+", 1)
+                            version = parts[0].strip()
+                            build_number = parts[1].strip()
+                        else:
+                            version = val
+                            build_number = ""
+                        break
+        except Exception:
+            pass
+
+    # 2. Check static/flutter_web/version.json
+    v_json_path = os.path.join(base_dir, "static", "flutter_web", "version.json")
+    if os.path.exists(v_json_path):
+        try:
+            with open(v_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if data.get("version"):
+                    version = str(data["version"]).strip()
+                if data.get("build_number") is not None:
+                    build_number = str(data["build_number"]).strip()
+        except Exception:
+            pass
+
+    display = f"v{version} (Build {build_number})" if build_number else f"v{version}"
+    full_title = f"Version {version} (Build {build_number}) • Official Release" if build_number else f"Version {version} • Official Release"
+    short_version = f"v{version}"
+
+    return {
+        "version": version,
+        "build_number": build_number,
+        "display": display,
+        "full_title": full_title,
+        "short_version": short_version,
+    }
+
+
 DEFAULT_SETTINGS = {
     "shop_name": "DOINEEK",
     "shop_address": "House 12, Road 5, Dhanmondi, Dhaka-1205",
@@ -521,6 +579,9 @@ DEFAULT_SETTINGS = {
     "delivery_charge": "60",
     "product_image_bg_color": "#FFFFFF",
     "rider_delivery_fee": "50",
+    "app_version": "v1.0.11 (Build 12)",
+    "app_version_short": "v1.0.11",
+    "app_version_full": "Version 1.0.11 (Build 12) • Official Release",
 }
 
 
@@ -537,6 +598,15 @@ def get_all_settings(conn=None):
     for row in rows:
         if row["value"] not in (None, ""):
             result[row["key"]] = row["value"]
+
+    # Automatically sync latest app version info from pubspec.yaml / version.json
+    v_info = get_app_version_info()
+    result["app_version"] = v_info["display"]
+    result["app_version_short"] = v_info["short_version"]
+    result["app_version_full"] = v_info["full_title"]
+    result["app_version_num"] = v_info["version"]
+    result["app_build_number"] = v_info["build_number"]
+
     return result
 
 

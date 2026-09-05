@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -31,6 +33,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _shopAddress = 'House 12, Road 5, Tangail';
   bool _isLoading = false;
   bool _isAdminMode = false;
+  String _appVersion = '1.0.11';
+  String _buildNumber = '12';
 
   final List<String> _presetAvatars = ['👤', '🧔', '👩', '🧑‍💼', '🐱', '🦊', '🚀', '💎', '👑', '🦸'];
 
@@ -39,11 +43,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadLocalProfileImmediately();
     _loadProfileDataAsync();
+    _loadAppVersion();
   }
 
   void _loadProfileData() {
     _loadLocalProfileImmediately();
     _loadProfileDataAsync();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        if (info.version.isNotEmpty) {
+          _appVersion = info.version;
+        }
+        if (info.buildNumber.isNotEmpty) {
+          _buildNumber = info.buildNumber;
+        }
+      });
+    } catch (e) {
+      debugPrint("Error loading package info: $e");
+    }
+  }
+
+  String _getPlatformDisplayName() {
+    if (kIsWeb) return 'Web Application';
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'Android Native (APK)';
+      case TargetPlatform.iOS:
+        return 'iOS App';
+      case TargetPlatform.windows:
+        return 'Windows App';
+      case TargetPlatform.macOS:
+        return 'macOS App';
+      case TargetPlatform.linux:
+        return 'Linux App';
+      default:
+        return 'Native App';
+    }
   }
 
   void _loadLocalProfileImmediately() async {
@@ -467,7 +508,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.green.shade300),
                         ),
-                        child: const Text("v1.0.11 (Build 12)", style: TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: Text(
+                          _buildNumber.isNotEmpty
+                              ? "v$_appVersion (Build $_buildNumber)"
+                              : "v$_appVersion",
+                          style: const TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -480,11 +526,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Platform:", style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600)),
-                      Text("Android Native (APK)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
+                      const Text("Platform:", style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(_getPlatformDisplayName(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -910,7 +956,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ListTile(
                           leading: const Icon(Icons.info_outline, color: Colors.teal),
                           title: const Text('About / App Version', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: const Text('Version 1.0.11 (Build 12) • Official Release'),
+                          subtitle: Text(
+                            _buildNumber.isNotEmpty
+                                ? 'Version $_appVersion (Build $_buildNumber) • Official Release'
+                                : 'Version $_appVersion • Official Release',
+                          ),
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
@@ -918,9 +968,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: Colors.teal.shade200),
                             ),
-                            child: const Text(
-                              'v1.0.11',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal),
+                            child: Text(
+                              'v$_appVersion',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal),
                             ),
                           ),
                           onTap: _showAboutAppDialog,

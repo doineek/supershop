@@ -20,6 +20,7 @@ dependencies:
   firebase_core: ^2.27.0
   firebase_auth: ^4.17.8
   url_launcher: ^6.3.0
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:
