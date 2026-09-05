@@ -4728,6 +4728,7 @@ def offers_page():
         """, (pkg["id"],)).fetchall()
         inc_items = [dict(i) for i in items]
         p_dict["items"] = inc_items
+        p_dict["package_items"] = inc_items
         reg_total = calculate_package_regular_total(inc_items)
         p_dict["regular_total"] = reg_total
         p_dict["savings"] = max(0.0, reg_total - float(p_dict.get("package_price") or 0.0))
@@ -8597,17 +8598,18 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 RESET_SENDER_EMAIL = os.environ.get("SMTP_SENDER_EMAIL") or "doineek.supershop@gmail.com"
-RESET_SENDER_PASS = os.environ.get("SMTP_APP_PASSWORD") or os.environ.get("SMTP_SENDER_PASS") or "Bangladesh@2"
 RESET_RECIPIENT_EMAIL = "najmul.djd@gmail.com"
 
-def send_reset_otp_email(otp_code):
+def send_reset_otp_email(otp_code, app_password=None):
     conn = get_connection()
     shop_settings = get_all_settings(conn)
     conn.close()
 
-    custom_pass = (shop_settings.get("smtp_app_password") or "").strip()
+    password = (app_password or shop_settings.get("smtp_app_password") or "").replace(" ", "").strip()
+    if not password:
+        return False, "Gmail SMTP App Password is required."
+
     sender = RESET_SENDER_EMAIL.strip()
-    password = (custom_pass or RESET_SENDER_PASS).replace(" ", "").strip()
 
     print(f"\n=======================================================")
     print(f"🚨 SYSTEM RESET OTP GENERATED FOR {RESET_RECIPIENT_EMAIL}: [{otp_code}]")
@@ -8656,7 +8658,7 @@ def send_reset_otp_email(otp_code):
         err_str = str(e)
         print(f"[send_reset_otp_email] SMTP Error: {err_str}")
         if "BadCredentials" in err_str or "Username and Password not accepted" in err_str:
-            return False, f"Google Gmail SMTP Auth Error: Gmail requires a 16-character App Password (Google Account -> Security -> 2-Step Verification -> App Passwords). Generated OTP: {otp_code}"
+            return False, "Google Gmail SMTP Auth Error: Invalid 16-character Gmail App Password."
         return False, err_str
 
 
@@ -8666,27 +8668,52 @@ def send_reset_otp_email(otp_code):
 def admin_reset_send_otp():
     data = request.json or {}
     categories = data.get("categories") or []
+    entered_password = (data.get("smtp_app_password") or "").strip()
     
     if not categories:
         return jsonify({"success": False, "message": "Please select at least one data category to reset."}), 400
 
+    if not entered_password:
+        return jsonify({"success": False, "message": "🔑 Gmail SMTP App Password (System Reset 2FA OTP) is required to authorize system reset."}), 400
+
+    conn = get_connection()
+    shop_settings = get_all_settings(conn)
+    conn.close()
+
+    configured_pass = (shop_settings.get("smtp_app_password") or "").replace(" ", "").strip()
+    clean_entered_pass = entered_password.replace(" ", "").strip()
+
+    if configured_pass and clean_entered_pass != configured_pass:
+        return jsonify({
+            "success": False,
+            "message": "Incorrect Gmail SMTP App Password (System Reset 2FA OTP). The entered password does not match the authorized password saved in Settings."
+        }), 403
+
     import random, time
     otp = f"{random.randint(100000, 999999)}"
-    
-    session["reset_otp"] = otp
-    session["reset_categories"] = categories
-    session["reset_otp_time"] = time.time()
 
-    ok, msg = send_reset_otp_email(otp)
+    ok, msg = send_reset_otp_email(otp, clean_entered_pass)
     if ok:
+        session["reset_otp"] = otp
+        session["reset_categories"] = categories
+        session["reset_otp_time"] = time.time()
+        if not configured_pass:
+            try:
+                c = get_connection()
+                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('smtp_app_password', ?)", (entered_password,))
+                c.commit()
+                c.close()
+            except Exception:
+                pass
         return jsonify({"success": True, "message": f"Verification OTP has been sent to {RESET_RECIPIENT_EMAIL}."})
     else:
+        session.pop("reset_otp", None)
+        session.pop("reset_categories", None)
+        session.pop("reset_otp_time", None)
         return jsonify({
-            "success": True,
-            "warning": True,
-            "otp": otp,
-            "message": f"Gmail SMTP Auth Notice: Set App Password in Shop Settings for email delivery. Active Session OTP: {otp}"
-        })
+            "success": False,
+            "message": f"Could not send OTP email via Gmail SMTP: {msg}"
+        }), 500
 
 
 @app.route("/admin/system-reset/confirm", methods=["POST"])

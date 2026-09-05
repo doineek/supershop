@@ -147,11 +147,11 @@
               </div>
             </td>
             <td style="padding:10px 14px; font-size:12px; color:#334155;">
-              {% if pkg.items %}
-                <span style="font-weight:600;">{{ pkg.items|length }} items:</span>
+              {% if pkg['items'] %}
+                <span style="font-weight:600;">{{ pkg['items']|length }} items:</span>
                 <span style="color:#64748b;">
-                  {% for it in pkg.items[:3] %}{{ it.product_name }} (x{{ it.quantity }}){% if not loop.last %}, {% endif %}{% endfor %}
-                  {% if pkg.items|length > 3 %}...{% endif %}
+                  {% for it in pkg['items'][:3] %}{{ it.product_name }} (x{{ it.quantity }}){% if not loop.last %}, {% endif %}{% endfor %}
+                  {% if pkg['items']|length > 3 %}...{% endif %}
                 </span>
               {% else %}
                 <span style="color:#94a3b8;">No items</span>
