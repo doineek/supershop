@@ -292,23 +292,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 16),
 
             // Offer Title Tag
-            if (product.offerTitle.isNotEmpty || product.offerType == 'bogo' || product.isOffer)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red[100],
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  product.offerTitle.isNotEmpty
-                      ? product.offerTitle
-                      : (product.offerType == 'bogo'
-                          ? (product.offerValue.isNotEmpty ? product.offerValue : 'Buy 1 Get 1 Free')
-                          : 'Special Offer'),
-                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                ),
-              ),
-            const SizedBox(height: 8),
+            Builder(
+              builder: (context) {
+                final baseMrp = product.mrp > 0 ? product.mrp : product.sellPrice;
+                final savedAmt = (baseMrp > product.effectivePrice)
+                    ? (baseMrp - product.effectivePrice)
+                    : (product.mrp > product.sellPrice ? product.mrp - product.sellPrice : 0.0);
+
+                if (product.offerTitle.isNotEmpty || product.offerType == 'bogo' || product.isOffer || savedAmt > 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red[100],
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        product.offerTitle.isNotEmpty
+                            ? product.offerTitle
+                            : (product.offerType == 'bogo'
+                                ? (product.offerValue.isNotEmpty ? product.offerValue : 'Buy 1 Get 1 Free')
+                                : (product.offerType == 'percentage'
+                                    ? (product.offerValue.isNotEmpty ? '${product.offerValue}% OFF' : (savedAmt > 0 ? 'TK ${savedAmt.toStringAsFixed(0)} Save' : '% OFF'))
+                                    : (savedAmt > 0 ? 'TK ${savedAmt.toStringAsFixed(0)} Save' : 'Special Offer'))),
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
 
             // Product Name
             Text(
@@ -332,8 +347,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     'Regular: TK ${product.sellPrice.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 15,
-                      color: Colors.grey,
+                      color: Color(0xFF16A34A),
                       decoration: TextDecoration.lineThrough,
+                      decorationColor: Color(0xFFDC2626),
+                      decorationThickness: 1.8,
+                      fontWeight: FontWeight.w600,
                     ),
                   )
                 else if (product.mrp > 0 && product.mrp > product.sellPrice)
@@ -341,8 +359,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     '${loc.translate('mrp')}: TK ${product.mrp.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 15,
-                      color: Colors.grey,
+                      color: Color(0xFF16A34A),
                       decoration: TextDecoration.lineThrough,
+                      decorationColor: Color(0xFFDC2626),
+                      decorationThickness: 1.8,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 if (product.effectivePrice < product.sellPrice || (product.mrp > 0 && product.mrp > product.sellPrice))

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 class AppImageLoader extends StatelessWidget {
   final String imageUrl;
@@ -28,26 +29,35 @@ class AppImageLoader extends StatelessWidget {
       clean = clean.split(',').first.trim();
     }
 
-    // 2. Google Images imgurl extraction: https://www.google.com/imgres?imgurl=...
-    if (clean.contains('google.') && clean.contains('imgres')) {
+    // 2. Google Images imgurl extraction: match imgurl parameter anywhere in URL
+    final imgUrlMatch = RegExp(r'[?&#]imgurl=([^&#]+)').firstMatch(clean);
+    if (imgUrlMatch != null) {
       try {
-        final uri = Uri.parse(clean);
-        final imgParam = uri.queryParameters['imgurl'];
-        if (imgParam != null && imgParam.isNotEmpty) {
-          clean = Uri.decodeComponent(imgParam);
+        String extracted = Uri.decodeComponent(imgUrlMatch.group(1)!);
+        // Sometimes URL is double-encoded (e.g. %253A)
+        if (extracted.contains('%3A') || extracted.contains('%2F') || extracted.contains('%25')) {
+          try { extracted = Uri.decodeComponent(extracted); } catch (_) {}
+        }
+        if (extracted.startsWith('http://') || extracted.startsWith('https://')) {
+          clean = extracted;
         }
       } catch (_) {}
     }
 
-    // 3. Google redirect: https://www.google.com/url?url=... or q=...
-    if (clean.contains('google.') && clean.contains('/url')) {
-      try {
-        final uri = Uri.parse(clean);
-        final u = uri.queryParameters['url'] ?? uri.queryParameters['q'];
-        if (u != null && u.isNotEmpty) {
-          clean = Uri.decodeComponent(u);
-        }
-      } catch (_) {}
+    // 3. Google redirect: match url or q parameter in google.com / google.com.bd / images.google.com
+    if (clean.contains('google.') || clean.contains('goo.gl')) {
+      final urlMatch = RegExp(r'[?&#](?:url|q)=(https?(?:%3A|:)[^&#]+)').firstMatch(clean);
+      if (urlMatch != null) {
+        try {
+          String extracted = Uri.decodeComponent(urlMatch.group(1)!);
+          if (extracted.contains('%3A') || extracted.contains('%2F')) {
+            try { extracted = Uri.decodeComponent(extracted); } catch (_) {}
+          }
+          if (extracted.startsWith('http://') || extracted.startsWith('https://')) {
+            clean = extracted;
+          }
+        } catch (_) {}
+      }
     }
 
     // 4. Google Drive direct embed link: https://drive.google.com/file/d/<id>/view...
@@ -55,20 +65,28 @@ class AppImageLoader extends StatelessWidget {
       try {
         final parts = clean.split('/file/d/');
         if (parts.length > 1) {
-          final id = parts[1].split('/')[0];
+          final id = parts[1].split('/')[0].split('?')[0];
           if (id.isNotEmpty) {
             clean = 'https://drive.google.com/uc?export=view&id=$id';
           }
         }
       } catch (_) {}
+    } else if (clean.contains('drive.google.com/open?id=')) {
+      try {
+        final id = clean.split('id=')[1].split('&')[0];
+        if (id.isNotEmpty) {
+          clean = 'https://drive.google.com/uc?export=view&id=$id';
+        }
+      } catch (_) {}
     }
 
-    // 5. Handle relative server paths
+    // 5. Handle relative server paths using active dynamic ApiService.baseUrl
     if (!clean.startsWith('data:image/') && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+      final base = ApiService.baseUrl.replaceAll(RegExp(r'/+$'), '');
       if (clean.startsWith('/')) {
-        clean = 'https://doineek.onrender.com$clean';
+        clean = '$base$clean';
       } else {
-        clean = 'https://doineek.onrender.com/$clean';
+        clean = '$base/$clean';
       }
     }
 
@@ -107,7 +125,7 @@ class AppImageLoader extends StatelessWidget {
       }
     }
 
-    // 2. Handle Network Images with standard browser headers so Google / CDNs never block requests
+    // 2. Handle Network Images with standard safe browser headers (NO AVIF to ensure Android Skia compatibility)
     return Image.network(
       clean,
       width: width,
@@ -115,8 +133,8 @@ class AppImageLoader extends StatelessWidget {
       fit: fit,
       headers: const {
         'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'image/jpeg,image/png,image/webp,*/*;q=0.8',
       },
       errorBuilder: (ctx, err, stack) => _buildPlaceholder(),
       loadingBuilder: (ctx, child, progress) {

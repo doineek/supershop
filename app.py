@@ -8812,6 +8812,7 @@ def api_force_push():
 
 @app.route("/download-apk")
 @app.route("/apk")
+@app.route("/download/apk")
 def download_app_apk():
     """Direct 1-click APK download for Android users."""
     from flask import send_file

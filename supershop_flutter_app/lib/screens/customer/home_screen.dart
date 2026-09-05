@@ -584,13 +584,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             ? item["offer_value"].toString().trim()
                                             : "BUY 1 GET 1 FREE")
                                         : "🔥 SPECIAL OFFER");
-                                String imgUrl = (item["image_url"] ?? "").toString().trim();
-                                if (imgUrl.contains(',') && !imgUrl.startsWith('data:image/')) {
-                                  imgUrl = imgUrl.split(',').first.trim();
-                                }
-                                if (imgUrl.isNotEmpty && !imgUrl.startsWith('data:image/') && !imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
-                                  imgUrl = imgUrl.startsWith('/') ? "${ApiService.baseUrl}$imgUrl" : "${ApiService.baseUrl}/$imgUrl";
-                                }
+                                String imgUrl = AppImageLoader.cleanUrl((item["image_url"] ?? "").toString().trim());
 
                                 double mrp = double.tryParse(item["mrp"]?.toString() ?? "0") ?? 0.0;
                                 double sellPrice = double.tryParse(item["sell_price"]?.toString() ?? "0") ?? 0.0;
@@ -689,11 +683,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                 children: [
                                                   if (mrp > sellPrice && mrp > 0) ...[
                                                     Text(
-                                                      "TK ${mrp.toStringAsFixed(0)}",
+                                                      "MRP: TK ${mrp.toStringAsFixed(0)}",
                                                       style: const TextStyle(
-                                                        color: Colors.white60,
+                                                        color: Color(0xFF4ADE80),
                                                         fontSize: 11,
+                                                        fontWeight: FontWeight.bold,
                                                         decoration: TextDecoration.lineThrough,
+                                                        decorationColor: Color(0xFFEF4444),
+                                                        decorationThickness: 1.8,
                                                       ),
                                                     ),
                                                     const SizedBox(width: 6),
@@ -929,7 +926,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                               const Text("Total Regular Price", style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
                                                               Text(
                                                                 "TK ${regTotal > 0 ? regTotal.toStringAsFixed(2) : price.toStringAsFixed(2)}",
-                                                                style: const TextStyle(fontSize: 12.5, color: Colors.red, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.bold),
+                                                                style: const TextStyle(fontSize: 12.5, color: Color(0xFF16A34A), decoration: TextDecoration.lineThrough, decorationColor: Color(0xFFDC2626), decorationThickness: 1.8, fontWeight: FontWeight.bold),
                                                               ),
                                                             ],
                                                           ),
@@ -1108,7 +1105,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             delegate: SliverChildBuilderDelegate(
                                               (context, index) {
                                                 final prod = displayProducts[index];
-                                                final savedAmount = prod.mrp > prod.sellPrice ? prod.mrp - prod.sellPrice : 0.0;
+                                                final baseMrp = prod.mrp > 0 ? prod.mrp : prod.sellPrice;
+                                                final savedAmount = (baseMrp > prod.effectivePrice)
+                                                    ? (baseMrp - prod.effectivePrice)
+                                                    : (prod.mrp > prod.sellPrice ? (prod.mrp - prod.sellPrice) : 0.0);
 
                                                 return Container(
                                                   decoration: BoxDecoration(
@@ -1199,8 +1199,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                               : (prod.offerType == 'bogo'
                                                                                   ? (prod.offerValue.isNotEmpty ? prod.offerValue : 'Buy 1 Get 1 Free')
                                                                                   : (prod.offerType == 'percentage'
-                                                                                      ? '% OFF'
-                                                                                      : 'TK  Save')),
+                                                                                      ? (prod.offerValue.isNotEmpty ? '${prod.offerValue}% OFF' : (savedAmount > 0 ? 'TK ${savedAmount.toStringAsFixed(0)} Save' : '% OFF'))
+                                                                                      : (savedAmount > 0 ? 'TK ${savedAmount.toStringAsFixed(0)} Save' : 'Sale'))),
                                                                           style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                                                                         ),
                                                                       ),
@@ -1234,8 +1234,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                       'MRP: TK ${(prod.mrp > 0 ? prod.mrp : prod.sellPrice).toStringAsFixed(0)}',
                                                                       style: const TextStyle(
                                                                         fontSize: 9.5,
-                                                                        color: Colors.grey,
+                                                                        color: Color(0xFF16A34A),
                                                                         decoration: TextDecoration.lineThrough,
+                                                                        decorationColor: Color(0xFFDC2626),
+                                                                        decorationThickness: 1.8,
+                                                                        fontWeight: FontWeight.bold,
                                                                       ),
                                                                     ),
                                                                     Text(
@@ -1871,7 +1874,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   itemCount: displayProducts.length,
                   itemBuilder: (context, index) {
                     final prod = displayProducts[index];
-                    final savedAmount = prod.mrp > prod.sellPrice ? prod.mrp - prod.sellPrice : 0.0;
+                    final baseMrp = prod.mrp > 0 ? prod.mrp : prod.sellPrice;
+                    final savedAmount = (baseMrp > prod.effectivePrice)
+                        ? (baseMrp - prod.effectivePrice)
+                        : (prod.mrp > prod.sellPrice ? (prod.mrp - prod.sellPrice) : 0.0);
 
                     return Container(
                       decoration: BoxDecoration(
@@ -1962,8 +1968,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                           : (prod.offerType == 'bogo'
                                               ? (prod.offerValue.isNotEmpty ? prod.offerValue : 'Buy 1 Get 1 Free')
                                               : (prod.offerType == 'percentage'
-                                                  ? '% OFF'
-                                                  : 'TK  Save')),
+                                                  ? (prod.offerValue.isNotEmpty ? '${prod.offerValue}% OFF' : (savedAmount > 0 ? 'TK ${savedAmount.toStringAsFixed(0)} Save' : '% OFF'))
+                                                  : (savedAmount > 0 ? 'TK ${savedAmount.toStringAsFixed(0)} Save' : 'Sale'))),
                                       style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                                     ),
                                   ),
@@ -1997,8 +2003,11 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                           'MRP: TK ${(prod.mrp > 0 ? prod.mrp : prod.sellPrice).toStringAsFixed(0)}',
                                           style: const TextStyle(
                                             fontSize: 9.5,
-                                            color: Colors.grey,
+                                            color: Color(0xFF16A34A),
                                             decoration: TextDecoration.lineThrough,
+                                            decorationColor: Color(0xFFDC2626),
+                                            decorationThickness: 1.8,
+                                            fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                         Text(
