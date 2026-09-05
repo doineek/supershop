@@ -416,6 +416,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _showAboutAppDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.teal, size: 28),
+            SizedBox(width: 8),
+            Text("About / App Version"),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade50,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.teal.shade200, width: 2),
+              ),
+              child: const Icon(Icons.shopping_bag, color: Colors.teal, size: 40),
+            ),
+            const SizedBox(height: 12),
+            Text(_shopName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 2),
+            const Text("Online E-Commerce & Retail Supershop", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("App Version:", style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: const Text("v1.0.10 (Build 11)", style: TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Release Status:", style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text("Latest Official Release", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Platform:", style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text("Android Native (APK)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Customer Support:", style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(_supportPhone, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.teal)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final Uri apkUri = Uri.parse('${ApiService.baseUrl}/download-apk');
+                  try {
+                    if (await canLaunchUrl(apkUri)) {
+                      await launchUrl(apkUri, mode: LaunchMode.externalApplication);
+                    }
+                  } catch (e) {
+                    debugPrint("Could not open APK URL: $e");
+                  }
+                },
+                icon: const Icon(Icons.download_for_offline, color: Colors.white, size: 20),
+                label: const Text("Download Latest APK Update", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal.shade700,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text("Close"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showChangePasswordDialog() {
     final TextEditingController oldPassCtrl = TextEditingController();
     final TextEditingController newPassCtrl = TextEditingController();
@@ -787,6 +905,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           title: const Text('Customer Support', style: TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text(_supportPhone.isNotEmpty ? 'Helpline: $_supportPhone' : 'Help & Helpline'),
                           onTap: _showCustomerSupportDialog,
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.info_outline, color: Colors.teal),
+                          title: const Text('About / App Version', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('Version 1.0.10 (Build 11) • Official Release'),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.teal.shade200),
+                            ),
+                            child: const Text(
+                              'v1.0.10',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal),
+                            ),
+                          ),
+                          onTap: _showAboutAppDialog,
                         ),
                       ],
                     ),

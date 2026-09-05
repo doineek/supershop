@@ -2242,6 +2242,17 @@
           </div>
           <span style="color:#94A3B8; font-size:0.85rem;">➔</span>
         </div>
+        <div class="tile-divider"></div>
+
+        <!-- About / App Version -->
+        <div class="app-list-tile" onclick="openAboutAppModal()">
+          <div class="tile-icon-box">ℹ️</div>
+          <div class="tile-content">
+            <div class="tile-title">About / App Version</div>
+            <div class="tile-subtitle">Version 1.0.10 (Build 11) • Official Release</div>
+          </div>
+          <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.75rem; padding:3px 8px; border-radius:6px; border:1px solid #bae6fd;">v1.0.10</span>
+        </div>
 
       </div>
 
@@ -2383,6 +2394,27 @@
         </form>
       </div>
 
+      <!-- Guest Options Card (Customer Support & About App) -->
+      <div class="app-profile-card" style="padding:4px 0; margin-top:16px;">
+        <div class="app-list-tile" onclick="openCustomerSupportDialog()">
+          <div class="tile-icon-box">🎧</div>
+          <div class="tile-content">
+            <div class="tile-title">Customer Support</div>
+            <div class="tile-subtitle">Helpline: {{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}</div>
+          </div>
+          <span style="color:#94A3B8; font-size:0.85rem;">➔</span>
+        </div>
+        <div class="tile-divider"></div>
+        <div class="app-list-tile" onclick="openAboutAppModal()">
+          <div class="tile-icon-box">ℹ️</div>
+          <div class="tile-content">
+            <div class="tile-title">About / App Version</div>
+            <div class="tile-subtitle">Version 1.0.10 (Build 11) • Official Release</div>
+          </div>
+          <span style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.75rem; padding:3px 8px; border-radius:6px; border:1px solid #bae6fd;">v1.0.10</span>
+        </div>
+      </div>
+
     </div>
 
   </div>
@@ -2494,6 +2526,51 @@
       <div style="font-size:0.8rem; color:var(--text-muted);">
         Our support team is available daily from 8:00 AM to 11:00 PM.
       </div>
+    </div>
+  </div>
+
+  <!-- About / App Version Modal -->
+  <div class="modal-backdrop" id="aboutAppModal" onclick="if(event.target === this) closeAboutAppModal()">
+    <div class="modal-box" style="max-width:440px; text-align:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary); margin:0; display:flex; align-items:center; gap:8px;">
+          <span>ℹ️</span> About / App Version
+        </h3>
+        <button class="drawer-close" style="background:#F1F5F9; color:#64748B;" onclick="closeAboutAppModal()">✕</button>
+      </div>
+
+      <div style="margin:16px auto 12px; width:64px; height:64px; background:#f0fdf4; border:2px solid #bbf7d0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem;">
+        🛍️
+      </div>
+      <h3 style="font-size:1.2rem; font-weight:800; color:var(--text-main); margin:0;">{{ settings.shop_name or 'DOINEEK Supershop' }}</h3>
+      <div style="font-size:0.82rem; color:var(--text-muted); margin-top:2px;">Online E-Commerce & Retail Supershop</div>
+
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin:16px 0; text-align:left;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:0.82rem; color:#64748b; font-weight:600;">App Version:</span>
+          <span style="background:#dcfce7; color:#15803d; font-size:0.75rem; font-weight:800; padding:2px 8px; border-radius:10px; border:1px solid #86efac;">v1.0.10 (Build 11)</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:0.82rem; color:#64748b; font-weight:600;">Release Status:</span>
+          <span style="font-size:0.82rem; font-weight:700; color:#0f172a;">Latest Official Release</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:0.82rem; color:#64748b; font-weight:600;">Platform:</span>
+          <span style="font-size:0.82rem; font-weight:700; color:#0f172a;">Android Native (APK) & Web</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.82rem; color:#64748b; font-weight:600;">Customer Support:</span>
+          <span style="font-size:0.82rem; font-weight:700; color:#0284c7;">{{ settings.customer_support_phone or settings.shop_phone or '+880-1700-000000' }}</span>
+        </div>
+      </div>
+
+      <a href="/download-apk" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin-bottom:10px; background:#0d9488;">
+        <span>📥</span> Download Latest Android App (APK)
+      </a>
+
+      <button type="button" class="btn-outline" style="width:100%; padding:10px; font-weight:700; border-radius:8px; border:1px solid #cbd5e1; background:white; color:#64748b; cursor:pointer;" onclick="closeAboutAppModal()">
+        Close
+      </button>
     </div>
   </div>
 
@@ -3677,6 +3754,16 @@
 
     function closeCustomerSupportDialog() {
       document.getElementById('customerSupportModal').style.display = 'none';
+    }
+
+    function openAboutAppModal() {
+      const m = document.getElementById('aboutAppModal');
+      if (m) m.style.display = 'flex';
+    }
+
+    function closeAboutAppModal() {
+      const m = document.getElementById('aboutAppModal');
+      if (m) m.style.display = 'none';
     }
 
     async function handleSaveAddressOnly(e) {
