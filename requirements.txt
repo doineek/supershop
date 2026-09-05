@@ -5,3 +5,4 @@ firebase-admin==6.5.0
 gunicorn==21.2.0
 requests==2.31.0
 Pillow==10.3.0
+Flask-Limiter==3.8.0

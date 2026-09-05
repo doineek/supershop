@@ -34,9 +34,58 @@ from database import (
 )
 from barcode_utils import generate_barcode_svg
 import remote_control
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 app.secret_key = "doineek-supershop-secret-key"
+
+# Security & DoS Protection Configurations
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max 16MB file upload/request size (prevents memory OOM crash)
+app.config['SESSION_COOKIE_HTTPONLY'] = True          # Prevent JavaScript from reading session cookies (XSS defense)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # CSRF mitigation
+
+def get_real_client_ip():
+    """Accurately identify real client IP behind Cloudflare, Render, or reverse proxies."""
+    if has_request_context():
+        cf_ip = request.headers.get("CF-Connecting-IP")
+        if cf_ip:
+            return cf_ip.strip()
+        x_forwarded = request.headers.get("X-Forwarded-For")
+        if x_forwarded:
+            return x_forwarded.split(",")[0].strip()
+        return request.remote_addr or "127.0.0.1"
+    return "127.0.0.1"
+
+# In-App Rate Limiter (Protects against HTTP floods and brute-force attacks)
+limiter = Limiter(
+    key_func=get_real_client_ip,
+    app=app,
+    default_limits=["200 per minute"],  # Generous limit for normal store browsing
+    storage_uri="memory://",
+)
+
+@app.after_request
+def apply_security_headers(response):
+    """Add industry-standard security headers to all responses."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https":
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Return sleek JSON or HTML response when rate limit is exceeded."""
+    msg = f"Too many requests. Please wait a moment before trying again. ({e.description})"
+    if request.is_json or request.path.startswith("/api/"):
+        return jsonify({"success": False, "message": msg}), 429
+    conn = get_connection()
+    shop = get_all_settings(conn)
+    conn.close()
+    return render_template("429.html", shop=shop, error_message=e.description), 429
 
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads', 'products')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -474,6 +523,7 @@ def admin_required(view):
 # ===========================================================================
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if request.method == "POST":
         username = request.form["username"].strip()
@@ -7107,6 +7157,7 @@ def api_delivery_areas():
 
 
 @app.route("/api/orders/place", methods=["POST"])
+@limiter.limit("20 per minute")
 def api_place_order():
     data = request.json or {}
     country = (data.get("country") or data.get("country_name") or "Bangladesh").strip()
@@ -7806,6 +7857,7 @@ def send_whatsapp_message_via_gateway(to_phone, message_text, settings):
 @app.route("/api/customer/send-otp", methods=["POST"])
 @app.route("/api/customer/send-flash-call", methods=["POST"])
 @app.route("/api/customer/initiate-missed-call-verify", methods=["POST"])
+@limiter.limit("5 per minute")
 def api_customer_send_whatsapp_otp():
     """
     Generates and dispatches WhatsApp OTP directly from the Admin's configured WhatsApp number.
@@ -7957,6 +8009,7 @@ def api_verify_otp():
 
 
 @app.route("/api/auth/register", methods=["POST"])
+@limiter.limit("10 per minute")
 def api_auth_register():
     data = request.json or {}
     phone = data.get("phone", "").strip()
@@ -8071,6 +8124,7 @@ def api_auth_forgot_password_reset():
 
 
 @app.route("/api/auth/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def api_auth_login():
     data = request.json or {}
     phone = data.get("phone", "").strip()
@@ -8665,6 +8719,7 @@ def send_reset_otp_email(otp_code, app_password=None):
 @app.route("/admin/system-reset/send-otp", methods=["POST"])
 @login_required
 @admin_required
+@limiter.limit("5 per 10 minutes")
 def admin_reset_send_otp():
     data = request.json or {}
     categories = data.get("categories") or []

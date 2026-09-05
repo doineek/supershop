@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Too Many Requests - {{ shop.shop_name or 'DOINEEK' }}{% endblock %}
+{% block content %}
+<div style="width: 100%; max-width: 480px; margin: 60px auto; text-align: center;">
+  <div style="background: #fff; padding: 40px 30px; border-radius: 16px; border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(220,38,38,0.08);">
+    <div style="font-size: 54px; margin-bottom: 12px;">🛡️</div>
+    <h1 style="font-size: 22px; color: #dc2626; margin-bottom: 8px;">Rate Limit Exceeded</h1>
+    <p style="color: #475569; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">
+      To protect the server from automated traffic and keep the store running smoothly for everyone, request limits are temporarily active.
+    </p>
+    {% if error_message %}
+    <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-bottom: 24px;">
+      {{ error_message }}
+    </div>
+    {% endif %}
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <button onclick="window.location.reload()" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: bold; border-radius: 8px; cursor: pointer; border: none; background: #16a34a; color: white;">
+        🔄 Try Again
+      </button>
+      <a href="{{ url_for('store_front') }}" class="btn btn-outline" style="display: block; width: 100%; padding: 10px; font-size: 13px; font-weight: 600; border-radius: 8px; text-decoration: none; color: #475569; border: 1px solid #cbd5e1;">
+        ← Return to Store Home
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
