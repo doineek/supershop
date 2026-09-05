@@ -145,10 +145,16 @@ def clean_and_normalize_image_url(raw_url):
     if not url:
         return ""
 
-    # If comma-separated, process each URL
-    if "," in url and not url.startswith("data:image/"):
+    # If multiple images (separated by || or comma before next data:image / http), take the first
+    if " || " in url:
+        url = url.split(" || ")[0].strip()
+    import re
+    multi_parts = re.split(r',\s*(?=data:image\/|https?:\/\/|\/static\/|\/uploads\/)', url, flags=re.IGNORECASE)
+    if len(multi_parts) > 1:
+        url = multi_parts[0].strip()
+    elif "," in url and not url.startswith("data:image/"):
         parts = [p.strip() for p in url.split(",") if p.strip()]
-        return ", ".join(clean_and_normalize_image_url(p) for p in parts)
+        url = parts[0]
 
     if url.startswith("data:image/"):
         return url
@@ -5053,8 +5059,6 @@ def api_promotions():
         d = dict(r)
         raw_img = (d.get("image_url") or "").strip()
         if raw_img:
-            if "," in raw_img and not raw_img.startswith("data:image/"):
-                raw_img = raw_img.split(",")[0].strip()
             d["image_url"] = clean_and_normalize_image_url(raw_img)
         promos.append(d)
     

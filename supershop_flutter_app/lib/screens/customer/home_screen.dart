@@ -584,7 +584,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             ? item["offer_value"].toString().trim()
                                             : "BUY 1 GET 1 FREE")
                                         : "🔥 SPECIAL OFFER");
-                                String imgUrl = AppImageLoader.cleanUrl((item["image_url"] ?? "").toString().trim());
+                                String rawImg = (item["image_url"] ?? "").toString().trim();
+                                if (rawImg.isEmpty && item["images"] != null) {
+                                  rawImg = item["images"].toString().trim();
+                                }
+                                String imgUrl = AppImageLoader.cleanUrl(rawImg);
 
                                 double mrp = double.tryParse(item["mrp"]?.toString() ?? "0") ?? 0.0;
                                 double sellPrice = double.tryParse(item["sell_price"]?.toString() ?? "0") ?? 0.0;

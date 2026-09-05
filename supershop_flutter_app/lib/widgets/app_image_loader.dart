@@ -24,8 +24,14 @@ class AppImageLoader extends StatelessWidget {
     String clean = raw.trim();
     if (clean.isEmpty) return clean;
 
-    // 1. If multiple comma-separated URLs, take the first one
-    if (clean.contains(',') && !clean.startsWith('data:image/')) {
+    // 1. If multiple images separated by ' || ' or comma before next image scheme, take the first
+    if (clean.contains(' || ')) {
+      clean = clean.split(' || ').first.trim();
+    }
+    final multiImgReg = RegExp(r',\s*(?=data:image\/|https?:\/\/|\/static\/|\/uploads\/)', caseSensitive: false);
+    if (clean.contains(multiImgReg)) {
+      clean = clean.split(multiImgReg).first.trim();
+    } else if (clean.contains(',') && !clean.startsWith('data:image/')) {
       clean = clean.split(',').first.trim();
     }
 
@@ -81,7 +87,8 @@ class AppImageLoader extends StatelessWidget {
     }
 
     // 5. Handle relative server paths using active dynamic ApiService.baseUrl
-    if (!clean.startsWith('data:image/') && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+    bool isRawBase64 = clean.startsWith('/9j/') || clean.startsWith('iVBORw0KGgo');
+    if (!clean.startsWith('data:image/') && !isRawBase64 && !clean.startsWith('http://') && !clean.startsWith('https://')) {
       final base = ApiService.baseUrl.replaceAll(RegExp(r'/+$'), '');
       if (clean.startsWith('/')) {
         clean = '$base$clean';
@@ -110,6 +117,10 @@ class AppImageLoader extends StatelessWidget {
         final int commaIdx = clean.indexOf(',');
         if (commaIdx != -1) {
           base64Data = clean.substring(commaIdx + 1);
+        }
+        // In case another image was appended with a comma
+        if (base64Data.contains(',')) {
+          base64Data = base64Data.split(',').first.trim();
         }
         base64Data = base64Data.replaceAll(RegExp(r'\s+'), '');
         final Uint8List bytes = base64Decode(base64Data);
