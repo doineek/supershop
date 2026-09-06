@@ -9075,7 +9075,7 @@ def download_app_apk():
     Otherwise, falls back to the local file.
     """
     settings = get_all_settings()
-    ext_url = os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url", "")
+    ext_url = os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "https://github.com/doineek/supershop/releases/latest/download/supershop_latest.apk"
     if ext_url and ext_url.strip().startswith("http"):
         return redirect(ext_url.strip(), code=302)
 
