@@ -58,6 +58,52 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max 16MB file upload/requ
 app.config['SESSION_COOKIE_HTTPONLY'] = True          # Prevent JavaScript from reading session cookies (XSS defense)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # CSRF mitigation
 
+# Cloudinary CDN Configuration (Offloads images to free 25 GB/mo Cloudinary bandwidth)
+CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "a71uu4fm").strip()
+CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "229798283716372").strip()
+CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "Z32WfsCEDD2Mcs6s5labt16d4G8").strip()
+
+CLOUDINARY_CONFIGURED = False
+try:
+    import cloudinary
+    import cloudinary.uploader
+    if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET,
+            secure=True
+        )
+        CLOUDINARY_CONFIGURED = True
+        print(f"[cloudinary] [OK] Cloudinary initialized successfully for cloud '{CLOUDINARY_CLOUD_NAME}'")
+except Exception as e:
+    print(f"[cloudinary] Initialization notice: {e}")
+
+
+def upload_to_cloudinary(file_or_bytes, folder="supershop/products", public_id=None):
+    """
+    Uploads an image (file path, file object, bytes, or data URI) to Cloudinary.
+    Returns secure HTTPS CDN URL on success, or None on failure/unconfigured.
+    """
+    if not CLOUDINARY_CONFIGURED:
+        return None
+    try:
+        import cloudinary
+        import cloudinary.uploader
+        options = {
+            "folder": folder,
+            "resource_type": "image",
+            "overwrite": True
+        }
+        if public_id:
+            options["public_id"] = public_id
+        res = cloudinary.uploader.upload(file_or_bytes, **options)
+        if res and "secure_url" in res:
+            return res["secure_url"]
+    except Exception as e:
+        print(f"[cloudinary] Upload error: {e}")
+    return None
+
 def get_real_client_ip():
     """Accurately identify real client IP behind Cloudflare, Render, or reverse proxies."""
     if has_request_context():
@@ -182,9 +228,9 @@ def apply_image_background(im, bg_color=None):
 
 def process_uploaded_image_file(file_path, max_dim=800, quality=75, bg_color=None):
     """
-    Optimizes an uploaded image file and returns a persistent Base64 Data URI.
-    Ensures images survive ephemeral server restarts (Render) and sync seamlessly across all terminals & devices.
-    Fills transparent backgrounds with white or user-defined color instead of black.
+    Optimizes an uploaded image file, uploads it to Cloudinary for high-speed CDN delivery
+    (consuming ZERO Render bandwidth), and returns the HTTPS CDN URL.
+    Falls back gracefully to Base64 Data URI if Cloudinary is unreachable.
     """
     try:
         from PIL import Image
@@ -194,7 +240,13 @@ def process_uploaded_image_file(file_path, max_dim=800, quality=75, bg_color=Non
             im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             out = io.BytesIO()
             im.save(out, format="JPEG", quality=quality, optimize=True)
-            encoded = base64.b64encode(out.getvalue()).decode("utf-8")
+            img_bytes = out.getvalue()
+
+            cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/products")
+            if cloud_url:
+                return cloud_url
+
+            encoded = base64.b64encode(img_bytes).decode("utf-8")
             return f"data:image/jpeg;base64,{encoded}"
     except Exception as e:
         print(f"[image_processing] Error optimizing image {file_path}: {e}")
@@ -294,7 +346,11 @@ def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80, bg_
                         im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
                         out = io.BytesIO()
                         im.save(out, format="JPEG", quality=quality, optimize=True)
-                        encoded = base64.b64encode(out.getvalue()).decode("utf-8")
+                        img_bytes = out.getvalue()
+                        cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/products")
+                        if cloud_url:
+                            return cloud_url
+                        encoded = base64.b64encode(img_bytes).decode("utf-8")
                         return f"data:image/jpeg;base64,{encoded}"
             except Exception:
                 pass
@@ -351,7 +407,11 @@ def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80, bg_
 
                 out = io.BytesIO()
                 im.save(out, format="JPEG", quality=quality, optimize=True)
-                encoded = base64.b64encode(out.getvalue()).decode("utf-8")
+                img_bytes = out.getvalue()
+                cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/products")
+                if cloud_url:
+                    return cloud_url
+                encoded = base64.b64encode(img_bytes).decode("utf-8")
                 return f"data:image/jpeg;base64,{encoded}"
     except Exception as e:
         print(f"[image_caching] Could not cache external image {url[:60]}: {e}")
@@ -890,9 +950,9 @@ def api_customer_update_profile():
                 img = img.convert("RGB")
             img.thumbnail((500, 500))
             fn = f"cust_{phone}_{int(time.time())}.jpg"
-            save_path = os.path.join(upload_dir, fn)
             img.save(save_path, "JPEG", quality=85)
-            saved_img_url = f"/static/uploads/customers/{fn}"
+            cloud_url = upload_to_cloudinary(save_path, folder="supershop/customers")
+            saved_img_url = cloud_url if cloud_url else f"/static/uploads/customers/{fn}"
         except Exception as e:
             print("[customer_avatar] Failed to decode/save image:", e)
             saved_img_url = incoming_img
@@ -3921,12 +3981,16 @@ def create_customer_admin():
 
     file = request.files.get("profile_image_file")
     if file and file.filename:
-        upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
-        os.makedirs(upload_dir, exist_ok=True)
-        fn = f"cust_{phone}_{int(time.time())}_{secure_filename(file.filename)}"
-        file_path = os.path.join(upload_dir, fn)
-        file.save(file_path)
-        profile_image = f"/static/uploads/customers/{fn}"
+        cloud_url = upload_to_cloudinary(file, folder="supershop/customers")
+        if cloud_url:
+            profile_image = cloud_url
+        else:
+            upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
+            os.makedirs(upload_dir, exist_ok=True)
+            fn = f"cust_{phone}_{int(time.time())}_{secure_filename(file.filename)}"
+            file_path = os.path.join(upload_dir, fn)
+            file.save(file_path)
+            profile_image = f"/static/uploads/customers/{fn}"
 
     if not name or not phone or not password:
         flash("Name, Mobile Number, and Password are required.", "error")
@@ -3977,12 +4041,16 @@ def edit_customer_admin():
 
     file = request.files.get("profile_image_file")
     if file and file.filename:
-        upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
-        os.makedirs(upload_dir, exist_ok=True)
-        fn = f"cust_{new_phone}_{int(time.time())}_{secure_filename(file.filename)}"
-        file_path = os.path.join(upload_dir, fn)
-        file.save(file_path)
-        profile_image = f"/static/uploads/customers/{fn}"
+        cloud_url = upload_to_cloudinary(file, folder="supershop/customers")
+        if cloud_url:
+            profile_image = cloud_url
+        else:
+            upload_dir = os.path.join(app.root_path, "static", "uploads", "customers")
+            os.makedirs(upload_dir, exist_ok=True)
+            fn = f"cust_{new_phone}_{int(time.time())}_{secure_filename(file.filename)}"
+            file_path = os.path.join(upload_dir, fn)
+            file.save(file_path)
+            profile_image = f"/static/uploads/customers/{fn}"
 
     if not old_phone or not name or not new_phone:
         flash("Customer Name and Mobile Number are required.", "error")
@@ -7655,7 +7723,8 @@ def api_place_order():
                     im.thumbnail((500, 500))
                     fn = f"cust_{clean_phone}_{int(time.time())}.jpg"
                     im.save(os.path.join(up_dir, fn), "JPEG", quality=85)
-                    saved_p = f"/static/uploads/customers/{fn}"
+                    cloud_p = upload_to_cloudinary(os.path.join(up_dir, fn), folder="supershop/customers")
+                    saved_p = cloud_p if cloud_p else f"/static/uploads/customers/{fn}"
                 cur.execute("UPDATE customer_users SET profile_image = ?, avatar_url = ?, avatar_base64 = ? WHERE phone = ?", (saved_p, saved_p, cust_img if cust_img.startswith("data:image") else saved_p, clean_phone))
         except Exception as e:
             print("[order_place] Error auto-saving customer photo:", e)
