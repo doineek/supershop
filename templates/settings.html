@@ -132,6 +132,15 @@
       </small>
     </div>
 
+    <h2 style="margin-top:24px; margin-bottom:12px; color:#0d9488; border-top:1px solid #e2e8f0; padding-top:16px;">📱 Android APK Download & Bandwidth Offloading</h2>
+    <div class="field">
+      <label>External APK Download Link (Direct Link / GitHub Release / Google Drive)</label>
+      <input type="url" name="apk_download_url" value="{{ settings.apk_download_url or '' }}" placeholder="e.g. https://github.com/doineek/supershop/releases/download/v1.0.11/supershop_v1.0.11.apk or Google Drive direct link">
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
+        💡 <strong>Saves 100% of APK download bandwidth on Render:</strong> When set, customer taps on &quot;Download APK&quot; will directly download from this external cloud link instead of consuming Render&apos;s 5 GB free bandwidth. Leaving this empty serves the local build.
+      </small>
+    </div>
+
     <h2 style="margin-top:24px; margin-bottom:12px; color:#2563eb; border-top:1px solid #e2e8f0; padding-top:16px;">🌐 Mobile App Footer Social Media Links (Follow us on)</h2>
     <div class="field">
       <label>Facebook Link (Icon: 📘)</label>

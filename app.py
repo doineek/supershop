@@ -36,9 +36,22 @@ from barcode_utils import generate_barcode_svg
 import remote_control
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_compress import Compress
 
 app = Flask(__name__)
 app.secret_key = "doineek-supershop-secret-key"
+
+# Bandwidth Optimization: Enable Gzip/Brotli compression for HTML, JSON, CSS, JS, WASM
+app.config['COMPRESS_MIMETYPES'] = [
+    'text/html', 'text/css', 'text/xml', 'application/json',
+    'application/javascript', 'application/wasm', 'image/svg+xml'
+]
+app.config['COMPRESS_LEVEL'] = 6
+app.config['COMPRESS_MIN_SIZE'] = 500
+compress = Compress(app)
+
+# Static Asset Caching: 7 days default browser cache
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 604800
 
 # Security & DoS Protection Configurations
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max 16MB file upload/request size (prevents memory OOM crash)
@@ -67,13 +80,18 @@ limiter = Limiter(
 
 @app.after_request
 def apply_security_headers(response):
-    """Add industry-standard security headers to all responses."""
+    """Add industry-standard security and caching headers to all responses."""
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https":
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # Cache static assets (images, CSS, JS, fonts, Flutter Web) for 7 days to eliminate repeat bandwidth
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=604800, immutable'
+    
     return response
 
 @app.errorhandler(429)
@@ -289,6 +307,16 @@ def download_and_cache_external_image(url_or_data, max_dim=1200, quality=80, bg_
         return url
 
     if "/api/proxy_image" in url:
+        return url
+
+    # Preserve external cloud-hosted images (Cloudinary, Imgur, Firebase Storage, Supabase, etc.)
+    # Directly serves from the external CDN, keeping Render's bandwidth footprint zero!
+    cloud_storage_hosts = (
+        "cloudinary.com", "res.cloudinary.com", "imgur.com", "i.imgur.com",
+        "firebasestorage.googleapis.com", "storage.googleapis.com",
+        "supabase.co", "drive.google.com", "images.unsplash.com"
+    )
+    if any(h in url.lower() for h in cloud_storage_hosts):
         return url
 
     # First clean and unwrap any Google redirect or search URL
@@ -4547,6 +4575,7 @@ def settings_page():
             "apply_max_qty_to_pos": "1" if request.form.get("apply_max_qty_to_pos") else "0",
             "product_image_bg_color": request.form.get("product_image_bg_color", "#FFFFFF").strip() or "#FFFFFF",
             "rider_delivery_fee": request.form.get("rider_delivery_fee", "50").strip() or "50",
+            "apk_download_url": request.form.get("apk_download_url", "").strip(),
         }
         update_settings(conn, values)
         conn.commit()
@@ -9020,12 +9049,36 @@ def api_force_push():
 
 
 
+@app.route("/robots.txt")
+def robots_txt():
+    """Block web crawlers & bots from downloading the heavy 54MB APK and hitting API routes."""
+    content = (
+        "User-agent: *\n"
+        "Disallow: /download-apk\n"
+        "Disallow: /apk\n"
+        "Disallow: /download/apk\n"
+        "Disallow: /static/apk/\n"
+        "Disallow: /api/\n"
+    )
+    return Response(content, mimetype="text/plain")
+
+
 @app.route("/download-apk")
 @app.route("/apk")
 @app.route("/download/apk")
 def download_app_apk():
-    """Direct 1-click APK download for Android users."""
-    from flask import send_file
+    """
+    Direct 1-click APK download for Android users with bandwidth offloading.
+    If an external URL (GitHub Releases, Google Drive, Firebase Storage) is configured,
+    it returns an instant HTTP 302 redirect, so the user downloads directly from the
+    cloud CDN, consuming 0 MB of Render's free bandwidth!
+    Otherwise, falls back to the local file.
+    """
+    settings = get_all_settings()
+    ext_url = os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url", "")
+    if ext_url and ext_url.strip().startswith("http"):
+        return redirect(ext_url.strip(), code=302)
+
     apk_path = os.path.join(app.root_path, "static", "apk", "supershop_latest.apk")
     flutter_apk = os.path.join(app.root_path, "supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
     
@@ -9039,16 +9092,17 @@ def download_app_apk():
                 pass
 
     target_file = apk_path if os.path.exists(apk_path) else flutter_apk
-    response = send_file(
-        target_file,
-        as_attachment=True,
-        download_name="supershop_app.apk",
-        mimetype="application/vnd.android.package-archive"
-    )
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
+    if os.path.exists(target_file):
+        response = send_file(
+            target_file,
+            as_attachment=True,
+            download_name="supershop_app.apk",
+            mimetype="application/vnd.android.package-archive"
+        )
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+    return redirect("https://github.com/doineek/supershop/releases", code=302)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
