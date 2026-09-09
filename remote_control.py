@@ -2048,9 +2048,20 @@ def start():
         pull_all_from_cloud(blocking=False)
 
         def _safety_net_loop():
+            """Lightweight periodic safety net.
+            Checks once per hour for any unsynced offline sales instead of constantly
+            dumping the entire database every 5 minutes (which causes Render CPU/RAM freezing).
+            """
             while True:
-                time.sleep(300)
-                push_full_backup()
+                time.sleep(3600)  # Check once every hour
+                try:
+                    conn = get_connection()
+                    unsynced = conn.execute("SELECT id FROM sales WHERE is_synced = 0 LIMIT 50").fetchall()
+                    conn.close()
+                    for row in unsynced:
+                        push_sale_to_cloud(row["id"])
+                except Exception as _sn_err:
+                    print(f"[remote_control] Safety net check notice: {_sn_err}", flush=True)
 
         # Live listeners (Firebase Cloud -> All Servers & Terminals)
         db.collection("remote_control").document("settings").on_snapshot(_on_settings_change)
