@@ -3314,8 +3314,8 @@ def checkout():
 # Sales History & Receipts
 # ===========================================================================
 
-@app.route("/sales")
 @app.route("/sales/history")
+@app.route("/sales")
 @login_required
 def sales_history():
     conn = get_connection()
