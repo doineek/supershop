@@ -44,7 +44,7 @@
 <div class="{% if session.user_id %}app-shell{% else %}unauth-shell{% endif %}">
   {% if session.user_id %}
   <nav class="sidebar">
-    <a href="{{ url_for('dashboard') }}" class="sidebar-item {{ 'active' if request.path == '/' or request.path == '/dashboard' }}">
+    <a href="{{ url_for('dashboard') }}" class="sidebar-item {{ 'active' if request.path in ['/', '/dashboard', '/admin'] }}">
       <span class="sidebar-icon">📊</span><span>Dashboard</span>
     </a>
     <a href="{{ url_for('pos') }}" class="sidebar-item {{ 'active' if request.path == '/pos' }}">

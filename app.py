@@ -1033,8 +1033,8 @@ def flutter_web_app(path="index.html"):
     return send_from_directory(flutter_dir, path)
 
 
-@app.route("/dashboard")
 @app.route("/admin")
+@app.route("/dashboard")
 @login_required
 def dashboard():
     conn = get_connection()
