@@ -66,6 +66,9 @@
     <tr><td><strong>Counter/User:</strong></td><td><strong>{{ sale.cashier_name or 'Main Counter' }}</strong></td></tr>
     <tr><td><strong>Customer :</strong></td><td>{{ sale.customer_name if sale.customer_name else '-' }}</td></tr>
     <tr><td><strong>Mobile :</strong></td><td>{{ sale.customer_mobile if sale.customer_mobile else '-' }}</td></tr>
+    {% if sale.delivery_address %}
+    <tr><td style="white-space:nowrap; padding-right:4px; vertical-align:top;"><strong>Delivery Address:</strong></td><td style="word-break:break-word; vertical-align:top;">{{ sale.delivery_address }}</td></tr>
+    {% endif %}
   </table>
 </div>
 

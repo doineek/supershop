@@ -121,14 +121,14 @@
 
   <div class="info-grid">
     <div class="info-box">
-      <strong>Customer Details (Customer ):</strong><br>
+      <strong>Customer & Delivery Details:</strong><br>
       👤 {{ order.customer_name if order.customer_name else '-' }}<br>
       📞 {{ order.customer_phone if order.customer_phone else '-' }}<br>
-      📍 {{ order.area }}, {{ order.district }}<br>
-      🏠 {{ order.address_details }}
+      📍 <strong>Delivery Address:</strong><br>
+      {{ order.delivery_address or ((order.address_details ~ ', ' if order.address_details and order.address_details != 'Delivery Address' else '') ~ (order.area ~ ', ' if order.area and order.area not in ('Main Area', 'Main Town') else '') ~ order.district)|trim(', ') }}
     </div>
     <div class="info-box">
-      <strong>Invoice Details ( ):</strong><br>
+      <strong>Invoice Details:</strong><br>
       📄 Invoice No: <strong>INV-ONLINE-{{ order.order_number }}</strong><br>
       📅 Order Date: {{ order.created_at[:16].replace('T', ' ') }}<br>
       💳 Payment: <span style="text-transform: uppercase; font-weight: bold;">{{ order.payment_method }}</span><br>

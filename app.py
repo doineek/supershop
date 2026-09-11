@@ -3348,6 +3348,41 @@ def delete_sale(sale_id):
     return redirect(url_for("sales_history"))
 
 
+def format_delivery_address(address_details, area=None, district=None, customer_phone=None, conn=None):
+    """Formats customer's address for printing as delivery address on receipts/invoices."""
+    details = (address_details or "").strip()
+    area_clean = (area or "").strip()
+    dist_clean = (district or "").strip()
+
+    # If details is empty or dummy placeholder, check customer_users table
+    if details in ("", "Delivery Address", "No detailed address recorded") and customer_phone and conn:
+        try:
+            cust = conn.execute("SELECT address FROM customer_users WHERE phone = ?", (customer_phone,)).fetchone()
+            if cust and cust["address"] and cust["address"].strip() not in ("Delivery Address", "No detailed address recorded"):
+                details = cust["address"].strip()
+        except Exception:
+            pass
+
+    if details in ("Delivery Address", "No detailed address recorded"):
+        details = ""
+
+    parts = []
+    if details:
+        parts.append(details)
+
+    details_lower = details.lower()
+
+    if area_clean and area_clean.lower() not in ("main area", "main town"):
+        if area_clean.lower() not in details_lower:
+            parts.append(area_clean)
+
+    if dist_clean:
+        if dist_clean.lower() not in details_lower and (not area_clean or dist_clean.lower() != area_clean.lower()):
+            parts.append(dist_clean)
+
+    return ", ".join(parts) if parts else (details or area_clean or dist_clean or "")
+
+
 def prepare_receipt_data(conn, sale_id):
     sale = conn.execute("""
         SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
@@ -3362,10 +3397,16 @@ def prepare_receipt_data(conn, sale_id):
     delivery_charge = 0.0
     items = []
     
+    ord_row = None
     if inv_num.startswith("INV-ONLINE-"):
         ord_num = inv_num.replace("INV-ONLINE-", "").strip()
-        ord_row = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (ord_num,)).fetchone()
-        if ord_row:
+        ord_row = conn.execute("SELECT * FROM online_orders WHERE order_number = ? OR id = ?", (ord_num, ord_num)).fetchone()
+
+    if not ord_row and (inv_num.startswith("INV-ONLINE-") or sale_dict.get("channel") == "Online"):
+        if sale_dict.get("customer_mobile"):
+            ord_row = conn.execute("SELECT * FROM online_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 1", (sale_dict["customer_mobile"],)).fetchone()
+
+    if ord_row:
             shop_st = get_all_settings(conn)
             free_del_active = (shop_st.get("free_delivery_active") or "0") == "1"
             free_del_min = float(shop_st.get("free_delivery_min_amount") or 500.0)
@@ -3386,6 +3427,10 @@ def prepare_receipt_data(conn, sale_id):
             sale_dict["address_details"] = ord_row["address_details"]
             sale_dict["delivery_otp"] = ord_row["delivery_otp"]
             sale_dict["payment_method"] = ord_row["payment_method"]
+            sale_dict["delivery_address"] = format_delivery_address(
+                ord_row["address_details"], ord_row["area"], ord_row["district"],
+                customer_phone=ord_row["customer_phone"], conn=conn
+            )
             o_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
             for oi in o_items:
                 oi_dict = dict(oi)
@@ -3515,6 +3560,14 @@ def prepare_receipt_data(conn, sale_id):
         i_dict["bogo_discount"] = bogo_disc
         i_dict["is_bogo"] = is_bogo
         items.append(i_dict)
+
+    if not sale_dict.get("delivery_address") and sale_dict.get("customer_mobile"):
+        try:
+            cust_u = conn.execute("SELECT address FROM customer_users WHERE phone = ?", (sale_dict["customer_mobile"],)).fetchone()
+            if cust_u and cust_u["address"] and cust_u["address"].strip() not in ("", "Delivery Address", "No detailed address recorded"):
+                sale_dict["delivery_address"] = cust_u["address"].strip()
+        except Exception:
+            pass
 
     settings = get_all_settings(conn)
     return sale_dict, items, settings
@@ -7028,6 +7081,18 @@ def online_order_invoice(order_id):
     else:
         sale_id = sale["id"]
 
+    if request.args.get("format") == "a4":
+        order_dict = dict(order)
+        order_dict["delivery_address"] = format_delivery_address(
+            order["address_details"], order["area"], order["district"],
+            customer_phone=order["customer_phone"], conn=conn
+        )
+        raw_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+        items = [dict(it) for it in raw_items]
+        settings = get_all_settings(conn)
+        conn.close()
+        return render_template("online_invoice.html", order=order_dict, items=items, shop=settings)
+
     conn.close()
     return redirect(url_for("sale_receipt_print", sale_id=sale_id))
 
@@ -7263,7 +7328,14 @@ def api_place_order():
     customer_name = (data.get("customer_name") or data.get("name") or "Customer").strip()
     customer_phone = (data.get("customer_phone") or data.get("phone") or "").strip()
     customer_email = (data.get("customer_email") or data.get("email") or "").strip()
-    address_details = (data.get("address_details") or data.get("address") or data.get("location") or "Delivery Address").strip()
+    address_details = (
+        data.get("address_details")
+        or data.get("shipping_address")
+        or data.get("delivery_address")
+        or data.get("address")
+        or data.get("location")
+        or ""
+    ).strip()
     payment_method = (data.get("payment_method") or "cod").lower()
     cart_items = data.get("cart_items") or data.get("items") or data.get("products") or data.get("cart") or []
 
@@ -7593,18 +7665,39 @@ def api_place_order():
 
     cur = conn.cursor()
 
+    if (not address_details or address_details == "Delivery Address") and clean_phone:
+        try:
+            chk_c = cur.execute("SELECT address FROM customer_users WHERE phone = ?", (clean_phone,)).fetchone()
+            if chk_c and chk_c["address"] and chk_c["address"].strip() not in ("", "Delivery Address", "No detailed address recorded"):
+                address_details = chk_c["address"].strip()
+        except Exception:
+            pass
+
+    if not address_details:
+        address_details = f"{area}, {district}" if (area and area not in ("Main Area", "Main Town")) else (district or "Delivery Address")
+
     # 1. Auto-create or update Customer in customer_users
     if clean_phone and len(clean_phone) == 11 and clean_phone.startswith("01"):
-        chk_cust = cur.execute("SELECT id, name FROM customer_users WHERE phone = ?", (clean_phone,)).fetchone()
+        chk_cust = cur.execute("SELECT id, name, address FROM customer_users WHERE phone = ?", (clean_phone,)).fetchone()
         if not chk_cust:
             pass_hash = generate_password_hash("123456")
             name_to_use = customer_name.strip() if customer_name and customer_name.strip() else f"Customer {clean_phone[-4:]}"
             cur.execute("""
-                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
-                VALUES (?, ?, ?, ?, '123456', 1, ?)
-            """, (clean_phone, name_to_use, customer_email or "", pass_hash, created_at))
-        elif customer_name and customer_name.strip() and (not chk_cust["name"] or chk_cust["name"].startswith("Customer ")):
-            cur.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (customer_name.strip(), clean_phone))
+                INSERT INTO customer_users (phone, name, email, address, password_hash, plain_password, is_verified, created_at)
+                VALUES (?, ?, ?, ?, ?, '123456', 1, ?)
+            """, (clean_phone, name_to_use, customer_email or "", address_details if address_details != "Delivery Address" else "", pass_hash, created_at))
+        else:
+            upd_parts = []
+            upd_params = []
+            if customer_name and customer_name.strip() and (not chk_cust["name"] or chk_cust["name"].startswith("Customer ")):
+                upd_parts.append("name = ?")
+                upd_params.append(customer_name.strip())
+            if address_details and address_details != "Delivery Address" and (not chk_cust["address"] or chk_cust["address"].strip() in ("", "Delivery Address", "No detailed address recorded")):
+                upd_parts.append("address = ?")
+                upd_params.append(address_details)
+            if upd_parts:
+                upd_params.append(clean_phone)
+                cur.execute(f"UPDATE customer_users SET {', '.join(upd_parts)} WHERE phone = ?", tuple(upd_params))
 
     # Check customer verification status
     is_customer_verified = False

@@ -887,6 +887,13 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                     elif c_name and c_name.strip() and (not chk_cust["name"] or chk_cust["name"].startswith("Customer ")):
                         conn.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (c_name.strip(), digits))
 
+                raw_addr = (data.get("address_details") or data.get("shipping_address") or data.get("delivery_address") or data.get("address") or "").strip()
+                if digits and len(digits) == 11 and digits.startswith("01") and raw_addr and raw_addr not in ("Delivery Address", "No detailed address recorded"):
+                    try:
+                        conn.execute("UPDATE customer_users SET address = ? WHERE phone = ? AND (address IS NULL OR address = '' OR address = 'Delivery Address')", (raw_addr, digits))
+                    except Exception:
+                        pass
+
                 if change.type.name in ("ADDED", "MODIFIED"):
                     existing = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
                     c_phone = data.get("customer_phone", "")
@@ -894,27 +901,25 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
 
                     if not existing:
                         cur = conn.cursor()
+                        raw_area = (data.get("area") or data.get("delivery_zone") or "").strip()
+                        raw_dist = (data.get("district") or "").strip()
+                        raw_country = (data.get("country") or "Bangladesh").strip()
                         cur.execute("""
                             INSERT INTO online_orders (
-                                order_number, customer_id, customer_name, customer_phone, customer_email,
-                                shipping_address, delivery_area_id, delivery_zone,
-                                payment_method, payment_status, payment_trx_id, payment_phone,
-                                subtotal, delivery_charge, total_amount, order_status,
-                                delivery_otp, is_stock_deducted, assigned_rider_id, assigned_rider_name, assigned_rider_phone,
+                                order_number, customer_name, customer_phone, customer_email,
+                                country, district, area, address_details,
+                                payment_method, payment_status, subtotal, delivery_charge, total_amount,
+                                order_status, delivery_otp, is_stock_deducted,
+                                assigned_rider_id, assigned_rider_name, assigned_rider_phone,
                                 created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_number,
-                            int(data.get("customer_id") or 0),
                             c_name, c_phone,
                             data.get("customer_email", ""),
-                            data.get("shipping_address", ""),
-                            int(data.get("delivery_area_id") or 0),
-                            data.get("delivery_zone", ""),
-                            data.get("payment_method", "cash_on_delivery"),
+                            raw_country, raw_dist, raw_area, raw_addr,
+                            data.get("payment_method", "cod"),
                             data.get("payment_status", "pending"),
-                            data.get("payment_trx_id", ""),
-                            data.get("payment_phone", ""),
                             float(data.get("subtotal") or 0.0),
                             float(data.get("delivery_charge") or 60.0),
                             float(data.get("total_amount") or 0.0),
@@ -1337,11 +1342,16 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                     avatar_url = data.get("avatar_url") or profile_image
                     avatar_base64 = data.get("avatar_base64") or profile_image
 
+                    addr = (data.get("address") or data.get("shipping_address") or data.get("delivery_address") or "").strip()
+                    if addr in ("Delivery Address", "No detailed address recorded"):
+                        addr = ""
+
                     if existing:
                         conn.execute("""
                             UPDATE customer_users SET
                                 name = COALESCE(NULLIF(?, ''), name),
                                 email = COALESCE(NULLIF(?, ''), email),
+                                address = COALESCE(NULLIF(?, ''), address),
                                 password_hash = COALESCE(NULLIF(?, ''), password_hash),
                                 plain_password = COALESCE(NULLIF(?, ''), plain_password),
                                 is_verified = ?,
@@ -1352,16 +1362,16 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                                 avatar_url = COALESCE(NULLIF(?, ''), avatar_url),
                                 avatar_base64 = COALESCE(NULLIF(?, ''), avatar_base64)
                             WHERE phone = ?
-                        """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
+                        """, (name, email, addr, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
                     else:
                         conn.execute("""
                             INSERT INTO customer_users (
-                                phone, name, email, password_hash, plain_password,
+                                phone, name, email, address, password_hash, plain_password,
                                 is_verified, is_blocked, blocked_until, block_reason, created_at,
                                 profile_image, avatar_url, avatar_base64
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
+                            phone, name or f"Customer {phone[-4:]}", email, addr, password_hash, plain_password,
                             is_verified, is_blocked, blocked_until, block_reason, created_at,
                             profile_image, avatar_url, avatar_base64
                         ))
@@ -1812,11 +1822,16 @@ def pull_all_from_cloud(blocking=False):
                             avatar_url = data.get("avatar_url") or profile_image
                             avatar_base64 = data.get("avatar_base64") or profile_image
 
+                            addr = (data.get("address") or data.get("shipping_address") or data.get("delivery_address") or "").strip()
+                            if addr in ("Delivery Address", "No detailed address recorded"):
+                                addr = ""
+
                             if existing:
                                 conn.execute("""
                                     UPDATE customer_users SET
                                         name = COALESCE(NULLIF(?, ''), name),
                                         email = COALESCE(NULLIF(?, ''), email),
+                                        address = COALESCE(NULLIF(?, ''), address),
                                         password_hash = COALESCE(NULLIF(?, ''), password_hash),
                                         plain_password = COALESCE(NULLIF(?, ''), plain_password),
                                         is_verified = ?,
@@ -1827,16 +1842,16 @@ def pull_all_from_cloud(blocking=False):
                                         avatar_url = COALESCE(NULLIF(?, ''), avatar_url),
                                         avatar_base64 = COALESCE(NULLIF(?, ''), avatar_base64)
                                     WHERE phone = ?
-                                """, (name, email, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
+                                """, (name, email, addr, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
                             else:
                                 conn.execute("""
                                     INSERT INTO customer_users (
-                                        phone, name, email, password_hash, plain_password,
+                                        phone, name, email, address, password_hash, plain_password,
                                         is_verified, is_blocked, blocked_until, block_reason, created_at,
                                         profile_image, avatar_url, avatar_base64
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """, (
-                                    phone, name or f"Customer {phone[-4:]}", email, password_hash, plain_password,
+                                    phone, name or f"Customer {phone[-4:]}", email, addr, password_hash, plain_password,
                                     is_verified, is_blocked, blocked_until, block_reason, created_at,
                                     profile_image, avatar_url, avatar_base64
                                 ))
@@ -1887,8 +1902,8 @@ def pull_all_from_cloud(blocking=False):
                                 data.get("customer_email", ""),
                                 data.get("country", "Bangladesh"),
                                 data.get("district", ""),
-                                data.get("area", ""),
-                                data.get("address_details", ""),
+                                (data.get("area") or data.get("delivery_zone") or ""),
+                                (data.get("address_details") or data.get("shipping_address") or data.get("delivery_address") or data.get("address") or ""),
                                 data.get("payment_method", "cod"),
                                 data.get("payment_status", "pending"),
                                 float(data.get("subtotal") or 0.0),

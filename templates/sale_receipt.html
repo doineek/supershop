@@ -21,6 +21,9 @@
     <div>Customer: {{ sale.customer_name if sale.customer_name else '-' }}</div>
     <div>Mobile: {{ sale.customer_mobile if sale.customer_mobile else '-' }}</div>
     <div>Counter / Cashier: <strong>{{ sale.cashier_name }}</strong></div>
+    {% if sale.delivery_address %}
+    <div>Delivery Address: <strong>{{ sale.delivery_address }}</strong></div>
+    {% endif %}
   </div>
 
   <div class="receipt-table-wrap">
