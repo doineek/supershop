@@ -7011,6 +7011,41 @@ def update_online_order_status(order_id):
     return redirect(url_for("online_orders"))
 
 
+@app.route("/online_orders/<int:order_id>/update_address", methods=["POST"])
+@login_required
+def update_online_order_address(order_id):
+    new_address = request.form.get("address_details", "").strip()
+    if not new_address:
+        flash("Address cannot be empty.", "error")
+        return redirect(url_for("online_orders"))
+
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("online_orders"))
+
+    conn.execute(
+        "UPDATE online_orders SET address_details = ?, updated_at = ? WHERE id = ?",
+        (new_address, datetime.now().isoformat(), order_id)
+    )
+    if order["customer_phone"]:
+        conn.execute(
+            "UPDATE customer_users SET address = ? WHERE phone = ?",
+            (new_address, order["customer_phone"])
+        )
+    conn.commit()
+    conn.close()
+
+    remote_control.push_online_order_to_cloud(order_id)
+    if order["customer_phone"]:
+        remote_control.push_customer_user_to_cloud(order["customer_phone"])
+
+    flash(f"Delivery address updated successfully for Order #{order['order_number']}.", "success")
+    return redirect(url_for("online_orders"))
+
+
 @app.route("/online_orders/<int:order_id>/delete", methods=["POST"])
 @login_required
 @admin_required
