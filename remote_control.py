@@ -176,6 +176,8 @@ def _worker_push_customer_user(phone):
         conn.close()
         if user:
             u_dict = dict(user)
+            if u_dict.get("avatar_base64") and len(str(u_dict["avatar_base64"])) > 100000:
+                u_dict["avatar_base64"] = u_dict.get("profile_image") or ""
             db.collection("customer_users").document(str(phone)).set(u_dict)
             print(f"[remote_control] [OK] Customer User {phone} pushed to Firebase.")
     except Exception as e:
@@ -619,6 +621,8 @@ def push_full_backup():
             for c_row in cust_users:
                 c_dict = dict(c_row)
                 if c_dict.get("phone"):
+                    if c_dict.get("avatar_base64") and len(str(c_dict["avatar_base64"])) > 100000:
+                        c_dict["avatar_base64"] = c_dict.get("profile_image") or ""
                     db.collection("customer_users").document(str(c_dict["phone"])).set(c_dict)
         except Exception:
             pass

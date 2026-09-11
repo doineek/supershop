@@ -119,6 +119,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       var settings = await ApiService.fetchShopSettings();
 
+      if (userPhone.isNotEmpty) {
+        try {
+          final res = await ApiService.getCustomerProfile(userPhone);
+          if (res['success'] == true && res['user'] != null) {
+            final u = res['user'];
+            String? serverImg = (u['profile_image'] ?? u['avatar_url'] ?? u['avatar_base64'])?.toString();
+            if (serverImg != null && serverImg.isNotEmpty) {
+              imgB64 = serverImg;
+              av = '';
+              await prefs.setString('user_image_base64', serverImg);
+              await prefs.setString('saved_img_$userPhone', serverImg);
+              await prefs.setString('user_avatar', '');
+              await prefs.remove('saved_av_$userPhone');
+            }
+            if (u['name'] != null && u['name'].toString().isNotEmpty) {
+              _userName = u['name'].toString();
+              await prefs.setString('user_name', _userName);
+            }
+          }
+        } catch (e) {
+          debugPrint("Error loading profile from server: $e");
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _userName = prefs.getString('user_name') ?? 'Customer User';
@@ -154,21 +178,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_image_base64', base64String);
         await prefs.setString('user_avatar', '');
-        if (_userPhone.isNotEmpty) {
-          await prefs.setString('saved_img_$_userPhone', base64String);
-          await prefs.remove('saved_av_$_userPhone');
-          ApiService.httpPost('/api/customer/update-profile', body: jsonEncode({
-            'phone': _userPhone,
-            'name': _userName,
-            'profile_image': base64String,
-          }));
-        }
 
         if (!mounted) return;
         setState(() {
           _userImageBase64 = base64String;
           _userAvatar = '';
         });
+
+        if (_userPhone.isNotEmpty) {
+          await prefs.setString('saved_img_$_userPhone', base64String);
+          await prefs.remove('saved_av_$_userPhone');
+          try {
+            final res = await ApiService.updateCustomerProfile(
+              phone: _userPhone,
+              name: _userName,
+              profileImage: base64String,
+            );
+
+            String? savedUrl = (res['profile_image'] ?? res['avatar_url'] ?? res['saved_img_url'])?.toString();
+            if (savedUrl != null && savedUrl.isNotEmpty) {
+              await prefs.setString('user_image_base64', savedUrl);
+              await prefs.setString('saved_img_$_userPhone', savedUrl);
+              if (mounted) {
+                setState(() {
+                  _userImageBase64 = savedUrl;
+                });
+              }
+            }
+          } catch (e) {
+            debugPrint("Error updating profile photo on server: $e");
+          }
+        }
 
         messenger.showSnackBar(
           const SnackBar(
@@ -703,6 +743,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (savedAvatar.isNotEmpty) await prefs.setString('saved_av_$_userPhone', savedAvatar);
     }
 
+    await prefs.remove('user_image_base64');
+    await prefs.remove('user_avatar');
     await prefs.remove('is_logged_in');
     await prefs.remove('auth_token');
     await prefs.remove('user_name');

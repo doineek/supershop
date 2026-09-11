@@ -3860,40 +3860,40 @@
         const profPic = currentCustomer.profile_image || currentCustomer.avatar_url || currentCustomer.avatar_base64;
         if (profPic) {
           avContainer.innerHTML = `<img src="${profPic}" alt="Avatar">`;
-          if (profPic.startsWith('data:image/') || profPic.startsWith('blob:')) {
-            // Background sync local photo to server so Admin Panel immediately sees it
-            fetch('/api/customer/update-profile', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: currentCustomer.phone,
-                name: currentCustomer.name || '',
-                profile_image: profPic,
-                avatar_base64: profPic
-              })
-            }).then(r => r.json()).then(data => {
-              if (data && data.success && data.user && data.user.profile_image) {
-                currentCustomer.profile_image = data.user.profile_image;
-                currentCustomer.avatar_url = data.user.profile_image;
-                localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
-              }
-            }).catch(() => {});
-          }
         } else {
           avContainer.innerHTML = `<span>${(currentCustomer.name || 'C')[0].toUpperCase()}</span>`;
-          // If no local picture, retrieve from server in case uploaded elsewhere or by admin
-          if (currentCustomer.phone) {
-            fetch('/customers/api/profile?phone=' + encodeURIComponent(currentCustomer.phone))
-              .then(r => r.json())
-              .then(data => {
-                if (data && data.success && data.profile_image) {
-                  currentCustomer.profile_image = data.profile_image;
-                  currentCustomer.avatar_url = data.profile_image;
-                  localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
-                  if (avContainer) avContainer.innerHTML = `<img src="${data.profile_image}" alt="Avatar">`;
+        }
+
+        // Always check server for latest profile picture, name, and address (syncs cross-platform)
+        if (currentCustomer.phone) {
+          fetch('/api/customer/profile?phone=' + encodeURIComponent(currentCustomer.phone))
+            .then(r => r.json())
+            .then(data => {
+              if (data && data.success && data.user) {
+                const u = data.user;
+                let updated = false;
+                const sImg = (u.profile_image || u.avatar_url || u.avatar_base64 || '').trim();
+                if (sImg && sImg !== currentCustomer.profile_image) {
+                  currentCustomer.profile_image = sImg;
+                  currentCustomer.avatar_url = sImg;
+                  currentCustomer.avatar_base64 = sImg;
+                  updated = true;
+                  if (avContainer) avContainer.innerHTML = `<img src="${sImg}" alt="Avatar">`;
                 }
-              }).catch(() => {});
-          }
+                if (u.name && u.name !== currentCustomer.name) {
+                  currentCustomer.name = u.name;
+                  updated = true;
+                  document.getElementById('profNameLabel').textContent = u.name;
+                }
+                if (u.address && u.address !== currentCustomer.address) {
+                  currentCustomer.address = u.address;
+                  updated = true;
+                }
+                if (updated) {
+                  localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+                }
+              }
+            }).catch(() => {});
         }
 
         if (currentCustomer.email) {
@@ -4237,8 +4237,8 @@
             });
             const data = await res.json();
             if (res.ok && data.success) {
-              const savedUrl = (data.user && (data.user.profile_image || data.user.avatar_url)) || resizedB64;
-              currentCustomer.avatar_base64 = resizedB64;
+              const savedUrl = (data.profile_image || (data.user && (data.user.profile_image || data.user.avatar_url))) || resizedB64;
+              currentCustomer.avatar_base64 = savedUrl;
               currentCustomer.avatar_url = savedUrl;
               currentCustomer.profile_image = savedUrl;
               localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));

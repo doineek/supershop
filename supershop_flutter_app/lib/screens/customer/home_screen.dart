@@ -307,6 +307,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _userAvatar = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
       _userImageBase64 = prefs.getString('user_image_base64') ?? phoneImg;
     });
+
+    if (userPhone.isNotEmpty) {
+      ApiService.getCustomerProfile(userPhone).then((res) {
+        if (res['success'] == true && res['user'] != null) {
+          final u = res['user'];
+          String? serverImg = (u['profile_image'] ?? u['avatar_url'] ?? u['avatar_base64'])?.toString();
+          if (serverImg != null && serverImg.isNotEmpty && serverImg != _userImageBase64) {
+            prefs.setString('user_image_base64', serverImg);
+            prefs.setString('saved_img_$userPhone', serverImg);
+            prefs.setString('user_avatar', '');
+            prefs.remove('saved_av_$userPhone');
+            if (mounted) {
+              setState(() {
+                _userImageBase64 = serverImg;
+                _userAvatar = '';
+              });
+            }
+          }
+        }
+      }).catchError((e) {
+        debugPrint("Error fetching customer profile on home: $e");
+      });
+    }
   }
 
   ImageProvider? _getTopBarImageProvider() {
@@ -327,14 +350,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildProfileTabIcon() {
-    if (_userImageBase64.isNotEmpty) {
-      try {
-        String cleanB64 = _userImageBase64.contains(',') ? _userImageBase64.split(',').last : _userImageBase64;
-        return CircleAvatar(
-          radius: 12,
-          backgroundImage: MemoryImage(base64Decode(cleanB64)),
-        );
-      } catch (_) {}
+    ImageProvider? prov = _getTopBarImageProvider();
+    if (prov != null) {
+      return CircleAvatar(
+        radius: 12,
+        backgroundImage: prov,
+      );
     }
     if (_userAvatar.isNotEmpty && _userAvatar != '👤') {
       return Text(_userAvatar, style: const TextStyle(fontSize: 16));

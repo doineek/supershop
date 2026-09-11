@@ -603,4 +603,39 @@ class ApiService {
     }
     return {'success': false, 'message': 'Network error'};
   }
+
+  static Future<Map<String, dynamic>> getCustomerProfile(String phone) async {
+    try {
+      final res = await httpGet('/api/customer/profile?phone=$phone');
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'Network error'};
+  }
+
+  static Future<Map<String, dynamic>> updateCustomerProfile({
+    required String phone,
+    required String name,
+    String? profileImage,
+    String? address,
+  }) async {
+    try {
+      Map<String, dynamic> body = {
+        'phone': phone,
+        'name': name,
+      };
+      if (profileImage != null) body['profile_image'] = profileImage;
+      if (address != null) body['address'] = address;
+      final res = await httpPost('/api/customer/update-profile', body: jsonEncode(body));
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'Network error'};
+  }
 }

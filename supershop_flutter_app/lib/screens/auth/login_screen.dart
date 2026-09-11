@@ -367,6 +367,23 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setBool('is_delivery_man', _isDeliveryMan);
       await prefs.setBool('stay_signed_in', _staySignedIn);
 
+      String phoneKey = user['phone'] ?? phone;
+      String userImg = (user['profile_image'] ?? user['avatar_url'] ?? user['avatar_base64'] ?? '').toString().trim();
+      if (userImg.isNotEmpty) {
+        await prefs.setString('user_image_base64', userImg);
+        await prefs.setString('saved_img_$phoneKey', userImg);
+        await prefs.setString('user_avatar', '');
+      } else {
+        String cachedImg = prefs.getString('saved_img_$phoneKey') ?? '';
+        if (cachedImg.isNotEmpty) {
+          await prefs.setString('user_image_base64', cachedImg);
+          await prefs.setString('user_avatar', '');
+        } else {
+          await prefs.remove('user_image_base64');
+        }
+      }
+      await prefs.setBool('is_logged_in', true);
+
       if (!mounted) return;
 
       if (_isDeliveryMan) {

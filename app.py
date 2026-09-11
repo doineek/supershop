@@ -950,6 +950,7 @@ def api_customer_update_profile():
                 img = img.convert("RGB")
             img.thumbnail((500, 500))
             fn = f"cust_{phone}_{int(time.time())}.jpg"
+            save_path = os.path.join(upload_dir, fn)
             img.save(save_path, "JPEG", quality=85)
             cloud_url = upload_to_cloudinary(save_path, folder="supershop/customers")
             saved_img_url = cloud_url if cloud_url else f"/static/uploads/customers/{fn}"
@@ -986,7 +987,7 @@ def api_customer_update_profile():
         updates.append("avatar_url = ?")
         params.append(saved_img_url)
         updates.append("avatar_base64 = ?")
-        params.append(incoming_img if incoming_img.startswith("data:image") else saved_img_url)
+        params.append(saved_img_url)
     if address:
         updates.append("address = ?")
         params.append(address)
@@ -1004,10 +1005,46 @@ def api_customer_update_profile():
     except Exception as e:
         print("[customer_update] Error syncing to cloud:", e)
 
+    u_res = dict(updated_cust) if updated_cust else {"phone": db_phone, "name": name, "profile_image": saved_img_url}
     return jsonify({
         "success": True,
         "message": "Profile updated successfully!",
-        "user": dict(updated_cust) if updated_cust else {"phone": db_phone, "name": name, "profile_image": saved_img_url}
+        "profile_image": saved_img_url,
+        "avatar_url": saved_img_url,
+        "user": u_res
+    })
+
+
+@app.route("/api/customer/profile", methods=["GET"])
+def api_customer_profile():
+    phone = request.args.get("phone", "").strip()
+    if not phone:
+        return jsonify({"success": False, "message": "Phone number is required"}), 400
+
+    phone_clean = normalize_phone(phone)
+    p_check = phone_clean if phone_clean else phone
+
+    conn = get_connection()
+    user = conn.execute("SELECT * FROM customer_users WHERE phone = ? OR phone = ?", (p_check, phone)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({"success": False, "message": "Customer not found"}), 404
+
+    u_dict = dict(user)
+    prof_img = (u_dict.get("profile_image") or u_dict.get("avatar_url") or u_dict.get("avatar_base64") or "").strip()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "name": u_dict.get("name", ""),
+            "phone": u_dict.get("phone", ""),
+            "email": u_dict.get("email", ""),
+            "profile_image": prof_img,
+            "avatar_url": prof_img,
+            "avatar_base64": prof_img,
+            "address": u_dict.get("address", "")
+        }
     })
 
 
@@ -3658,7 +3695,6 @@ def customers_api_search():
 
 
 @app.route("/customers/api/profile")
-@login_required
 def customers_api_profile():
     phone = request.args.get("phone", "").strip()
     if not phone:
