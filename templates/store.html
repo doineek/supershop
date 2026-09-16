@@ -3,7 +3,53 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>{{ settings.shop_name or 'DOINEEK Supershop' }}</title>
+  <meta name="google-site-verification" content="S52jYAH-LyPkrHfAYLyPFH7JYErEmGnRNDGJHwu52QM">
+  <title>{{ settings.shop_name or 'DOINEEK Supershop' }} | Best Online Grocery & Daily Shopping</title>
+  <meta name="title" content="{{ settings.shop_name or 'DOINEEK Supershop' }} | Best Online Grocery & Daily Shopping">
+  <meta name="description" content="Order fresh groceries, daily essentials, foods, and household items from DOINEEK Supershop with fast home delivery and best prices across Bangladesh.">
+  <meta name="keywords" content="DOINEEK, doineek, doineek supershop, doineek shop, doineek grocery, online grocery bd, online supershop bangladesh, grocery delivery, daily essentials">
+  <meta name="author" content="{{ settings.shop_name or 'DOINEEK Supershop' }}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://doineek.onrender.com/">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ settings.shop_name or 'DOINEEK Supershop' }}">
+  <meta property="og:url" content="https://doineek.onrender.com/">
+  <meta property="og:title" content="{{ settings.shop_name or 'DOINEEK Supershop' }} | Online Grocery & Shopping">
+  <meta property="og:description" content="Order daily groceries, fresh food, and household items from DOINEEK Supershop with fast home delivery.">
+  <meta property="og:image" content="https://doineek.onrender.com/static/images/logo.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://doineek.onrender.com/">
+  <meta name="twitter:title" content="{{ settings.shop_name or 'DOINEEK Supershop' }}">
+  <meta name="twitter:description" content="Order daily groceries, fresh food, and household items from DOINEEK Supershop with fast home delivery.">
+  <meta name="twitter:image" content="https://doineek.onrender.com/static/images/logo.png">
+
+  <!-- Schema.org JSON-LD for Google Rich Results -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "GroceryStore",
+    "name": "{{ settings.shop_name or 'DOINEEK Supershop' }}",
+    "url": "https://doineek.onrender.com/",
+    "logo": "https://doineek.onrender.com/static/images/logo.png",
+    "image": "https://doineek.onrender.com/static/images/logo.png",
+    "description": "Online supermarket and grocery store providing fresh products, combo packages, and fast home delivery in Bangladesh.",
+    {% if settings.shop_phone %}"telephone": "{{ settings.shop_phone }}",{% endif %}
+    {% if settings.shop_address %}"address": {
+      "@type": "PostalAddress",
+      "streetAddress": "{{ settings.shop_address }}"
+    },{% endif %}
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://doineek.onrender.com/?search={search_term_string}",
+      "query-input": "required name=search_term_string"
+    }
+  }
+  </script>
+
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon.png') }}?v=5">
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=5">
   <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}?v=5">

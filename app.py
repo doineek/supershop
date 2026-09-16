@@ -9284,16 +9284,53 @@ def api_force_push():
 
 @app.route("/robots.txt")
 def robots_txt():
-    """Block web crawlers & bots from downloading the heavy 54MB APK and hitting API routes."""
+    """Allow crawlers on public store, while blocking heavy downloads, internal admin and API routes."""
+    host_url = request.host_url.rstrip('/')
     content = (
         "User-agent: *\n"
+        "Allow: /\n"
+        "Allow: /store\n"
         "Disallow: /download-apk\n"
         "Disallow: /apk\n"
         "Disallow: /download/apk\n"
         "Disallow: /static/apk/\n"
         "Disallow: /api/\n"
+        "Disallow: /admin\n"
+        "Disallow: /pos\n"
+        "Disallow: /dashboard\n"
+        f"Sitemap: {host_url}/sitemap.xml\n"
     )
     return Response(content, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """Dynamically generate sitemap.xml for Google Search Console and web crawlers."""
+    host_url = request.host_url.rstrip('/')
+    now_str = datetime.now().strftime("%Y-%m-%d")
+
+    # Main public pages
+    pages = [
+        {"loc": f"{host_url}/", "lastmod": now_str, "changefreq": "daily", "priority": "1.0"},
+        {"loc": f"{host_url}/store", "lastmod": now_str, "changefreq": "daily", "priority": "0.9"},
+        {"loc": f"{host_url}/data-deletion", "lastmod": now_str, "changefreq": "monthly", "priority": "0.3"},
+    ]
+
+    xml_lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+    ]
+    for p in pages:
+        xml_lines.append("  <url>")
+        xml_lines.append(f"    <loc>{p['loc']}</loc>")
+        xml_lines.append(f"    <lastmod>{p['lastmod']}</lastmod>")
+        xml_lines.append(f"    <changefreq>{p['changefreq']}</changefreq>")
+        xml_lines.append(f"    <priority>{p['priority']}</priority>")
+        xml_lines.append("  </url>")
+
+    xml_lines.append('</urlset>')
+    xml_content = "\n".join(xml_lines)
+    return Response(xml_content, mimetype="application/xml")
 
 
 @app.route("/download-apk")
