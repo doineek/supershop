@@ -19,6 +19,8 @@ import 'profile_screen.dart';
 import '../delivery/delivery_home_screen.dart';
 import '../admin/admin_hub_screen.dart';
 import '../auth/login_screen.dart';
+import '../../services/notification_service.dart';
+import '../../widgets/notification_dropdown_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -62,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    NotificationService.instance.init();
     _loadCachedDataInstantly();
     _loadUserProfile();
     _loadAllData(retryIfEmpty: true);
@@ -72,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // Automatically refresh data when app returns from background
       _loadAllData(retryIfEmpty: true);
+      NotificationService.instance.fetchNotifications();
     }
   }
 
@@ -517,13 +521,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         const Icon(Icons.arrow_drop_down, size: 14, color: Colors.white70),
                       ],
                     ),
-                  )
+                  ),
                 ],
               ),
             ),
           ],
         ),
-        actions: const [],
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ValueListenableBuilder<int>(
+              valueListenable: NotificationService.instance.unreadCountNotifier,
+              builder: (context, unreadCount, _) {
+                return Center(
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 23),
+                          tooltip: "Notifications",
+                          onPressed: () {
+                            NotificationDropdownDialog.show(
+                              context,
+                              allProducts: _allProducts,
+                              onSelectTab: (tab) {
+                                if (tab == 'offers') {
+                                  setState(() {
+                                    _selectedTab = 'offers';
+                                  });
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          top: -2,
+                          right: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFF6B21A8), width: 1.5),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                            child: Center(
+                              child: Text(
+                                unreadCount > 99 ? '99+' : '$unreadCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
       body: Builder(
         builder: (context) {

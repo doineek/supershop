@@ -308,6 +308,24 @@ def init_db():
         created_at TEXT NOT NULL,
         FOREIGN KEY (rider_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS customer_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_phone TEXT DEFAULT '',
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'general',
+        reference_id TEXT DEFAULT '',
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_notification_reads (
+        notification_id INTEGER,
+        customer_phone TEXT,
+        read_at TEXT,
+        PRIMARY KEY(notification_id, customer_phone)
+    );
     """)
 
     migrations = [
@@ -784,3 +802,203 @@ def restore_system_snapshot(snapshot_id_or_time, conn=None):
     finally:
         if close_conn:
             conn.close()
+
+
+def add_customer_notification(customer_phone, title, message, notif_type="general", reference_id="", conn=None):
+    """Inserts a new notification for a customer (or broadcast if customer_phone is empty)."""
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        now_str = datetime.now().isoformat()
+        cur = conn.execute(
+            """INSERT INTO customer_notifications (customer_phone, title, message, type, reference_id, is_read, created_at)
+               VALUES (?, ?, ?, ?, ?, 0, ?)""",
+            (customer_phone or "", title, message, notif_type, str(reference_id or ""), now_str)
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def get_customer_notifications(customer_phone="", limit=60, conn=None):
+    """
+    Fetches notifications for a customer (their personal notifications + broadcast notifications).
+    Calculates whether the broadcast notifications have been read by checking customer_notification_reads.
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        phone = (customer_phone or "").strip()
+        if phone:
+            rows = conn.execute("""
+                SELECT n.*,
+                       CASE
+                           WHEN n.customer_phone = ? THEN n.is_read
+                           ELSE CASE WHEN r.notification_id IS NOT NULL THEN 1 ELSE 0 END
+                       END AS effective_is_read
+                FROM customer_notifications n
+                LEFT JOIN customer_notification_reads r
+                       ON n.id = r.notification_id AND r.customer_phone = ?
+                WHERE n.customer_phone = ? OR n.customer_phone = '' OR n.customer_phone IS NULL
+                ORDER BY n.id DESC
+                LIMIT ?
+            """, (phone, phone, phone, limit)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT n.*, n.is_read AS effective_is_read
+                FROM customer_notifications n
+                WHERE n.customer_phone = '' OR n.customer_phone IS NULL
+                ORDER BY n.id DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+
+        results = []
+        for r in rows:
+            results.append({
+                "id": r["id"],
+                "customer_phone": r["customer_phone"],
+                "title": r["title"],
+                "message": r["message"],
+                "type": r["type"],
+                "reference_id": r["reference_id"],
+                "is_read": int(r["effective_is_read"]),
+                "created_at": r["created_at"]
+            })
+        return results
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def mark_notification_as_read(notif_id, customer_phone="", conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        phone = (customer_phone or "").strip()
+        now_str = datetime.now().isoformat()
+        row = conn.execute("SELECT * FROM customer_notifications WHERE id = ?", (notif_id,)).fetchone()
+        if row:
+            if row["customer_phone"] and row["customer_phone"] == phone:
+                conn.execute("UPDATE customer_notifications SET is_read = 1 WHERE id = ?", (notif_id,))
+            elif not row["customer_phone"] and phone:
+                conn.execute("INSERT OR IGNORE INTO customer_notification_reads (notification_id, customer_phone, read_at) VALUES (?, ?, ?)", (notif_id, phone, now_str))
+            else:
+                conn.execute("UPDATE customer_notifications SET is_read = 1 WHERE id = ?", (notif_id,))
+        conn.commit()
+        return True
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def mark_all_notifications_as_read(customer_phone="", conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        phone = (customer_phone or "").strip()
+        now_str = datetime.now().isoformat()
+        if phone:
+            conn.execute("UPDATE customer_notifications SET is_read = 1 WHERE customer_phone = ?", (phone,))
+            broadcast_rows = conn.execute("SELECT id FROM customer_notifications WHERE customer_phone = '' OR customer_phone IS NULL").fetchall()
+            for b in broadcast_rows:
+                conn.execute("INSERT OR IGNORE INTO customer_notification_reads (notification_id, customer_phone, read_at) VALUES (?, ?, ?)", (b["id"], phone, now_str))
+        else:
+            conn.execute("UPDATE customer_notifications SET is_read = 1 WHERE customer_phone = '' OR customer_phone IS NULL")
+        conn.commit()
+        return True
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def clear_customer_notifications(customer_phone="", conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        phone = (customer_phone or "").strip()
+        if phone:
+            conn.execute("DELETE FROM customer_notifications WHERE customer_phone = ?", (phone,))
+            broadcast_rows = conn.execute("SELECT id FROM customer_notifications WHERE customer_phone = '' OR customer_phone IS NULL").fetchall()
+            now_str = datetime.now().isoformat()
+            for b in broadcast_rows:
+                conn.execute("INSERT OR IGNORE INTO customer_notification_reads (notification_id, customer_phone, read_at) VALUES (?, ?, ?)", (b["id"], phone, now_str))
+        conn.commit()
+        return True
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def get_portal_notifications(limit=60, conn=None):
+    """
+    Fetches all notifications (all online orders, offers, daily suggestions) for the admin/staff portal.
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        rows = conn.execute("""
+            SELECT n.*
+            FROM customer_notifications n
+            ORDER BY n.id DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+        results = []
+        for r in rows:
+            results.append({
+                "id": r["id"],
+                "customer_phone": r["customer_phone"],
+                "title": r["title"],
+                "message": r["message"],
+                "type": r["type"],
+                "reference_id": r["reference_id"],
+                "is_read": int(r["is_read"] or 0),
+                "created_at": r["created_at"]
+            })
+        return results
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def mark_all_portal_notifications_as_read(conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        conn.execute("UPDATE customer_notifications SET is_read = 1")
+        conn.commit()
+        return True
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def clear_portal_notifications(conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        conn.execute("DELETE FROM customer_notifications")
+        conn.commit()
+        return True
+    finally:
+        if close_conn:
+            conn.close()
+

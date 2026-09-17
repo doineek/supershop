@@ -30,7 +30,10 @@ if sys.platform == "win32":
 
 from database import (
     get_connection, init_db, round_to_whole, create_product_units,
-    generate_invoice_number, get_all_settings, update_settings, execute_with_retry
+    generate_invoice_number, get_all_settings, update_settings, execute_with_retry,
+    add_customer_notification, get_customer_notifications, mark_notification_as_read,
+    mark_all_notifications_as_read, clear_customer_notifications,
+    get_portal_notifications, mark_all_portal_notifications_as_read, clear_portal_notifications
 )
 from barcode_utils import generate_barcode_svg
 import remote_control
@@ -6771,6 +6774,107 @@ def online_orders():
     return render_template("online_orders.html", orders=orders_list, riders=riders)
 
 
+def notify_order_status_change(order_row_or_dict, new_status, conn=None):
+    if not order_row_or_dict:
+        return
+    phone = order_row_or_dict.get("customer_phone") if isinstance(order_row_or_dict, dict) else order_row_or_dict["customer_phone"]
+    order_number = order_row_or_dict.get("order_number") if isinstance(order_row_or_dict, dict) else order_row_or_dict["order_number"]
+    if not phone:
+        return
+
+    status_titles = {
+        "verified": "Order Confirmed",
+        "packed": "Order Packed",
+        "on_the_way": "Order On The Way",
+        "delivered": "Order Delivered",
+        "cancelled": "Order Cancelled",
+    }
+    status_messages = {
+        "verified": f"Your order #{order_number} is confirmed and is being prepared with care.",
+        "packed": f"Your order #{order_number} has been packed and is ready for dispatch.",
+        "on_the_way": f"Great news! Your order #{order_number} is on the way. Our rider is heading to your address.",
+        "delivered": f"Your order #{order_number} has been delivered successfully. Thank you for shopping with DOINEEK!",
+        "cancelled": f"Your order #{order_number} has been cancelled.",
+    }
+    if new_status in status_titles:
+        add_customer_notification(
+            customer_phone=phone,
+            title=status_titles[new_status],
+            message=status_messages[new_status],
+            notif_type="order",
+            reference_id=str(order_number),
+            conn=conn
+        )
+
+
+def ensure_daily_suggestions_and_offers(conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    try:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        # 1. Daily product suggestion
+        chk_sugg = conn.execute(
+            "SELECT id FROM customer_notifications WHERE type = 'suggestion' AND created_at LIKE ?",
+            (f"{today_str}%",)
+        ).fetchone()
+        if not chk_sugg:
+            prod = conn.execute("""
+                SELECT id, name, sell_price, unit, image_url 
+                FROM products 
+                WHERE stock_qty > 0 
+                ORDER BY is_trending DESC, is_flash_sale DESC, RANDOM() 
+                LIMIT 1
+            """).fetchone()
+            if prod:
+                unit_str = f" / {prod['unit']}" if prod["unit"] else ""
+                add_customer_notification(
+                    customer_phone="",
+                    title="💡 Daily Suggested Product",
+                    message=f"Today's recommended pick: '{prod['name']}' at TK {prod['sell_price']}{unit_str}! Fresh stock ready for delivery.",
+                    notif_type="suggestion",
+                    reference_id=str(prod["id"]),
+                    conn=conn
+                )
+
+        # 2. Active offers notification (every 2 days or if new)
+        chk_offer = conn.execute(
+            "SELECT id FROM customer_notifications WHERE type = 'offer' AND created_at >= ?",
+            ((datetime.now() - timedelta(days=2)).isoformat(),)
+        ).fetchone()
+        if not chk_offer:
+            voucher = conn.execute("SELECT * FROM vouchers WHERE active = 1 ORDER BY id DESC LIMIT 1").fetchone()
+            if voucher:
+                disc_str = f"{voucher['discount_value']}%" if voucher["discount_type"] == "percentage" else f"TK {voucher['discount_value']}"
+                add_customer_notification(
+                    customer_phone="",
+                    title=f"🏷️ Exclusive Offer: {voucher['code']}",
+                    message=f"Save {disc_str} on your order today! Use voucher code '{voucher['code']}' during checkout.",
+                    notif_type="offer",
+                    reference_id=str(voucher["code"]),
+                    conn=conn
+                )
+            else:
+                pkg = conn.execute("SELECT * FROM packages WHERE is_active = 1 LIMIT 1").fetchone()
+                if pkg:
+                    add_customer_notification(
+                        customer_phone="",
+                        title=f"🏷️ Special Combo Deal: {pkg['name']}",
+                        message=f"Get '{pkg['name']}' bundle for only TK {pkg['package_price']}! Save big when ordering packages today.",
+                        notif_type="offer",
+                        reference_id=str(pkg["id"]),
+                        conn=conn
+                    )
+        if close_conn:
+            conn.commit()
+    except Exception as e:
+        print(f"[notifications] ensure_daily_suggestions_and_offers error: {e}")
+    finally:
+        if close_conn:
+            conn.close()
+
+
 @app.route("/online_orders/<int:order_id>/assign_rider", methods=["POST"])
 @login_required
 def assign_online_order_rider(order_id):
@@ -6795,6 +6899,7 @@ def assign_online_order_rider(order_id):
         (rider_id or 0, rider_name, rider_phone, datetime.now().isoformat(), order_id)
     )
     deduct_online_order_stock(conn, order)
+    notify_order_status_change(order, 'verified', conn=conn)
     conn.commit()
     conn.close()
 
@@ -6827,6 +6932,7 @@ def api_rider_accept_order():
         (rider_name if rider_name else rider_phone, rider_phone, datetime.now().isoformat(), order_id)
     )
     deduct_online_order_stock(conn, order)
+    notify_order_status_change(order, 'verified', conn=conn)
     conn.commit()
     conn.close()
 
@@ -6864,6 +6970,7 @@ def api_rider_update_order_status():
             "UPDATE online_orders SET order_status = ?, payment_status = CASE WHEN payment_status = 'pending' THEN 'paid' ELSE payment_status END, rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
             (status, r_fee, datetime.now().isoformat(), order_id)
         )
+        notify_order_status_change(order, status, conn=conn)
         conn.commit()
     elif status in ["verified", "packed", "on_the_way", "cancelled"]:
         conn.execute(
@@ -6872,6 +6979,7 @@ def api_rider_update_order_status():
         )
         if status == "verified" and order["is_stock_deducted"] == 0:
             deduct_online_order_stock(conn, order)
+        notify_order_status_change(order, status, conn=conn)
         conn.commit()
 
     conn.close()
@@ -7038,6 +7146,7 @@ def update_online_order_status(order_id):
     elif new_status == "cancelled":
         restore_online_order_stock(conn, order)
 
+    notify_order_status_change(order, new_status, conn=conn)
     conn.commit()
     conn.close()
     if order["customer_phone"]:
@@ -7205,13 +7314,14 @@ def api_online_customer_search():
 def verify_online_order_otp(order_id):
     input_otp = request.form.get("otp", "").strip()
     conn = get_connection()
-    order = conn.execute("SELECT delivery_otp FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
     if order and order["delivery_otp"] == input_otp:
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
             "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
             (r_fee, datetime.now().isoformat(), order_id)
         )
+        notify_order_status_change(order, 'delivered', conn=conn)
         conn.commit()
         conn.close()
         remote_control.push_online_order_to_cloud(order_id)
@@ -7893,6 +8003,15 @@ def api_place_order():
         except Exception as e:
             print("[order_place] Error auto-saving customer photo:", e)
 
+    add_customer_notification(
+        clean_phone,
+        "Order Placed Successfully",
+        f"Thank you {customer_name}! Your order #{order_number} for TK {total_amount:,.2f} has been received.",
+        "order",
+        str(order_number),
+        conn=conn
+    )
+
     conn.commit()
     conn.close()
 
@@ -7938,6 +8057,66 @@ def api_pending_orders_count():
         "latest_name": latest_name,
         "latest_amount": latest_amount
     })
+
+
+@app.route("/api/notifications", methods=["GET"])
+def api_get_notifications():
+    phone = request.args.get("phone", "").strip()
+    is_portal = (session.get("user_id") is not None) or (request.args.get("for_portal") == "1") or (request.args.get("for_staff") == "1")
+    conn = get_connection()
+    try:
+        ensure_daily_suggestions_and_offers(conn)
+        if is_portal and not phone:
+            notifs = get_portal_notifications(limit=60, conn=conn)
+        else:
+            notifs = get_customer_notifications(phone, limit=60, conn=conn)
+        unread_count = sum(1 for n in notifs if n.get("is_read") == 0)
+        return jsonify({
+            "success": True,
+            "unread_count": unread_count,
+            "notifications": notifs
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/notifications/mark-read", methods=["POST"])
+def api_mark_notification_read():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    notif_id = data.get("id")
+    is_portal = (session.get("user_id") is not None) or (data.get("for_portal") is True)
+    conn = get_connection()
+    try:
+        if notif_id == "all" or notif_id is None:
+            if is_portal and not phone:
+                mark_all_portal_notifications_as_read(conn=conn)
+            else:
+                mark_all_notifications_as_read(phone, conn=conn)
+        else:
+            mark_notification_as_read(int(notif_id), phone, conn=conn)
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.route("/api/notifications/clear", methods=["POST"])
+def api_clear_notifications():
+    data = request.json or {}
+    phone = data.get("phone", "").strip()
+    is_portal = (session.get("user_id") is not None) or (data.get("for_portal") is True)
+    conn = get_connection()
+    try:
+        if is_portal and not phone:
+            clear_portal_notifications(conn=conn)
+        else:
+            clear_customer_notifications(phone, conn=conn)
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
 
 
 @app.route("/api/orders/my-orders", methods=["GET"])
@@ -8037,6 +8216,7 @@ def api_cancel_order():
         "UPDATE online_orders SET order_status = 'cancelled', updated_at = ? WHERE id = ?",
         (datetime.now().isoformat(), order["id"])
     )
+    notify_order_status_change(order, 'cancelled', conn=conn)
     conn.commit()
     conn.close()
     remote_control.push_online_order_to_cloud(order["id"])
@@ -8254,13 +8434,14 @@ def api_verify_otp():
     otp = data.get("otp", "").strip()
 
     conn = get_connection()
-    order = conn.execute("SELECT id, delivery_otp FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+    order = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
     if order and order["delivery_otp"] == otp:
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
             "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
             (r_fee, datetime.now().isoformat(), order["id"])
         )
+        notify_order_status_change(order, 'delivered', conn=conn)
         conn.commit()
         conn.close()
         remote_control.push_online_order_to_cloud(order["id"])

@@ -202,6 +202,21 @@ def delete_customer_from_cloud(phone):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def push_notification_to_cloud(notif_dict):
+    """Mirror customer notification to Firestore in background."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db or not notif_dict:
+                return
+            nid = str(notif_dict.get("id") or int(time.time() * 1000))
+            db.collection("customer_notifications").document(nid).set(notif_dict)
+        except Exception as e:
+            print(f"[remote_control] push_notification_to_cloud failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+
 def _worker_push_product(product_id):
     try:
         db = _init_firebase()

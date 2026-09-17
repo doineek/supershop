@@ -16,6 +16,182 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  .portal-notif-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .portal-notif-btn {
+    position: relative;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    padding: 0;
+  }
+  .portal-notif-btn:hover {
+    background: rgba(255, 255, 255, 0.28);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  .portal-notif-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #EF4444;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #4C1D95;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    animation: portalNotifPulse 2s infinite;
+  }
+  @keyframes portalNotifPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+  }
+  .portal-notif-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 380px;
+    max-width: 92vw;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 16px 45px rgba(0, 0, 0, 0.28);
+    border: 1px solid #E2E8F0;
+    z-index: 999999;
+    overflow: hidden;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    animation: portalDropFade 0.2s ease-out;
+  }
+  @keyframes portalDropFade {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .portal-notif-header {
+    padding: 12px 14px;
+    background: #F8FAFC;
+    border-bottom: 1px solid #E2E8F0;
+  }
+  .portal-notif-pill {
+    background: #EDE9FE;
+    color: #6D28D9;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+  }
+  .portal-notif-text-btn {
+    background: none;
+    border: none;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #6D28D9;
+    cursor: pointer;
+    padding: 0;
+  }
+  .portal-notif-text-btn:hover {
+    text-decoration: underline;
+  }
+  .portal-notif-body {
+    max-height: 380px;
+    overflow-y: auto;
+  }
+  .portal-notif-item {
+    padding: 11px 13px;
+    border-bottom: 1px solid #F1F5F9;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    cursor: pointer;
+    transition: background 0.15s;
+    text-align: left;
+  }
+  .portal-notif-item.unread {
+    background: #FAF5FF;
+    border-left: 4px solid #7C3AED;
+  }
+  .portal-notif-item.read {
+    background: #FFFFFF;
+    border-left: 4px solid transparent;
+    opacity: 0.85;
+  }
+  .portal-notif-item:hover {
+    background: #F3E8FF !important;
+  }
+  .portal-notif-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .portal-notif-item.unread .portal-notif-icon {
+    background: #EDE9FE;
+  }
+  .portal-notif-item.read .portal-notif-icon {
+    background: #F1F5F9;
+  }
+  .portal-notif-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #0F172A;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .portal-notif-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #7C3AED;
+    display: inline-block;
+  }
+  .portal-notif-desc {
+    font-size: 11.5px;
+    color: #64748B;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  .portal-notif-time {
+    font-size: 10px;
+    color: #94A3B8;
+    margin-top: 3px;
+    font-weight: 600;
+  }
+  .portal-notif-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: #64748B;
+  }
+  .portal-notif-footer {
+    padding: 8px 14px;
+    background: #F8FAFC;
+    border-top: 1px solid #E2E8F0;
+    text-align: center;
+  }
+</style>
 {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -30,6 +206,39 @@
     </div>
   </div>
   <div class="topbar-actions">
+    <!-- Portal Notifications Bell with Dropdown -->
+    <div class="portal-notif-wrapper">
+      <button type="button" class="portal-notif-btn" id="portalNotifBtn" onclick="togglePortalNotifications(event)" title="Notifications" aria-label="Notifications">
+        <span style="font-size: 16px; line-height: 1;">🔔</span>
+        <span class="portal-notif-badge" id="portalNotifBadge" style="display:none;">0</span>
+      </button>
+
+      <!-- Portal Dropdown Panel -->
+      <div class="portal-notif-dropdown" id="portalNotifDropdown" style="display:none;" onclick="event.stopPropagation()">
+        <div class="portal-notif-header">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-weight:800; font-size:13.5px; color:#0f172a; display:flex; align-items:center; gap:6px;">
+              <span>🔔 Notifications</span>
+              <span class="portal-notif-pill" id="portalNotifPill">0 New</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button type="button" class="portal-notif-text-btn" onclick="markAllPortalNotificationsRead()">Mark all as read</button>
+              <span style="color:#cbd5e1; font-size: 11px;">•</span>
+              <button type="button" class="portal-notif-text-btn" onclick="clearAllPortalNotifications()" style="color:#ef4444;">Clear</button>
+            </div>
+          </div>
+        </div>
+        <div class="portal-notif-body" id="portalNotifBody">
+          <!-- Dynamically populated via fetchPortalNotifications() -->
+        </div>
+        <div class="portal-notif-footer">
+          <a href="{{ url_for('online_orders') }}" style="color:#6d28d9; font-weight:700; font-size:12px; text-decoration:none;">
+            View Online Orders →
+          </a>
+        </div>
+      </div>
+    </div>
+
     <a href="{{ url_for('store_front') }}" target="_blank" class="topbar-btn topbar-btn-store">
       Customer Store
     </a>
@@ -190,6 +399,9 @@
         }, 8000);
       }
 
+      // Refresh portal notifications
+      fetchPortalNotifications();
+
       // If currently on online_orders page, reload table immediately
       if (window.location.pathname.includes('/online_orders')) {
         setTimeout(function() {
@@ -233,6 +445,190 @@
       // Check immediately on load, then poll every 5 seconds
       checkGlobalPendingOrders();
       setInterval(checkGlobalPendingOrders, 5000);
+
+      // Portal Notifications Center
+      fetchPortalNotifications();
+      setInterval(fetchPortalNotifications, 10000);
+    });
+
+    // ========================================================
+    // PORTAL NOTIFICATION CENTER LOGIC
+    // ========================================================
+    let portalNotifications = [];
+    let portalUnreadCount = 0;
+
+    function escapePortalHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function formatPortalTime(dtStr) {
+      if (!dtStr) return 'Just now';
+      try {
+        const dt = new Date(dtStr);
+        const now = new Date();
+        const diffSec = Math.floor((now - dt) / 1000);
+        if (diffSec < 60) return 'Just now';
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return diffMin + 'm ago';
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return diffHr + 'h ago';
+        const diffDays = Math.floor(diffHr / 24);
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) return diffDays + 'd ago';
+        return dt.toLocaleDateString();
+      } catch (e) {
+        return 'Recently';
+      }
+    }
+
+    async function fetchPortalNotifications() {
+      try {
+        const res = await fetch('/api/notifications?for_portal=1');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            portalNotifications = data.notifications || [];
+            portalUnreadCount = data.unread_count || 0;
+            renderPortalNotifications();
+          }
+        }
+      } catch (e) {
+        console.error('fetchPortalNotifications error:', e);
+      }
+    }
+
+    function renderPortalNotifications() {
+      const badge = document.getElementById('portalNotifBadge');
+      const pill = document.getElementById('portalNotifPill');
+      const body = document.getElementById('portalNotifBody');
+      if (!badge || !body) return;
+
+      const unread = portalNotifications.filter(n => !n.is_read).length;
+      portalUnreadCount = unread;
+
+      if (unread > 0) {
+        badge.textContent = unread > 99 ? '99+' : unread;
+        badge.style.display = 'flex';
+        if (pill) pill.textContent = unread + ' New';
+      } else {
+        badge.style.display = 'none';
+        if (pill) pill.textContent = '0 New';
+      }
+
+      if (!portalNotifications || portalNotifications.length === 0) {
+        body.innerHTML = `
+          <div class="portal-notif-empty">
+            <div style="font-size: 26px; margin-bottom: 6px;">🔔</div>
+            <div style="font-weight: 700; color: #0f172a; font-size: 13px;">No notifications yet</div>
+            <div style="font-size: 11.5px; color: #64748b; margin-top: 3px;">Online order updates and alerts will appear here.</div>
+          </div>
+        `;
+        return;
+      }
+
+      body.innerHTML = portalNotifications.map(n => {
+        let icon = '🔔';
+        if (n.type === 'order') {
+          const title = n.title || '';
+          if (title.includes('Delivered')) icon = '✅';
+          else if (title.includes('Way')) icon = '🛵';
+          else if (title.includes('Packed')) icon = '📦';
+          else if (title.includes('Confirmed')) icon = '✔️';
+          else if (title.includes('Cancelled')) icon = '❌';
+          else icon = '🛍️';
+        } else if (n.type === 'offer') {
+          icon = '🏷️';
+        } else if (n.type === 'suggestion') {
+          icon = '💡';
+        }
+
+        const isUnread = !n.is_read;
+        const timeAgo = formatPortalTime(n.created_at);
+
+        return `
+          <div class="portal-notif-item ${isUnread ? 'unread' : 'read'}" onclick="handlePortalNotifClick(${n.id}, '${n.type || 'general'}', '${n.reference_id || ''}')">
+            <div class="portal-notif-icon">${icon}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div class="portal-notif-title">
+                <span>${escapePortalHtml(n.title || 'Notification')}</span>
+                ${isUnread ? '<span class="portal-notif-dot"></span>' : ''}
+              </div>
+              <div class="portal-notif-desc">${escapePortalHtml(n.message || '')}</div>
+              <div class="portal-notif-time">${timeAgo}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    window.togglePortalNotifications = function(e) {
+      if (e) e.stopPropagation();
+      const dropdown = document.getElementById('portalNotifDropdown');
+      if (!dropdown) return;
+      const isOpen = dropdown.style.display === 'block';
+      if (isOpen) {
+        dropdown.style.display = 'none';
+      } else {
+        dropdown.style.display = 'block';
+        fetchPortalNotifications();
+      }
+    };
+
+    window.handlePortalNotifClick = async function(notifId, type, refId) {
+      const notif = portalNotifications.find(n => n.id === notifId);
+      if (notif && !notif.is_read) {
+        notif.is_read = 1;
+        renderPortalNotifications();
+        fetch('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: notifId, for_portal: true })
+        }).catch(() => {});
+      }
+
+      const dropdown = document.getElementById('portalNotifDropdown');
+      if (dropdown) dropdown.style.display = 'none';
+
+      if (type === 'order') {
+        window.location.href = '/online_orders';
+      } else if (type === 'offer') {
+        window.location.href = '/offers';
+      }
+    };
+
+    window.markAllPortalNotificationsRead = async function() {
+      portalNotifications.forEach(n => n.is_read = 1);
+      renderPortalNotifications();
+      try {
+        await fetch('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'all', for_portal: true })
+        });
+      } catch (e) {}
+    };
+
+    window.clearAllPortalNotifications = async function() {
+      portalNotifications = [];
+      renderPortalNotifications();
+      try {
+        await fetch('/api/notifications/clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ for_portal: true })
+        });
+      } catch (e) {}
+    };
+
+    document.addEventListener('click', function(e) {
+      const dropdown = document.getElementById('portalNotifDropdown');
+      const btn = document.getElementById('portalNotifBtn');
+      if (dropdown && dropdown.style.display === 'block') {
+        if (!dropdown.contains(e.target) && (!btn || !btn.contains(e.target))) {
+          dropdown.style.display = 'none';
+        }
+      }
     });
   })();
 </script>
