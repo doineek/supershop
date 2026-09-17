@@ -540,11 +540,12 @@ def get_app_version_info():
     supershop_flutter_app/pubspec.yaml or static/flutter_web/version.json.
     Automatically stays in sync whenever the app is built or updated.
     """
-    version = "1.0.11"
-    build_number = "12"
+    version = "1.0.15"
+    build_number = "16"
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    found_in_pubspec = False
 
-    # 1. Read pubspec.yaml if present
+    # 1. Read pubspec.yaml if present (highest priority)
     pubspec_path = os.path.join(base_dir, "supershop_flutter_app", "pubspec.yaml")
     if os.path.exists(pubspec_path):
         try:
@@ -560,22 +561,24 @@ def get_app_version_info():
                         else:
                             version = val
                             build_number = ""
+                        found_in_pubspec = True
                         break
         except Exception:
             pass
 
-    # 2. Check static/flutter_web/version.json
-    v_json_path = os.path.join(base_dir, "static", "flutter_web", "version.json")
-    if os.path.exists(v_json_path):
-        try:
-            with open(v_json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if data.get("version"):
-                    version = str(data["version"]).strip()
-                if data.get("build_number") is not None:
-                    build_number = str(data["build_number"]).strip()
-        except Exception:
-            pass
+    # 2. Check static/flutter_web/version.json only if not found in pubspec.yaml
+    if not found_in_pubspec:
+        v_json_path = os.path.join(base_dir, "static", "flutter_web", "version.json")
+        if os.path.exists(v_json_path):
+            try:
+                with open(v_json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("version"):
+                        version = str(data["version"]).strip()
+                    if data.get("build_number") is not None:
+                        build_number = str(data["build_number"]).strip()
+            except Exception:
+                pass
 
     display = f"v{version} (Build {build_number})" if build_number else f"v{version}"
     full_title = f"Version {version} (Build {build_number}) • Official Release" if build_number else f"Version {version} • Official Release"
