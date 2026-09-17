@@ -555,8 +555,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               onSelectTab: (tab) {
                                 if (mounted) {
                                   setState(() {
+                                    _bottomNavIndex = 0;
+                                    _searchQuery = '';
                                     _selectedTab = tab;
                                   });
+                                  if (tab == 'packages' && _packagesList.isEmpty) {
+                                    _loadAllData(retryIfEmpty: false);
+                                  }
                                 }
                               },
                             );
