@@ -200,15 +200,17 @@ def main():
 
     save_token(token)
 
-    # Upload APK as supershop_latest.apk and supershop_{tag}.apk
-    success = upload_apk_to_github(token, tag, apk_path, "supershop_latest.apk")
+    # Upload APK as doineek_{tag}.apk and doineek_latest.apk
+    success = upload_apk_to_github(token, tag, apk_path, f"doineek_{tag}.apk")
     if success:
-        upload_apk_to_github(token, tag, apk_path, f"supershop_{tag}.apk")
+        upload_apk_to_github(token, tag, apk_path, "doineek_latest.apk")
+        upload_apk_to_github(token, tag, apk_path, "supershop_latest.apk")
         print("\n" + "=" * 60)
         print("  ALL DONE! Release is Live on GitHub CDN")
         print("=" * 60)
         print(f"Release Tag: {tag}")
-        print(f"Permanent Download URL: https://github.com/{REPO}/releases/latest/download/supershop_latest.apk")
+        print(f"Versioned Download URL: https://github.com/{REPO}/releases/download/{tag}/doineek_{tag}.apk")
+        print(f"Permanent Download URL: https://github.com/{REPO}/releases/latest/download/doineek_latest.apk")
         print(f"Render Bandwidth Consumed: 0 MB (100% saved!)")
         print("=" * 60)
 

@@ -616,6 +616,11 @@ def admin_required(view):
 @app.route("/login", methods=["GET", "POST"])
 @limiter.limit("10 per minute")
 def login():
+    if session.get("user_id"):
+        if session.get("role") == "delivery":
+            return redirect(url_for("online_orders"))
+        return redirect(url_for("dashboard"))
+
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
@@ -641,7 +646,12 @@ def login():
                     return redirect(url_for("online_orders"))
                 return redirect(url_for("dashboard"))
         flash("Wrong username or password.", "error")
-    return render_template("login.html")
+
+    resp = make_response(render_template("login.html"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route("/logout")
@@ -9546,10 +9556,10 @@ def download_app_apk():
     """
     settings = get_all_settings()
     ver = get_app_version()
-    filename = f"supershop_v{ver}.apk"
+    filename = f"doineek_v{ver}.apk"
 
     raw_ext_url = (os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "").strip()
-    if not raw_ext_url or "supershop_latest.apk" in raw_ext_url or "github.com/doineek/supershop/releases" in raw_ext_url:
+    if not raw_ext_url or "supershop" in raw_ext_url or "doineek" in raw_ext_url or "github.com/doineek/supershop/releases" in raw_ext_url:
         ext_url = f"https://github.com/doineek/supershop/releases/download/v{ver}/{filename}"
     else:
         ext_url = raw_ext_url

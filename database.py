@@ -601,7 +601,7 @@ DEFAULT_SETTINGS = {
     "app_version": "v1.0.15 (Build 16)",
     "app_version_short": "v1.0.15",
     "app_version_full": "Version 1.0.15 (Build 16) • Official Release",
-    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.15/supershop_v1.0.15.apk",
+    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.15/doineek_v1.0.15.apk",
 }
 
 
