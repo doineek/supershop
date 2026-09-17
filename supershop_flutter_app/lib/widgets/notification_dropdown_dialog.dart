@@ -101,7 +101,9 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
       Navigator.pop(context);
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const MyOrdersScreen()),
+        MaterialPageRoute(
+          builder: (_) => MyOrdersScreen(targetOrderNumber: notif.referenceId),
+        ),
       );
     } else if (notif.type == 'offer') {
       Navigator.pop(context);

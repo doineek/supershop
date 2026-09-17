@@ -336,6 +336,11 @@ def init_db():
         read_at TEXT,
         PRIMARY KEY(notification_id, customer_phone)
     );
+
+    CREATE TABLE IF NOT EXISTS customer_notification_clears (
+        customer_phone TEXT PRIMARY KEY,
+        cleared_at TEXT NOT NULL
+    );
     """)
 
     migrations = [
@@ -666,10 +671,10 @@ DEFAULT_SETTINGS = {
     "delivery_charge": "60",
     "product_image_bg_color": "#FFFFFF",
     "rider_delivery_fee": "50",
-    "app_version": "v1.0.15 (Build 16)",
-    "app_version_short": "v1.0.15",
-    "app_version_full": "Version 1.0.15 (Build 16) • Official Release",
-    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.15/doineek_v1.0.15.apk",
+    "app_version": "v1.0.17 (Build 18)",
+    "app_version_short": "v1.0.17",
+    "app_version_full": "Version 1.0.17 (Build 18) • Official Release",
+    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.17/doineek_v1.0.17.apk",
 }
 
 
@@ -907,6 +912,7 @@ def get_customer_notifications(customer_phone="", limit=60, conn=None):
     """
     Fetches notifications for a customer (their personal notifications + broadcast notifications).
     Calculates whether the broadcast notifications have been read by checking customer_notification_reads.
+    Respects customer_notification_clears to avoid returning cleared notifications.
     """
     close_conn = False
     if conn is None:
@@ -914,20 +920,45 @@ def get_customer_notifications(customer_phone="", limit=60, conn=None):
         close_conn = True
     try:
         phone = (customer_phone or "").strip()
+        cleared_at = ""
         if phone:
-            rows = conn.execute("""
-                SELECT n.*,
-                       CASE
-                           WHEN n.customer_phone = ? THEN n.is_read
-                           ELSE CASE WHEN r.notification_id IS NOT NULL THEN 1 ELSE 0 END
-                       END AS effective_is_read
-                FROM customer_notifications n
-                LEFT JOIN customer_notification_reads r
-                       ON n.id = r.notification_id AND r.customer_phone = ?
-                WHERE n.customer_phone = ? OR n.customer_phone = '' OR n.customer_phone IS NULL
-                ORDER BY n.id DESC
-                LIMIT ?
-            """, (phone, phone, phone, limit)).fetchall()
+            try:
+                clr_row = conn.execute("SELECT cleared_at FROM customer_notification_clears WHERE customer_phone = ?", (phone,)).fetchone()
+                if clr_row and clr_row["cleared_at"]:
+                    cleared_at = clr_row["cleared_at"]
+            except Exception:
+                pass
+
+        if phone:
+            if cleared_at:
+                rows = conn.execute("""
+                    SELECT n.*,
+                           CASE
+                               WHEN n.customer_phone = ? THEN n.is_read
+                               ELSE CASE WHEN r.notification_id IS NOT NULL THEN 1 ELSE 0 END
+                           END AS effective_is_read
+                    FROM customer_notifications n
+                    LEFT JOIN customer_notification_reads r
+                           ON n.id = r.notification_id AND r.customer_phone = ?
+                    WHERE (n.customer_phone = ? OR n.customer_phone = '' OR n.customer_phone IS NULL)
+                      AND n.created_at > ?
+                    ORDER BY n.id DESC
+                    LIMIT ?
+                """, (phone, phone, phone, cleared_at, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT n.*,
+                           CASE
+                               WHEN n.customer_phone = ? THEN n.is_read
+                               ELSE CASE WHEN r.notification_id IS NOT NULL THEN 1 ELSE 0 END
+                           END AS effective_is_read
+                    FROM customer_notifications n
+                    LEFT JOIN customer_notification_reads r
+                           ON n.id = r.notification_id AND r.customer_phone = ?
+                    WHERE n.customer_phone = ? OR n.customer_phone = '' OR n.customer_phone IS NULL
+                    ORDER BY n.id DESC
+                    LIMIT ?
+                """, (phone, phone, phone, limit)).fetchall()
         else:
             rows = conn.execute("""
                 SELECT n.*, n.is_read AS effective_is_read
@@ -1007,10 +1038,15 @@ def clear_customer_notifications(customer_phone="", conn=None):
         close_conn = True
     try:
         phone = (customer_phone or "").strip()
+        now_str = datetime.now().isoformat()
         if phone:
             conn.execute("DELETE FROM customer_notifications WHERE customer_phone = ?", (phone,))
+            conn.execute("""
+                INSERT INTO customer_notification_clears (customer_phone, cleared_at)
+                VALUES (?, ?)
+                ON CONFLICT(customer_phone) DO UPDATE SET cleared_at = excluded.cleared_at
+            """, (phone, now_str))
             broadcast_rows = conn.execute("SELECT id FROM customer_notifications WHERE customer_phone = '' OR customer_phone IS NULL").fetchall()
-            now_str = datetime.now().isoformat()
             for b in broadcast_rows:
                 conn.execute("INSERT OR IGNORE INTO customer_notification_reads (notification_id, customer_phone, read_at) VALUES (?, ?, ?)", (b["id"], phone, now_str))
         conn.commit()

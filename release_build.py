@@ -111,6 +111,8 @@ def upload_apk_to_github(token, tag, apk_path, asset_name):
             return False
         rel_data = create_res.json()
         print(f"Created release successfully (ID: {rel_data['id']})")
+        import time
+        time.sleep(5)
 
     upload_url = rel_data["upload_url"].split("{")[0]
 
@@ -119,28 +121,47 @@ def upload_apk_to_github(token, tag, apk_path, asset_name):
         if asset["name"] == asset_name:
             print(f"Replacing existing asset: {asset_name}...")
             requests.delete(asset["url"], headers=headers)
+            import time
+            time.sleep(3)
             break
 
-    file_size_mb = os.path.getsize(apk_path) / (1024 * 1024)
+    file_size = os.path.getsize(apk_path)
+    file_size_mb = file_size / (1024 * 1024)
     print(f"\n[2/2] Uploading {asset_name} ({file_size_mb:.1f} MB) directly to GitHub Releases...")
-    
-    with open(apk_path, "rb") as f:
-        up_headers = {
-            "Authorization": f"token {token}",
-            "Content-Type": "application/vnd.android.package-archive",
-            "User-Agent": "SuperShop-AutoReleaser"
-        }
-        up_res = requests.post(
-            f"{upload_url}?name={asset_name}",
-            headers=up_headers,
-            data=f
-        )
-        if up_res.status_code in (200, 201):
-            print(f"[SUCCESS] Uploaded {asset_name} successfully!")
+
+    # Use curl if available (handles large binary stream to GitHub Releases flawlessly)
+    import subprocess
+    import shutil
+    import time
+    curl_bin = shutil.which("curl.exe") or shutil.which("curl")
+    if curl_bin:
+        clean_path = os.path.abspath(apk_path).replace("\\", "/")
+        cmd = [
+            curl_bin,
+            "-s", "-S",
+            "-X", "POST",
+            "-H", f"Authorization: token {token}",
+            "-H", "Content-Type: application/vnd.android.package-archive",
+            "--data-binary", f"@{clean_path}",
+            f"{upload_url}?name={asset_name}"
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode == 0 and ('"state":' in proc.stdout or '"id":' in proc.stdout):
+            print(f"[SUCCESS] Uploaded {asset_name} successfully via curl!")
             return True
         else:
-            print(f"[FAIL] Upload failed: {up_res.status_code} - {up_res.text}")
-            return False
+            print(f"curl response: {proc.stdout[:200]} {proc.stderr[:200]}")
+            print("Retrying upload in 5 seconds...")
+            time.sleep(5)
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode == 0 and ('"state":' in proc.stdout or '"id":' in proc.stdout):
+                print(f"[SUCCESS] Uploaded {asset_name} successfully via curl on retry!")
+                return True
+            else:
+                print(f"curl retry response: {proc.stdout[:200]} {proc.stderr[:200]}")
+                return False
+
+    return False
 
 def main():
     parser = argparse.ArgumentParser(description="SuperShop Automated APK Release Tool")

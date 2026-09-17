@@ -336,14 +336,18 @@ class _CartScreenState extends State<CartScreen> {
     });
 
     List<Map<String, dynamic>> cartPayload = cartProv.items.map((item) {
+      final isPkg = item.product.isPackage;
+      final int pkgId = item.product.packageId ?? (isPkg ? item.product.id.abs() : 0);
       return {
-        'product_id': item.product.id,
-        'id': item.product.id,
+        'product_id': isPkg ? pkgId : item.product.id,
+        'id': isPkg ? pkgId : item.product.id,
         'product_name': item.product.name,
         'name': item.product.name,
         'quantity': item.quantity,
         'unit_price': item.product.sellPrice,
         'mrp_price': item.product.mrp,
+        'is_package': isPkg,
+        'package_id': isPkg ? pkgId : null,
       };
     }).toList();
 
@@ -613,13 +617,13 @@ class _CartScreenState extends State<CartScreen> {
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.remove_circle_outline, size: 20),
-                                onPressed: () => cartProv.updateQuantity(item.product.id, item.quantity - 1),
+                                onPressed: () => cartProv.updateQuantity(item.product.id, item.quantity - 1, isPackage: item.product.isPackage),
                               ),
                               Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline, size: 20),
                                 onPressed: () {
-                                  bool ok = cartProv.updateQuantity(item.product.id, item.quantity + 1);
+                                  bool ok = cartProv.updateQuantity(item.product.id, item.quantity + 1, isPackage: item.product.isPackage);
                                   if (!ok) {
                                     showQuantityLimitDialog(context, cartProv.lastError ?? 'Cannot add more: only ${item.product.stockQty} available in stock.');
                                   }

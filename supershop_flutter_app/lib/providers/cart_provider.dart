@@ -184,7 +184,7 @@ class CartProvider extends ChangeNotifier {
     bool isPkg = product.isPackage || product.name.startsWith('📦');
     int maxLimit = isPkg ? _maxOrderQtyPackage : _maxOrderQtyProduct;
 
-    int index = _items.indexWhere((i) => i.product.id == product.id);
+    int index = _items.indexWhere((i) => i.product.id == product.id && (i.product.isPackage == isPkg));
     int currentQty = index >= 0 ? _items[index].quantity : 0;
 
     if (maxLimit > 0 && (currentQty + 1) > maxLimit) {
@@ -206,9 +206,14 @@ class CartProvider extends ChangeNotifier {
     return true;
   }
 
-  bool updateQuantity(int productId, int quantity) {
+  bool updateQuantity(int productId, int quantity, {bool? isPackage}) {
     _lastError = null;
-    int index = _items.indexWhere((i) => i.product.id == productId);
+    int index;
+    if (isPackage != null) {
+      index = _items.indexWhere((i) => i.product.id == productId && (i.product.isPackage == isPackage));
+    } else {
+      index = _items.indexWhere((i) => i.product.id == productId);
+    }
     if (index >= 0) {
       if (quantity <= 0) {
         _items.removeAt(index);

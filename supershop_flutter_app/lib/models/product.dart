@@ -25,6 +25,7 @@ class Product {
   final String subCategoryName;
   final int? subSubCategoryId;
   final String subSubCategoryName;
+  final int? packageId;
 
   Product({
     required this.id,
@@ -50,9 +51,10 @@ class Product {
     this.offerType = '',
     this.offerValue = '',
     this.offerBase = 'mrp',
+    this.packageId,
   });
 
-  bool get isPackage => name.startsWith('📦') || sku.toUpperCase() == 'COMBO';
+  bool get isPackage => packageId != null || name.startsWith('📦') || sku.toUpperCase() == 'COMBO';
 
   List<String> get imageList {
     if (imageUrl.isEmpty) return [];

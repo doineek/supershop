@@ -1173,63 +1173,142 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                            ),
                                                          SizedBox(
                                                            width: double.infinity,
-                                                           child: ElevatedButton.icon(
-                                                             onPressed: isOutOfStock
-                                                                 ? null
-                                                                 : () {
-                                                                     List<String> itemSummaries = [];
-                                                                     double regTotal = 0.0;
-                                                                     for (var it in items) {
-                                                                       String pSku = it['sku'] ?? 'SKU';
-                                                                       String pName = it['product_name'] ?? 'Item';
-                                                                       int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
-                                                                       double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
-                                                                       double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
-                                                                       double basePrice = pMrp > 0 ? pMrp : pPrice;
-                                                                       regTotal += basePrice * pQty;
-                                                                       itemSummaries.add("$pSku $pName (Qty:$pQty)");
-                                                                     }
-                                                                     String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
+                                                           child: isOutOfStock
+                                                               ? SizedBox(
+                                                                   width: double.infinity,
+                                                                   child: ElevatedButton.icon(
+                                                                     onPressed: null,
+                                                                     icon: const Icon(Icons.block, color: Colors.white),
+                                                                     label: const Text(
+                                                                       "Out of Stock",
+                                                                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                                                     ),
+                                                                     style: ElevatedButton.styleFrom(
+                                                                       backgroundColor: Colors.grey.shade400,
+                                                                     ),
+                                                                   ),
+                                                                 )
+                                                               : Row(
+                                                                   children: [
+                                                                     // Add to Cart Button (Keep shopping)
+                                                                     Expanded(
+                                                                       child: SizedBox(
+                                                                         height: 40,
+                                                                         child: ElevatedButton.icon(
+                                                                           onPressed: () {
+                                                                             List<String> itemSummaries = [];
+                                                                             double regTotal = 0.0;
+                                                                             for (var it in items) {
+                                                                               String pSku = it['sku'] ?? 'SKU';
+                                                                               String pName = it['product_name'] ?? 'Item';
+                                                                               int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                                               double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
+                                                                               double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
+                                                                               double basePrice = pMrp > 0 ? pMrp : pPrice;
+                                                                               regTotal += basePrice * pQty;
+                                                                               itemSummaries.add("$pSku $pName (Qty:$pQty)");
+                                                                             }
+                                                                             String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
+                                                                             int rawPkgId = int.tryParse(pkg['id']?.toString() ?? '1') ?? 1;
 
-                                                                     Product pkgProduct = Product(
-                                                                       id: pkg['id'],
-                                                                       sku: skuSerialFormat,
-                                                                       name: "📦 $name",
-                                                                       sellPrice: price,
-                                                                       mrp: regTotal > price ? regTotal : price,
-                                                                       stockQty: comboStock,
-                                                                     );
+                                                                             Product pkgProduct = Product(
+                                                                               id: -rawPkgId.abs(),
+                                                                               packageId: rawPkgId.abs(),
+                                                                               sku: skuSerialFormat,
+                                                                               name: "📦 $name",
+                                                                               sellPrice: price,
+                                                                               mrp: regTotal > price ? regTotal : price,
+                                                                               stockQty: comboStock,
+                                                                             );
 
-                                                                     bool added = cartProv.addToCart(pkgProduct);
-                                                                     if (added) {
-                                                                       ScaffoldMessenger.of(context).showSnackBar(
-                                                                         SnackBar(
-                                                                           content: Text("⚡ Combo Package '$name' added to cart!"),
-                                                                           backgroundColor: Colors.green,
-                                                                           action: SnackBarAction(
-                                                                             label: "Checkout",
-                                                                             textColor: Colors.white,
-                                                                             onPressed: () {
+                                                                             bool added = cartProv.addToCart(pkgProduct);
+                                                                             if (added) {
+                                                                               ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                                                               ScaffoldMessenger.of(context).showSnackBar(
+                                                                                 SnackBar(
+                                                                                   duration: const Duration(milliseconds: 1500),
+                                                                                   content: Text("⚡ Combo Package '$name' added to cart!"),
+                                                                                   backgroundColor: Colors.green,
+                                                                                   behavior: SnackBarBehavior.floating,
+                                                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                                 ),
+                                                                               );
+                                                                             } else {
+                                                                               showQuantityLimitDialog(context, cartProv.lastError ?? "Cannot add to cart: item is out of stock.");
+                                                                             }
+                                                                           },
+                                                                           icon: const Icon(Icons.add_shopping_cart, size: 16, color: Colors.white),
+                                                                           label: const Text(
+                                                                             "Add to Cart",
+                                                                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                                                           ),
+                                                                           style: ElevatedButton.styleFrom(
+                                                                             backgroundColor: const Color(0xFF6B21A8),
+                                                                             elevation: 0,
+                                                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                             padding: const EdgeInsets.symmetric(horizontal: 4),
+                                                                           ),
+                                                                         ),
+                                                                       ),
+                                                                     ),
+                                                                     const SizedBox(width: 8),
+                                                                     // Order Now Button (Direct to checkout)
+                                                                     Expanded(
+                                                                       child: SizedBox(
+                                                                         height: 40,
+                                                                         child: ElevatedButton.icon(
+                                                                           onPressed: () {
+                                                                             List<String> itemSummaries = [];
+                                                                             double regTotal = 0.0;
+                                                                             for (var it in items) {
+                                                                               String pSku = it['sku'] ?? 'SKU';
+                                                                               String pName = it['product_name'] ?? 'Item';
+                                                                               int pQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                                                               double pMrp = double.tryParse(it['mrp']?.toString() ?? '0') ?? 0.0;
+                                                                               double pPrice = double.tryParse(it['sell_price']?.toString() ?? '0') ?? 0.0;
+                                                                               double basePrice = pMrp > 0 ? pMrp : pPrice;
+                                                                               regTotal += basePrice * pQty;
+                                                                               itemSummaries.add("$pSku $pName (Qty:$pQty)");
+                                                                             }
+                                                                             String skuSerialFormat = "$name (${itemSummaries.join(', ')})";
+                                                                             int rawPkgId = int.tryParse(pkg['id']?.toString() ?? '1') ?? 1;
+
+                                                                             Product pkgProduct = Product(
+                                                                               id: -rawPkgId.abs(),
+                                                                               packageId: rawPkgId.abs(),
+                                                                               sku: skuSerialFormat,
+                                                                               name: "📦 $name",
+                                                                               sellPrice: price,
+                                                                               mrp: regTotal > price ? regTotal : price,
+                                                                               stockQty: comboStock,
+                                                                             );
+
+                                                                             bool added = cartProv.addToCart(pkgProduct);
+                                                                             if (added) {
+                                                                               ScaffoldMessenger.of(context).hideCurrentSnackBar();
                                                                                setState(() {
                                                                                  _bottomNavIndex = 2;
                                                                                });
-                                                                             },
+                                                                             } else {
+                                                                               showQuantityLimitDialog(context, cartProv.lastError ?? "Cannot add to cart: item is out of stock.");
+                                                                             }
+                                                                           },
+                                                                           icon: const Icon(Icons.bolt, size: 16, color: Colors.white),
+                                                                           label: const Text(
+                                                                             "Order Now",
+                                                                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                                                           ),
+                                                                           style: ElevatedButton.styleFrom(
+                                                                             backgroundColor: Colors.green,
+                                                                             elevation: 0,
+                                                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                             padding: const EdgeInsets.symmetric(horizontal: 4),
                                                                            ),
                                                                          ),
-                                                                       );
-                                                                     } else {
-                                                                       showQuantityLimitDialog(context, cartProv.lastError ?? "Cannot add to cart: item is out of stock.");
-                                                                     }
-                                                                   },
-                                                             icon: Icon(isOutOfStock ? Icons.block : Icons.bolt, color: Colors.white),
-                                                             label: Text(
-                                                               isOutOfStock ? "Out of Stock" : "Order Combo Package Now",
-                                                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                                                             ),
-                                                             style: ElevatedButton.styleFrom(
-                                                               backgroundColor: isOutOfStock ? Colors.grey.shade400 : Colors.green,
-                                                             ),
-                                                           ),
+                                                                       ),
+                                                                     ),
+                                                                   ],
+                                                                 ),
                                                          ),
                                                        ],
                                                      );

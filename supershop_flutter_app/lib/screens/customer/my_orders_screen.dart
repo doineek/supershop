@@ -9,7 +9,8 @@ import '../auth/login_screen.dart';
 import 'home_screen.dart';
 
 class MyOrdersScreen extends StatefulWidget {
-  const MyOrdersScreen({Key? key}) : super(key: key);
+  final String? targetOrderNumber;
+  const MyOrdersScreen({Key? key, this.targetOrderNumber}) : super(key: key);
 
   @override
   State<MyOrdersScreen> createState() => _MyOrdersScreenState();
@@ -19,10 +20,12 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   String _userPhone = '';
   bool _isLoadingPhone = true;
   Timer? _countdownTimer;
+  String? _currentTargetOrder;
 
   @override
   void initState() {
     super.initState();
+    _currentTargetOrder = widget.targetOrderNumber?.trim();
     _loadUserPhone();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
@@ -415,10 +418,25 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    final orders = snapshot.data ?? [];
+                    final rawOrders = snapshot.data ?? [];
 
-                    if (orders.isEmpty) {
+                    if (rawOrders.isEmpty) {
                       return const Center(child: Text("You have no previous orders"));
+                    }
+
+                    List<OnlineOrder> orders = List.from(rawOrders);
+                    if (_currentTargetOrder != null && _currentTargetOrder!.isNotEmpty) {
+                      int targetIdx = orders.indexWhere((o) {
+                        final t = _currentTargetOrder!.toLowerCase();
+                        return o.orderNumber.toLowerCase() == t ||
+                               o.id.toString() == t ||
+                               o.orderNumber.toLowerCase().contains(t) ||
+                               t.contains(o.orderNumber.toLowerCase());
+                      });
+                      if (targetIdx > 0) {
+                        final targetOrder = orders.removeAt(targetIdx);
+                        orders.insert(0, targetOrder);
+                      }
                     }
 
                     return ListView.builder(
@@ -426,6 +444,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                       itemCount: orders.length,
                       itemBuilder: (context, index) {
                         final order = orders[index];
+                        final bool isTargetOrder = _currentTargetOrder != null &&
+                            _currentTargetOrder!.isNotEmpty &&
+                            (order.orderNumber.toLowerCase() == _currentTargetOrder!.toLowerCase() ||
+                             order.id.toString() == _currentTargetOrder!.toLowerCase() ||
+                             order.orderNumber.toLowerCase().contains(_currentTargetOrder!.toLowerCase()) ||
+                             _currentTargetOrder!.toLowerCase().contains(order.orderNumber.toLowerCase()));
+
                         Color statusColor = _getStatusColor(order.orderStatus);
 
                         DateTime createdDt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
@@ -439,20 +464,70 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.grey.shade300),
+                            border: Border.all(
+                              color: isTargetOrder ? Colors.blue.shade600 : Colors.grey.shade300,
+                              width: isTargetOrder ? 2.5 : 1.0,
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 8,
+                                color: isTargetOrder
+                                    ? Colors.blue.withValues(alpha: 0.18)
+                                    : Colors.black.withValues(alpha: 0.04),
+                                blurRadius: isTargetOrder ? 12 : 8,
+                                spreadRadius: isTargetOrder ? 2 : 0,
                                 offset: const Offset(0, 3),
                               ),
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                if (isTargetOrder)
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.notifications_active, color: Colors.blue, size: 16),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              "Viewing Order: #${order.orderNumber}",
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
+                                            ),
+                                          ],
+                                        ),
+                                        InkWell(
+                                          onTap: () {
+                                            setState(() {
+                                              _currentTargetOrder = null;
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: Colors.blue.shade300),
+                                            ),
+                                            child: const Text(
+                                              "Show All Orders",
+                                              style: TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
                                 // Distinct Header Band with Left Stripe & Status Tone
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -530,13 +605,47 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                 // Order Items
                                 Column(
                                   children: order.items.map((item) {
+                                    final isPkg = item.productName.contains('📦') ||
+                                        item.productName.toLowerCase().contains('package') ||
+                                        item.productName.toLowerCase().contains('combo');
                                     return Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 2.0),
+                                      padding: const EdgeInsets.symmetric(vertical: 4.0),
                                       child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text('${item.productName} × ${item.quantity}'),
-                                          Text('TK ${item.totalPrice.toStringAsFixed(0)}'),
+                                          Expanded(
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (isPkg)
+                                                  Container(
+                                                    margin: const EdgeInsets.only(right: 6, top: 2),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.amber.shade100,
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: Colors.amber.shade300),
+                                                    ),
+                                                    child: const Text(
+                                                      "COMBO",
+                                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.brown),
+                                                    ),
+                                                  ),
+                                                Expanded(
+                                                  child: Text(
+                                                    '${item.productName} × ${item.quantity}',
+                                                    style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF1E293B)),
+                                                    softWrap: true,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            'TK ${item.totalPrice.toStringAsFixed(0)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF0F172A)),
+                                          ),
                                         ],
                                       ),
                                     );

@@ -7216,8 +7216,8 @@ def update_online_order_status(order_id):
     conn.close()
     if order["customer_phone"]:
         remote_control.push_customer_user_to_cloud(order["customer_phone"])
-    remote_control.push_online_order_to_cloud(order_id)
-    flash(f"Order #{order_id} status updated to {new_status}.", "success")
+    ord_num = order["order_number"] if (order and "order_number" in order.keys() and order["order_number"]) else order_id
+    flash(f"Order #{ord_num} status updated to {new_status}.", "success")
     return redirect(url_for("online_orders"))
 
 
@@ -7391,7 +7391,8 @@ def verify_online_order_otp(order_id):
         conn.commit()
         conn.close()
         remote_control.push_online_order_to_cloud(order_id)
-        flash(f"OTP Verified! Order #{order_id} marked as DELIVERED.", "success")
+        ord_num = order["order_number"] if (order and "order_number" in order.keys() and order["order_number"]) else order_id
+        flash(f"OTP Verified! Order #{ord_num} marked as DELIVERED.", "success")
     else:
         conn.close()
         flash("Invalid OTP entered. Please check customer's app OTP.", "error")
@@ -9728,8 +9729,8 @@ def get_app_version():
 @app.route("/download/apk")
 def download_app_apk():
     """
-    Direct 1-click APK download for Android users with bandwidth offloading.
-    Serves the APK with version in the filename (e.g. supershop_v1.0.15.apk).
+    Direct 1-click APK download for Android users with 100% bandwidth offloading.
+    Redirects to GitHub CDN releases so Render free bandwidth (5 GB) is 100% saved!
     """
     settings = get_all_settings()
     ver = get_app_version()
@@ -9744,28 +9745,20 @@ def download_app_apk():
     if ext_url and ext_url.startswith("http"):
         return redirect(ext_url, code=302)
 
-    apk_path = os.path.join(app.root_path, "static", "apk", "supershop_latest.apk")
-    flutter_apk = os.path.join(app.root_path, "supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
-    
-    if os.path.exists(flutter_apk):
-        if not os.path.exists(apk_path) or os.path.getmtime(flutter_apk) > os.path.getmtime(apk_path):
-            import shutil
-            os.makedirs(os.path.dirname(apk_path), exist_ok=True)
-            try:
-                shutil.copy2(flutter_apk, apk_path)
-            except Exception:
-                pass
-
-    target_file = apk_path if os.path.exists(apk_path) else flutter_apk
-    if os.path.exists(target_file):
-        response = send_file(
-            target_file,
-            as_attachment=True,
-            download_name=filename,
-            mimetype="application/vnd.android.package-archive"
-        )
-        response.headers["Cache-Control"] = "public, max-age=86400"
-        return response
+    apk_dir = os.path.join(app.root_path, "static", "apk")
+    candidate_paths = [
+        os.path.join(apk_dir, filename),
+        os.path.join(apk_dir, "doineek_latest.apk"),
+        os.path.join(apk_dir, "supershop_latest.apk"),
+    ]
+    for candidate in candidate_paths:
+        if os.path.exists(candidate) and os.path.getsize(candidate) > 1024 * 1024:
+            return send_file(
+                candidate,
+                as_attachment=True,
+                download_name=filename,
+                mimetype="application/vnd.android.package-archive"
+            )
 
     return redirect("https://github.com/doineek/supershop/releases", code=302)
 

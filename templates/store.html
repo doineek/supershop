@@ -5885,9 +5885,14 @@
           renderWebNotifications();
           return;
         }
+        const clearedAt = localStorage.getItem('supershop_notifs_cleared_at');
         const cached = localStorage.getItem('supershop_web_notifications');
         if (cached) {
-          webNotifications = JSON.parse(cached) || [];
+          let list = JSON.parse(cached) || [];
+          if (clearedAt) {
+            list = list.filter(n => n.created_at && n.created_at > clearedAt);
+          }
+          webNotifications = list;
           renderWebNotifications();
         }
       } catch (e) {}
@@ -5907,8 +5912,13 @@
         if (res.ok) {
           const data = await res.json();
           if (data && data.success) {
-            webNotifications = data.notifications || [];
-            webUnreadNotifCount = data.unread_count || 0;
+            let list = data.notifications || [];
+            const clearedAt = localStorage.getItem('supershop_notifs_cleared_at');
+            if (clearedAt) {
+              list = list.filter(n => n.created_at && n.created_at > clearedAt);
+            }
+            webNotifications = list;
+            webUnreadNotifCount = list.filter(n => !n.is_read).length;
             try {
               localStorage.setItem('supershop_web_notifications', JSON.stringify(webNotifications));
             } catch (e) {}
@@ -6211,9 +6221,14 @@
 
     async function clearAllWebNotifications() {
       webNotifications = [];
+      webUnreadNotifCount = 0;
+      const clearTime = new Date().toISOString();
+      try {
+        localStorage.setItem('supershop_notifs_cleared_at', clearTime);
+        localStorage.setItem('supershop_web_notifications', '[]');
+      } catch (e) {}
       renderWebNotifications();
       try {
-        localStorage.removeItem('supershop_web_notifications');
         const phone = (currentCustomer && currentCustomer.phone) ? currentCustomer.phone : '';
         await fetch('/api/notifications/clear', {
           method: 'POST',
