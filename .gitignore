@@ -8,3 +8,6 @@ __pycache__/
 .github_token
 .idea/
 .vscode/
+*.jks
+*.keystore
+key.properties
