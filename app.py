@@ -6831,7 +6831,7 @@ def ensure_daily_suggestions_and_offers(conn=None):
                 unit_str = f" / {prod['unit']}" if prod["unit"] else ""
                 add_customer_notification(
                     customer_phone="",
-                    title="💡 Daily Suggested Product",
+                    title="Daily Suggested Product",
                     message=f"Today's recommended pick: '{prod['name']}' at TK {prod['sell_price']}{unit_str}! Fresh stock ready for delivery.",
                     notif_type="suggestion",
                     reference_id=str(prod["id"]),
@@ -6849,7 +6849,7 @@ def ensure_daily_suggestions_and_offers(conn=None):
                 disc_str = f"{voucher['discount_value']}%" if voucher["discount_type"] == "percentage" else f"TK {voucher['discount_value']}"
                 add_customer_notification(
                     customer_phone="",
-                    title=f"🏷️ Exclusive Offer: {voucher['code']}",
+                    title=f"Exclusive Offer: {voucher['code']}",
                     message=f"Save {disc_str} on your order today! Use voucher code '{voucher['code']}' during checkout.",
                     notif_type="offer",
                     reference_id=str(voucher["code"]),
@@ -6860,7 +6860,7 @@ def ensure_daily_suggestions_and_offers(conn=None):
                 if pkg:
                     add_customer_notification(
                         customer_phone="",
-                        title=f"🏷️ Special Combo Deal: {pkg['name']}",
+                        title=f"Special Combo Deal: {pkg['name']}",
                         message=f"Get '{pkg['name']}' bundle for only TK {pkg['package_price']}! Save big when ordering packages today.",
                         notif_type="offer",
                         reference_id=str(pkg["id"]),

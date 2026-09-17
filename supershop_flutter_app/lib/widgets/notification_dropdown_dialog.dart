@@ -85,7 +85,10 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
 
   String _cleanTitle(String title) {
     if (title.isEmpty) return 'Notification';
-    return title.replaceFirst(RegExp(r'^[^\w\d\s\u0980-\u09FF]+\s*'), '').trim();
+    return title
+        .replaceFirst(RegExp(r'^[^\w\d\s\u0980-\u09FF]+\s*', unicode: true), '')
+        .replaceFirst(RegExp(r'^[^\w\d\s\u0980-\u09FF]+\s*'), '')
+        .trim();
   }
 
   void _handleNotificationTap(AppNotification notif) async {
@@ -102,8 +105,14 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
       );
     } else if (notif.type == 'offer') {
       Navigator.pop(context);
+      final notifTitle = notif.title.toLowerCase();
+      final notifMsg = notif.message.toLowerCase();
+      final isCombo = notifTitle.contains('combo') ||
+                      notifTitle.contains('package') ||
+                      notifMsg.contains('combo') ||
+                      notifMsg.contains('package');
       if (widget.onSelectTab != null) {
-        widget.onSelectTab!('offers');
+        widget.onSelectTab!(isCombo ? 'packages' : 'offers');
       }
     } else if (notif.type == 'suggestion') {
       Navigator.pop(context);

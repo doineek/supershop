@@ -5835,8 +5835,32 @@
         }, 150);
       } else if (type === 'offer') {
         switchView('home');
-        const hero = document.getElementById('heroBannerContainer');
-        if (hero) hero.scrollIntoView({ behavior: 'smooth' });
+        const notifTitle = (notif && notif.title) ? notif.title.toLowerCase() : '';
+        const notifMsg = (notif && notif.message) ? notif.message.toLowerCase() : '';
+        const isCombo = notifTitle.includes('combo') || notifTitle.includes('package') ||
+                        notifMsg.includes('combo') || notifMsg.includes('package');
+
+        if (isCombo) {
+          const tabBtn = document.getElementById('tab-packages');
+          if (typeof setFilterTab === 'function') {
+            setFilterTab('packages', tabBtn);
+          }
+          const comboSec = document.getElementById('comboPackagesSection');
+          if (comboSec) comboSec.scrollIntoView({ behavior: 'smooth' });
+
+          if (refId && typeof openStorePackageDetails === 'function') {
+            setTimeout(() => {
+              openStorePackageDetails(refId);
+            }, 300);
+          }
+        } else {
+          const tabBtn = document.getElementById('tab-offers');
+          if (typeof setFilterTab === 'function') {
+            setFilterTab('offers', tabBtn);
+          }
+          const hero = document.getElementById('heroBannerContainer');
+          if (hero) hero.scrollIntoView({ behavior: 'smooth' });
+        }
       } else if (type === 'suggestion') {
         if (refId && typeof openProductDetailModal === 'function') {
           const prod = (typeof allProductsData !== 'undefined' && Array.isArray(allProductsData))

@@ -6,6 +6,7 @@ SQLite stores the entire database in a single file (supershop.db).
 """
 
 import os
+import re
 import json
 import sqlite3
 from datetime import datetime
@@ -804,6 +805,13 @@ def restore_system_snapshot(snapshot_id_or_time, conn=None):
             conn.close()
 
 
+def clean_notif_title(title):
+    """Strips leading emojis and special symbols so titles are clean across all clients."""
+    if not title:
+        return "Notification"
+    return re.sub(r'^[^\w\d\s\u0980-\u09FF]+\s*', '', str(title)).strip() or str(title)
+
+
 def add_customer_notification(customer_phone, title, message, notif_type="general", reference_id="", conn=None):
     """Inserts a new notification for a customer (or broadcast if customer_phone is empty)."""
     close_conn = False
@@ -812,10 +820,11 @@ def add_customer_notification(customer_phone, title, message, notif_type="genera
         close_conn = True
     try:
         now_str = datetime.now().isoformat()
+        cleaned_title = clean_notif_title(title)
         cur = conn.execute(
             """INSERT INTO customer_notifications (customer_phone, title, message, type, reference_id, is_read, created_at)
                VALUES (?, ?, ?, ?, ?, 0, ?)""",
-            (customer_phone or "", title, message, notif_type, str(reference_id or ""), now_str)
+            (customer_phone or "", cleaned_title, message, notif_type, str(reference_id or ""), now_str)
         )
         conn.commit()
         return cur.lastrowid
@@ -863,7 +872,7 @@ def get_customer_notifications(customer_phone="", limit=60, conn=None):
             results.append({
                 "id": r["id"],
                 "customer_phone": r["customer_phone"],
-                "title": r["title"],
+                "title": clean_notif_title(r["title"]),
                 "message": r["message"],
                 "type": r["type"],
                 "reference_id": r["reference_id"],
@@ -962,7 +971,7 @@ def get_portal_notifications(limit=60, conn=None):
             results.append({
                 "id": r["id"],
                 "customer_phone": r["customer_phone"],
-                "title": r["title"],
+                "title": clean_notif_title(r["title"]),
                 "message": r["message"],
                 "type": r["type"],
                 "reference_id": r["reference_id"],

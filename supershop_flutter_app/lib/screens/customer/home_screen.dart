@@ -553,9 +553,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               context,
                               allProducts: _allProducts,
                               onSelectTab: (tab) {
-                                if (tab == 'offers') {
+                                if (mounted) {
                                   setState(() {
-                                    _selectedTab = 'offers';
+                                    _selectedTab = tab;
                                   });
                                 }
                               },
