@@ -4731,14 +4731,27 @@
       try {
         const d = new Date(timeStr);
         if (isNaN(d.getTime())) return timeStr.slice(0, 16).replace('T', ' ');
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const m = months[d.getMonth()];
-        const day = d.getDate();
-        let h = d.getHours();
-        const min = d.getMinutes().toString().padStart(2, '0');
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return `${day} ${m}, ${h}:${min} ${ampm}`;
+        // Format explicitly in Bangladesh Standard Time (Asia/Dhaka, GMT+6)
+        try {
+          const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Dhaka',
+            day: 'numeric',
+            month: 'short',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+          return formatter.format(d);
+        } catch (tzErr) {
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const m = months[d.getMonth()];
+          const day = d.getDate();
+          let h = d.getHours();
+          const min = d.getMinutes().toString().padStart(2, '0');
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          h = h % 12 || 12;
+          return `${day} ${m}, ${h}:${min} ${ampm}`;
+        }
       } catch (e) {
         return timeStr.slice(0, 16).replace('T', ' ');
       }
@@ -4791,7 +4804,7 @@
         if (stageName === 'cancelled') stepClass += ' cancelled';
 
         const ic = iconMap[stageName] || '•';
-        const formattedTime = formatTimelineDate(s.time);
+        const formattedTime = s.time_bd || s.time_formatted || formatTimelineDate(s.time);
 
         return `
           <div class="${stepClass}">
@@ -4917,7 +4930,7 @@
                   <!-- Price and Date Bar -->
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
                     <div>
-                      <div style="font-size:0.75rem; color:#64748b;">📅 ${(o.created_at || '').slice(0, 16).replace('T', ' ')}</div>
+                      <div style="font-size:0.75rem; color:#64748b;">📅 ${o.created_at_bd || formatTimelineDate(o.created_at)}</div>
                       <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">${o.payment_method === 'cod' ? '💵 Cash on Delivery' : '💳 Online Payment'}</div>
                     </div>
                     <div style="text-align:right;">

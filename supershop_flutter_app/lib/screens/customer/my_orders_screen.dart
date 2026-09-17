@@ -89,10 +89,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
-  String _formatTimelineTime(String isoStr) {
-    if (isoStr.isEmpty) return '';
+  String _formatTimelineTime(OrderTimelineStep step) {
+    if (step.timeBd.isNotEmpty) {
+      return step.timeBd.replaceAll(', ', '\n');
+    }
+    if (step.time.isEmpty) return '';
     try {
-      final dt = DateTime.parse(isoStr).toLocal();
+      DateTime dt = DateTime.parse(step.time).toUtc().add(const Duration(hours: 6));
       final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       final month = months[dt.month - 1];
       final day = dt.day;
@@ -101,7 +104,25 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
       final ampm = dt.hour >= 12 ? 'PM' : 'AM';
       return '$day $month\n$hour:$min $ampm';
     } catch (_) {
-      return isoStr.length >= 16 ? isoStr.substring(5, 16).replaceAll('T', ' ') : isoStr;
+      return step.time.length >= 16 ? step.time.substring(5, 16).replaceAll('T', ' ') : step.time;
+    }
+  }
+
+  String _formatBdDate(String isoStr, [String bdFormatted = '']) {
+    if (bdFormatted.isNotEmpty) return bdFormatted;
+    if (isoStr.isEmpty) return '';
+    try {
+      DateTime dt = DateTime.parse(isoStr).toUtc().add(const Duration(hours: 6));
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[dt.month - 1];
+      final day = dt.day;
+      final year = dt.year;
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final min = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$day $month $year, $hour:$min $ampm';
+    } catch (_) {
+      return isoStr.length >= 16 ? isoStr.substring(0, 16).replaceAll('T', ' ') : isoStr;
     }
   }
 
@@ -117,12 +138,12 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
 
       if (isCancelled) {
         steps = [
-          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, done: true, active: false),
+          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, timeBd: order.createdAtBd, done: true, active: false),
           OrderTimelineStep(stage: 'cancelled', title: 'Cancelled', time: order.cancelledAt, done: true, active: true),
         ];
       } else {
         steps = [
-          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, done: true, active: st == 'new' || st == 'pending'),
+          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, timeBd: order.createdAtBd, done: true, active: st == 'new' || st == 'pending'),
           OrderTimelineStep(stage: 'verified', title: 'Confirmed', time: order.confirmedAt, done: isVerified, active: st == 'verified'),
           OrderTimelineStep(stage: 'packed', title: 'Packed', time: order.packedAt, done: isPacked, active: st == 'packed'),
           OrderTimelineStep(stage: 'on_the_way', title: 'On Way', time: order.onTheWayAt, done: isOtw, active: st == 'on_the_way'),
@@ -249,7 +270,9 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          step.time.isNotEmpty ? _formatTimelineTime(step.time) : (isDone ? 'Done' : 'Pending'),
+                          (step.time.isNotEmpty || step.timeBd.isNotEmpty)
+                              ? _formatTimelineTime(step)
+                              : (isDone ? 'Done' : 'Pending'),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 8,
@@ -489,7 +512,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
-                                            '📅 ${order.createdAt.length >= 16 ? order.createdAt.substring(0, 16).replaceAll('T', ' ') : order.createdAt}',
+                                            '📅 ${_formatBdDate(order.createdAt, order.createdAtBd)}',
                                             style: const TextStyle(color: Colors.grey, fontSize: 12),
                                           ),
                                           Text(

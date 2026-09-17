@@ -34,6 +34,7 @@ class OrderTimelineStep {
   final String stage;
   final String title;
   final String time;
+  final String timeBd;
   final bool done;
   final bool active;
 
@@ -41,6 +42,7 @@ class OrderTimelineStep {
     required this.stage,
     required this.title,
     this.time = '',
+    this.timeBd = '',
     this.done = false,
     this.active = false,
   });
@@ -50,6 +52,7 @@ class OrderTimelineStep {
       stage: json['stage'] ?? json['key'] ?? '',
       title: json['title'] ?? '',
       time: json['time'] ?? '',
+      timeBd: json['time_bd'] ?? json['time_formatted'] ?? '',
       done: json['done'] ?? json['is_done'] ?? false,
       active: json['active'] ?? json['is_current'] ?? false,
     );
@@ -76,6 +79,7 @@ class OnlineOrder {
   final String assignedRiderName;
   final String assignedRiderPhone;
   final String createdAt;
+  final String createdAtBd;
   final String confirmedAt;
   final String packedAt;
   final String onTheWayAt;
@@ -104,6 +108,7 @@ class OnlineOrder {
     this.assignedRiderName = '',
     this.assignedRiderPhone = '',
     required this.createdAt,
+    this.createdAtBd = '',
     this.confirmedAt = '',
     this.packedAt = '',
     this.onTheWayAt = '',
@@ -140,6 +145,7 @@ class OnlineOrder {
       assignedRiderName: json['assigned_rider_name'] ?? '',
       assignedRiderPhone: json['assigned_rider_phone'] ?? '',
       createdAt: json['created_at'] ?? '',
+      createdAtBd: json['created_at_bd'] ?? '',
       confirmedAt: json['confirmed_at'] ?? '',
       packedAt: json['packed_at'] ?? '',
       onTheWayAt: json['on_the_way_at'] ?? '',

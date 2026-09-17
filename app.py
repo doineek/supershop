@@ -9,8 +9,51 @@ Then open a browser at: http://127.0.0.1:5000
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context, Response, send_file, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
+
+# Bangladesh Standard Time (GMT+6) configuration
+BD_TIMEZONE = timezone(timedelta(hours=6))
+
+def get_bd_now():
+    """Return current datetime in Bangladesh Standard Time (GMT+6)."""
+    return datetime.now(BD_TIMEZONE)
+
+def get_bd_now_iso():
+    """Return current ISO 8601 timestamp string in Bangladesh Standard Time (GMT+6)."""
+    return datetime.now(BD_TIMEZONE).isoformat()
+
+def format_bd_timeline_time(dt_val):
+    """Parse datetime value and return (iso_with_bd_offset, formatted_bd_string) in GMT+6."""
+    if not dt_val:
+        return "", ""
+    s = str(dt_val).strip()
+    if not s:
+        return "", ""
+    try:
+        if s.endswith("Z"):
+            dt = datetime.fromisoformat(s[:-1] + "+00:00").astimezone(BD_TIMEZONE)
+        elif "+" in s[10:]:
+            dt = datetime.fromisoformat(s).astimezone(BD_TIMEZONE)
+        elif "-" in s[10:] and len(s) > 19 and (s[19] == '-' or s[-6] == '-'):
+            dt = datetime.fromisoformat(s).astimezone(BD_TIMEZONE)
+        else:
+            dt_naive = datetime.fromisoformat(s)
+            import time as _time
+            if _time.tzname[0] == 'UTC' or _time.timezone == 0:
+                dt = dt_naive.replace(tzinfo=timezone.utc).astimezone(BD_TIMEZONE)
+            else:
+                dt = dt_naive.replace(tzinfo=BD_TIMEZONE)
+
+        iso_bd = dt.isoformat()
+        h_12 = dt.strftime("%I").lstrip("0") or "12"
+        m_str = dt.strftime("%b")
+        p_str = dt.strftime("%M %p")
+        formatted_bd = f"{dt.day} {m_str}, {h_12}:{p_str}"
+        return iso_bd, formatted_bd
+    except Exception:
+        return s, s[:16].replace("T", " ")
+
 import os
 import io
 import re
@@ -6904,7 +6947,7 @@ def assign_online_order_rider(order_id):
             rider_name = rider["full_name"] if rider["full_name"] else rider["username"]
             rider_phone = rider["username"]
 
-    now_iso = datetime.now().isoformat()
+    now_iso = get_bd_now_iso()
     conn.execute(
         "UPDATE online_orders SET order_status = 'verified', assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
         (rider_id or 0, rider_name, rider_phone, now_iso, now_iso, order_id)
@@ -6938,7 +6981,7 @@ def api_rider_accept_order():
         conn.close()
         return jsonify({"success": False, "message": "Order not found."}), 400
 
-    now_iso = datetime.now().isoformat()
+    now_iso = get_bd_now_iso()
     conn.execute(
         "UPDATE online_orders SET order_status = 'verified', assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
         (rider_name if rider_name else rider_phone, rider_phone, now_iso, now_iso, order_id)
@@ -6976,7 +7019,7 @@ def api_rider_update_order_status():
             conn.close()
             return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit OTP from customer app."}), 400
 
-    now_iso = datetime.now().isoformat()
+    now_iso = get_bd_now_iso()
     if status == "delivered":
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
@@ -7141,7 +7184,7 @@ def update_online_order_status(order_id):
         flash("Order not found.", "error")
         return redirect(url_for("online_orders"))
 
-    now_iso = datetime.now().isoformat()
+    now_iso = get_bd_now_iso()
     if new_status == "delivered":
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
@@ -7339,7 +7382,7 @@ def verify_online_order_otp(order_id):
     order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
     if order and order["delivery_otp"] == input_otp:
         r_fee = get_rider_delivery_fee_setting(conn)
-        now_iso = datetime.now().isoformat()
+        now_iso = get_bd_now_iso()
         conn.execute(
             "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
             (r_fee, now_iso, now_iso, order_id)
@@ -7732,7 +7775,7 @@ def api_place_order():
 
     import random
     otp = f"{random.randint(1000, 9999)}"
-    now_str = datetime.now().strftime("%Y%m%d%H%M%S")
+    now_str = get_bd_now().strftime("%Y%m%d%H%M%S")
     rand_suffix = random.randint(100, 999)
     order_number = f"ORD-{now_str}-{rand_suffix}"
 
@@ -7859,7 +7902,7 @@ def api_place_order():
         delivery_charge = float(data.get("delivery_charge") if data.get("delivery_charge") is not None else shop_settings.get("delivery_charge") or 60.0)
     
     total_amount = max(0.0, subtotal + delivery_charge)
-    created_at = datetime.now().isoformat()
+    created_at = get_bd_now_iso()
 
     # Normalize phone
     digits = re.sub(r"\D", "", str(customer_phone or ""))
@@ -8221,12 +8264,22 @@ def api_my_orders():
         if curr_status == "cancelled" and not cancelled_dt:
             cancelled_dt = o_dict.get("updated_at") or created_dt
 
+        # Convert all to Bangladesh Time (GMT+6)
+        created_iso, created_bd = format_bd_timeline_time(created_dt)
+        confirmed_iso, confirmed_bd = format_bd_timeline_time(confirmed_dt)
+        packed_iso, packed_bd = format_bd_timeline_time(packed_dt)
+        on_the_way_iso, on_the_way_bd = format_bd_timeline_time(on_the_way_dt)
+        delivered_iso, delivered_bd = format_bd_timeline_time(delivered_dt)
+        cancelled_iso, cancelled_bd = format_bd_timeline_time(cancelled_dt)
+
         timeline = [
             {
                 "stage": "placed",
                 "key": "placed",
                 "title": "Order Placed",
-                "time": created_dt,
+                "time": created_iso,
+                "time_bd": created_bd,
+                "time_formatted": created_bd,
                 "done": True,
                 "is_done": True,
                 "active": (curr_status in ("new", "pending", "pending_confirmation")),
@@ -8236,7 +8289,9 @@ def api_my_orders():
                 "stage": "verified",
                 "key": "verified",
                 "title": "Order Confirmed",
-                "time": confirmed_dt,
+                "time": confirmed_iso if confirmed_dt else "",
+                "time_bd": confirmed_bd if confirmed_dt else "",
+                "time_formatted": confirmed_bd if confirmed_dt else "",
                 "done": bool(confirmed_dt) or curr_status in ("verified", "packed", "on_the_way", "delivered"),
                 "is_done": bool(confirmed_dt) or curr_status in ("verified", "packed", "on_the_way", "delivered"),
                 "active": (curr_status == "verified"),
@@ -8246,7 +8301,9 @@ def api_my_orders():
                 "stage": "packed",
                 "key": "packed",
                 "title": "Packed & Ready",
-                "time": packed_dt,
+                "time": packed_iso if packed_dt else "",
+                "time_bd": packed_bd if packed_dt else "",
+                "time_formatted": packed_bd if packed_dt else "",
                 "done": bool(packed_dt) or curr_status in ("packed", "on_the_way", "delivered"),
                 "is_done": bool(packed_dt) or curr_status in ("packed", "on_the_way", "delivered"),
                 "active": (curr_status == "packed"),
@@ -8256,7 +8313,9 @@ def api_my_orders():
                 "stage": "on_the_way",
                 "key": "on_the_way",
                 "title": "On The Way",
-                "time": on_the_way_dt,
+                "time": on_the_way_iso if on_the_way_dt else "",
+                "time_bd": on_the_way_bd if on_the_way_dt else "",
+                "time_formatted": on_the_way_bd if on_the_way_dt else "",
                 "done": bool(on_the_way_dt) or curr_status in ("on_the_way", "delivered"),
                 "is_done": bool(on_the_way_dt) or curr_status in ("on_the_way", "delivered"),
                 "active": (curr_status == "on_the_way"),
@@ -8266,7 +8325,9 @@ def api_my_orders():
                 "stage": "delivered",
                 "key": "delivered",
                 "title": "Delivered",
-                "time": delivered_dt,
+                "time": delivered_iso if delivered_dt else "",
+                "time_bd": delivered_bd if delivered_dt else "",
+                "time_formatted": delivered_bd if delivered_dt else "",
                 "done": bool(delivered_dt) or (curr_status == "delivered"),
                 "is_done": bool(delivered_dt) or (curr_status == "delivered"),
                 "active": (curr_status == "delivered"),
@@ -8278,7 +8339,9 @@ def api_my_orders():
                 "stage": "cancelled",
                 "key": "cancelled",
                 "title": "Order Cancelled",
-                "time": cancelled_dt,
+                "time": cancelled_iso,
+                "time_bd": cancelled_bd,
+                "time_formatted": cancelled_bd,
                 "done": True,
                 "is_done": True,
                 "active": True,
@@ -8286,11 +8349,13 @@ def api_my_orders():
             })
 
         o_dict["timeline"] = timeline
-        o_dict["confirmed_at"] = confirmed_dt
-        o_dict["packed_at"] = packed_dt
-        o_dict["on_the_way_at"] = on_the_way_dt
-        o_dict["delivered_at"] = delivered_dt
-        o_dict["cancelled_at"] = cancelled_dt
+        o_dict["created_at"] = created_iso
+        o_dict["created_at_bd"] = created_bd
+        o_dict["confirmed_at"] = confirmed_iso
+        o_dict["packed_at"] = packed_iso
+        o_dict["on_the_way_at"] = on_the_way_iso
+        o_dict["delivered_at"] = delivered_iso
+        o_dict["cancelled_at"] = cancelled_iso
         result.append(o_dict)
 
     conn.close()
@@ -8336,7 +8401,7 @@ def api_cancel_order():
     # Restore stock if stock was deducted for this order
     restore_online_order_stock(conn, order)
 
-    now_iso = datetime.now().isoformat()
+    now_iso = get_bd_now_iso()
     conn.execute(
         "UPDATE online_orders SET order_status = 'cancelled', cancelled_at = CASE WHEN cancelled_at = '' THEN ? ELSE cancelled_at END, updated_at = ? WHERE id = ?",
         (now_iso, now_iso, order["id"])
@@ -8561,7 +8626,7 @@ def api_verify_otp():
     conn = get_connection()
     order = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
     if order and order["delivery_otp"] == otp:
-        now_iso = datetime.now().isoformat()
+        now_iso = get_bd_now_iso()
         conn.execute(
             "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
             (r_fee, now_iso, now_iso, order["id"])
