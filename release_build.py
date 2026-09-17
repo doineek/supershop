@@ -166,23 +166,18 @@ def main():
     apk_path = os.path.join("static", "apk", "supershop_latest.apk")
     flutter_apk = os.path.join("supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
     
-    if args.local_build or not os.path.exists(apk_path):
+    if args.local_build:
         print("\nBuilding Flutter release APK locally...")
         res = os.system("cd supershop_flutter_app && flutter build apk --release")
         if res != 0:
             print("Flutter build failed!")
             sys.exit(1)
-        if os.path.exists(flutter_apk):
-            import shutil
-            os.makedirs(os.path.dirname(apk_path), exist_ok=True)
-            shutil.copy2(flutter_apk, apk_path)
 
-    if not os.path.exists(apk_path):
-        if os.path.exists(flutter_apk):
-            apk_path = flutter_apk
-        else:
-            print(f"Error: APK file not found at {apk_path} or {flutter_apk}")
-            sys.exit(1)
+    if os.path.exists(flutter_apk):
+        apk_path = flutter_apk
+    elif not os.path.exists(apk_path):
+        print(f"Error: APK file not found at {apk_path} or {flutter_apk}")
+        sys.exit(1)
 
     # Retrieve GitHub Token
     token = get_token(args.token)
@@ -200,11 +195,25 @@ def main():
 
     save_token(token)
 
-    # Upload APK as doineek_{tag}.apk and doineek_latest.apk
+    # Also sync all local static APK filenames
+    try:
+        import shutil
+        apk_dir = os.path.join("static", "apk")
+        os.makedirs(apk_dir, exist_ok=True)
+        shutil.copy2(apk_path, os.path.join(apk_dir, "supershop_latest.apk"))
+        shutil.copy2(apk_path, os.path.join(apk_dir, "doineek_latest.apk"))
+        shutil.copy2(apk_path, os.path.join(apk_dir, f"doineek_{tag}.apk"))
+        shutil.copy2(apk_path, os.path.join(apk_dir, f"supershop_{tag}.apk"))
+        print("[OK] Synchronized all local static/apk files.")
+    except Exception as e:
+        print(f"Warning: could not copy local APKs: {e}")
+
+    # Upload APK as doineek_{tag}.apk, doineek_latest.apk, supershop_latest.apk, supershop_{tag}.apk
     success = upload_apk_to_github(token, tag, apk_path, f"doineek_{tag}.apk")
     if success:
         upload_apk_to_github(token, tag, apk_path, "doineek_latest.apk")
         upload_apk_to_github(token, tag, apk_path, "supershop_latest.apk")
+        upload_apk_to_github(token, tag, apk_path, f"supershop_{tag}.apk")
 
         # Auto-update version.json and database settings
         try:

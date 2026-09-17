@@ -24,7 +24,7 @@
         Go to Customer Web Storefront &rarr;
       </a>
       <a href="{{ url_for('download_app_apk') }}" style="display:block; width:100%; padding:10px 14px; border-radius:8px; font-weight:700; font-size:13px; text-decoration:none; text-align:center; color:#2563eb; border:1px solid #2563eb; background:#eff6ff; transition:all 0.2s;" onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
-        Download App (doineek_v1.0.15.apk)
+        Download App ({{ settings.apk_filename or 'doineek_' ~ settings.app_version_short ~ '.apk' }})
       </a>
       <p class="login-hint" style="font-size: 11px; color: var(--ink-soft); margin: 4px 0 0 0;">
         Default Staff Login: <strong>admin</strong> / <strong>admin123</strong>

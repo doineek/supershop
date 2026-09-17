@@ -45,6 +45,8 @@ android {
                 storeFile = if (f.exists()) f else rootProject.file(storeFilePath)
             }
             storePassword = keystoreProperties.getProperty("storePassword")
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 

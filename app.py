@@ -690,7 +690,7 @@ def login():
                 return redirect(url_for("dashboard"))
         flash("Wrong username or password.", "error")
 
-    resp = make_response(render_template("login.html"))
+    resp = make_response(render_template("login.html", settings=get_all_settings()))
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
