@@ -9548,9 +9548,14 @@ def download_app_apk():
     ver = get_app_version()
     filename = f"supershop_v{ver}.apk"
 
-    ext_url = os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or f"https://github.com/doineek/supershop/releases/download/v{ver}/{filename}"
-    if ext_url and ext_url.strip().startswith("http"):
-        return redirect(ext_url.strip(), code=302)
+    raw_ext_url = (os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "").strip()
+    if not raw_ext_url or "supershop_latest.apk" in raw_ext_url or "github.com/doineek/supershop/releases" in raw_ext_url:
+        ext_url = f"https://github.com/doineek/supershop/releases/download/v{ver}/{filename}"
+    else:
+        ext_url = raw_ext_url
+
+    if ext_url and ext_url.startswith("http"):
+        return redirect(ext_url, code=302)
 
     apk_path = os.path.join(app.root_path, "static", "apk", "supershop_latest.apk")
     flutter_apk = os.path.join(app.root_path, "supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")

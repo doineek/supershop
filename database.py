@@ -598,10 +598,10 @@ DEFAULT_SETTINGS = {
     "delivery_charge": "60",
     "product_image_bg_color": "#FFFFFF",
     "rider_delivery_fee": "50",
-    "app_version": "v1.0.11 (Build 12)",
-    "app_version_short": "v1.0.11",
-    "app_version_full": "Version 1.0.11 (Build 12) • Official Release",
-    "apk_download_url": "https://github.com/doineek/supershop/releases/latest/download/supershop_latest.apk",
+    "app_version": "v1.0.15 (Build 16)",
+    "app_version_short": "v1.0.15",
+    "app_version_full": "Version 1.0.15 (Build 16) • Official Release",
+    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.15/supershop_v1.0.15.apk",
 }
 
 
