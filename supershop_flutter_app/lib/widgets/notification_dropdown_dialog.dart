@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/notification_model.dart';
 import '../models/product.dart';
+import '../screens/auth/login_screen.dart';
 import '../screens/customer/my_orders_screen.dart';
 import '../screens/customer/product_detail_screen.dart';
 import '../services/api_service.dart';
@@ -92,9 +93,8 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
   }
 
   void _handleNotificationTap(AppNotification notif) async {
-    // 1. Mark as read immediately (unhighlights card and decrements badge)
-    await NotificationService.instance.markAsRead(notif.id);
-    if (!mounted) return;
+    // 1. Mark as read in background (non-blocking for instant UI response)
+    NotificationService.instance.markAsRead(notif.id);
 
     // 2. Action based on type
     if (notif.type == 'order') {
@@ -283,6 +283,50 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                 }).toList();
 
                 if (filtered.isEmpty) {
+                  final isUserLoggedIn = NotificationService.instance.currentPhone.trim().isNotEmpty;
+                  if (!isUserLoggedIn) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.lock_outline, size: 52, color: Color(0xFF6B21A8)),
+                            const SizedBox(height: 12),
+                            const Text(
+                              "Sign In Required",
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              "Please sign in to view your order updates, everyday suggestions, and special offers.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12.5, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                );
+                              },
+                              icon: const Icon(Icons.login, size: 18),
+                              label: const Text("Sign In"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF6B21A8),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),

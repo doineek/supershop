@@ -18,6 +18,7 @@ class NotificationService {
   bool _isFetching = false;
   String _currentPhone = '';
 
+  String get currentPhone => _currentPhone;
   List<AppNotification> get notifications => notificationsNotifier.value;
   int get unreadCount => unreadCountNotifier.value;
 
@@ -38,10 +39,24 @@ class NotificationService {
     _pollingTimer?.cancel();
   }
 
+  void clearLocalState() {
+    _currentPhone = '';
+    _seenIds.clear();
+    notificationsNotifier.value = [];
+    unreadCountNotifier.value = 0;
+  }
+
   Future<void> _loadFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _currentPhone = prefs.getString('user_phone') ?? '';
+
+      // If user is not logged in, do not load or show any notifications
+      if (_currentPhone.trim().isEmpty) {
+        notificationsNotifier.value = [];
+        unreadCountNotifier.value = 0;
+        return;
+      }
 
       // 1. Load seen IDs set
       final seenList = prefs.getStringList('cached_seen_notif_ids') ?? [];
@@ -74,6 +89,10 @@ class NotificationService {
   Future<void> _saveToCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (_currentPhone.trim().isEmpty) {
+        await prefs.remove('cached_app_notifications');
+        return;
+      }
       final encoded = jsonEncode(notificationsNotifier.value.map((n) => n.toJson()).toList());
       await prefs.setString('cached_app_notifications', encoded);
 
@@ -90,8 +109,18 @@ class NotificationService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final userPhone = phone ?? prefs.getString('user_phone') ?? _currentPhone;
+      final userPhone = (phone ?? prefs.getString('user_phone') ?? _currentPhone).trim();
       _currentPhone = userPhone;
+
+      // If user is not logged in, clear any existing notifications and return
+      if (userPhone.isEmpty) {
+        notificationsNotifier.value = [];
+        unreadCountNotifier.value = 0;
+        try {
+          await prefs.remove('cached_app_notifications');
+        } catch (_) {}
+        return;
+      }
 
       final res = await ApiService.httpGet(
         '/api/notifications?phone=${Uri.encodeComponent(userPhone)}',

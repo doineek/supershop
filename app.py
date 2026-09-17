@@ -8063,6 +8063,15 @@ def api_pending_orders_count():
 def api_get_notifications():
     phone = request.args.get("phone", "").strip()
     is_portal = (session.get("user_id") is not None) or (request.args.get("for_portal") == "1") or (request.args.get("for_staff") == "1")
+    
+    # Do not return notifications if user is not signed in
+    if not is_portal and not phone:
+        return jsonify({
+            "success": True,
+            "unread_count": 0,
+            "notifications": []
+        })
+
     conn = get_connection()
     try:
         ensure_daily_suggestions_and_offers(conn)
@@ -9514,19 +9523,32 @@ def sitemap_xml():
     return Response(xml_content, mimetype="application/xml")
 
 
+def get_app_version():
+    try:
+        pubspec_path = os.path.join(app.root_path, "supershop_flutter_app", "pubspec.yaml")
+        if os.path.exists(pubspec_path):
+            with open(pubspec_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("version:"):
+                        return line.strip().split(":", 1)[1].strip().split("+")[0].strip()
+    except Exception:
+        pass
+    return "1.0.15"
+
+
 @app.route("/download-apk")
 @app.route("/apk")
 @app.route("/download/apk")
 def download_app_apk():
     """
     Direct 1-click APK download for Android users with bandwidth offloading.
-    If an external URL (GitHub Releases, Google Drive, Firebase Storage) is configured,
-    it returns an instant HTTP 302 redirect, so the user downloads directly from the
-    cloud CDN, consuming 0 MB of Render's free bandwidth!
-    Otherwise, falls back to the local file.
+    Serves the APK with version in the filename (e.g. supershop_v1.0.15.apk).
     """
     settings = get_all_settings()
-    ext_url = os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "https://github.com/doineek/supershop/releases/latest/download/supershop_latest.apk"
+    ver = get_app_version()
+    filename = f"supershop_v{ver}.apk"
+
+    ext_url = os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or f"https://github.com/doineek/supershop/releases/download/v{ver}/{filename}"
     if ext_url and ext_url.strip().startswith("http"):
         return redirect(ext_url.strip(), code=302)
 
@@ -9547,7 +9569,7 @@ def download_app_apk():
         response = send_file(
             target_file,
             as_attachment=True,
-            download_name="supershop_app.apk",
+            download_name=filename,
             mimetype="application/vnd.android.package-archive"
         )
         response.headers["Cache-Control"] = "public, max-age=86400"

@@ -2085,8 +2085,8 @@
           </div>
         </div>
 
-        <a href="/download-apk" class="apk-download-top-btn" title="Download Android App APK">
-          App APK
+        <a href="/download-apk" class="apk-download-top-btn" title="Download Android App (supershop_v1.0.15.apk)">
+          App v1.0.15
         </a>
       </div>
     </div>
@@ -2841,7 +2841,7 @@
       </div>
 
       <a href="/download-apk" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin-bottom:10px; background:#0d9488;">
-        <span>📥</span> Download Latest Android App (APK)
+        <span>📥</span> Download Android App (supershop_v1.0.15.apk)
       </a>
 
       <button type="button" class="btn-outline" style="width:100%; padding:10px; font-weight:700; border-radius:8px; border:1px solid #cbd5e1; background:white; color:#64748b; cursor:pointer;" onclick="closeAboutAppModal()">
@@ -4185,9 +4185,14 @@
         document.getElementById('orderCustAddress').value = currentCustomer.address || localStorage.getItem('cust_address') || '';
 
         fetchMyOrdersHistory();
+        fetchWebNotifications();
       } else {
         document.getElementById('loggedOutAuthArea').style.display = 'block';
         document.getElementById('loggedInProfileArea').style.display = 'none';
+        webNotifications = [];
+        webUnreadNotifCount = 0;
+        try { localStorage.removeItem('supershop_web_notifications'); } catch (e) {}
+        renderWebNotifications();
       }
     }
 
@@ -4620,6 +4625,10 @@
       if (confirm('Are you sure you want to sign out?')) {
         currentCustomer = null;
         localStorage.removeItem('supershop_logged_customer');
+        localStorage.removeItem('supershop_web_notifications');
+        webNotifications = [];
+        webUnreadNotifCount = 0;
+        renderWebNotifications();
         refreshAuthState();
       }
     }
@@ -5629,6 +5638,12 @@
 
     function loadCachedNotifications() {
       try {
+        if (!currentCustomer || !currentCustomer.phone) {
+          webNotifications = [];
+          webUnreadNotifCount = 0;
+          renderWebNotifications();
+          return;
+        }
         const cached = localStorage.getItem('supershop_web_notifications');
         if (cached) {
           webNotifications = JSON.parse(cached) || [];
@@ -5640,6 +5655,13 @@
     async function fetchWebNotifications() {
       try {
         const phone = (currentCustomer && currentCustomer.phone) ? currentCustomer.phone : '';
+        if (!phone) {
+          webNotifications = [];
+          webUnreadNotifCount = 0;
+          try { localStorage.removeItem('supershop_web_notifications'); } catch (e) {}
+          renderWebNotifications();
+          return;
+        }
         const res = await fetch('/api/notifications?phone=' + encodeURIComponent(phone));
         if (res.ok) {
           const data = await res.json();
@@ -5669,6 +5691,30 @@
       const bottomBadge = document.getElementById('bottomNotifBadge');
       const deskCount = document.getElementById('deskNotifCount');
       const profPill = document.getElementById('profNotifPill');
+
+      const isCustomerLoggedIn = !!(currentCustomer && currentCustomer.phone);
+      if (!isCustomerLoggedIn) {
+        if (badge) badge.style.display = 'none';
+        if (bottomBadge) bottomBadge.style.display = 'none';
+        if (deskCount) deskCount.textContent = '0';
+        if (profPill) profPill.style.display = 'none';
+        if (pill) pill.textContent = '0 New';
+        if (body) {
+          body.innerHTML = `
+            <div class="web-notif-empty" style="padding: 24px 16px; text-align: center;">
+              <div style="font-size: 2.2rem; margin-bottom: 8px;">🔒</div>
+              <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">Sign In Required</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
+                Please sign in to view your order updates, everyday suggestions, and special offers.
+              </div>
+              <button onclick="closeWebNotifDropdown(); openLoginModal();" class="btn btn-primary btn-sm" style="margin-top: 14px; border-radius: 20px; padding: 7px 22px; font-weight: 700; cursor: pointer; background: var(--primary); color: white; border: none;">
+                🔑 Sign In
+              </button>
+            </div>
+          `;
+        }
+        return;
+      }
 
       const unread = webNotifications.filter(n => !n.is_read).length;
       webUnreadNotifCount = unread;

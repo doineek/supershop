@@ -10,6 +10,7 @@ import '../../providers/cart_provider.dart';
 import '../../providers/locale_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/location_selector_dialog.dart';
 import '../auth/login_screen.dart';
 import '../admin/admin_hub_screen.dart';
@@ -751,6 +752,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await prefs.remove('user_phone');
     await prefs.remove('user_email');
     await prefs.remove('customer_id');
+    NotificationService.instance.clearLocalState();
 
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
