@@ -89,6 +89,187 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
+  String _formatTimelineTime(String isoStr) {
+    if (isoStr.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(isoStr).toLocal();
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[dt.month - 1];
+      final day = dt.day;
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final min = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$day $month\n$hour:$min $ampm';
+    } catch (_) {
+      return isoStr.length >= 16 ? isoStr.substring(5, 16).replaceAll('T', ' ') : isoStr;
+    }
+  }
+
+  Widget _buildDeliveryTimeline(OnlineOrder order) {
+    List<OrderTimelineStep> steps = order.timeline;
+    if (steps.isEmpty) {
+      final st = order.orderStatus.toLowerCase();
+      final isVerified = ['verified', 'packed', 'on_the_way', 'delivered'].contains(st);
+      final isPacked = ['packed', 'on_the_way', 'delivered'].contains(st);
+      final isOtw = ['on_the_way', 'delivered'].contains(st);
+      final isDelivered = (st == 'delivered');
+      final isCancelled = (st == 'cancelled');
+
+      if (isCancelled) {
+        steps = [
+          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, done: true, active: false),
+          OrderTimelineStep(stage: 'cancelled', title: 'Cancelled', time: order.cancelledAt, done: true, active: true),
+        ];
+      } else {
+        steps = [
+          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, done: true, active: st == 'new' || st == 'pending'),
+          OrderTimelineStep(stage: 'verified', title: 'Confirmed', time: order.confirmedAt, done: isVerified, active: st == 'verified'),
+          OrderTimelineStep(stage: 'packed', title: 'Packed', time: order.packedAt, done: isPacked, active: st == 'packed'),
+          OrderTimelineStep(stage: 'on_the_way', title: 'On Way', time: order.onTheWayAt, done: isOtw, active: st == 'on_the_way'),
+          OrderTimelineStep(stage: 'delivered', title: 'Delivered', time: order.deliveredAt, done: isDelivered, active: st == 'delivered'),
+        ];
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF475569)),
+                  SizedBox(width: 4),
+                  Text(
+                    "DELIVERY TIMELINE",
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF475569),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                _getStatusText(order.orderStatus),
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.bold,
+                  color: _getStatusColor(order.orderStatus),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: IntrinsicWidth(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List.generate(steps.length * 2 - 1, (idx) {
+                  if (idx.isOdd) {
+                    final prevStep = steps[idx ~/ 2];
+                    final nextStep = steps[(idx ~/ 2) + 1];
+                    final isConnectorDone = prevStep.done && (nextStep.done || nextStep.active);
+                    return Container(
+                      width: 22,
+                      height: 2.5,
+                      margin: const EdgeInsets.only(top: 10),
+                      color: isConnectorDone ? const Color(0xFF16A34A) : const Color(0xFFCBD5E1),
+                    );
+                  }
+
+                  final sIdx = idx ~/ 2;
+                  final step = steps[sIdx];
+                  final isDone = step.done;
+                  final isActive = step.active;
+                  final isCancelled = step.stage == 'cancelled';
+
+                  Color iconBg = const Color(0xFFE2E8F0);
+                  Color iconFg = const Color(0xFF64748B);
+                  IconData iconData = Icons.circle;
+                  double iconSize = 8;
+
+                  if (isCancelled) {
+                    iconBg = Colors.red;
+                    iconFg = Colors.white;
+                    iconData = Icons.close;
+                    iconSize = 12;
+                  } else if (isDone) {
+                    iconBg = const Color(0xFF16A34A);
+                    iconFg = Colors.white;
+                    iconData = Icons.check;
+                    iconSize = 12;
+                  } else if (isActive) {
+                    iconBg = const Color(0xFF2563EB);
+                    iconFg = Colors.white;
+                    iconData = Icons.radio_button_checked;
+                    iconSize = 12;
+                  }
+
+                  return SizedBox(
+                    width: 58,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: iconBg,
+                            shape: BoxShape.circle,
+                            boxShadow: isActive
+                                ? [BoxShadow(color: const Color(0xFF2563EB).withValues(alpha: 0.35), blurRadius: 6, spreadRadius: 1)]
+                                : null,
+                          ),
+                          child: Icon(iconData, size: iconSize, color: iconFg),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          step.title,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: (isDone || isActive) ? FontWeight.bold : FontWeight.normal,
+                            color: isDone
+                                ? const Color(0xFF16A34A)
+                                : (isActive ? const Color(0xFF2563EB) : const Color(0xFF64748B)),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          step.time.isNotEmpty ? _formatTimelineTime(step.time) : (isDone ? 'Done' : 'Pending'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 8,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _confirmCancelOrder(String orderNumber) {
     final messenger = ScaffoldMessenger.of(context);
 
@@ -230,42 +411,98 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                         bool canCancel = remainingSeconds > 0 &&
                             (order.orderStatus == 'new' || order.orderStatus == 'pending' || order.orderStatus == 'verified');
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 3,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.grey.shade300),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Order Header & Status Badge
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      order.orderNumber,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                // Distinct Header Band with Left Stripe & Status Tone
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withValues(alpha: 0.08),
+                                    border: Border(
+                                      left: BorderSide(color: statusColor, width: 6),
+                                      bottom: BorderSide(color: Colors.grey.shade200),
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: statusColor,
-                                        borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(color: Colors.grey.shade300),
+                                            ),
+                                            child: Text(
+                                              "#${orders.length - index}",
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            order.orderNumber,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B)),
+                                          ),
+                                        ],
                                       ),
-                                      child: Text(
-                                        _getStatusText(order.orderStatus),
-                                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: statusColor,
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        child: Text(
+                                          _getStatusText(order.orderStatus).toUpperCase(),
+                                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Date: ${order.createdAt.length >= 19 ? order.createdAt.substring(0, 19).replaceAll('T', ' ') : order.createdAt}',
-                                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                                ),
-                                const Divider(),
+
+                                Padding(
+                                  padding: const EdgeInsets.all(14.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Date & Payment
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            '📅 ${order.createdAt.length >= 16 ? order.createdAt.substring(0, 16).replaceAll('T', ' ') : order.createdAt}',
+                                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                          ),
+                                          Text(
+                                            order.paymentMethod == 'cod' ? '💵 Cash on Delivery' : '💳 Online Payment',
+                                            style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+
+                                      // Real-time Delivery Timeline Stepper
+                                      _buildDeliveryTimeline(order),
+
+                                      const Divider(),
 
                                 // Order Items
                                 Column(
@@ -448,7 +685,10 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                               ],
                             ),
                           ),
-                        );
+                        ],
+                      ),
+                    ),
+                  );
                       },
                     );
                   },

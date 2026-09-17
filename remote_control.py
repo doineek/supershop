@@ -1020,6 +1020,11 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             UPDATE online_orders SET
                                 order_status = ?, payment_status = ?,
                                 assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?,
+                                confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
+                                packed_at = COALESCE(NULLIF(?, ''), packed_at),
+                                on_the_way_at = COALESCE(NULLIF(?, ''), on_the_way_at),
+                                delivered_at = COALESCE(NULLIF(?, ''), delivered_at),
+                                cancelled_at = COALESCE(NULLIF(?, ''), cancelled_at),
                                 updated_at = ?
                             WHERE order_number = ?
                         """, (
@@ -1028,6 +1033,11 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             int(data.get("assigned_rider_id") or 0),
                             data.get("assigned_rider_name", ""),
                             data.get("assigned_rider_phone", ""),
+                            data.get("confirmed_at", ""),
+                            data.get("packed_at", ""),
+                            data.get("on_the_way_at", ""),
+                            data.get("delivered_at", ""),
+                            data.get("cancelled_at", ""),
                             datetime.now().isoformat(),
                             order_number
                         ))

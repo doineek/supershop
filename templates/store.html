@@ -1497,6 +1497,97 @@
       transform: translateY(-1px);
       box-shadow: 0 5px 14px rgba(0, 0, 0, 0.18);
     }
+
+    /* ---- Order Card Visual Separation & Delivery Timeline Styles ---- */
+    .order-item-card {
+      transition: all 0.25s ease;
+    }
+    .order-item-card:hover {
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08) !important;
+    }
+    @keyframes orderHighlightPulse {
+      0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); transform: scale(1.015); border-color: #2563eb !important; }
+      50% { box-shadow: 0 0 0 12px rgba(37, 99, 235, 0); transform: scale(1.015); border-color: #2563eb !important; }
+      100% { box-shadow: 0 4px 14px rgba(0,0,0,0.07); transform: scale(1); }
+    }
+    .order-card-highlight {
+      animation: orderHighlightPulse 2s ease-in-out infinite;
+      border-color: #2563eb !important;
+    }
+    .timeline-stepper {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      margin-top: 8px;
+    }
+    .timeline-step {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    .timeline-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 13px;
+      left: 50%;
+      width: 100%;
+      height: 3px;
+      background: #e2e8f0;
+      z-index: -1;
+    }
+    .timeline-step.completed:not(:last-child)::after {
+      background: #16a34a;
+    }
+    .timeline-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 5px;
+      background: #f1f5f9;
+      color: #94a3b8;
+      border: 2px solid #cbd5e1;
+      transition: all 0.2s ease;
+    }
+    .timeline-step.completed .timeline-icon {
+      background: #16a34a;
+      color: #ffffff;
+      border-color: #16a34a;
+    }
+    .timeline-step.current .timeline-icon {
+      background: #2563eb;
+      color: #ffffff;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+    .timeline-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 2px;
+      line-height: 1.2;
+    }
+    .timeline-step.completed .timeline-label {
+      color: #16a34a;
+    }
+    .timeline-step.current .timeline-label {
+      color: #2563eb;
+      font-weight: 800;
+    }
+    .timeline-time {
+      font-size: 0.67rem;
+      color: #64748b;
+      font-weight: 600;
+      line-height: 1.2;
+    }
     
     
     
@@ -4016,9 +4107,9 @@
       document.getElementById('changePasswordModal').style.display = 'none';
     }
 
-    function openOrderHistoryModal() {
+    function openOrderHistoryModal(targetOrderNumber = null) {
       document.getElementById('orderHistoryModal').style.display = 'flex';
-      fetchMyOrdersHistory();
+      fetchMyOrdersHistory(targetOrderNumber);
     }
     function closeOrderHistoryModal() {
       document.getElementById('orderHistoryModal').style.display = 'none';
@@ -4635,8 +4726,107 @@
 
     let lastFetchedMyOrders = [];
 
+    function formatTimelineDate(timeStr) {
+      if (!timeStr) return '';
+      try {
+        const d = new Date(timeStr);
+        if (isNaN(d.getTime())) return timeStr.slice(0, 16).replace('T', ' ');
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const m = months[d.getMonth()];
+        const day = d.getDate();
+        let h = d.getHours();
+        const min = d.getMinutes().toString().padStart(2, '0');
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${day} ${m}, ${h}:${min} ${ampm}`;
+      } catch (e) {
+        return timeStr.slice(0, 16).replace('T', ' ');
+      }
+    }
+
+    function buildDeliveryTimelineHtml(order) {
+      const st = (order.order_status || 'new').toLowerCase();
+      let steps = [];
+      if (Array.isArray(order.timeline) && order.timeline.length > 0) {
+        steps = order.timeline;
+      } else {
+        const isVerified = ['verified', 'packed', 'on_the_way', 'delivered'].includes(st);
+        const isPacked = ['packed', 'on_the_way', 'delivered'].includes(st);
+        const isOtw = ['on_the_way', 'delivered'].includes(st);
+        const isDelivered = (st === 'delivered');
+        const isCancelled = (st === 'cancelled');
+
+        if (isCancelled) {
+          steps = [
+            { stage: 'placed', title: 'Placed', time: order.created_at, done: true, active: false },
+            { stage: 'cancelled', title: 'Cancelled', time: order.cancelled_at || order.updated_at, done: true, active: true }
+          ];
+        } else {
+          steps = [
+            { stage: 'placed', title: 'Placed', time: order.created_at, done: true, active: st === 'new' },
+            { stage: 'verified', title: 'Confirmed', time: order.confirmed_at, done: isVerified, active: st === 'verified' },
+            { stage: 'packed', title: 'Packed', time: order.packed_at, done: isPacked, active: st === 'packed' },
+            { stage: 'on_the_way', title: 'On The Way', time: order.on_the_way_at, done: isOtw, active: st === 'on_the_way' },
+            { stage: 'delivered', title: 'Delivered', time: order.delivered_at, done: isDelivered, active: st === 'delivered' }
+          ];
+        }
+      }
+
+      const iconMap = {
+        'placed': '📝',
+        'verified': '✓',
+        'packed': '📦',
+        'on_the_way': '🚚',
+        'delivered': '🏠',
+        'cancelled': '✕'
+      };
+
+      const stepsHtml = steps.map(s => {
+        const isDone = s.done || s.is_done;
+        const isActive = s.active || s.is_current;
+        const stageName = s.stage || s.key || '';
+        let stepClass = 'timeline-step';
+        if (isDone) stepClass += ' completed';
+        if (isActive) stepClass += ' current';
+        if (stageName === 'cancelled') stepClass += ' cancelled';
+
+        const ic = iconMap[stageName] || '•';
+        const formattedTime = formatTimelineDate(s.time);
+
+        return `
+          <div class="${stepClass}">
+            <div class="timeline-icon">${ic}</div>
+            <div class="timeline-label">${s.title}</div>
+            <div class="timeline-time">${formattedTime ? formattedTime : (isDone ? 'Done' : 'Pending')}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 8px 8px 8px; margin:10px 0;">
+          <div style="font-size:0.72rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span>⏱️ Delivery Timeline</span>
+            <span style="font-weight:700; color:#64748b; font-size:0.68rem;">Real-time updates</span>
+          </div>
+          <div class="timeline-stepper">
+            ${stepsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    const orderStatusConfig = {
+      'new': { color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', badgeBg: '#e0f2fe', label: 'Order Placed' },
+      'pending': { color: '#d97706', bg: '#fffbeb', border: '#fde68a', badgeBg: '#fef3c7', label: 'Pending Confirmation' },
+      'verified': { color: '#7c3aed', bg: '#fbf8ff', border: '#ddd6fe', badgeBg: '#ede9fe', label: 'Confirmed' },
+      'packed': { color: '#ea580c', bg: '#fff7ed', border: '#ffedd5', badgeBg: '#ffedd5', label: 'Packed & Ready' },
+      'on_the_way': { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', badgeBg: '#dbeafe', label: 'On The Way' },
+      'delivered': { color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', badgeBg: '#dcfce7', label: 'Delivered' },
+      'cancelled': { color: '#dc2626', bg: '#fef2f2', border: '#fecaca', badgeBg: '#fee2e2', label: 'Cancelled' }
+    };
+
     // Fetch My Orders History
-    async function fetchMyOrdersHistory() {
+    async function fetchMyOrdersHistory(targetOrderNumber = null) {
       if (!currentCustomer || !currentCustomer.phone) return;
       const container = document.getElementById('myOrdersListContainer');
       try {
@@ -4646,6 +4836,9 @@
         if (lastFetchedMyOrders.length > 0) {
           container.innerHTML = lastFetchedMyOrders.map((o, oIdx) => {
             const items = o.items || [];
+            const rawStatus = (o.order_status || 'new').toLowerCase();
+            const curCfg = orderStatusConfig[rawStatus] || orderStatusConfig['new'];
+            const timelineHtml = buildDeliveryTimelineHtml(o);
             
             // 1. Initial summary preview line of all products in order
             const prodSummaryNames = items.map(it => {
@@ -4693,75 +4886,110 @@
             }).join('');
 
             return `
-              <div class="order-item-card" style="background:#ffffff; border:1.5px solid #e2e8f0; border-radius:12px; padding:14px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,0.04);">
-                <!-- Header with Order Number & Status -->
-                <div class="order-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                  <div class="order-num" onclick="toggleOrderDetailBox('${o.id}')" style="font-weight:800; font-size:0.95rem; color:#2563eb; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Click to view full order details">
-                    <span>🧾 #${o.order_number}</span>
+              <div class="order-item-card"
+                   id="orderCard_${o.order_number}"
+                   data-order-number="${o.order_number}"
+                   data-order-id="${o.id}"
+                   style="background:#ffffff; border:1.5px solid ${curCfg.border}; border-left:6px solid ${curCfg.color} !important; border-radius:14px; margin-bottom:18px; box-shadow:0 3px 10px rgba(0,0,0,0.05); overflow:hidden; transition:all 0.25s ease;">
+                
+                <!-- Distinct Header Bar with Status Tone & Order Number -->
+                <div style="display:flex; justify-content:space-between; align-items:center; background:${curCfg.bg}; border-bottom:1.5px solid ${curCfg.border}; padding:10px 14px;">
+                  <div onclick="toggleOrderDetailBox('${o.id}')" style="display:flex; align-items:center; gap:8px; cursor:pointer;" title="Click to view full order details">
+                    <span style="font-weight:900; font-size:0.95rem; color:#0f172a;">🧾 Order #${o.order_number}</span>
+                    <span style="font-size:0.72rem; font-weight:700; background:#ffffff; color:#64748b; border:1px solid #cbd5e1; padding:1px 6px; border-radius:10px;">
+                      #${lastFetchedMyOrders.length - oIdx}
+                    </span>
                   </div>
-                  <div class="order-status status-${o.order_status}" style="font-size:0.75rem; font-weight:800; padding:3px 10px; border-radius:20px;">
-                    ${(o.order_status || 'Pending').toUpperCase()}
-                  </div>
-                </div>
-
-                <!-- Products Summary Line (Initially Visible) -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin:8px 0; font-size:0.82rem; color:#334155; line-height:1.4;">
-                  <strong style="color:#0f172a;">🛍️ Products in this order:</strong> ${prodSummaryNames || 'General grocery items'}
-                </div>
-
-                <!-- Price and Date Bar -->
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-                  <div>
-                    <div style="font-size:0.75rem; color:#64748b;">${(o.created_at || '').slice(0, 16).replace('T', ' ')}</div>
-                    <div style="font-size:0.75rem; color:#94a3b8;">${o.payment_method === 'cod' ? '💵 Cash on Delivery' : '💳 Online Payment'}</div>
-                  </div>
-                  <div style="text-align:right;">
-                    <span style="font-size:1rem; font-weight:900; color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
-                    <button type="button" onclick="toggleOrderDetailBox('${o.id}')" id="detailToggleBtn_${o.id}" style="display:block; margin-top:4px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:4px 10px; border-radius:6px; font-size:0.78rem; font-weight:700; cursor:pointer;">
-                      👁️ Order Details ▾
-                    </button>
+                  <div style="font-size:0.74rem; font-weight:800; padding:4px 12px; border-radius:20px; background:${curCfg.badgeBg}; color:${curCfg.color}; border:1px solid ${curCfg.border};">
+                    ● ${curCfg.label.toUpperCase()}
                   </div>
                 </div>
 
-                <!-- Expandable Detailed Section (Separated Product Cards) -->
-                <div id="orderDetailBox_${o.id}" style="display:none; margin-top:12px; padding-top:12px; border-top:1.5px dashed #cbd5e1;">
-                  <div style="font-size:0.82rem; font-weight:800; color:#1e293b; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>📦 Ordered Items (${items.length} Products):</span>
-                    <span style="font-size:0.74rem; color:#64748b; font-weight:600;">(Click item to view details)</span>
+                <div style="padding:14px;">
+                  <!-- Products Summary Line -->
+                  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:0.82rem; color:#334155; line-height:1.4;">
+                    <strong style="color:#0f172a;">🛍️ Items:</strong> ${prodSummaryNames || 'General grocery items'}
                   </div>
 
-                  <div class="order-items-separated-list">
-                    ${itemsCardsHtml}
+                  <!-- Real-time Delivery Timeline Stepper -->
+                  ${timelineHtml}
+
+                  <!-- Price and Date Bar -->
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                    <div>
+                      <div style="font-size:0.75rem; color:#64748b;">📅 ${(o.created_at || '').slice(0, 16).replace('T', ' ')}</div>
+                      <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">${o.payment_method === 'cod' ? '💵 Cash on Delivery' : '💳 Online Payment'}</div>
+                    </div>
+                    <div style="text-align:right;">
+                      <span style="font-size:1.05rem; font-weight:900; color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
+                      <button type="button" onclick="toggleOrderDetailBox('${o.id}')" id="detailToggleBtn_${o.id}" style="display:block; margin-top:4px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:5px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                        👁️ Order Details ▾
+                      </button>
+                    </div>
                   </div>
 
-                  <!-- Delivery Details & Pricing Summary -->
-                  <div style="background:#f1f5f9; border-radius:8px; padding:10px; margin-top:10px; font-size:0.80rem; color:#475569;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                      <span>Subtotal:</span>
-                      <strong>TK ${(o.subtotal || 0).toFixed(2)}</strong>
+                  <!-- Expandable Detailed Section (Separated Product Cards) -->
+                  <div id="orderDetailBox_${o.id}" style="display:none; margin-top:12px; padding-top:12px; border-top:1.5px dashed #cbd5e1;">
+                    <div style="font-size:0.82rem; font-weight:800; color:#1e293b; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                      <span>📦 Ordered Items (${items.length} Products):</span>
+                      <span style="font-size:0.74rem; color:#64748b; font-weight:600;">(Click item to view details)</span>
                     </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                      <span>Delivery Charge:</span>
-                      <strong>${(o.delivery_charge === 0 || o.delivery_charge === 0.0) ? '<span style="color:#16a34a; font-weight:800;">FREE (TK 0)</span>' : 'TK ' + (o.delivery_charge || 0).toFixed(2)}</strong>
+
+                    <div class="order-items-separated-list">
+                      ${itemsCardsHtml}
                     </div>
-                    <div style="display:flex; justify-content:space-between; font-weight:800; color:#0f172a; border-top:1px solid #cbd5e1; padding-top:4px; margin-top:4px;">
-                      <span>Total Amount:</span>
-                      <span style="color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
-                    </div>
-                    <div style="margin-top:6px; font-size:0.75rem; color:#64748b;">
-                      📍 <strong>Address:</strong> ${o.address_details || ''}, ${o.area || ''}, ${o.district || ''}
-                    </div>
-                    ${o.delivery_otp ? `
-                      <div style="margin-top:4px; font-size:0.75rem; color:#0369a1; font-weight:700;">
-                        🔑 Delivery Confirmation OTP: <span style="background:#e0f2fe; padding:2px 6px; border-radius:4px; letter-spacing:1px;">${o.delivery_otp}</span>
+
+                    <!-- Delivery Details & Pricing Summary -->
+                    <div style="background:#f1f5f9; border-radius:8px; padding:10px; margin-top:10px; font-size:0.80rem; color:#475569;">
+                      <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span>Subtotal:</span>
+                        <strong>TK ${(o.subtotal || 0).toFixed(2)}</strong>
                       </div>
-                    ` : ''}
+                      <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                        <span>Delivery Charge:</span>
+                        <strong>${(o.delivery_charge === 0 || o.delivery_charge === 0.0) ? '<span style="color:#16a34a; font-weight:800;">FREE (TK 0)</span>' : 'TK ' + (o.delivery_charge || 0).toFixed(2)}</strong>
+                      </div>
+                      <div style="display:flex; justify-content:space-between; font-weight:800; color:#0f172a; border-top:1px solid #cbd5e1; padding-top:4px; margin-top:4px;">
+                        <span>Total Amount:</span>
+                        <span style="color:#16a34a;">TK ${(o.total_amount || 0).toFixed(2)}</span>
+                      </div>
+                      <div style="margin-top:6px; font-size:0.75rem; color:#64748b;">
+                        📍 <strong>Address:</strong> ${o.address_details || ''}, ${o.area || ''}, ${o.district || ''}
+                      </div>
+                      ${o.delivery_otp ? `
+                        <div style="margin-top:4px; font-size:0.75rem; color:#0369a1; font-weight:700;">
+                          🔑 Delivery Confirmation OTP: <span style="background:#e0f2fe; padding:2px 6px; border-radius:4px; letter-spacing:1px;">${o.delivery_otp}</span>
+                        </div>
+                      ` : ''}
+                    </div>
                   </div>
                 </div>
 
               </div>
             `;
           }).join('');
+
+          if (targetOrderNumber) {
+            setTimeout(() => {
+              const cleanTarget = String(targetOrderNumber).trim();
+              const targetCard = document.querySelector(`[data-order-number="${cleanTarget}"]`) ||
+                                 document.querySelector(`[data-order-id="${cleanTarget}"]`);
+              if (targetCard) {
+                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetCard.classList.add('order-card-highlight');
+                const orderId = targetCard.getAttribute('data-order-id');
+                if (orderId) {
+                  const dBox = document.getElementById('orderDetailBox_' + orderId);
+                  const dBtn = document.getElementById('detailToggleBtn_' + orderId);
+                  if (dBox) dBox.style.display = 'block';
+                  if (dBtn) dBtn.innerHTML = '▲ Hide Details';
+                }
+                setTimeout(() => {
+                  targetCard.classList.remove('order-card-highlight');
+                }, 4000);
+              }
+            }, 250);
+          }
         } else {
           container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:0.85rem;">No orders placed yet. Add items to your bag to place your first order!</div>';
         }
@@ -5899,11 +6127,15 @@
 
       if (type === 'order') {
         switchView('profile');
-        setTimeout(() => {
+        if (typeof openOrderHistoryModal === 'function') {
+          openOrderHistoryModal(refId);
+        } else {
+          const modal = document.getElementById('orderHistoryModal');
+          if (modal) modal.style.display = 'flex';
           if (typeof fetchMyOrdersHistory === 'function') {
-            fetchMyOrdersHistory();
+            fetchMyOrdersHistory(refId);
           }
-        }, 150);
+        }
       } else if (type === 'offer') {
         switchView('home');
         const notifTitle = (notif && notif.title) ? notif.title.toLowerCase() : '';

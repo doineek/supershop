@@ -30,6 +30,32 @@ class OrderItem {
   }
 }
 
+class OrderTimelineStep {
+  final String stage;
+  final String title;
+  final String time;
+  final bool done;
+  final bool active;
+
+  OrderTimelineStep({
+    required this.stage,
+    required this.title,
+    this.time = '',
+    this.done = false,
+    this.active = false,
+  });
+
+  factory OrderTimelineStep.fromJson(Map<String, dynamic> json) {
+    return OrderTimelineStep(
+      stage: json['stage'] ?? json['key'] ?? '',
+      title: json['title'] ?? '',
+      time: json['time'] ?? '',
+      done: json['done'] ?? json['is_done'] ?? false,
+      active: json['active'] ?? json['is_current'] ?? false,
+    );
+  }
+}
+
 class OnlineOrder {
   final int id;
   final String orderNumber;
@@ -50,6 +76,12 @@ class OnlineOrder {
   final String assignedRiderName;
   final String assignedRiderPhone;
   final String createdAt;
+  final String confirmedAt;
+  final String packedAt;
+  final String onTheWayAt;
+  final String deliveredAt;
+  final String cancelledAt;
+  final List<OrderTimelineStep> timeline;
   final List<OrderItem> items;
 
   OnlineOrder({
@@ -72,12 +104,21 @@ class OnlineOrder {
     this.assignedRiderName = '',
     this.assignedRiderPhone = '',
     required this.createdAt,
+    this.confirmedAt = '',
+    this.packedAt = '',
+    this.onTheWayAt = '',
+    this.deliveredAt = '',
+    this.cancelledAt = '',
+    this.timeline = const [],
     required this.items,
   });
 
   factory OnlineOrder.fromJson(Map<String, dynamic> json) {
     var rawItems = json['items'] as List? ?? [];
     List<OrderItem> itemList = rawItems.map((i) => OrderItem.fromJson(i)).toList();
+
+    var rawTimeline = json['timeline'] as List? ?? [];
+    List<OrderTimelineStep> timelineList = rawTimeline.map((t) => OrderTimelineStep.fromJson(t)).toList();
 
     return OnlineOrder(
       id: json['id'] ?? 0,
@@ -99,6 +140,12 @@ class OnlineOrder {
       assignedRiderName: json['assigned_rider_name'] ?? '',
       assignedRiderPhone: json['assigned_rider_phone'] ?? '',
       createdAt: json['created_at'] ?? '',
+      confirmedAt: json['confirmed_at'] ?? '',
+      packedAt: json['packed_at'] ?? '',
+      onTheWayAt: json['on_the_way_at'] ?? '',
+      deliveredAt: json['delivered_at'] ?? '',
+      cancelledAt: json['cancelled_at'] ?? '',
+      timeline: timelineList,
       items: itemList,
     );
   }

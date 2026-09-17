@@ -6904,9 +6904,10 @@ def assign_online_order_rider(order_id):
             rider_name = rider["full_name"] if rider["full_name"] else rider["username"]
             rider_phone = rider["username"]
 
+    now_iso = datetime.now().isoformat()
     conn.execute(
-        "UPDATE online_orders SET order_status = 'verified', assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?, updated_at = ? WHERE id = ?",
-        (rider_id or 0, rider_name, rider_phone, datetime.now().isoformat(), order_id)
+        "UPDATE online_orders SET order_status = 'verified', assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
+        (rider_id or 0, rider_name, rider_phone, now_iso, now_iso, order_id)
     )
     deduct_online_order_stock(conn, order)
     notify_order_status_change(order, 'verified', conn=conn)
@@ -6937,9 +6938,10 @@ def api_rider_accept_order():
         conn.close()
         return jsonify({"success": False, "message": "Order not found."}), 400
 
+    now_iso = datetime.now().isoformat()
     conn.execute(
-        "UPDATE online_orders SET order_status = 'verified', assigned_rider_name = ?, assigned_rider_phone = ?, updated_at = ? WHERE id = ?",
-        (rider_name if rider_name else rider_phone, rider_phone, datetime.now().isoformat(), order_id)
+        "UPDATE online_orders SET order_status = 'verified', assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
+        (rider_name if rider_name else rider_phone, rider_phone, now_iso, now_iso, order_id)
     )
     deduct_online_order_stock(conn, order)
     notify_order_status_change(order, 'verified', conn=conn)
@@ -6974,18 +6976,20 @@ def api_rider_update_order_status():
             conn.close()
             return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit OTP from customer app."}), 400
 
+    now_iso = datetime.now().isoformat()
     if status == "delivered":
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
-            "UPDATE online_orders SET order_status = ?, payment_status = CASE WHEN payment_status = 'pending' THEN 'paid' ELSE payment_status END, rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
-            (status, r_fee, datetime.now().isoformat(), order_id)
+            "UPDATE online_orders SET order_status = ?, payment_status = CASE WHEN payment_status = 'pending' THEN 'paid' ELSE payment_status END, rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
+            (status, r_fee, now_iso, now_iso, order_id)
         )
         notify_order_status_change(order, status, conn=conn)
         conn.commit()
     elif status in ["verified", "packed", "on_the_way", "cancelled"]:
+        col_name = "confirmed_at" if status == "verified" else ("packed_at" if status == "packed" else ("on_the_way_at" if status == "on_the_way" else "cancelled_at"))
         conn.execute(
-            "UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?",
-            (status, datetime.now().isoformat(), order_id)
+            f"UPDATE online_orders SET order_status = ?, {col_name} = CASE WHEN {col_name} = '' THEN ? ELSE {col_name} END, updated_at = ? WHERE id = ?",
+            (status, now_iso, now_iso, order_id)
         )
         if status == "verified" and order["is_stock_deducted"] == 0:
             deduct_online_order_stock(conn, order)
@@ -7137,17 +7141,25 @@ def update_online_order_status(order_id):
         flash("Order not found.", "error")
         return redirect(url_for("online_orders"))
 
+    now_iso = datetime.now().isoformat()
     if new_status == "delivered":
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
-            "UPDATE online_orders SET order_status = ?, payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
-            (new_status, r_fee, datetime.now().isoformat(), order_id)
+            "UPDATE online_orders SET order_status = ?, payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
+            (new_status, r_fee, now_iso, now_iso, order_id)
         )
     else:
-        conn.execute(
-            "UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?",
-            (new_status, datetime.now().isoformat(), order_id)
-        )
+        col_name = "confirmed_at" if new_status == "verified" else ("packed_at" if new_status == "packed" else ("on_the_way_at" if new_status == "on_the_way" else ("cancelled_at" if new_status == "cancelled" else "")))
+        if col_name:
+            conn.execute(
+                f"UPDATE online_orders SET order_status = ?, {col_name} = CASE WHEN {col_name} = '' THEN ? ELSE {col_name} END, updated_at = ? WHERE id = ?",
+                (new_status, now_iso, now_iso, order_id)
+            )
+        else:
+            conn.execute(
+                "UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?",
+                (new_status, now_iso, order_id)
+            )
 
     if new_status in ("new", "verified", "packed", "on_the_way", "delivered"):
         deduct_online_order_stock(conn, order)
@@ -7327,9 +7339,10 @@ def verify_online_order_otp(order_id):
     order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
     if order and order["delivery_otp"] == input_otp:
         r_fee = get_rider_delivery_fee_setting(conn)
+        now_iso = datetime.now().isoformat()
         conn.execute(
-            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
-            (r_fee, datetime.now().isoformat(), order_id)
+            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
+            (r_fee, now_iso, now_iso, order_id)
         )
         notify_order_status_change(order, 'delivered', conn=conn)
         conn.commit()
@@ -8186,6 +8199,98 @@ def api_my_orders():
 
         o_dict = dict(ord_row)
         o_dict["items"] = processed_items
+
+        # Build delivery timeline with real timing
+        created_dt = o_dict.get("created_at") or ""
+        confirmed_dt = o_dict.get("confirmed_at") or ""
+        packed_dt = o_dict.get("packed_at") or ""
+        on_the_way_dt = o_dict.get("on_the_way_at") or ""
+        delivered_dt = o_dict.get("delivered_at") or ""
+        cancelled_dt = o_dict.get("cancelled_at") or ""
+        curr_status = o_dict.get("order_status") or "new"
+
+        # Fallback for historical orders created before timestamp migration
+        if curr_status in ("verified", "packed", "on_the_way", "delivered") and not confirmed_dt:
+            confirmed_dt = created_dt
+        if curr_status in ("packed", "on_the_way", "delivered") and not packed_dt:
+            packed_dt = confirmed_dt or created_dt
+        if curr_status in ("on_the_way", "delivered") and not on_the_way_dt:
+            on_the_way_dt = packed_dt or created_dt
+        if curr_status == "delivered" and not delivered_dt:
+            delivered_dt = o_dict.get("updated_at") or created_dt
+        if curr_status == "cancelled" and not cancelled_dt:
+            cancelled_dt = o_dict.get("updated_at") or created_dt
+
+        timeline = [
+            {
+                "stage": "placed",
+                "key": "placed",
+                "title": "Order Placed",
+                "time": created_dt,
+                "done": True,
+                "is_done": True,
+                "active": (curr_status in ("new", "pending", "pending_confirmation")),
+                "is_current": (curr_status in ("new", "pending", "pending_confirmation"))
+            },
+            {
+                "stage": "verified",
+                "key": "verified",
+                "title": "Order Confirmed",
+                "time": confirmed_dt,
+                "done": bool(confirmed_dt) or curr_status in ("verified", "packed", "on_the_way", "delivered"),
+                "is_done": bool(confirmed_dt) or curr_status in ("verified", "packed", "on_the_way", "delivered"),
+                "active": (curr_status == "verified"),
+                "is_current": (curr_status == "verified")
+            },
+            {
+                "stage": "packed",
+                "key": "packed",
+                "title": "Packed & Ready",
+                "time": packed_dt,
+                "done": bool(packed_dt) or curr_status in ("packed", "on_the_way", "delivered"),
+                "is_done": bool(packed_dt) or curr_status in ("packed", "on_the_way", "delivered"),
+                "active": (curr_status == "packed"),
+                "is_current": (curr_status == "packed")
+            },
+            {
+                "stage": "on_the_way",
+                "key": "on_the_way",
+                "title": "On The Way",
+                "time": on_the_way_dt,
+                "done": bool(on_the_way_dt) or curr_status in ("on_the_way", "delivered"),
+                "is_done": bool(on_the_way_dt) or curr_status in ("on_the_way", "delivered"),
+                "active": (curr_status == "on_the_way"),
+                "is_current": (curr_status == "on_the_way")
+            },
+            {
+                "stage": "delivered",
+                "key": "delivered",
+                "title": "Delivered",
+                "time": delivered_dt,
+                "done": bool(delivered_dt) or (curr_status == "delivered"),
+                "is_done": bool(delivered_dt) or (curr_status == "delivered"),
+                "active": (curr_status == "delivered"),
+                "is_current": (curr_status == "delivered")
+            }
+        ]
+        if curr_status == "cancelled":
+            timeline.append({
+                "stage": "cancelled",
+                "key": "cancelled",
+                "title": "Order Cancelled",
+                "time": cancelled_dt,
+                "done": True,
+                "is_done": True,
+                "active": True,
+                "is_current": True
+            })
+
+        o_dict["timeline"] = timeline
+        o_dict["confirmed_at"] = confirmed_dt
+        o_dict["packed_at"] = packed_dt
+        o_dict["on_the_way_at"] = on_the_way_dt
+        o_dict["delivered_at"] = delivered_dt
+        o_dict["cancelled_at"] = cancelled_dt
         result.append(o_dict)
 
     conn.close()
@@ -8231,9 +8336,10 @@ def api_cancel_order():
     # Restore stock if stock was deducted for this order
     restore_online_order_stock(conn, order)
 
+    now_iso = datetime.now().isoformat()
     conn.execute(
-        "UPDATE online_orders SET order_status = 'cancelled', updated_at = ? WHERE id = ?",
-        (datetime.now().isoformat(), order["id"])
+        "UPDATE online_orders SET order_status = 'cancelled', cancelled_at = CASE WHEN cancelled_at = '' THEN ? ELSE cancelled_at END, updated_at = ? WHERE id = ?",
+        (now_iso, now_iso, order["id"])
     )
     notify_order_status_change(order, 'cancelled', conn=conn)
     conn.commit()
@@ -8455,10 +8561,10 @@ def api_verify_otp():
     conn = get_connection()
     order = conn.execute("SELECT * FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
     if order and order["delivery_otp"] == otp:
-        r_fee = get_rider_delivery_fee_setting(conn)
+        now_iso = datetime.now().isoformat()
         conn.execute(
-            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, updated_at = ? WHERE id = ?",
-            (r_fee, datetime.now().isoformat(), order["id"])
+            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
+            (r_fee, now_iso, now_iso, order["id"])
         )
         notify_order_status_change(order, 'delivered', conn=conn)
         conn.commit()

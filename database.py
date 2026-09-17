@@ -132,6 +132,15 @@ def init_db():
         order_status TEXT NOT NULL DEFAULT 'new',
         delivery_otp TEXT NOT NULL DEFAULT '',
         is_stock_deducted INTEGER NOT NULL DEFAULT 0,
+        assigned_rider_id INTEGER NOT NULL DEFAULT 0,
+        assigned_rider_name TEXT NOT NULL DEFAULT '',
+        assigned_rider_phone TEXT NOT NULL DEFAULT '',
+        rider_fee REAL NOT NULL DEFAULT 0.0,
+        confirmed_at TEXT NOT NULL DEFAULT '',
+        packed_at TEXT NOT NULL DEFAULT '',
+        on_the_way_at TEXT NOT NULL DEFAULT '',
+        delivered_at TEXT NOT NULL DEFAULT '',
+        cancelled_at TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
@@ -392,6 +401,11 @@ def init_db():
         "ALTER TABLE packages ADD COLUMN max_sale_limit INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE packages ADD COLUMN sold_quantity INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE packages ADD COLUMN show_in_banner INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE online_orders ADD COLUMN confirmed_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN packed_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN on_the_way_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN delivered_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN cancelled_at TEXT NOT NULL DEFAULT ''",
     ]
     for statement in migrations:
         try:

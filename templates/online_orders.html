@@ -59,9 +59,16 @@
       </tr>
     </thead>
     <tbody>
-      {% for order in orders %}      <tr id="orderRow_{{ order.id }}" style="border-bottom: 1px solid #f1f5f9; background: {% if order.order_status == 'pending_confirmation' %}#fff7ed{% elif order.order_status == 'new' %}#f0f9ff{% else %}white{% endif %};">
+      {% for order in orders %}
+      {% set st_color = '#10b981' if order.order_status == 'delivered' else ('#06b6d4' if order.order_status == 'on_the_way' else ('#f59e0b' if order.order_status == 'packed' else ('#8b5cf6' if order.order_status == 'verified' else ('#ef4444' if order.order_status == 'cancelled' else ('#ea580c' if order.order_status == 'pending_confirmation' else '#3b82f6'))))) %}
+      {% set bg_color = '#f8fafc' if loop.index is even else '#ffffff' %}
+      {% if order.order_status == 'pending_confirmation' %}{% set bg_color = '#fffbf5' %}{% elif order.order_status == 'new' %}{% set bg_color = '#f0f9ff' %}{% endif %}
+      <tr id="orderRow_{{ order.id }}" style="border-bottom: 3px solid #e2e8f0; border-left: 6px solid {{ st_color }}; background: {{ bg_color }}; transition: background 0.2s ease;">
         <td style="padding: 14px 16px; vertical-align: top;">
-          <strong style="font-family: 'IBM Plex Mono', monospace; color: #1e293b;">{{ order.order_number }}</strong>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:0.75rem; font-weight:700; color:#64748b; background:#e2e8f0; padding:1px 6px; border-radius:6px;">#{{ loop.index }}</span>
+            <strong style="font-family: 'IBM Plex Mono', monospace; color: #1e293b; font-size:1.02rem;">{{ order.order_number }}</strong>
+          </div>
           <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">{{ order.created_at[:16].replace('T', ' ') }}</div>
         </td>
         
