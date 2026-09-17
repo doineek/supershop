@@ -462,6 +462,11 @@
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    function cleanPortalNotifTitle(title) {
+      if (!title) return 'Notification';
+      return String(title).replace(/^[^\w\d\s\u0980-\u09FF]+\s*/u, '').trim() || title;
+    }
+
     function formatPortalTime(dtStr) {
       if (!dtStr) return 'Just now';
       try {
@@ -529,29 +534,46 @@
 
       body.innerHTML = portalNotifications.map(n => {
         let icon = '🔔';
+        let iconBg = '#EDE9FE';
         if (n.type === 'order') {
           const title = n.title || '';
-          if (title.includes('Delivered')) icon = '✅';
-          else if (title.includes('Way')) icon = '🛵';
-          else if (title.includes('Packed')) icon = '📦';
-          else if (title.includes('Confirmed')) icon = '✔️';
-          else if (title.includes('Cancelled')) icon = '❌';
-          else icon = '🛍️';
+          if (title.includes('Delivered')) {
+            icon = '✅';
+            iconBg = '#DCFCE7';
+          } else if (title.includes('Way')) {
+            icon = '🛵';
+            iconBg = '#FEF3C7';
+          } else if (title.includes('Packed')) {
+            icon = '📦';
+            iconBg = '#E0F2FE';
+          } else if (title.includes('Confirmed')) {
+            icon = '✔️';
+            iconBg = '#EDE9FE';
+          } else if (title.includes('Cancelled')) {
+            icon = '❌';
+            iconBg = '#FEE2E2';
+          } else {
+            icon = '🛍️';
+            iconBg = '#EDE9FE';
+          }
         } else if (n.type === 'offer') {
           icon = '🏷️';
+          iconBg = '#FEF3C7';
         } else if (n.type === 'suggestion') {
           icon = '💡';
+          iconBg = '#E0F2FE';
         }
 
         const isUnread = !n.is_read;
         const timeAgo = formatPortalTime(n.created_at);
+        const displayTitle = escapePortalHtml(cleanPortalNotifTitle(n.title || 'Notification'));
 
         return `
           <div class="portal-notif-item ${isUnread ? 'unread' : 'read'}" onclick="handlePortalNotifClick(${n.id}, '${n.type || 'general'}', '${n.reference_id || ''}')">
-            <div class="portal-notif-icon">${icon}</div>
+            <div class="portal-notif-icon" style="background:${iconBg}; font-size:17px;">${icon}</div>
             <div style="flex: 1; min-width: 0;">
               <div class="portal-notif-title">
-                <span>${escapePortalHtml(n.title || 'Notification')}</span>
+                <span>${displayTitle}</span>
                 ${isUnread ? '<span class="portal-notif-dot"></span>' : ''}
               </div>
               <div class="portal-notif-desc">${escapePortalHtml(n.message || '')}</div>

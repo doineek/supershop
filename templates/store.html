@@ -2055,7 +2055,6 @@
         <button class="desktop-tab-btn active" id="deskTabHome" onclick="switchView('home')">🏠 Home</button>
         <button class="desktop-tab-btn" id="deskTabCategory" onclick="switchView('category')">📂 Categories</button>
         <button class="desktop-tab-btn" id="deskTabCart" onclick="switchView('cart')">🛒 Cart (<span id="deskCartCount">0</span>)</button>
-        <button class="desktop-tab-btn" id="deskTabNotif" onclick="toggleWebNotifications(event)">🔔 Alerts (<span id="deskNotifCount">0</span>)</button>
         <button class="desktop-tab-btn" id="deskTabProfile" onclick="switchView('profile')">👤 Profile</button>
       </div>
 
@@ -3004,11 +3003,6 @@
     <div class="nav-tab-item" id="mobTabCategory" onclick="switchView('category')">
       <span class="nav-tab-icon">📂</span>
       <span>Category</span>
-    </div>
-    <div class="nav-tab-item" id="mobTabNotifications" onclick="toggleWebNotifications(event)">
-      <span class="nav-tab-icon">🔔</span>
-      <span class="tab-badge" id="bottomNotifBadge" style="display:none;">0</span>
-      <span>Alerts</span>
     </div>
     <div class="nav-tab-item" id="mobTabCart" onclick="switchView('cart')">
       <span class="nav-tab-icon">🛒</span>
@@ -5663,6 +5657,11 @@
       }
     }
 
+    function cleanNotifTitle(title) {
+      if (!title) return 'Notification';
+      return String(title).replace(/^[^\w\d\s\u0980-\u09FF]+\s*/u, '').trim() || title;
+    }
+
     function renderWebNotifications() {
       const badge = document.getElementById('webNotifBadge');
       const pill = document.getElementById('webNotifPill');
@@ -5724,28 +5723,46 @@
 
       body.innerHTML = webNotifications.map(n => {
         let icon = '🔔';
+        let iconBg = '#EDE9FE';
         if (n.type === 'order') {
-          if ((n.title || '').includes('Delivered')) icon = '✅';
-          else if ((n.title || '').includes('Way')) icon = '🛵';
-          else if ((n.title || '').includes('Packed')) icon = '📦';
-          else if ((n.title || '').includes('Confirmed')) icon = '✔️';
-          else if ((n.title || '').includes('Cancelled')) icon = '❌';
-          else icon = '🛍️';
+          const t = n.title || '';
+          if (t.includes('Delivered')) {
+            icon = '✅';
+            iconBg = '#DCFCE7';
+          } else if (t.includes('Way')) {
+            icon = '🛵';
+            iconBg = '#FEF3C7';
+          } else if (t.includes('Packed')) {
+            icon = '📦';
+            iconBg = '#E0F2FE';
+          } else if (t.includes('Confirmed')) {
+            icon = '✔️';
+            iconBg = '#EDE9FE';
+          } else if (t.includes('Cancelled')) {
+            icon = '❌';
+            iconBg = '#FEE2E2';
+          } else {
+            icon = '🛍️';
+            iconBg = '#EDE9FE';
+          }
         } else if (n.type === 'offer') {
           icon = '🏷️';
+          iconBg = '#FEF3C7';
         } else if (n.type === 'suggestion') {
           icon = '💡';
+          iconBg = '#E0F2FE';
         }
 
         const isUnread = !n.is_read;
         const timeAgo = formatNotifTime(n.created_at);
+        const displayTitle = escapeNotifHtml(cleanNotifTitle(n.title || 'Notification'));
 
         return `
           <div class="web-notif-item ${isUnread ? 'unread' : 'read'}" onclick="handleWebNotificationClick(${n.id}, '${n.type || 'general'}', '${n.reference_id || ''}')">
-            <div class="web-notif-icon-wrap">${icon}</div>
+            <div class="web-notif-icon-wrap" style="background:${iconBg}; font-size:18px;">${icon}</div>
             <div class="web-notif-content">
               <div class="web-notif-title">
-                ${escapeNotifHtml(n.title || 'Notification')}
+                <span>${displayTitle}</span>
                 ${isUnread ? '<span class="web-notif-unread-dot"></span>' : ''}
               </div>
               <div class="web-notif-msg">${escapeNotifHtml(n.message || '')}</div>

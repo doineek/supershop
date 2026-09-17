@@ -83,6 +83,11 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
     return const Color(0xFF6B21A8);
   }
 
+  String _cleanTitle(String title) {
+    if (title.isEmpty) return 'Notification';
+    return title.replaceFirst(RegExp(r'^[^\w\d\s\u0980-\u09FF]+\s*'), '').trim();
+  }
+
   void _handleNotificationTap(AppNotification notif) async {
     // 1. Mark as read immediately (unhighlights card and decrements badge)
     await NotificationService.instance.markAsRead(notif.id);
@@ -350,7 +355,7 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          notif.title,
+                                          _cleanTitle(notif.title),
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
