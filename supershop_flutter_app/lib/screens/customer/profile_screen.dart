@@ -34,8 +34,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _shopAddress = 'House 12, Road 5, Tangail';
   bool _isLoading = false;
   bool _isAdminMode = false;
-  String _appVersion = '1.0.11';
-  String _buildNumber = '12';
+  String _appVersion = '1.0.15';
+  String _buildNumber = '16';
 
   final List<String> _presetAvatars = ['👤', '🧔', '👩', '🧑‍💼', '🐱', '🦊', '🚀', '💎', '👑', '🦸'];
 
@@ -157,6 +157,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         _shopName = (settings['shop_name'] ?? _shopName).toString();
         _shopAddress = (settings['shop_address'] ?? _shopAddress).toString();
+        if (settings.containsKey('app_version_num') && settings['app_version_num'].toString().isNotEmpty) {
+          _appVersion = settings['app_version_num'].toString();
+          if (settings.containsKey('app_build_number')) {
+            _buildNumber = settings['app_build_number'].toString();
+          }
+        }
       });
     } catch (_) {}
   }

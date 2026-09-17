@@ -6,7 +6,7 @@ Run it with:  python app.py
 Then open a browser at: http://127.0.0.1:5000
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context, Response, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context, Response, send_file, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, date, timedelta
@@ -9534,6 +9534,12 @@ def sitemap_xml():
 
 
 def get_app_version():
+    try:
+        settings = get_all_settings()
+        if settings.get("app_version_num"):
+            return settings.get("app_version_num")
+    except Exception:
+        pass
     try:
         pubspec_path = os.path.join(app.root_path, "supershop_flutter_app", "pubspec.yaml")
         if os.path.exists(pubspec_path):

@@ -534,10 +534,52 @@ def init_db():
     conn.close()
 
 
+_GITHUB_RELEASE_CACHE = None
+_GITHUB_CACHE_TIME = 0
+_GITHUB_CACHE_TTL = 300  # 5 minutes in-memory cache
+
+
+def _parse_semver(v):
+    nums = re.findall(r'\d+', str(v or ""))
+    return tuple(int(x) for x in nums) if nums else (0,)
+
+
+def _fetch_github_latest_release():
+    """Fetch the latest official GitHub release for doineek/supershop (cached for 5 min)."""
+    global _GITHUB_RELEASE_CACHE, _GITHUB_CACHE_TIME
+    now = time.time()
+    if _GITHUB_RELEASE_CACHE is not None and (now - _GITHUB_CACHE_TIME) < _GITHUB_CACHE_TTL:
+        return _GITHUB_RELEASE_CACHE
+
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "https://api.github.com/repos/doineek/supershop/releases/latest",
+            headers={"User-Agent": "DOINEEK-SuperShop-Web/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                tag = (data.get("tag_name") or "").strip().lstrip("v")
+                assets = [a.get("name") for a in data.get("assets", []) if a.get("name")]
+                _GITHUB_RELEASE_CACHE = {
+                    "tag": tag,
+                    "assets": assets,
+                }
+                _GITHUB_CACHE_TIME = now
+                return _GITHUB_RELEASE_CACHE
+    except Exception:
+        pass
+
+    return _GITHUB_RELEASE_CACHE
+
+
 def get_app_version_info():
     """
-    Dynamically read the latest app version and build number from
-    supershop_flutter_app/pubspec.yaml or static/flutter_web/version.json.
+    Dynamically read the latest app version and build number from:
+    1. GitHub Releases latest tag (auto-updates whenever a new APK release is published)
+    2. supershop_flutter_app/pubspec.yaml
+    3. static/flutter_web/version.json
     Automatically stays in sync whenever the app is built or updated.
     """
     version = "1.0.15"
@@ -545,7 +587,7 @@ def get_app_version_info():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     found_in_pubspec = False
 
-    # 1. Read pubspec.yaml if present (highest priority)
+    # 1. Read pubspec.yaml if present (highest priority locally)
     pubspec_path = os.path.join(base_dir, "supershop_flutter_app", "pubspec.yaml")
     if os.path.exists(pubspec_path):
         try:
@@ -580,9 +622,17 @@ def get_app_version_info():
             except Exception:
                 pass
 
+    # 3. Check GitHub Releases for newer release tags (auto-updates production on Render)
+    gh_release = _fetch_github_latest_release()
+    if gh_release and gh_release.get("tag"):
+        gh_ver = gh_release["tag"]
+        if _parse_semver(gh_ver) >= _parse_semver(version):
+            version = gh_ver
+
     display = f"v{version} (Build {build_number})" if build_number else f"v{version}"
     full_title = f"Version {version} (Build {build_number}) • Official Release" if build_number else f"Version {version} • Official Release"
     short_version = f"v{version}"
+    apk_filename = f"doineek_{short_version}.apk"
 
     return {
         "version": version,
@@ -590,6 +640,7 @@ def get_app_version_info():
         "display": display,
         "full_title": full_title,
         "short_version": short_version,
+        "apk_filename": apk_filename,
     }
 
 
@@ -622,13 +673,15 @@ def get_all_settings(conn=None):
         if row["value"] not in (None, ""):
             result[row["key"]] = row["value"]
 
-    # Automatically sync latest app version info from pubspec.yaml / version.json
+    # Automatically sync latest app version info from GitHub Releases / pubspec.yaml
     v_info = get_app_version_info()
     result["app_version"] = v_info["display"]
     result["app_version_short"] = v_info["short_version"]
     result["app_version_full"] = v_info["full_title"]
     result["app_version_num"] = v_info["version"]
     result["app_build_number"] = v_info["build_number"]
+    result["apk_filename"] = v_info["apk_filename"]
+    result["apk_download_url"] = f"https://github.com/doineek/supershop/releases/download/{v_info['short_version']}/{v_info['apk_filename']}"
 
     return result
 

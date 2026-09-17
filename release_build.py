@@ -205,6 +205,28 @@ def main():
     if success:
         upload_apk_to_github(token, tag, apk_path, "doineek_latest.apk")
         upload_apk_to_github(token, tag, apk_path, "supershop_latest.apk")
+
+        # Auto-update version.json and database settings
+        try:
+            ver_clean = tag.lstrip("v")
+            v_json = os.path.join("static", "flutter_web", "version.json")
+            if os.path.exists(os.path.dirname(v_json)):
+                with open(v_json, "w", encoding="utf-8") as vf:
+                    json.dump({"app_name": "supershop_app", "version": ver_clean, "build_number": "", "package_name": "supershop_app"}, vf)
+            import database
+            conn = database.get_connection()
+            database.update_settings(conn, {
+                "app_version": f"v{ver_clean}",
+                "app_version_short": f"v{ver_clean}",
+                "app_version_full": f"Version {ver_clean} • Official Release",
+                "app_version_num": ver_clean,
+                "apk_download_url": f"https://github.com/{REPO}/releases/download/{tag}/doineek_{tag}.apk"
+            })
+            conn.close()
+            print("[OK] Local settings and static/flutter_web/version.json updated.")
+        except Exception as ex:
+            print(f"Note: local sync skipped: {ex}")
+
         print("\n" + "=" * 60)
         print("  ALL DONE! Release is Live on GitHub CDN")
         print("=" * 60)
