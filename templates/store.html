@@ -5707,7 +5707,7 @@
               <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
                 Please sign in to view your order updates, everyday suggestions, and special offers.
               </div>
-              <button onclick="closeWebNotifDropdown(); openLoginModal();" class="btn btn-primary btn-sm" style="margin-top: 14px; border-radius: 20px; padding: 7px 22px; font-weight: 700; cursor: pointer; background: var(--primary); color: white; border: none;">
+              <button onclick="openCustomerSignInPage();" class="btn btn-primary btn-sm" style="margin-top: 14px; border-radius: 20px; padding: 8px 24px; font-weight: 700; cursor: pointer; background: var(--primary); color: white; border: none; font-size: 0.85rem; box-shadow: 0 4px 12px rgba(107, 33, 168, 0.25);">
                 🔑 Sign In
               </button>
             </div>
@@ -5839,6 +5839,31 @@
         return 'Recently';
       }
     }
+
+    function closeWebNotifDropdown() {
+      const dropdown = document.getElementById('webNotifDropdown');
+      if (dropdown) dropdown.style.display = 'none';
+    }
+
+    function openCustomerSignInPage() {
+      closeWebNotifDropdown();
+      if (typeof switchView === 'function') {
+        switchView('profile');
+      }
+      if (typeof toggleAuthTab === 'function') {
+        toggleAuthTab('login');
+      }
+      setTimeout(() => {
+        const loginInp = document.getElementById('loginPhoneInput');
+        if (loginInp) {
+          loginInp.focus();
+          loginInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }, 150);
+    }
+    const openLoginModal = openCustomerSignInPage;
 
     function toggleWebNotifications(e) {
       if (e) e.stopPropagation();
