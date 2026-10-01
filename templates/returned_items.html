@@ -1,11 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Returned Items & Date Expired{% endblock %}
 {% block content %}
-<div class="toolbar">
+<div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
   <div>
-    <h1>🚫 Returned Items & Date Expired Products</h1>
+    <h1>🚫 Returned Items &amp; Date Expired Products</h1>
     <p class="subtitle">Log of items returned by customers or auto-synced due to passed expiration date.</p>
   </div>
+  {% if session.role == 'admin' and unrecorded_expired and unrecorded_expired.c > 0 %}
+  <div>
+    <form method="POST" action="{{ url_for('batch_record_expired_loss') }}" style="display:inline;" onsubmit="return confirm('Record all {{ unrecorded_expired.c }} expired item(s) as Loss Expense in Ledger (Total TK {{ "%.2f"|format(unrecorded_expired.total_loss) }})?');">
+      <button type="submit" class="btn" style="background:#dc2626; color:white; font-size:12px; font-weight:bold; padding:8px 14px; border-radius:6px; display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer;">
+        ⚡ Record All Expired Items as Loss ({{ unrecorded_expired.c }} items - TK {{ "%.2f"|format(unrecorded_expired.total_loss) }})
+      </button>
+    </form>
+  </div>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -19,8 +28,9 @@
           <th>Reason / Status</th>
           <th>Expiry Date</th>
           <th>Date Returned / Logged</th>
+          <th>Ledger Status</th>
           {% if session.role == 'admin' %}
-          <th style="text-align:right;">Action</th>
+          <th style="text-align:right;">Actions</th>
           {% endif %}
         </tr>
       </thead>
@@ -39,24 +49,163 @@
           </td>
           <td>{{ item.expiry_date if item.expiry_date else '—' }}</td>
           <td>{{ item.date_returned[:16] if item.date_returned else '—' }}</td>
+          <td>
+            {% if item.ledger_action == 'loss_expense' %}
+            <span class="badge" style="background:#dc2626; color:white;" title="Recorded in Ledger as Loss Expense">
+              📉 Loss: TK {{ "%.2f"|format(item.ledger_amount or 0) }}
+            </span>
+            {% elif item.ledger_action == 'customer_refund' %}
+            <span class="badge" style="background:#d97706; color:white;" title="Recorded in Ledger as Customer Refund">
+              💸 Refund: TK {{ "%.2f"|format(item.ledger_amount or 0) }}
+            </span>
+            {% else %}
+            <span class="badge" style="background:#94a3b8; color:white;" title="No expense or refund recorded in ledger">
+              ⚪ No Ledger Entry
+            </span>
+            {% endif %}
+          </td>
           {% if session.role == 'admin' %}
-          <td style="text-align:right;">
+          <td style="text-align:right; white-space:nowrap;">
+            <button type="button" class="btn btn-small" onclick="openLedgerModal({{ item.id }}, '{{ item.item_name|e }}', {{ item.quantity }}, {{ item.cost_price or 0 }}, {{ item.sell_price or 0 }}, '{{ item.ledger_action or 'none' }}', {{ item.ledger_amount or 0 }})" style="background:#0f766e; color:white; font-weight:600; font-size:12px; padding:6px 10px; border-radius:6px; border:none; cursor:pointer; margin-right:4px;">
+              💰 Accounting
+            </button>
             <a href="{{ url_for('restock_from_returned', return_id=item.id) }}" class="btn btn-small" style="background:#2563eb; color:white; font-weight:600; font-size:12px; padding:6px 12px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
-              🔄 Restock to Inventory
+              🔄 Restock
             </a>
           </td>
           {% endif %}
         </tr>
         {% else %}
         <tr>
-          <td colspan="7" style="text-align:center; color:#94a3b8; padding:30px;">
+          <td colspan="8" style="text-align:center; color:#94a3b8; padding:30px;">
             No returned or date-expired products found.
           </td>
         </tr>
         {% endfor %}
       </tbody>
-
     </table>
   </div>
 </div>
+
+<!-- Ledger Edit Modal -->
+<div id="editLedgerModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#fff; width:92%; max-width:480px; padding:24px; border-radius:12px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;">
+    <h3 style="margin-top:0; color:#0f766e; font-size:1.15rem; font-weight:bold; display:flex; align-items:center; gap:8px;">
+      💰 Adjust Financial &amp; Ledger Entry
+    </h3>
+    <div style="font-size:0.9rem; font-weight:bold; color:#0f172a; margin-bottom:2px;" id="modalItemName"></div>
+    <p style="font-size:0.8rem; color:#475569; margin-bottom:14px;" id="modalItemMeta"></p>
+
+    <form method="POST" id="editLedgerForm" action="">
+      <div style="margin-bottom:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:8px; color:#0f172a;">
+          Select Ledger Action (আর্থিক সমন্বয় নির্বাচন করুন)
+        </label>
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
+          <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+            <input type="radio" name="ledger_action" id="modalLedgerNone" value="none" onchange="updateModalLedgerCalc(true)" style="margin-top:2px;">
+            <span>
+              <strong>কোনো আর্থিক এন্ট্রি নয় (None)</strong>
+              <div style="font-size:11px; color:#64748b;">লেজারে কোনো খরচের এন্ট্রি থাকবে না (আগের এন্ট্রি থাকলে তা মুছে যাবে)।</div>
+            </span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+            <input type="radio" name="ledger_action" id="modalLedgerLoss" value="loss_expense" onchange="updateModalLedgerCalc(true)" style="margin-top:2px;">
+            <span>
+              <strong style="color:#dc2626;">📉 ক্ষতি সমন্বয় (Loss / Damaged Goods Expense)</strong>
+              <div style="font-size:11px; color:#64748b;">কেনা দাম (Cost Price × Qty) অনুযায়ী লেজারে ক্ষতি হিসেবে যুক্ত হবে।</div>
+            </span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+            <input type="radio" name="ledger_action" id="modalLedgerRefund" value="customer_refund" onchange="updateModalLedgerCalc(true)" style="margin-top:2px;">
+            <span>
+              <strong style="color:#d97706;">💸 কাস্টমার রিফান্ড (Customer Return Refund Outflow)</strong>
+              <div style="font-size:11px; color:#64748b;">বিক্রয় মূল্য (Sell Price × Qty) অনুযায়ী কাস্টমার ক্যাশ রিফান্ড খরচ হিসেবে যুক্ত হবে।</div>
+            </span>
+          </label>
+        </div>
+
+        <div id="modalAmountContainer" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1;">
+          <label style="display:block; font-size:0.8rem; font-weight:bold; margin-bottom:4px; color:#334155;">Adjustable Ledger Amount (টাকার পরিমাণ - TK):</label>
+          <input type="number" step="0.01" name="ledger_amount" id="modalLedgerAmountInput" value="0" style="width:100%; padding:8px 12px; border:1px solid #94a3b8; border-radius:6px; font-weight:bold; font-size:14px; color:#0f172a;">
+          <div id="modalLedgerHint" style="font-size:11px; color:#0284c7; margin-top:4px;"></div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeLedgerModal()">Cancel</button>
+        <button type="submit" class="btn" style="background:#0f766e; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:bold; cursor:pointer;">Save &amp; Update Ledger</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let currentEditCostPrice = 0;
+let currentEditSellPrice = 0;
+let currentEditQty = 1;
+
+function openLedgerModal(itemId, itemName, qty, costPrice, sellPrice, currentAction, currentAmount) {
+  currentEditQty = parseInt(qty) || 1;
+  currentEditCostPrice = parseFloat(costPrice) || 0;
+  currentEditSellPrice = parseFloat(sellPrice) || 0;
+
+  document.getElementById('editLedgerForm').action = "/returned_items/" + itemId + "/ledger";
+  document.getElementById('modalItemName').innerText = itemName;
+  document.getElementById('modalItemMeta').innerText = `Quantity: ${currentEditQty} units | Cost Price: ৳${currentEditCostPrice.toFixed(2)} | Sell Price: ৳${currentEditSellPrice.toFixed(2)}`;
+
+  if (currentAction === 'loss_expense') {
+    document.getElementById('modalLedgerLoss').checked = true;
+  } else if (currentAction === 'customer_refund') {
+    document.getElementById('modalLedgerRefund').checked = true;
+  } else {
+    document.getElementById('modalLedgerNone').checked = true;
+  }
+
+  const amtInput = document.getElementById('modalLedgerAmountInput');
+  amtInput.value = parseFloat(currentAmount) > 0 ? parseFloat(currentAmount).toFixed(2) : '0';
+  updateModalLedgerCalc(false);
+
+  document.getElementById('editLedgerModal').style.display = 'flex';
+}
+
+function updateModalLedgerCalc(resetValue = true) {
+  const actionRadios = document.getElementsByName('ledger_action');
+  let selected = 'none';
+  for (const r of actionRadios) {
+    if (r.checked) {
+      selected = r.value;
+      break;
+    }
+  }
+
+  const container = document.getElementById('modalAmountContainer');
+  const amtInput = document.getElementById('modalLedgerAmountInput');
+  const hint = document.getElementById('modalLedgerHint');
+
+  if (selected === 'loss_expense') {
+    container.style.display = 'block';
+    const totalCost = (currentEditQty * currentEditCostPrice).toFixed(2);
+    if (resetValue || !amtInput.value || parseFloat(amtInput.value) <= 0) {
+      amtInput.value = totalCost;
+    }
+    hint.innerText = `💡 Calculated: ${currentEditQty} units × ৳${currentEditCostPrice.toFixed(2)} (Cost Price) = ৳${totalCost}`;
+  } else if (selected === 'customer_refund') {
+    container.style.display = 'block';
+    const totalSell = (currentEditQty * currentEditSellPrice).toFixed(2);
+    if (resetValue || !amtInput.value || parseFloat(amtInput.value) <= 0) {
+      amtInput.value = totalSell;
+    }
+    hint.innerText = `💡 Calculated: ${currentEditQty} units × ৳${currentEditSellPrice.toFixed(2)} (Sell Price) = ৳${totalSell}`;
+  } else {
+    container.style.display = 'none';
+    if (resetValue) amtInput.value = '0';
+    hint.innerText = '';
+  }
+}
+
+function closeLedgerModal() {
+  document.getElementById('editLedgerModal').style.display = 'none';
+}
+</script>
 {% endblock %}

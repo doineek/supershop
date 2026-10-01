@@ -89,6 +89,16 @@
       </small>
     </div>
 
+    <div class="field" style="background:#fffbeb; border:1px solid #fef3c7; padding:12px; border-radius:8px; margin-top:10px;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:700; color:#92400e; cursor:pointer; margin-bottom:0;">
+        <input type="checkbox" name="auto_record_expired_as_loss" value="1" {% if settings.auto_record_expired_as_loss == '1' or settings.auto_record_expired_as_loss == 'true' %}checked{% endif %} style="width:16px; height:16px; accent-color:#d97706;">
+        Auto-record Expired Products as Loss Expense in Ledger (মেয়াদোত্তীর্ণ পণ্য স্বয়ংক্রিয়ভাবে লেজারে ক্ষতি হিসেবে এন্ট্রি হবে)
+      </label>
+      <small style="color:#b45309; font-size:12px; display:block; margin-top:6px; margin-left:24px;">
+        💡 If checked, when a product's expiry date passes, the system will automatically log the cost (Cost Price × Stock) as a Loss Expense in the ledger. If unchecked, the item is moved to Returned Items and you can manually choose Loss Expense or Refund anytime.
+      </small>
+    </div>
+
     <h2 style="margin-top:24px; margin-bottom:12px; color:#4f46e5; border-top:1px solid #e2e8f0; padding-top:16px;">
       🎨 Product Image Processing & Background Color
     </h2>

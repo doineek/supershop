@@ -1220,14 +1220,50 @@ def dashboard():
 # Products & Inventory
 # ===========================================================================
 
+def ensure_returned_items_columns(conn):
+    try:
+        cols = [c[1] for c in conn.execute("PRAGMA table_info(returned_items)").fetchall()]
+        if "cost_price" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN cost_price REAL DEFAULT 0")
+        if "sell_price" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN sell_price REAL DEFAULT 0")
+        if "ledger_action" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN ledger_action TEXT DEFAULT 'none'")
+        if "ledger_entry_id" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN ledger_entry_id INTEGER DEFAULT NULL")
+        if "ledger_amount" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN ledger_amount REAL DEFAULT 0")
+        conn.commit()
+
+        # Backfill prices from products table where missing
+        conn.execute("""
+            UPDATE returned_items
+            SET cost_price = COALESCE((SELECT cost_price FROM products WHERE products.id = returned_items.product_id), 0)
+            WHERE cost_price IS NULL OR cost_price = 0
+        """)
+        conn.execute("""
+            UPDATE returned_items
+            SET sell_price = COALESCE((SELECT sell_price FROM products WHERE products.id = returned_items.product_id), 0)
+            WHERE sell_price IS NULL OR sell_price = 0
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"[ensure_returned_items_columns] Error: {e}")
+
+
 def sync_expired_products():
     """
     Auto-detects expired products (expiry_date <= today), logs them into returned_items,
-    sets active stock to 0, and pushes updates to Cloud Firestore.
+    sets active stock to 0, optionally records Loss Expense if enabled, and pushes updates to Cloud Firestore.
     """
     today_date = datetime.now().strftime("%Y-%m-%d")
     conn = get_connection()
+    ensure_returned_items_columns(conn)
     try:
+        # Check setting for auto-loss recording
+        auto_loss_row = conn.execute("SELECT value FROM settings WHERE key = 'auto_record_expired_as_loss'").fetchone()
+        auto_loss_enabled = bool(auto_loss_row and str(auto_loss_row["value"]).strip() in ("1", "true", "yes"))
+
         expired_prods = conn.execute("""
             SELECT * FROM products
             WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
@@ -1238,15 +1274,41 @@ def sync_expired_products():
                 already = conn.execute(
                     "SELECT id FROM returned_items WHERE product_id = ? AND reason LIKE '%Expired%'", (ep["id"],)
                 ).fetchone()
+
+                cost_p = float(ep["cost_price"] or 0)
+                sell_p = float(ep["sell_price"] or 0)
+                qty = int(ep["stock_qty"] or 0)
+                tot_loss = cost_p * qty
+
+                ledger_action = 'none'
+                ledger_id = None
+                ledger_amt = 0.0
+
+                if auto_loss_enabled and tot_loss > 0:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+                        VALUES ('expense', ?, ?, ?, ?, 'all')
+                    """, (
+                        f"Loss / Expired Goods: {ep['name']} ({qty} units)",
+                        tot_loss,
+                        today_date,
+                        datetime.now().isoformat()
+                    ))
+                    ledger_id = cur.lastrowid
+                    ledger_action = 'loss_expense'
+                    ledger_amt = tot_loss
+
                 if not already:
                     conn.execute("""
-                        INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned, cost_price, sell_price, ledger_action, ledger_entry_id, ledger_amount)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        ep["id"], ep["name"], ep["stock_qty"],
+                        ep["id"], ep["name"], qty,
                         f"Date Expired ({ep['expiry_date']})",
                         ep["expiry_date"],
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        cost_p, sell_p, ledger_action, ledger_id, ledger_amt
                     ))
                 # Set active stock in products table to 0 so it's not sellable
                 conn.execute("UPDATE products SET stock_qty = 0 WHERE id = ?", (ep["id"],))
@@ -1800,6 +1862,7 @@ def restock_product(product_id):
 @login_required
 def return_product(product_id):
     conn = get_connection()
+    ensure_returned_items_columns(conn)
     product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
     if not product:
         conn.close()
@@ -1808,12 +1871,61 @@ def return_product(product_id):
 
     ret_qty = int(request.form.get("quantity") or product["stock_qty"] or 1)
     reason = request.form.get("reason", "Returned by Cashier / Manager").strip()
+    ledger_action = request.form.get("ledger_action", "none").strip()  # 'none', 'loss_expense', 'customer_refund'
+    custom_amount_str = request.form.get("ledger_amount", "").strip()
+
+    cost_price = float(product["cost_price"] or 0)
+    sell_price = float(product["sell_price"] or 0)
+
+    if custom_amount_str:
+        try:
+            ledger_amount = float(custom_amount_str)
+        except ValueError:
+            ledger_amount = 0.0
+    else:
+        if ledger_action == "loss_expense":
+            ledger_amount = cost_price * ret_qty
+        elif ledger_action == "customer_refund":
+            ledger_amount = sell_price * ret_qty
+        else:
+            ledger_amount = 0.0
+
     today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today_date = datetime.now().strftime("%Y-%m-%d")
+
+    ledger_entry_id = None
+    if ledger_action == "loss_expense" and ledger_amount > 0:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+            VALUES ('expense', ?, ?, ?, ?, 'all')
+        """, (
+            f"Loss / Damaged Goods: {product['name']} ({ret_qty} units)",
+            ledger_amount,
+            today_date,
+            datetime.now().isoformat()
+        ))
+        ledger_entry_id = cur.lastrowid
+    elif ledger_action == "customer_refund" and ledger_amount > 0:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+            VALUES ('expense', ?, ?, ?, ?, 'pos')
+        """, (
+            f"Customer Return Refund: {product['name']} ({ret_qty} units)",
+            ledger_amount,
+            today_date,
+            datetime.now().isoformat()
+        ))
+        ledger_entry_id = cur.lastrowid
+    else:
+        ledger_action = "none"
+        ledger_amount = 0.0
 
     conn.execute("""
-        INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (product["id"], product["name"], ret_qty, reason, product["expiry_date"] or '', today_str))
+        INSERT INTO returned_items (product_id, item_name, quantity, reason, expiry_date, date_returned, cost_price, sell_price, ledger_action, ledger_entry_id, ledger_amount)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (product["id"], product["name"], ret_qty, reason, product["expiry_date"] or '', today_str, cost_price, sell_price, ledger_action, ledger_entry_id, ledger_amount))
 
     # Reduce product stock by returned quantity
     new_stock = max(0, product["stock_qty"] - ret_qty)
@@ -1822,7 +1934,12 @@ def return_product(product_id):
     conn.close()
     remote_control.push_product_to_cloud(product["id"])
 
-    flash(f"Product '{product['name']}' ({ret_qty} units) moved to Returned Items / Date Expired section.", "success")
+    msg = f"Product '{product['name']}' ({ret_qty} units) moved to Returned Items."
+    if ledger_action == "loss_expense":
+        msg += f" (TK {ledger_amount:,.2f} recorded as Loss Expense in Ledger)"
+    elif ledger_action == "customer_refund":
+        msg += f" (TK {ledger_amount:,.2f} recorded as Customer Refund in Ledger)"
+    flash(msg, "success")
     return redirect(url_for("products"))
 
 
@@ -1831,9 +1948,164 @@ def return_product(product_id):
 def returned_items():
     sync_expired_products()
     conn = get_connection()
+    ensure_returned_items_columns(conn)
     rows = conn.execute("SELECT * FROM returned_items ORDER BY date_returned DESC").fetchall()
+    unrecorded_expired = conn.execute("""
+        SELECT COUNT(*) as c, COALESCE(SUM(quantity * cost_price), 0) as total_loss
+        FROM returned_items
+        WHERE (ledger_action = 'none' OR ledger_action IS NULL)
+        AND reason LIKE '%Expired%'
+    """).fetchone()
     conn.close()
-    return render_template("returned_items.html", items=rows)
+    return render_template("returned_items.html", items=rows, unrecorded_expired=unrecorded_expired)
+
+
+@app.route("/returned_items/<int:return_id>/ledger", methods=["POST"])
+@login_required
+@admin_required
+def update_returned_item_ledger(return_id):
+    conn = get_connection()
+    ensure_returned_items_columns(conn)
+    item = conn.execute("SELECT * FROM returned_items WHERE id = ?", (return_id,)).fetchone()
+    if not item:
+        conn.close()
+        flash("Record not found.", "error")
+        return redirect(url_for("returned_items"))
+
+    ledger_action = request.form.get("ledger_action", "none").strip()  # 'none', 'loss_expense', 'customer_refund'
+    custom_amount_str = request.form.get("ledger_amount", "").strip()
+
+    cost_price = float(item["cost_price"] or 0)
+    sell_price = float(item["sell_price"] or 0)
+    qty = int(item["quantity"] or 1)
+
+    if not cost_price or not sell_price:
+        if item["product_id"]:
+            prod = conn.execute("SELECT cost_price, sell_price FROM products WHERE id = ?", (item["product_id"],)).fetchone()
+            if prod:
+                cost_price = cost_price or float(prod["cost_price"] or 0)
+                sell_price = sell_price or float(prod["sell_price"] or 0)
+
+    if custom_amount_str:
+        try:
+            ledger_amount = float(custom_amount_str)
+        except ValueError:
+            ledger_amount = 0.0
+    else:
+        if ledger_action == "loss_expense":
+            ledger_amount = cost_price * qty
+        elif ledger_action == "customer_refund":
+            ledger_amount = sell_price * qty
+        else:
+            ledger_amount = 0.0
+
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    old_ledger_id = item["ledger_entry_id"]
+
+    if old_ledger_id:
+        try:
+            conn.execute("DELETE FROM ledger_entries WHERE id = ?", (old_ledger_id,))
+        except Exception:
+            pass
+        old_ledger_id = None
+
+    new_ledger_id = None
+    if ledger_action == "loss_expense" and ledger_amount > 0:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+            VALUES ('expense', ?, ?, ?, ?, 'all')
+        """, (
+            f"Loss / Damaged Goods: {item['item_name']} ({qty} units)",
+            ledger_amount,
+            today_date,
+            datetime.now().isoformat()
+        ))
+        new_ledger_id = cur.lastrowid
+    elif ledger_action == "customer_refund" and ledger_amount > 0:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+            VALUES ('expense', ?, ?, ?, ?, 'pos')
+        """, (
+            f"Customer Return Refund: {item['item_name']} ({qty} units)",
+            ledger_amount,
+            today_date,
+            datetime.now().isoformat()
+        ))
+        new_ledger_id = cur.lastrowid
+    else:
+        ledger_action = "none"
+        ledger_amount = 0.0
+
+    conn.execute("""
+        UPDATE returned_items
+        SET ledger_action = ?, ledger_entry_id = ?, ledger_amount = ?, cost_price = ?, sell_price = ?
+        WHERE id = ?
+    """, (ledger_action, new_ledger_id, ledger_amount, cost_price, sell_price, return_id))
+    conn.commit()
+    conn.close()
+
+    if ledger_action == "loss_expense":
+        flash(f"Updated: Recorded TK {ledger_amount:,.2f} as Loss Expense in Ledger.", "success")
+    elif ledger_action == "customer_refund":
+        flash(f"Updated: Recorded TK {ledger_amount:,.2f} as Customer Refund in Ledger.", "success")
+    else:
+        flash("Updated: Removed financial ledger entry for this item.", "info")
+
+    return redirect(url_for("returned_items"))
+
+
+@app.route("/returned_items/batch_record_loss", methods=["POST"])
+@login_required
+@admin_required
+def batch_record_expired_loss():
+    conn = get_connection()
+    ensure_returned_items_columns(conn)
+    unrecorded = conn.execute("""
+        SELECT * FROM returned_items 
+        WHERE (ledger_action = 'none' OR ledger_action IS NULL) 
+        AND reason LIKE '%Expired%'
+    """).fetchall()
+
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    count = 0
+    total_val = 0.0
+
+    for item in unrecorded:
+        cost = float(item["cost_price"] or 0)
+        qty = int(item["quantity"] or 0)
+        tot = cost * qty
+        if tot > 0:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment)
+                VALUES ('expense', ?, ?, ?, ?, 'all')
+            """, (
+                f"Loss / Expired Goods: {item['item_name']} ({qty} units)",
+                tot,
+                today_date,
+                datetime.now().isoformat()
+            ))
+            lid = cur.lastrowid
+            conn.execute("""
+                UPDATE returned_items 
+                SET ledger_action = 'loss_expense', ledger_entry_id = ?, ledger_amount = ? 
+                WHERE id = ?
+            """, (lid, tot, item["id"]))
+            count += 1
+            total_val += tot
+        else:
+            conn.execute("""
+                UPDATE returned_items 
+                SET ledger_action = 'loss_expense', ledger_amount = 0 
+                WHERE id = ?
+            """, (item["id"],))
+
+    conn.commit()
+    conn.close()
+    flash(f"Successfully recorded {count} expired item(s) as Loss Expense (Total: TK {total_val:,.2f}) in Ledger.", "success")
+    return redirect(url_for("returned_items"))
 
 
 @app.route("/returned_items/<int:return_id>/restock", methods=["GET", "POST"])
@@ -4969,6 +5241,7 @@ def settings_page():
             "product_image_bg_color": request.form.get("product_image_bg_color", "#FFFFFF").strip() or "#FFFFFF",
             "rider_delivery_fee": request.form.get("rider_delivery_fee", "50").strip() or "50",
             "apk_download_url": request.form.get("apk_download_url", "").strip(),
+            "auto_record_expired_as_loss": "1" if request.form.get("auto_record_expired_as_loss") else "0",
         }
         update_settings(conn, values)
         conn.commit()
