@@ -8697,6 +8697,30 @@ def api_pending_orders_count():
     })
 
 
+def ensure_portal_notifications_table(conn):
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS portal_notification_reads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notif_key TEXT UNIQUE NOT NULL,
+                notif_type TEXT NOT NULL,
+                item_id INTEGER,
+                is_read INTEGER DEFAULT 1,
+                seen_by_user_id INTEGER,
+                seen_by_username TEXT,
+                seen_by_role TEXT,
+                seen_at TEXT,
+                last_action TEXT DEFAULT 'read',
+                last_action_by TEXT,
+                last_action_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pnr_key ON portal_notification_reads(notif_key)")
+        conn.commit()
+    except Exception as e:
+        print(f"[ensure_portal_notifications_table] Error: {e}")
+
+
 @app.route("/api/portal/alerts", methods=["GET"])
 @login_required
 def api_portal_alerts():
@@ -8705,6 +8729,7 @@ def api_portal_alerts():
     1. New & pending online orders
     2. Inventory low stock items (stock_qty <= low_stock_threshold)
     3. Returned and expired items
+    Tracks read/unread state and audit log of who marked or unmarked each alert.
     """
     today_date = datetime.now().strftime("%Y-%m-%d")
     in_7_days = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
@@ -8715,17 +8740,35 @@ def api_portal_alerts():
         pass
 
     conn = get_connection()
+    ensure_portal_notifications_table(conn)
     try:
+        read_rows = conn.execute("SELECT * FROM portal_notification_reads").fetchall()
+        read_map = {r["notif_key"]: dict(r) for r in read_rows}
+
         # 1. New Orders
         order_rows = conn.execute("""
             SELECT id, order_number, customer_name, customer_phone, total_amount, order_status, created_at
             FROM online_orders
             WHERE order_status IN ('new', 'pending')
             ORDER BY id DESC
-            LIMIT 10
+            LIMIT 15
         """).fetchall()
-        orders_count_row = conn.execute("SELECT COUNT(*) as c FROM online_orders WHERE order_status IN ('new', 'pending')").fetchone()
-        orders_count = orders_count_row["c"] if orders_count_row else 0
+
+        orders_list = []
+        for o in order_rows:
+            od = dict(o)
+            key = f"order_{o['id']}"
+            r_info = read_map.get(key)
+            od["notif_key"] = key
+            od["notif_type"] = "order"
+            od["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            od["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            od["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            od["seen_at"] = r_info.get("seen_at") if r_info else None
+            od["last_action"] = r_info.get("last_action") if r_info else None
+            od["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            od["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            orders_list.append(od)
 
         # 2. Low Stock Items
         low_stock_rows = conn.execute("""
@@ -8734,24 +8777,48 @@ def api_portal_alerts():
             WHERE stock_qty <= low_stock_threshold
               AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)
             ORDER BY stock_qty ASC
-            LIMIT 10
+            LIMIT 15
         """, (today_date,)).fetchall()
-        low_stock_count_row = conn.execute("""
-            SELECT COUNT(*) as c FROM products
-            WHERE stock_qty <= low_stock_threshold
-              AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)
-        """, (today_date,)).fetchone()
-        low_stock_count = low_stock_count_row["c"] if low_stock_count_row else 0
 
-        # 3. Returned / Expired Items
+        stock_list = []
+        for s in low_stock_rows:
+            sd = dict(s)
+            key = f"stock_{s['id']}"
+            r_info = read_map.get(key)
+            sd["notif_key"] = key
+            sd["notif_type"] = "stock"
+            sd["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            sd["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            sd["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            sd["seen_at"] = r_info.get("seen_at") if r_info else None
+            sd["last_action"] = r_info.get("last_action") if r_info else None
+            sd["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            sd["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            stock_list.append(sd)
+
+        # 3. Returned Items
         returned_rows = conn.execute("""
             SELECT id, product_id, item_name, quantity, reason, expiry_date, date_returned
             FROM returned_items
             ORDER BY id DESC
-            LIMIT 10
+            LIMIT 15
         """).fetchall()
-        returned_count_row = conn.execute("SELECT COUNT(*) as c FROM returned_items").fetchone()
-        returned_count = returned_count_row["c"] if returned_count_row else 0
+
+        returned_list = []
+        for r in returned_rows:
+            rd = dict(r)
+            key = f"return_{r['id']}"
+            r_info = read_map.get(key)
+            rd["notif_key"] = key
+            rd["notif_type"] = "return"
+            rd["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            rd["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            rd["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            rd["seen_at"] = r_info.get("seen_at") if r_info else None
+            rd["last_action"] = r_info.get("last_action") if r_info else None
+            rd["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            rd["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            returned_list.append(rd)
 
         # 4. Products Expiring Soon (within 7 days)
         expiring_rows = conn.execute("""
@@ -8759,30 +8826,184 @@ def api_portal_alerts():
             FROM products
             WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
             ORDER BY expiry_date ASC
-            LIMIT 5
+            LIMIT 10
         """, (in_7_days,)).fetchall()
 
-        total_alerts = orders_count + low_stock_count + returned_count + len(expiring_rows)
+        expiring_list = []
+        for e in expiring_rows:
+            ed = dict(e)
+            key = f"expiring_{e['id']}"
+            r_info = read_map.get(key)
+            ed["notif_key"] = key
+            ed["notif_type"] = "expiring"
+            ed["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            ed["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            ed["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            ed["seen_at"] = r_info.get("seen_at") if r_info else None
+            ed["last_action"] = r_info.get("last_action") if r_info else None
+            ed["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            ed["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            expiring_list.append(ed)
+
+        all_items = orders_list + stock_list + returned_list + expiring_list
+        total_count = len(all_items)
+        unread_count = sum(1 for it in all_items if not it["is_read"])
+
+        orders_unread = sum(1 for it in orders_list if not it["is_read"])
+        stock_unread = sum(1 for it in stock_list if not it["is_read"])
+        returned_unread = sum(1 for it in returned_list if not it["is_read"]) + sum(1 for it in expiring_list if not it["is_read"])
 
         return jsonify({
             "success": True,
-            "total_count": total_alerts,
+            "total_count": total_count,
+            "unread_count": unread_count,
             "orders": {
-                "count": orders_count,
-                "items": [dict(r) for r in order_rows]
+                "count": len(orders_list),
+                "unread_count": orders_unread,
+                "items": orders_list
             },
             "low_stock": {
-                "count": low_stock_count,
-                "items": [dict(r) for r in low_stock_rows]
+                "count": len(stock_list),
+                "unread_count": stock_unread,
+                "items": stock_list
             },
             "returned_expired": {
-                "count": returned_count + len(expiring_rows),
-                "items": [dict(r) for r in returned_rows],
-                "expiring_soon": [dict(r) for r in expiring_rows]
+                "count": len(returned_list) + len(expiring_list),
+                "unread_count": returned_unread,
+                "items": returned_list,
+                "expiring_soon": expiring_list
             }
         })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e), "total_count": 0}), 500
+        return jsonify({"success": False, "error": str(e), "total_count": 0, "unread_count": 0}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/portal/alerts/mark", methods=["POST"])
+@login_required
+def api_portal_alerts_mark():
+    """
+    Mark an individual alert as read or unread, recording who performed the action and when.
+    """
+    data = request.get_json(silent=True) or {}
+    notif_key = str(data.get("notif_key") or "").strip()
+    action = str(data.get("action") or "read").strip().lower()  # 'read' or 'unread'
+    notif_type = str(data.get("notif_type") or "general").strip()
+    item_id = data.get("item_id")
+
+    if not notif_key:
+        return jsonify({"success": False, "message": "Notification key is required."}), 400
+
+    user_id = session.get("user_id")
+    username = session.get("username") or "Admin"
+    role = session.get("role") or "staff"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = get_connection()
+    ensure_portal_notifications_table(conn)
+    try:
+        if action == "read":
+            conn.execute("""
+                INSERT INTO portal_notification_reads 
+                (notif_key, notif_type, item_id, is_read, seen_by_user_id, seen_by_username, seen_by_role, seen_at, last_action, last_action_by, last_action_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'read', ?, ?)
+                ON CONFLICT(notif_key) DO UPDATE SET
+                    is_read = 1,
+                    seen_by_user_id = excluded.seen_by_user_id,
+                    seen_by_username = excluded.seen_by_username,
+                    seen_by_role = excluded.seen_by_role,
+                    seen_at = excluded.seen_at,
+                    last_action = 'read',
+                    last_action_by = excluded.last_action_by,
+                    last_action_at = excluded.last_action_at
+            """, (notif_key, notif_type, item_id, user_id, username, role, now_str, username, now_str))
+        else:
+            conn.execute("""
+                INSERT INTO portal_notification_reads 
+                (notif_key, notif_type, item_id, is_read, seen_by_user_id, seen_by_username, seen_by_role, seen_at, last_action, last_action_by, last_action_at)
+                VALUES (?, ?, ?, 0, NULL, NULL, NULL, NULL, 'unread', ?, ?)
+                ON CONFLICT(notif_key) DO UPDATE SET
+                    is_read = 0,
+                    last_action = 'unread',
+                    last_action_by = excluded.last_action_by,
+                    last_action_at = excluded.last_action_at
+            """, (notif_key, notif_type, item_id, username, now_str))
+        conn.commit()
+
+        return jsonify({
+            "success": True,
+            "notif_key": notif_key,
+            "action": action,
+            "is_read": action == "read",
+            "actor": username,
+            "actor_role": role,
+            "timestamp": now_str
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/portal/alerts/mark-all-read", methods=["POST"])
+@login_required
+def api_portal_alerts_mark_all_read():
+    """
+    Mark all active notifications as read by the current user.
+    """
+    data = request.get_json(silent=True) or {}
+    keys = data.get("keys")
+
+    user_id = session.get("user_id")
+    username = session.get("username") or "Admin"
+    role = session.get("role") or "staff"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    in_7_days = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    conn = get_connection()
+    ensure_portal_notifications_table(conn)
+    try:
+        keys_to_mark = []
+        if keys and isinstance(keys, list):
+            keys_to_mark = [(str(k).strip(), "general", None) for k in keys if str(k).strip()]
+        else:
+            for o in conn.execute("SELECT id FROM online_orders WHERE order_status IN ('new', 'pending')").fetchall():
+                keys_to_mark.append((f"order_{o['id']}", "order", o["id"]))
+            for s in conn.execute("SELECT id FROM products WHERE stock_qty <= low_stock_threshold AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)", (today_date,)).fetchall():
+                keys_to_mark.append((f"stock_{s['id']}", "stock", s["id"]))
+            for r in conn.execute("SELECT id FROM returned_items").fetchall():
+                keys_to_mark.append((f"return_{r['id']}", "return", r["id"]))
+            for e in conn.execute("SELECT id FROM products WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0", (in_7_days,)).fetchall():
+                keys_to_mark.append((f"expiring_{e['id']}", "expiring", e["id"]))
+
+        for k, t, i_id in keys_to_mark:
+            conn.execute("""
+                INSERT INTO portal_notification_reads 
+                (notif_key, notif_type, item_id, is_read, seen_by_user_id, seen_by_username, seen_by_role, seen_at, last_action, last_action_by, last_action_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?, 'read', ?, ?)
+                ON CONFLICT(notif_key) DO UPDATE SET
+                    is_read = 1,
+                    seen_by_user_id = excluded.seen_by_user_id,
+                    seen_by_username = excluded.seen_by_username,
+                    seen_by_role = excluded.seen_by_role,
+                    seen_at = excluded.seen_at,
+                    last_action = 'read',
+                    last_action_by = excluded.last_action_by,
+                    last_action_at = excluded.last_action_at
+            """, (k, t, i_id, user_id, username, role, now_str, username, now_str))
+
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "marked_count": len(keys_to_mark),
+            "actor": username,
+            "actor_role": role,
+            "timestamp": now_str
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
     finally:
         conn.close()
 

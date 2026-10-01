@@ -42,24 +42,28 @@
       <div id="portalNotifDropdown" class="portal-notif-dropdown" style="display:none; position:absolute; right:0; top:calc(100% + 8px); width:380px; max-width:92vw; max-height:85vh; background:#ffffff; color:#0f172a; border-radius:14px; box-shadow:0 20px 40px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.1); border:1px solid #e2e8f0; z-index:999999; overflow:hidden; font-family:inherit; flex-direction:column;">
         
         <!-- Header -->
-        <div style="padding:12px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between;">
+        <div style="padding:10px 14px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:16px;">🔔</span>
             <span style="font-weight:700; font-size:14px; color:#0f172a;">Portal Alerts</span>
-            <span id="portalNotifTotalCountBadge" style="background:#ede9fe; color:#6d28d9; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;">0</span>
+            <span id="portalNotifTotalCountBadge" style="background:#ede9fe; color:#6d28d9; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;">0 Unread</span>
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
+            <button type="button" id="markAllReadBtn" onclick="markAllPortalAlertsRead()" title="Mark all notifications as read" style="background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; cursor:pointer; font-size:11px; font-weight:700; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; transition:all 0.15s;">
+              <span>✓✓</span> Mark All Read
+            </button>
             <button type="button" onclick="loadPortalAlerts(true)" style="background:none; border:none; cursor:pointer; font-size:13px; color:#64748b; padding:4px 6px; border-radius:6px;" title="Refresh">🔄</button>
             <button type="button" onclick="closePortalNotifDropdown()" style="background:none; border:none; cursor:pointer; font-size:15px; color:#64748b; padding:2px 6px; border-radius:6px;" title="Close">✕</button>
           </div>
         </div>
 
         <!-- Filter Tabs -->
-        <div style="display:flex; border-bottom:1px solid #e2e8f0; background:#ffffff; padding:6px 10px; gap:4px; font-size:11px; font-weight:600;">
-          <button type="button" class="portal-tab-btn" data-tab="all" onclick="switchPortalNotifTab('all', this)" style="flex:1; padding:5px 2px; border:none; background:#ede9fe; color:#6d28d9; border-radius:6px; cursor:pointer; font-weight:700;">All (<span id="tabCountAll">0</span>)</button>
-          <button type="button" class="portal-tab-btn" data-tab="orders" onclick="switchPortalNotifTab('orders', this)" style="flex:1; padding:5px 2px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer;">🛒 Orders (<span id="tabCountOrders">0</span>)</button>
-          <button type="button" class="portal-tab-btn" data-tab="stock" onclick="switchPortalNotifTab('stock', this)" style="flex:1; padding:5px 2px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer;">⚠️ Stock (<span id="tabCountStock">0</span>)</button>
-          <button type="button" class="portal-tab-btn" data-tab="returned" onclick="switchPortalNotifTab('returned', this)" style="flex:1; padding:5px 2px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer;">🚫 Returns (<span id="tabCountReturned">0</span>)</button>
+        <div style="display:flex; border-bottom:1px solid #e2e8f0; background:#ffffff; padding:6px 10px; gap:4px; font-size:11px; font-weight:600; overflow-x:auto;">
+          <button type="button" class="portal-tab-btn" data-tab="all" onclick="switchPortalNotifTab('all', this)" style="flex:1; padding:5px 4px; border:none; background:#ede9fe; color:#6d28d9; border-radius:6px; cursor:pointer; font-weight:700; white-space:nowrap;">All (<span id="tabCountAll">0</span>)</button>
+          <button type="button" class="portal-tab-btn" data-tab="unread" onclick="switchPortalNotifTab('unread', this)" style="flex:1; padding:5px 4px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer; white-space:nowrap;">● Unread (<span id="tabCountUnread">0</span>)</button>
+          <button type="button" class="portal-tab-btn" data-tab="orders" onclick="switchPortalNotifTab('orders', this)" style="flex:1; padding:5px 4px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer; white-space:nowrap;">🛒 Orders (<span id="tabCountOrders">0</span>)</button>
+          <button type="button" class="portal-tab-btn" data-tab="stock" onclick="switchPortalNotifTab('stock', this)" style="flex:1; padding:5px 4px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer; white-space:nowrap;">⚠️ Stock (<span id="tabCountStock">0</span>)</button>
+          <button type="button" class="portal-tab-btn" data-tab="returned" onclick="switchPortalNotifTab('returned', this)" style="flex:1; padding:5px 4px; border:none; background:transparent; color:#64748b; border-radius:6px; cursor:pointer; white-space:nowrap;">🚫 Returns (<span id="tabCountReturned">0</span>)</button>
         </div>
 
         <!-- Items Container -->
@@ -282,6 +286,82 @@
       renderPortalAlertsList();
     };
 
+    function formatAlertTimeAgo(dtStr) {
+      if (!dtStr) return 'Recently';
+      try {
+        const d = new Date(dtStr.replace(' ', 'T'));
+        const now = new Date();
+        const diffSec = Math.floor((now - d) / 1000);
+        if (isNaN(diffSec) || diffSec < 0) return dtStr.slice(11, 16);
+        if (diffSec < 60) return 'Just now';
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return `${diffMin}m ago`;
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return `${diffHr}h ago`;
+        const diffDay = Math.floor(diffHr / 24);
+        if (diffDay === 1) return 'Yesterday';
+        if (diffDay < 7) return `${diffDay}d ago`;
+        return dtStr.slice(5, 16);
+      } catch(e) {
+        return dtStr.slice(5, 16);
+      }
+    }
+
+    window.markAllPortalAlertsRead = function() {
+      const btn = document.getElementById('markAllReadBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+      }
+
+      fetch('/api/portal/alerts/mark-all-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }
+        if (data && data.success) {
+          loadPortalAlerts(false);
+        }
+      })
+      .catch(err => {
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }
+      });
+    };
+
+    window.toggleAlertReadState = function(e, notifKey, notifType, itemId, action) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      fetch('/api/portal/alerts/mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notif_key: notifKey,
+          notif_type: notifType,
+          item_id: itemId,
+          action: action
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success) {
+          loadPortalAlerts(false);
+        }
+      })
+      .catch(err => {});
+    };
+
     window.loadPortalAlerts = function(showLoading) {
       const listEl = document.getElementById('portalNotifList');
       if (showLoading && listEl && (!portalAlertsData || portalAlertsData.total_count === 0)) {
@@ -304,26 +384,29 @@
       const badge = document.getElementById('portalNotifBadge');
       const totalBadge = document.getElementById('portalNotifTotalCountBadge');
       const tabAll = document.getElementById('tabCountAll');
+      const tabUnread = document.getElementById('tabCountUnread');
       const tabOrders = document.getElementById('tabCountOrders');
       const tabStock = document.getElementById('tabCountStock');
       const tabReturned = document.getElementById('tabCountReturned');
 
       const total = portalAlertsData.total_count || 0;
+      const unreadTotal = portalAlertsData.unread_count || 0;
       const ordersCount = portalAlertsData.orders ? portalAlertsData.orders.count : 0;
       const stockCount = portalAlertsData.low_stock ? portalAlertsData.low_stock.count : 0;
       const retCount = portalAlertsData.returned_expired ? portalAlertsData.returned_expired.count : 0;
 
       if (badge) {
-        if (total > 0) {
+        if (unreadTotal > 0) {
           badge.style.display = 'inline-block';
-          badge.innerText = total > 99 ? '99+' : total;
+          badge.innerText = unreadTotal > 99 ? '99+' : unreadTotal;
         } else {
           badge.style.display = 'none';
         }
       }
 
-      if (totalBadge) totalBadge.innerText = total;
+      if (totalBadge) totalBadge.innerText = `${unreadTotal} Unread`;
       if (tabAll) tabAll.innerText = total;
+      if (tabUnread) tabUnread.innerText = unreadTotal;
       if (tabOrders) tabOrders.innerText = ordersCount;
       if (tabStock) tabStock.innerText = stockCount;
       if (tabReturned) tabReturned.innerText = retCount;
@@ -344,16 +427,27 @@
       let countShown = 0;
 
       // 1. Orders
-      if (currentNotifTab === 'all' || currentNotifTab === 'orders') {
+      if (currentNotifTab === 'all' || currentNotifTab === 'orders' || currentNotifTab === 'unread') {
         orders.forEach(o => {
+          if (currentNotifTab === 'unread' && o.is_read) return;
           countShown++;
+          const bgCol = o.is_read ? '#f8fafc' : '#eff6ff';
+          const borderCol = o.is_read ? '#e2e8f0' : '#bfdbfe';
+
           html += `
-            <a href="/online_orders" style="text-decoration:none; display:block; padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <span style="font-weight:700; font-size:12px; color:#1d4ed8; display:flex; align-items:center; gap:5px;">
-                  <span>🛒</span> Order #${o.order_number}
-                </span>
-                <span style="background:#22c55e; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px; text-transform:uppercase;">${o.order_status || 'NEW'}</span>
+            <div style="padding:10px 12px; background:${bgCol}; border:1px solid ${borderCol}; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <div style="font-weight:700; font-size:12px; color:#1d4ed8; display:flex; align-items:center; gap:5px;">
+                  <span>🛒</span>
+                  <a href="/online_orders" style="color:#1d4ed8; text-decoration:underline;">Order #${o.order_number}</a>
+                  ${!o.is_read ? '<span style="display:inline-block; width:7px; height:7px; border-radius:999px; background:#ef4444;" title="Unread"></span>' : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="background:#22c55e; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px; text-transform:uppercase;">${o.order_status || 'NEW'}</span>
+                  <button type="button" onclick="toggleAlertReadState(event, '${o.notif_key}', 'order', ${o.id}, '${o.is_read ? 'unread' : 'read'}')" title="${o.is_read ? 'Mark as Unread' : 'Mark as Read'}" style="font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid ${o.is_read ? '#cbd5e1' : '#bfdbfe'}; background:${o.is_read ? '#ffffff' : '#eff6ff'}; color:${o.is_read ? '#64748b' : '#1d4ed8'}; cursor:pointer; white-space:nowrap;">
+                    ${o.is_read ? 'Mark Unread' : '✓ Mark Read'}
+                  </button>
+                </div>
               </div>
               <div style="font-size:12px; color:#334155; margin-bottom:4px;">
                 <strong>${o.customer_name}</strong> (${o.customer_phone})
@@ -362,22 +456,44 @@
                 <span style="font-weight:700; color:#0f172a;">TK ${(o.total_amount || 0).toLocaleString()}</span>
                 <span>${o.created_at || ''}</span>
               </div>
-            </a>
+              <div style="margin-top:6px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:10.5px; color:#64748b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                <div>
+                  ${o.is_read && o.seen_by ? 
+                    `<span style="color:#059669; font-weight:600;">👁️ Seen by: <strong>${o.seen_by}</strong> (${o.seen_role || 'staff'}) · ${formatAlertTimeAgo(o.seen_at)}</span>` : 
+                    (o.last_action === 'unread' && o.last_action_by ? 
+                      `<span style="color:#b91c1c; font-weight:600;">↩️ Unmarked by: <strong>${o.last_action_by}</strong> · ${formatAlertTimeAgo(o.last_action_at)}</span>` : 
+                      `<span style="color:#dc2626; font-weight:700;">● Unread</span>`)
+                  }
+                </div>
+                <a href="/online_orders" style="color:#2563eb; font-weight:600; text-decoration:none; font-size:11px;">View Order →</a>
+              </div>
+            </div>
           `;
         });
       }
 
       // 2. Low Stock
-      if (currentNotifTab === 'all' || currentNotifTab === 'stock') {
+      if (currentNotifTab === 'all' || currentNotifTab === 'stock' || currentNotifTab === 'unread') {
         stock.forEach(s => {
+          if (currentNotifTab === 'unread' && s.is_read) return;
           countShown++;
+          const bgCol = s.is_read ? '#f8fafc' : '#fffbeb';
+          const borderCol = s.is_read ? '#e2e8f0' : '#fde68a';
+
           html += `
-            <a href="/products" style="text-decoration:none; display:block; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <span style="font-weight:700; font-size:12px; color:#b45309; display:flex; align-items:center; gap:5px;">
-                  <span>⚠️</span> Low Stock Alert
-                </span>
-                <span style="background:#f59e0b; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px;">RESTOCK</span>
+            <div style="padding:10px 12px; background:${bgCol}; border:1px solid ${borderCol}; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <div style="font-weight:700; font-size:12px; color:#b45309; display:flex; align-items:center; gap:5px;">
+                  <span>⚠️</span>
+                  <a href="/products" style="color:#b45309; text-decoration:underline;">Low Stock Alert</a>
+                  ${!s.is_read ? '<span style="display:inline-block; width:7px; height:7px; border-radius:999px; background:#ef4444;" title="Unread"></span>' : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="background:#f59e0b; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px;">RESTOCK</span>
+                  <button type="button" onclick="toggleAlertReadState(event, '${s.notif_key}', 'stock', ${s.id}, '${s.is_read ? 'unread' : 'read'}')" title="${s.is_read ? 'Mark as Unread' : 'Mark as Read'}" style="font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid ${s.is_read ? '#cbd5e1' : '#fde68a'}; background:${s.is_read ? '#ffffff' : '#fffbeb'}; color:${s.is_read ? '#64748b' : '#b45309'}; cursor:pointer; white-space:nowrap;">
+                    ${s.is_read ? 'Mark Unread' : '✓ Mark Read'}
+                  </button>
+                </div>
               </div>
               <div style="font-size:12px; font-weight:600; color:#1e293b; margin-bottom:3px;">
                 ${s.name} <span style="font-size:11px; color:#64748b;">(${s.sku})</span>
@@ -386,22 +502,44 @@
                 <span>Stock Remaining: <strong>${s.stock_qty} pcs</strong></span>
                 <span style="color:#78350f;">Threshold: ${s.low_stock_threshold}</span>
               </div>
-            </a>
+              <div style="margin-top:6px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:10.5px; color:#64748b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                <div>
+                  ${s.is_read && s.seen_by ? 
+                    `<span style="color:#059669; font-weight:600;">👁️ Seen by: <strong>${s.seen_by}</strong> (${s.seen_role || 'staff'}) · ${formatAlertTimeAgo(s.seen_at)}</span>` : 
+                    (s.last_action === 'unread' && s.last_action_by ? 
+                      `<span style="color:#b91c1c; font-weight:600;">↩️ Unmarked by: <strong>${s.last_action_by}</strong> · ${formatAlertTimeAgo(s.last_action_at)}</span>` : 
+                      `<span style="color:#dc2626; font-weight:700;">● Unread</span>`)
+                  }
+                </div>
+                <a href="/products" style="color:#d97706; font-weight:600; text-decoration:none; font-size:11px;">Restock Now →</a>
+              </div>
+            </div>
           `;
         });
       }
 
       // 3. Returned & Expired
-      if (currentNotifTab === 'all' || currentNotifTab === 'returned') {
+      if (currentNotifTab === 'all' || currentNotifTab === 'returned' || currentNotifTab === 'unread') {
         returned.forEach(r => {
+          if (currentNotifTab === 'unread' && r.is_read) return;
           countShown++;
+          const bgCol = r.is_read ? '#f8fafc' : '#fef2f2';
+          const borderCol = r.is_read ? '#e2e8f0' : '#fecaca';
+
           html += `
-            <a href="/returned_items" style="text-decoration:none; display:block; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <span style="font-weight:700; font-size:12px; color:#b91c1c; display:flex; align-items:center; gap:5px;">
-                  <span>🚫</span> Returned Item
-                </span>
-                <span style="background:#ef4444; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px;">${r.quantity} PCS</span>
+            <div style="padding:10px 12px; background:${bgCol}; border:1px solid ${borderCol}; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <div style="font-weight:700; font-size:12px; color:#b91c1c; display:flex; align-items:center; gap:5px;">
+                  <span>🚫</span>
+                  <a href="/returned_items" style="color:#b91c1c; text-decoration:underline;">Returned Item</a>
+                  ${!r.is_read ? '<span style="display:inline-block; width:7px; height:7px; border-radius:999px; background:#ef4444;" title="Unread"></span>' : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="background:#ef4444; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px;">${r.quantity} PCS</span>
+                  <button type="button" onclick="toggleAlertReadState(event, '${r.notif_key}', 'return', ${r.id}, '${r.is_read ? 'unread' : 'read'}')" title="${r.is_read ? 'Mark as Unread' : 'Mark as Read'}" style="font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid ${r.is_read ? '#cbd5e1' : '#fecaca'}; background:${r.is_read ? '#ffffff' : '#fef2f2'}; color:${r.is_read ? '#64748b' : '#b91c1c'}; cursor:pointer; white-space:nowrap;">
+                    ${r.is_read ? 'Mark Unread' : '✓ Mark Read'}
+                  </button>
+                </div>
               </div>
               <div style="font-size:12px; font-weight:600; color:#1e293b; margin-bottom:3px;">
                 ${r.item_name}
@@ -410,40 +548,83 @@
                 <span>${r.reason || 'Returned item'}</span>
                 <span style="color:#64748b;">${r.date_returned || ''}</span>
               </div>
-            </a>
+              <div style="margin-top:6px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:10.5px; color:#64748b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                <div>
+                  ${r.is_read && r.seen_by ? 
+                    `<span style="color:#059669; font-weight:600;">👁️ Seen by: <strong>${r.seen_by}</strong> (${r.seen_role || 'staff'}) · ${formatAlertTimeAgo(r.seen_at)}</span>` : 
+                    (r.last_action === 'unread' && r.last_action_by ? 
+                      `<span style="color:#b91c1c; font-weight:600;">↩️ Unmarked by: <strong>${r.last_action_by}</strong> · ${formatAlertTimeAgo(r.last_action_at)}</span>` : 
+                      `<span style="color:#dc2626; font-weight:700;">● Unread</span>`)
+                  }
+                </div>
+                <a href="/returned_items" style="color:#dc2626; font-weight:600; text-decoration:none; font-size:11px;">View Returns →</a>
+              </div>
+            </div>
           `;
         });
 
         expiring.forEach(e => {
+          if (currentNotifTab === 'unread' && e.is_read) return;
           countShown++;
+          const bgCol = e.is_read ? '#f8fafc' : '#fff7ed';
+          const borderCol = e.is_read ? '#e2e8f0' : '#fed7aa';
+
           html += `
-            <a href="/returned_items" style="text-decoration:none; display:block; padding:10px 12px; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <span style="font-weight:700; font-size:12px; color:#c2410c; display:flex; align-items:center; gap:5px;">
-                  <span>⏳</span> Expiring Soon
-                </span>
-                <span style="background:#ea580c; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px;">${e.stock_qty} PCS</span>
+            <div style="padding:10px 12px; background:${bgCol}; border:1px solid ${borderCol}; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <div style="font-weight:700; font-size:12px; color:#c2410c; display:flex; align-items:center; gap:5px;">
+                  <span>⏳</span>
+                  <a href="/returned_items" style="color:#c2410c; text-decoration:underline;">Expiring Soon</a>
+                  ${!e.is_read ? '<span style="display:inline-block; width:7px; height:7px; border-radius:999px; background:#ef4444;" title="Unread"></span>' : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="background:#ea580c; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:999px;">${e.stock_qty} PCS</span>
+                  <button type="button" onclick="toggleAlertReadState(event, '${e.notif_key}', 'expiring', ${e.id}, '${e.is_read ? 'unread' : 'read'}')" title="${e.is_read ? 'Mark as Unread' : 'Mark as Read'}" style="font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid ${e.is_read ? '#cbd5e1' : '#fed7aa'}; background:${e.is_read ? '#ffffff' : '#fff7ed'}; color:${e.is_read ? '#64748b' : '#c2410c'}; cursor:pointer; white-space:nowrap;">
+                    ${e.is_read ? 'Mark Unread' : '✓ Mark Read'}
+                  </button>
+                </div>
               </div>
               <div style="font-size:12px; font-weight:600; color:#1e293b; margin-bottom:3px;">
                 ${e.name}
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#9a3412;">
                 <span>Expiry: <strong>${e.expiry_date}</strong></span>
-                <span style="color:#c2410c; font-weight:600;">Check stock →</span>
+                <span style="color:#c2410c; font-weight:600;">Check stock</span>
               </div>
-            </a>
+              <div style="margin-top:6px; padding-top:4px; border-top:1px dashed #cbd5e1; font-size:10.5px; color:#64748b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                <div>
+                  ${e.is_read && e.seen_by ? 
+                    `<span style="color:#059669; font-weight:600;">👁️ Seen by: <strong>${e.seen_by}</strong> (${e.seen_role || 'staff'}) · ${formatAlertTimeAgo(e.seen_at)}</span>` : 
+                    (e.last_action === 'unread' && e.last_action_by ? 
+                      `<span style="color:#b91c1c; font-weight:600;">↩️ Unmarked by: <strong>${e.last_action_by}</strong> · ${formatAlertTimeAgo(e.last_action_at)}</span>` : 
+                      `<span style="color:#dc2626; font-weight:700;">● Unread</span>`)
+                  }
+                </div>
+                <a href="/returned_items" style="color:#ea580c; font-weight:600; text-decoration:none; font-size:11px;">View Items →</a>
+              </div>
+            </div>
           `;
         });
       }
 
       if (countShown === 0) {
-        listEl.innerHTML = `
-          <div style="text-align:center; padding:30px 16px; color:#64748b;">
-            <div style="font-size:32px; margin-bottom:8px;">✨</div>
-            <div style="font-weight:700; font-size:13px; color:#0f172a; margin-bottom:4px;">No Pending Alerts</div>
-            <div style="font-size:12px; color:#64748b;">Orders processed, inventory healthy, and no expired items.</div>
-          </div>
-        `;
+        if (currentNotifTab === 'unread') {
+          listEl.innerHTML = `
+            <div style="text-align:center; padding:30px 16px; color:#64748b;">
+              <div style="font-size:32px; margin-bottom:8px;">✅</div>
+              <div style="font-weight:700; font-size:13px; color:#0f172a; margin-bottom:4px;">All Caught Up!</div>
+              <div style="font-size:12px; color:#64748b;">No unread alerts. Everything has been reviewed.</div>
+            </div>
+          `;
+        } else {
+          listEl.innerHTML = `
+            <div style="text-align:center; padding:30px 16px; color:#64748b;">
+              <div style="font-size:32px; margin-bottom:8px;">✨</div>
+              <div style="font-weight:700; font-size:13px; color:#0f172a; margin-bottom:4px;">No Pending Alerts</div>
+              <div style="font-size:12px; color:#64748b;">Orders processed, inventory healthy, and no expired items.</div>
+            </div>
+          `;
+        }
       } else {
         listEl.innerHTML = html;
       }
