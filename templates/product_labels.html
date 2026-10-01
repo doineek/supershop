@@ -204,7 +204,7 @@
 
     <div class="code-row">
       <span>{{ product.sku }}</span>
-      <span>SL-{{ product.sl_number }}</span>
+      <span>SL-{{ unit.batch_sl if (unit.batch_sl is defined and unit.batch_sl and unit.batch_sl > 0) else (product.sl_number or 1) }}</span>
       <span>{{ unit.a_code }}</span>
     </div>
 

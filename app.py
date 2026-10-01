@@ -1322,7 +1322,7 @@ def new_product():
                 else:
                     raise op_err
             new_product_id = cur.lastrowid
-            create_product_units(conn, new_product_id, stock_qty)
+            create_product_units(conn, new_product_id, stock_qty, sell_price=sell_price, mrp=mrp, batch_sl=sl_number)
             conn.commit()
             return new_product_id
 
@@ -1509,7 +1509,10 @@ def edit_product(product_id):
 
             if new_stock_qty > old_stock_qty:
                 added = new_stock_qty - old_stock_qty
-                create_product_units(conn, product_id, added)
+                cur_sp = float(request.form.get("sell_price") or 0)
+                cur_mrp = float(request.form.get("mrp") or 0)
+                cur_sl = int(request.form.get("sl_number") or 1)
+                create_product_units(conn, product_id, added, sell_price=cur_sp, mrp=cur_mrp, batch_sl=cur_sl)
             conn.commit()
 
         try:
@@ -1625,15 +1628,9 @@ def restock_product(product_id):
         conn.commit()
 
         # Generate barcode tags for the newly added restock quantity
-        first_new_unit_sl = None
+        new_unit_ids = []
         if added_qty > 0:
-            # Find the starting sl_number for the new units BEFORE inserting them
-            row = conn.execute(
-                "SELECT COALESCE(MAX(sl_number), 0) + 1 AS next_sl FROM product_units WHERE product_id = ?",
-                (product_id,)
-            ).fetchone()
-            first_new_unit_sl = row["next_sl"]
-            create_product_units(conn, product_id, added_qty, sell_price=sell_price, mrp=mrp)
+            new_unit_ids = create_product_units(conn, product_id, added_qty, sell_price=sell_price, mrp=mrp, batch_sl=new_sl)
             conn.commit()  # commit the newly inserted unit rows
 
         conn.close()
@@ -1642,9 +1639,9 @@ def restock_product(product_id):
         remote_control.push_product_to_cloud(product_id)
 
         flash(f"Product '{name}' successfully restocked with {added_qty} unit(s) (SL: {new_sl}). Total stock is now {new_total_stock}!", "success")
-        if added_qty > 0 and first_new_unit_sl is not None:
+        if added_qty > 0 and new_unit_ids:
             # Redirect to tag print page for the new batch so admin can print tags immediately
-            return redirect(url_for("product_labels", product_id=product_id, batch_sl=first_new_unit_sl))
+            return redirect(url_for("product_labels", product_id=product_id, batch_start_id=new_unit_ids[0], batch_sl=new_sl))
         return redirect(url_for("products"))
 
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
@@ -1818,7 +1815,7 @@ def restock_from_returned(return_id):
                 target_product_id = cur.lastrowid
 
             if stock_qty > 0:
-                create_product_units(conn, target_product_id, stock_qty)
+                create_product_units(conn, target_product_id, stock_qty, sell_price=sell_price, mrp=mrp, batch_sl=sl_number)
             conn.commit()
 
         try:
@@ -1902,22 +1899,47 @@ def product_labels(product_id):
         flash("Product not found.", "error")
         return redirect(url_for("products"))
 
+    # Auto-heal: Ensure in-stock product_units exist for product.stock_qty so tags can ALWAYS be printed!
+    in_stock_cnt = conn.execute(
+        "SELECT COUNT(*) AS c FROM product_units WHERE product_id = ? AND status = 'in_stock'",
+        (product_id,)
+    ).fetchone()["c"]
+    missing = (product["stock_qty"] or 0) - in_stock_cnt
+    if missing > 0:
+        create_product_units(
+            conn,
+            product_id,
+            missing,
+            sell_price=product["sell_price"] or 0.0,
+            mrp=product["mrp"] or 0.0,
+            batch_sl=product["sl_number"] or 1
+        )
+        conn.commit()
+
     unit_id = request.args.get("unit_id", type=int)
     batch_sl = request.args.get("batch_sl", type=int)
+    batch_start_id = request.args.get("batch_start_id", type=int)
+
     if unit_id:
         units = conn.execute(
             "SELECT * FROM product_units WHERE product_id = ? AND id = ? AND status = 'in_stock'",
             (product_id, unit_id)
         ).fetchall()
-    elif batch_sl:
-        # Restock redirect: show only units belonging to the new batch (sl_number >= batch_sl)
+    elif batch_start_id:
+        # Show all units from this newly created restock batch
         units = conn.execute(
-            "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' AND sl_number >= ? ORDER BY sl_number",
-            (product_id, batch_sl)
+            "SELECT * FROM product_units WHERE product_id = ? AND id >= ? AND status = 'in_stock' ORDER BY id",
+            (product_id, batch_start_id)
+        ).fetchall()
+    elif batch_sl:
+        # Filter by batch_sl or legacy sl_number
+        units = conn.execute(
+            "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' AND (batch_sl = ? OR sl_number >= ?) ORDER BY id",
+            (product_id, batch_sl, batch_sl)
         ).fetchall()
     else:
         units = conn.execute(
-            "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' ORDER BY sl_number",
+            "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' ORDER BY id",
             (product_id,)
         ).fetchall()
 
@@ -3070,6 +3092,7 @@ def pos_lookup():
 
     product = None
     specific_unit_serial = None
+    matched_unit = None
 
     # 1. Try matching physical tag's unique serial number (a_code) first (e.g. SN-000004)
     unit_by_acode = conn.execute("SELECT * FROM product_units WHERE a_code = ? AND status = 'in_stock'", (code,)).fetchone()
@@ -3079,6 +3102,7 @@ def pos_lookup():
     if unit_by_acode:
         product = conn.execute("SELECT * FROM products WHERE id = ?", (unit_by_acode["product_id"],)).fetchone()
         specific_unit_serial = unit_by_acode["a_code"]
+        matched_unit = unit_by_acode
 
     # 2. If not matched by serial tag, match by product SKU or name
     if not product:
@@ -3094,23 +3118,32 @@ def pos_lookup():
         conn.close()
         return jsonify({"error": f'Product "{product["name"]}" expired on {product["expiry_date"]} and has been moved to Returned/Expired section.'}), 400
 
-    # 3. If a specific unit serial was not matched, pick the next available in-stock unit serial
+    # 3. If a specific unit serial was not matched, pick the next available in-stock unit serial (FIFO)
     if not specific_unit_serial:
         if exclude:
             placeholders = ",".join("?" for _ in exclude)
-            unit = conn.execute(f"""
-                SELECT a_code FROM product_units
+            matched_unit = conn.execute(f"""
+                SELECT * FROM product_units
                 WHERE product_id = ? AND status = 'in_stock' AND a_code NOT IN ({placeholders})
-                ORDER BY sl_number LIMIT 1
+                ORDER BY id ASC LIMIT 1
             """, (product["id"], *exclude)).fetchone()
         else:
-            unit = conn.execute("""
-                SELECT a_code FROM product_units
+            matched_unit = conn.execute("""
+                SELECT * FROM product_units
                 WHERE product_id = ? AND status = 'in_stock'
-                ORDER BY sl_number LIMIT 1
+                ORDER BY id ASC LIMIT 1
             """, (product["id"],)).fetchone()
-        if unit:
-            specific_unit_serial = unit["a_code"]
+        if matched_unit:
+            specific_unit_serial = matched_unit["a_code"]
+
+    # Price determination:
+    # If the matched physical unit has a lot-specific sell_price (> 0), use that price!
+    if matched_unit and matched_unit["sell_price"] and float(matched_unit["sell_price"]) > 0:
+        checkout_price = float(matched_unit["sell_price"])
+        checkout_mrp = float(matched_unit["mrp"]) if (matched_unit["mrp"] and float(matched_unit["mrp"]) > 0) else float(product["mrp"] or 0)
+    else:
+        checkout_price = float(product["sell_price"] or 0)
+        checkout_mrp = float(product["mrp"] or 0)
 
     conn.close()
 
@@ -3118,8 +3151,8 @@ def pos_lookup():
         "id": product["id"],
         "name": product["name"],
         "sku": product["sku"],
-        "price": product["sell_price"],
-        "mrp": product["mrp"],
+        "price": checkout_price,
+        "mrp": checkout_mrp,
         "vat_pct": product["vat_pct"],
         "stock_qty": product["stock_qty"],
         "is_offer": product["is_offer"],

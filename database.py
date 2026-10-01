@@ -217,6 +217,7 @@ def init_db():
         created_at TEXT NOT NULL,
         sell_price REAL NOT NULL DEFAULT 0,
         mrp REAL NOT NULL DEFAULT 0,
+        batch_sl INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (product_id) REFERENCES products(id)
     );
 
@@ -415,6 +416,7 @@ def init_db():
         "ALTER TABLE online_orders ADD COLUMN cancelled_at TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE product_units ADD COLUMN sell_price REAL NOT NULL DEFAULT 0",
         "ALTER TABLE product_units ADD COLUMN mrp REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE product_units ADD COLUMN batch_sl INTEGER NOT NULL DEFAULT 1",
     ]
     for statement in migrations:
         try:
@@ -733,10 +735,10 @@ def generate_invoice_number():
     return f"INV-{date_part}-{rand_part}"
 
 
-def create_product_units(conn, product_id, quantity, sell_price=0.0, mrp=0.0):
+def create_product_units(conn, product_id, quantity, sell_price=0.0, mrp=0.0, batch_sl=1):
     """Generates unique incrementing product serials (a_code) for each physical item in bulk.
-    sell_price and mrp are stored per unit so that each batch's price tag is correct even
-    after a restock with a different price."""
+    sell_price, mrp, and batch_sl are stored per unit so that each batch's price tag and SL
+    are preserved even after a restock with different pricing."""
     if quantity <= 0:
         return []
 
@@ -745,10 +747,15 @@ def create_product_units(conn, product_id, quantity, sell_price=0.0, mrp=0.0):
         "SELECT COALESCE(MAX(sl_number), 0) AS m FROM product_units WHERE product_id = ?",
         (product_id,)
     ).fetchone()
-    next_sl = row["m"] + 1
+    next_sl = (row["m"] if row else 0) + 1
+
+    max_sn_row = cur.execute(
+        "SELECT MAX(CAST(SUBSTR(a_code, 4) AS INTEGER)) AS m FROM product_units WHERE a_code LIKE 'SN-%'"
+    ).fetchone()
+    start_sn = ((max_sn_row["m"] or 0) if max_sn_row else 0) + 1
 
     max_id_row = cur.execute("SELECT COALESCE(MAX(id), 0) AS m FROM product_units").fetchone()
-    start_id = max_id_row["m"] + 1
+    start_id = ((max_id_row["m"] or 0) if max_id_row else 0) + 1
     now = datetime.now().isoformat()
 
     bulk_rows = []
@@ -757,12 +764,13 @@ def create_product_units(conn, product_id, quantity, sell_price=0.0, mrp=0.0):
     for i in range(quantity):
         curr_id = start_id + i
         sl_num = next_sl + i
-        a_code = f"SN-{curr_id:06d}"
-        bulk_rows.append((curr_id, product_id, a_code, sl_num, 'in_stock', now, sell_price, mrp))
+        curr_sn = start_sn + i
+        a_code = f"SN-{curr_sn:06d}"
+        bulk_rows.append((curr_id, product_id, a_code, sl_num, 'in_stock', now, sell_price, mrp, batch_sl))
         created_ids.append(curr_id)
 
     cur.executemany(
-        "INSERT INTO product_units (id, product_id, a_code, sl_number, status, created_at, sell_price, mrp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO product_units (id, product_id, a_code, sl_number, status, created_at, sell_price, mrp, batch_sl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         bulk_rows
     )
     return created_ids
