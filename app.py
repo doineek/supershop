@@ -1625,8 +1625,16 @@ def restock_product(product_id):
         conn.commit()
 
         # Generate barcode tags for the newly added restock quantity
+        first_new_unit_sl = None
         if added_qty > 0:
-            create_product_units(conn, product_id, added_qty)
+            # Find the starting sl_number for the new units BEFORE inserting them
+            row = conn.execute(
+                "SELECT COALESCE(MAX(sl_number), 0) + 1 AS next_sl FROM product_units WHERE product_id = ?",
+                (product_id,)
+            ).fetchone()
+            first_new_unit_sl = row["next_sl"]
+            create_product_units(conn, product_id, added_qty, sell_price=sell_price, mrp=mrp)
+            conn.commit()  # commit the newly inserted unit rows
 
         conn.close()
 
@@ -1634,6 +1642,9 @@ def restock_product(product_id):
         remote_control.push_product_to_cloud(product_id)
 
         flash(f"Product '{name}' successfully restocked with {added_qty} unit(s) (SL: {new_sl}). Total stock is now {new_total_stock}!", "success")
+        if added_qty > 0 and first_new_unit_sl is not None:
+            # Redirect to tag print page for the new batch so admin can print tags immediately
+            return redirect(url_for("product_labels", product_id=product_id, batch_sl=first_new_unit_sl))
         return redirect(url_for("products"))
 
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
@@ -1892,10 +1903,17 @@ def product_labels(product_id):
         return redirect(url_for("products"))
 
     unit_id = request.args.get("unit_id", type=int)
+    batch_sl = request.args.get("batch_sl", type=int)
     if unit_id:
         units = conn.execute(
             "SELECT * FROM product_units WHERE product_id = ? AND id = ? AND status = 'in_stock'",
             (product_id, unit_id)
+        ).fetchall()
+    elif batch_sl:
+        # Restock redirect: show only units belonging to the new batch (sl_number >= batch_sl)
+        units = conn.execute(
+            "SELECT * FROM product_units WHERE product_id = ? AND status = 'in_stock' AND sl_number >= ? ORDER BY sl_number",
+            (product_id, batch_sl)
         ).fetchall()
     else:
         units = conn.execute(
@@ -1932,7 +1950,7 @@ def product_labels(product_id):
     # single click that sends every tag to the printer without an extra
     # button press. Pass ?autoprint=0 to suppress it (e.g. just viewing).
     autoprint = request.args.get("autoprint", "1") == "1"
-    return render_template("product_labels.html", product=product, tags=tags, autoprint=autoprint)
+    return render_template("product_labels.html", product=product, tags=tags, autoprint=autoprint, batch_sl=batch_sl)
 
 
 @app.route("/products/<int:product_id>/labels/print-all")
@@ -3628,31 +3646,31 @@ def prepare_receipt_data(conn, sale_id):
             offer_value = i_dict.get("offer_value") or ""
             p_name = i_dict.get("product_name") or ""
 
-        paid_qty = qty
-        free_qty = 0
-        is_bogo = (offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or 
-                   'buy' in offer_title.lower() or 
-                   'buy' in offer_value.lower() or 
-                   'buy' in p_name.lower())
-        
-        if is_bogo:
-            b_qty, f_qty = parse_bogo_quantities(offer_value, offer_title, p_name)
-            tot_set = b_qty + f_qty
-            if tot_set > 0:
-                sets = qty // tot_set
-                rem = qty % tot_set
-                paid_qty = (sets * b_qty) + min(rem, b_qty)
-                free_qty = qty - paid_qty
+            paid_qty = qty
+            free_qty = 0
+            is_bogo = (offer_type in ('buy_x_get_y', 'bogo', 'buy_x_get_x') or 
+                       'buy' in offer_title.lower() or 
+                       'buy' in offer_value.lower() or 
+                       'buy' in p_name.lower())
+            
+            if is_bogo:
+                b_qty, f_qty = parse_bogo_quantities(offer_value, offer_title, p_name)
+                tot_set = b_qty + f_qty
+                if tot_set > 0:
+                    sets = qty // tot_set
+                    rem = qty % tot_set
+                    paid_qty = (sets * b_qty) + min(rem, b_qty)
+                    free_qty = qty - paid_qty
 
-        line_total = round(unit_price * paid_qty, 2)
-        bogo_disc = round(unit_price * free_qty, 2)
+            line_total = round(unit_price * paid_qty, 2)
+            bogo_disc = round(unit_price * free_qty, 2)
 
-        i_dict["paid_qty"] = paid_qty
-        i_dict["free_qty"] = free_qty
-        i_dict["line_total"] = line_total
-        i_dict["bogo_discount"] = bogo_disc
-        i_dict["is_bogo"] = is_bogo
-        items.append(i_dict)
+            i_dict["paid_qty"] = paid_qty
+            i_dict["free_qty"] = free_qty
+            i_dict["line_total"] = line_total
+            i_dict["bogo_discount"] = bogo_disc
+            i_dict["is_bogo"] = is_bogo
+            items.append(i_dict)
 
     if not sale_dict.get("delivery_address") and sale_dict.get("customer_mobile"):
         try:
@@ -6982,9 +7000,14 @@ def api_rider_accept_order():
         return jsonify({"success": False, "message": "Order not found."}), 400
 
     now_iso = get_bd_now_iso()
+    rider_user = conn.execute("SELECT id, full_name FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (rider_phone, data.get("rider_phone", ""))).fetchone()
+    rider_id = rider_user["id"] if rider_user else 0
+    if rider_user and not rider_name and rider_user["full_name"]:
+        rider_name = rider_user["full_name"]
+
     conn.execute(
-        "UPDATE online_orders SET order_status = 'verified', assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
-        (rider_name if rider_name else rider_phone, rider_phone, now_iso, now_iso, order_id)
+        "UPDATE online_orders SET order_status = 'verified', assigned_rider_id = CASE WHEN ? > 0 THEN ? ELSE assigned_rider_id END, assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
+        (rider_id, rider_id, rider_name if rider_name else rider_phone, rider_phone, now_iso, now_iso, order_id)
     )
     deduct_online_order_stock(conn, order)
     notify_order_status_change(order, 'verified', conn=conn)
@@ -7044,6 +7067,116 @@ def api_rider_update_order_status():
     return jsonify({
         "success": True,
         "message": f"Order #{order['order_number']} status updated to '{status.upper()}' successfully!"
+    })
+
+
+@app.route("/api/rider/earnings", methods=["GET"])
+def api_rider_earnings():
+    raw_phone = request.args.get("rider_phone", "").strip()
+    norm_phone = normalize_phone(raw_phone)
+    rider_id = request.args.get("rider_id", type=int)
+
+    conn = get_connection()
+    user = None
+    if rider_id:
+        user = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+    if not user and norm_phone:
+        user = conn.execute("SELECT * FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (norm_phone, raw_phone)).fetchone()
+
+    r_id = user["id"] if user else (rider_id or 0)
+    r_phone = user["username"] if user else norm_phone
+    r_name = user["full_name"] if (user and user["full_name"]) else (r_phone or "Delivery Rider")
+
+    default_fee = get_rider_delivery_fee_setting(conn)
+
+    phone_patterns = list(set(filter(None, [raw_phone, norm_phone, f"88{norm_phone}" if norm_phone else "", f"+88{norm_phone}" if norm_phone else ""])))
+    if r_phone and r_phone not in phone_patterns:
+        phone_patterns.append(r_phone)
+
+    # Fetch delivered orders
+    placeholders = ",".join("?" for _ in phone_patterns) if phone_patterns else "''"
+    query_params = [r_id] + phone_patterns
+
+    rider_orders = conn.execute(f"""
+        SELECT * FROM online_orders 
+        WHERE (assigned_rider_id = ? OR assigned_rider_phone IN ({placeholders}))
+        ORDER BY id DESC
+    """, query_params).fetchall()
+
+    # Fetch payouts for this rider (matches ledger expense 'Riders riding cost')
+    payout_params = [r_id] if r_id else []
+    if phone_patterns:
+        payout_user_ids = conn.execute(f"SELECT id FROM users WHERE username IN ({placeholders})", phone_patterns).fetchall()
+        for pu in payout_user_ids:
+            if pu["id"] not in payout_params:
+                payout_params.append(pu["id"])
+    
+    if payout_params:
+        payout_placeholders = ",".join("?" for _ in payout_params)
+        payouts_rows = conn.execute(f"""
+            SELECT * FROM rider_payouts
+            WHERE rider_id IN ({payout_placeholders})
+            ORDER BY payout_date DESC, id DESC
+        """, payout_params).fetchall()
+    else:
+        payouts_rows = []
+
+    payouts_data = []
+    for p in payouts_rows:
+        payouts_data.append({
+            "id": p["id"],
+            "amount": float(p["amount"] or 0),
+            "payout_date": p["payout_date"] or "",
+            "payment_method": p["payment_method"] or "Cash",
+            "note": p["note"] or "",
+            "created_at": p["created_at"] or "",
+        })
+
+    all_time_delivered = 0
+    all_time_earned = 0.0
+    all_time_collected = 0.0
+    delivered_orders = []
+
+    for ord_row in rider_orders:
+        o_dict = dict(ord_row)
+        is_del = (o_dict.get("order_status") == "delivered")
+        o_fee = float(o_dict.get("rider_fee") or 0)
+        if o_fee <= 0 and is_del:
+            o_fee = default_fee
+        
+        if is_del:
+            all_time_delivered += 1
+            all_time_earned += o_fee
+            all_time_collected += float(o_dict.get("total_amount") or 0)
+            delivered_orders.append({
+                "id": o_dict.get("id"),
+                "order_number": o_dict.get("order_number") or "",
+                "customer_name": o_dict.get("customer_name") or "",
+                "customer_phone": o_dict.get("customer_phone") or "",
+                "area": o_dict.get("area") or "",
+                "total_amount": float(o_dict.get("total_amount") or 0),
+                "rider_fee": o_fee,
+                "delivered_at": o_dict.get("delivered_at") or o_dict.get("updated_at") or "",
+                "created_at": o_dict.get("created_at") or "",
+            })
+
+    all_time_paid = sum(p["amount"] for p in payouts_data)
+    balance_due = max(0.0, round(all_time_earned - all_time_paid, 2))
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "rider_id": r_id,
+        "rider_name": r_name,
+        "rider_phone": r_phone,
+        "default_rider_fee": default_fee,
+        "total_delivered": all_time_delivered,
+        "total_earned": all_time_earned,
+        "total_paid": all_time_paid,
+        "balance_due": balance_due,
+        "total_collected": all_time_collected,
+        "payouts": payouts_data,
+        "delivered_orders": delivered_orders,
     })
 
 
@@ -8417,10 +8550,35 @@ def api_cancel_order():
 
 @app.route("/api/orders/delivery-orders", methods=["GET"])
 def api_delivery_orders():
+    raw_phone = request.args.get("rider_phone", "").strip()
+    norm_phone = normalize_phone(raw_phone)
+    rider_id = request.args.get("rider_id", type=int)
+
     conn = get_connection()
-    orders = conn.execute(
-        "SELECT * FROM online_orders WHERE order_status IN ('new', 'verified', 'packed', 'on_the_way') ORDER BY id DESC"
-    ).fetchall()
+    if raw_phone or norm_phone or rider_id:
+        phone_patterns = list(set(filter(None, [raw_phone, norm_phone, f"88{norm_phone}" if norm_phone else "", f"+88{norm_phone}" if norm_phone else ""])))
+        if not rider_id and norm_phone:
+            u = conn.execute("SELECT id FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (norm_phone, raw_phone)).fetchone()
+            if u:
+                rider_id = u["id"]
+        
+        placeholders = ",".join("?" for _ in phone_patterns) if phone_patterns else "''"
+        params = phone_patterns + phone_patterns + [rider_id or 0]
+
+        orders = conn.execute(f"""
+            SELECT * FROM online_orders 
+            WHERE (
+                (order_status = 'new' AND (assigned_rider_phone IS NULL OR assigned_rider_phone = '' OR assigned_rider_phone IN ({placeholders})))
+                OR
+                ((assigned_rider_phone IN ({placeholders}) OR (assigned_rider_id IS NOT NULL AND assigned_rider_id = ?)) 
+                 AND order_status IN ('verified', 'packed', 'on_the_way'))
+            )
+            ORDER BY id DESC
+        """, params).fetchall()
+    else:
+        orders = conn.execute(
+            "SELECT * FROM online_orders WHERE order_status IN ('new', 'verified', 'packed', 'on_the_way') ORDER BY id DESC"
+        ).fetchall()
 
     result = []
     for ord_row in orders:
@@ -9724,6 +9882,9 @@ def get_app_version():
     return "1.0.15"
 
 
+GITHUB_LATEST_APK_URL = "https://github.com/doineek/supershop/releases/latest/download/doineek_latest.apk"
+
+
 @app.route("/download-apk")
 @app.route("/apk")
 @app.route("/download/apk")
@@ -9733,34 +9894,20 @@ def download_app_apk():
     Redirects to GitHub CDN releases so Render free bandwidth (5 GB) is 100% saved!
     """
     settings = get_all_settings()
-    ver = get_app_version()
-    filename = f"doineek_v{ver}.apk"
-
     raw_ext_url = (os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "").strip()
-    if not raw_ext_url or "supershop" in raw_ext_url or "doineek" in raw_ext_url or "github.com/doineek/supershop/releases" in raw_ext_url:
-        ext_url = f"https://github.com/doineek/supershop/releases/download/v{ver}/{filename}"
-    else:
-        ext_url = raw_ext_url
+    if raw_ext_url and raw_ext_url.startswith("http") and "render.com" not in raw_ext_url:
+        return redirect(raw_ext_url, code=302)
 
-    if ext_url and ext_url.startswith("http"):
-        return redirect(ext_url, code=302)
+    return redirect(GITHUB_LATEST_APK_URL, code=302)
 
-    apk_dir = os.path.join(app.root_path, "static", "apk")
-    candidate_paths = [
-        os.path.join(apk_dir, filename),
-        os.path.join(apk_dir, "doineek_latest.apk"),
-        os.path.join(apk_dir, "supershop_latest.apk"),
-    ]
-    for candidate in candidate_paths:
-        if os.path.exists(candidate) and os.path.getsize(candidate) > 1024 * 1024:
-            return send_file(
-                candidate,
-                as_attachment=True,
-                download_name=filename,
-                mimetype="application/vnd.android.package-archive"
-            )
 
-    return redirect("https://github.com/doineek/supershop/releases", code=302)
+@app.route("/static/apk/<path:filename>")
+def static_apk_redirect(filename):
+    """
+    Intercept direct static APK requests to prevent burning Render 5 GB bandwidth.
+    Redirects directly to GitHub CDN release.
+    """
+    return redirect(GITHUB_LATEST_APK_URL, code=302)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

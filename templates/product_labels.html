@@ -174,11 +174,16 @@
   <h1>
     {% if tags|length == 1 and request.args.get('unit_id') %}
       Reprint tag {{ tags[0][0].a_code }} - {{ product.name }} ({{ product.sku }})
+    {% elif batch_sl %}
+      {{ tags|length }} new tag(s) — Batch SL-{{ batch_sl }} — {{ product.name }} ({{ product.sku }})
     {% else %}
       {{ tags|length }} tag(s) ready to print - {{ product.name }} ({{ product.sku }})
     {% endif %}
   </h1>
   <button onclick="ensurePrintSettingsThenPrint()">Print All Tags</button>
+  {% if batch_sl %}
+  <a class="secondary" href="{{ url_for('product_labels', product_id=product.id, autoprint=0) }}" style="background:#fff; color:#333; border:1px solid #333;">View All Batches</a>
+  {% endif %}
   <a class="secondary" href="{{ url_for('products') }}">Back to Inventory</a>
 </div>
 
@@ -204,10 +209,12 @@
     </div>
 
     <div class="price-block">
-      {% if product.mrp > 0 and product.mrp != product.sell_price %}
-      <div class="price-line"><span class="label">MRP:</span><span>Tk. {{ "%.2f"|format(product.mrp) }}</span></div>
+      {% set u_sell = unit.sell_price if unit.sell_price and unit.sell_price > 0 else product.sell_price %}
+      {% set u_mrp  = unit.mrp        if unit.mrp        and unit.mrp        > 0 else product.mrp %}
+      {% if u_mrp > 0 and u_mrp != u_sell %}
+      <div class="price-line"><span class="label">MRP:</span><span>Tk. {{ "%.2f"|format(u_mrp) }}</span></div>
       {% endif %}
-      <div class="price-line doineek"><span class="label">Doineek Price:</span><span>Tk. {{ "%.2f"|format(product.sell_price) }}</span></div>
+      <div class="price-line doineek"><span class="label">Doineek Price:</span><span>Tk. {{ "%.2f"|format(u_sell) }}</span></div>
     </div>
   </div>
   {% else %}

@@ -215,6 +215,8 @@ def init_db():
         sl_number INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'in_stock',
         created_at TEXT NOT NULL,
+        sell_price REAL NOT NULL DEFAULT 0,
+        mrp REAL NOT NULL DEFAULT 0,
         FOREIGN KEY (product_id) REFERENCES products(id)
     );
 
@@ -411,6 +413,8 @@ def init_db():
         "ALTER TABLE online_orders ADD COLUMN on_the_way_at TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE online_orders ADD COLUMN delivered_at TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE online_orders ADD COLUMN cancelled_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE product_units ADD COLUMN sell_price REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE product_units ADD COLUMN mrp REAL NOT NULL DEFAULT 0",
     ]
     for statement in migrations:
         try:
@@ -671,10 +675,10 @@ DEFAULT_SETTINGS = {
     "delivery_charge": "60",
     "product_image_bg_color": "#FFFFFF",
     "rider_delivery_fee": "50",
-    "app_version": "v1.0.17 (Build 18)",
-    "app_version_short": "v1.0.17",
-    "app_version_full": "Version 1.0.17 (Build 18) • Official Release",
-    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.17/doineek_v1.0.17.apk",
+    "app_version": "v1.0.18 (Build 19)",
+    "app_version_short": "v1.0.18",
+    "app_version_full": "Version 1.0.18 (Build 19) • Official Release",
+    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.18/doineek_v1.0.18.apk",
 }
 
 
@@ -729,8 +733,10 @@ def generate_invoice_number():
     return f"INV-{date_part}-{rand_part}"
 
 
-def create_product_units(conn, product_id, quantity):
-    """Generates unique incrementing product serials (a_code) for each physical item in bulk."""
+def create_product_units(conn, product_id, quantity, sell_price=0.0, mrp=0.0):
+    """Generates unique incrementing product serials (a_code) for each physical item in bulk.
+    sell_price and mrp are stored per unit so that each batch's price tag is correct even
+    after a restock with a different price."""
     if quantity <= 0:
         return []
 
@@ -752,11 +758,11 @@ def create_product_units(conn, product_id, quantity):
         curr_id = start_id + i
         sl_num = next_sl + i
         a_code = f"SN-{curr_id:06d}"
-        bulk_rows.append((curr_id, product_id, a_code, sl_num, 'in_stock', now))
+        bulk_rows.append((curr_id, product_id, a_code, sl_num, 'in_stock', now, sell_price, mrp))
         created_ids.append(curr_id)
 
     cur.executemany(
-        "INSERT INTO product_units (id, product_id, a_code, sl_number, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO product_units (id, product_id, a_code, sl_number, status, created_at, sell_price, mrp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         bulk_rows
     )
     return created_ids
@@ -1116,4 +1122,4 @@ def clear_portal_notifications(conn=None):
     finally:
         if close_conn:
             conn.close()
-
+

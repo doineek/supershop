@@ -366,9 +366,13 @@ class ApiService {
     }
   }
 
-  static Future<List<OnlineOrder>> fetchDeliveryOrders() async {
+  static Future<List<OnlineOrder>> fetchDeliveryOrders({String? riderPhone}) async {
     try {
-      final res = await httpGet('/api/orders/delivery-orders');
+      String path = '/api/orders/delivery-orders';
+      if (riderPhone != null && riderPhone.trim().isNotEmpty) {
+        path += '?rider_phone=${Uri.encodeComponent(riderPhone.trim())}';
+      }
+      final res = await httpGet(path);
       if (res != null && res.statusCode == 200) {
         List<dynamic> data = jsonDecode(res.body);
         return data.map((json) => OnlineOrder.fromJson(json)).toList();
@@ -377,6 +381,19 @@ class ApiService {
       debugPrint("Error fetching delivery orders: $e");
     }
     return [];
+  }
+
+  static Future<Map<String, dynamic>> fetchRiderEarnings({required String riderPhone}) async {
+    try {
+      String path = '/api/rider/earnings?rider_phone=${Uri.encodeComponent(riderPhone.trim())}';
+      final res = await httpGet(path);
+      if (res != null && res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+    } catch (e) {
+      debugPrint("Error fetching rider earnings: $e");
+    }
+    return {'success': false, 'message': 'Network error'};
   }
 
   static Future<Map<String, dynamic>> verifyDeliveryOtp(String orderNumber, String otp) async {
