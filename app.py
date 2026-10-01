@@ -8407,9 +8407,9 @@ def api_place_order():
 @app.route("/api/orders/pending-count", methods=["GET"])
 def api_pending_orders_count():
     conn = get_connection()
-    count_row = conn.execute("SELECT COUNT(*) FROM online_orders WHERE order_status = 'pending'").fetchone()
+    count_row = conn.execute("SELECT COUNT(*) FROM online_orders WHERE order_status IN ('new', 'pending')").fetchone()
     count = count_row[0] if count_row else 0
-    latest = conn.execute("SELECT id, order_number, total_amount, customer_name FROM online_orders ORDER BY id DESC LIMIT 1").fetchone()
+    latest = conn.execute("SELECT id, order_number, total_amount, customer_name FROM online_orders WHERE order_status IN ('new', 'pending') ORDER BY id DESC LIMIT 1").fetchone()
     conn.close()
     latest_id = latest["id"] if latest else 0
     latest_num = latest["order_number"] if latest else ""
@@ -8422,6 +8422,96 @@ def api_pending_orders_count():
         "latest_name": latest_name,
         "latest_amount": latest_amount
     })
+
+
+@app.route("/api/portal/alerts", methods=["GET"])
+@login_required
+def api_portal_alerts():
+    """
+    Consolidated real-time alert feed for Admin & Cashier portal:
+    1. New & pending online orders
+    2. Inventory low stock items (stock_qty <= low_stock_threshold)
+    3. Returned and expired items
+    """
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    in_7_days = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    try:
+        sync_expired_products()
+    except Exception:
+        pass
+
+    conn = get_connection()
+    try:
+        # 1. New Orders
+        order_rows = conn.execute("""
+            SELECT id, order_number, customer_name, customer_phone, total_amount, order_status, created_at
+            FROM online_orders
+            WHERE order_status IN ('new', 'pending')
+            ORDER BY id DESC
+            LIMIT 10
+        """).fetchall()
+        orders_count_row = conn.execute("SELECT COUNT(*) as c FROM online_orders WHERE order_status IN ('new', 'pending')").fetchone()
+        orders_count = orders_count_row["c"] if orders_count_row else 0
+
+        # 2. Low Stock Items
+        low_stock_rows = conn.execute("""
+            SELECT id, name, sku, stock_qty, low_stock_threshold
+            FROM products
+            WHERE stock_qty <= low_stock_threshold
+              AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)
+            ORDER BY stock_qty ASC
+            LIMIT 10
+        """, (today_date,)).fetchall()
+        low_stock_count_row = conn.execute("""
+            SELECT COUNT(*) as c FROM products
+            WHERE stock_qty <= low_stock_threshold
+              AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)
+        """, (today_date,)).fetchone()
+        low_stock_count = low_stock_count_row["c"] if low_stock_count_row else 0
+
+        # 3. Returned / Expired Items
+        returned_rows = conn.execute("""
+            SELECT id, product_id, item_name, quantity, reason, expiry_date, date_returned
+            FROM returned_items
+            ORDER BY id DESC
+            LIMIT 10
+        """).fetchall()
+        returned_count_row = conn.execute("SELECT COUNT(*) as c FROM returned_items").fetchone()
+        returned_count = returned_count_row["c"] if returned_count_row else 0
+
+        # 4. Products Expiring Soon (within 7 days)
+        expiring_rows = conn.execute("""
+            SELECT id, name, sku, stock_qty, expiry_date
+            FROM products
+            WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
+            ORDER BY expiry_date ASC
+            LIMIT 5
+        """, (in_7_days,)).fetchall()
+
+        total_alerts = orders_count + low_stock_count + returned_count + len(expiring_rows)
+
+        return jsonify({
+            "success": True,
+            "total_count": total_alerts,
+            "orders": {
+                "count": orders_count,
+                "items": [dict(r) for r in order_rows]
+            },
+            "low_stock": {
+                "count": low_stock_count,
+                "items": [dict(r) for r in low_stock_rows]
+            },
+            "returned_expired": {
+                "count": returned_count + len(expiring_rows),
+                "items": [dict(r) for r in returned_rows],
+                "expiring_soon": [dict(r) for r in expiring_rows]
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "total_count": 0}), 500
+    finally:
+        conn.close()
 
 
 @app.route("/api/notifications", methods=["GET"])
