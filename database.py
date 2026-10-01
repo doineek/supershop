@@ -677,10 +677,10 @@ DEFAULT_SETTINGS = {
     "delivery_charge": "60",
     "product_image_bg_color": "#FFFFFF",
     "rider_delivery_fee": "50",
-    "app_version": "v1.0.18 (Build 19)",
-    "app_version_short": "v1.0.18",
-    "app_version_full": "Version 1.0.18 (Build 19) • Official Release",
-    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.18/doineek_v1.0.18.apk",
+    "app_version": "v1.0.19 (Build 20)",
+    "app_version_short": "v1.0.19",
+    "app_version_full": "Version 1.0.19 (Build 20) • Official Release",
+    "apk_download_url": "https://github.com/doineek/supershop/releases/download/v1.0.19/doineek_v1.0.19.apk",
 }
 
 

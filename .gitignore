@@ -11,4 +11,4 @@ __pycache__/
 *.jks
 *.keystore
 key.properties
-static/apk/*.apk
+static/apk/

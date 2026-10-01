@@ -6,8 +6,6 @@ Run it with:  python app.py
 Then open a browser at: http://127.0.0.1:5000
 """
 
-import json
-import hashlib
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, has_request_context, Response, send_file, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -100,40 +98,6 @@ compress = Compress(app)
 
 # Static Asset Caching: 7 days default browser cache
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 604800
-
-# Zero-Bandwidth CDN Configurations (Offloads APKs & Flutter WASM from Render)
-GITHUB_LATEST_APK_URL = "https://github.com/doineek/supershop/releases/latest/download/doineek_latest.apk"
-CANVASKIT_CDN_BASE = "https://www.gstatic.com/flutter-canvaskit/0cd610717bde95fd88343c64f81c11ba4e5c0010/"
-
-def get_apk_cdn_url():
-    """Returns direct CDN download URL to prevent eating Render bandwidth."""
-    try:
-        settings = get_all_settings()
-        raw_ext_url = (os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "").strip()
-        if raw_ext_url and raw_ext_url.startswith("http") and "render.com" not in raw_ext_url:
-            return raw_ext_url
-    except Exception:
-        pass
-    return GITHUB_LATEST_APK_URL
-
-def make_cached_json_response(data, max_age=60):
-    """
-    Returns JSON response with ETag and Cache-Control headers.
-    If client sends matching If-None-Match, returns HTTP 304 (0 body bytes).
-    Saves Render bandwidth when clients poll APIs repeatedly.
-    """
-    content = json.dumps(data, ensure_ascii=False)
-    etag = f'"{hashlib.md5(content.encode("utf-8")).hexdigest()}"'
-    client_etag = request.headers.get("If-None-Match")
-    if client_etag and client_etag.strip() == etag:
-        res = Response(status=304)
-        res.set_etag(etag.strip('"'))
-        res.headers["Cache-Control"] = f"public, max-age={max_age}, must-revalidate"
-        return res
-    res = Response(content, mimetype="application/json")
-    res.set_etag(etag.strip('"'))
-    res.headers["Cache-Control"] = f"public, max-age={max_age}, must-revalidate"
-    return res
 
 # Security & DoS Protection Configurations
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Max 16MB file upload/request size (prevents memory OOM crash)
@@ -659,14 +623,10 @@ def add_cors_headers(response):
 @app.context_processor
 def inject_shop_settings():
     """Makes `shop.shop_name`, `shop.shop_address`, `shop.shop_phone`,
-    `shop.vat_reg_no`, and zero-bandwidth CDN direct APK links available in every template automatically."""
-    stg = get_all_settings()
-    apk_url = get_apk_cdn_url()
-    return {
-        "shop": stg,
-        "direct_apk_url": apk_url,
-        "apk_download_url": apk_url,
-    }
+    `shop.vat_reg_no` available in every template automatically, so the
+    Settings page updates receipts, labels, and the header everywhere at
+    once without touching each template's route."""
+    return {"shop": get_all_settings()}
 
 
 # ===========================================================================
@@ -1222,27 +1182,14 @@ def store_front():
     return render_storefront()
 
 
-@app.route("/static/flutter_web/canvaskit/<path:filename>")
-@app.route("/app/canvaskit/<path:filename>")
-def canvaskit_cdn_redirect(filename):
-    """Offloads 100% of Flutter CanvasKit WASM/JS bandwidth (10-25 MB) to Google's official gstatic CDN."""
-    return redirect(f"{CANVASKIT_CDN_BASE}{filename}", code=302)
-
-
 @app.route("/app")
 @app.route("/app/<path:path>")
 def flutter_web_app(path="index.html"):
     from flask import send_from_directory
-    if path and path.startswith("canvaskit/"):
-        return redirect(f"{CANVASKIT_CDN_BASE}{path[10:]}", code=302)
     flutter_dir = os.path.join(app.static_folder, "flutter_web")
     if not path or path == "index.html" or not os.path.exists(os.path.join(flutter_dir, path)):
-        resp = send_from_directory(flutter_dir, "index.html")
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return resp
-    resp = send_from_directory(flutter_dir, path, max_age=31536000)
-    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    return resp
+        return send_from_directory(flutter_dir, "index.html")
+    return send_from_directory(flutter_dir, path)
 
 
 @app.route("/admin")
@@ -7842,7 +7789,7 @@ def api_settings():
     settings["logo_url"] = url_for("static", filename="images/logo.png", _external=True)
     if not settings.get("customer_support_phone"):
         settings["customer_support_phone"] = settings.get("shop_phone", "")
-    return make_cached_json_response(settings, max_age=120)
+    return jsonify(settings)
 
 
 @app.route("/api/products", methods=["GET"])
@@ -7897,7 +7844,7 @@ def api_products():
                     norm_parts.append(p)
             d["image_url"] = ", ".join(norm_parts)
         result.append(d)
-    return make_cached_json_response(result, max_age=60)
+    return jsonify(result)
 
 
 
@@ -7906,7 +7853,7 @@ def api_categories():
     conn = get_connection()
     rows = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     conn.close()
-    return make_cached_json_response([dict(r) for r in rows], max_age=300)
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/delivery-areas", methods=["GET"])
@@ -7914,7 +7861,7 @@ def api_delivery_areas():
     conn = get_connection()
     rows = conn.execute("SELECT * FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
     conn.close()
-    return make_cached_json_response([dict(r) for r in rows], max_age=300)
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/orders/place", methods=["POST"])
@@ -10042,21 +9989,10 @@ def robots_txt():
         "Disallow: /apk\n"
         "Disallow: /download/apk\n"
         "Disallow: /static/apk/\n"
-        "Disallow: /app/\n"
-        "Disallow: /static/flutter_web/\n"
         "Disallow: /api/\n"
         "Disallow: /admin\n"
         "Disallow: /pos\n"
         "Disallow: /dashboard\n"
-        "\n"
-        "User-agent: GPTBot\n"
-        "Disallow: /\n"
-        "\n"
-        "User-agent: ClaudeBot\n"
-        "Disallow: /\n"
-        "\n"
-        "User-agent: Bytespider\n"
-        "Disallow: /\n"
         f"Sitemap: {host_url}/sitemap.xml\n"
     )
     return Response(content, mimetype="text/plain")
@@ -10111,6 +10047,9 @@ def get_app_version():
     return "1.0.15"
 
 
+GITHUB_LATEST_APK_URL = "https://github.com/doineek/supershop/releases/latest/download/doineek_latest.apk"
+
+
 @app.route("/download-apk")
 @app.route("/apk")
 @app.route("/download/apk")
@@ -10119,7 +10058,12 @@ def download_app_apk():
     Direct 1-click APK download for Android users with 100% bandwidth offloading.
     Redirects to GitHub CDN releases so Render free bandwidth (5 GB) is 100% saved!
     """
-    return redirect(get_apk_cdn_url(), code=302)
+    settings = get_all_settings()
+    raw_ext_url = (os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "").strip()
+    if raw_ext_url and raw_ext_url.startswith("http") and "render.com" not in raw_ext_url:
+        return redirect(raw_ext_url, code=302)
+
+    return redirect(GITHUB_LATEST_APK_URL, code=302)
 
 
 @app.route("/static/apk/<path:filename>")
@@ -10128,7 +10072,7 @@ def static_apk_redirect(filename):
     Intercept direct static APK requests to prevent burning Render 5 GB bandwidth.
     Redirects directly to GitHub CDN release.
     """
-    return redirect(get_apk_cdn_url(), code=302)
+    return redirect(GITHUB_LATEST_APK_URL, code=302)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
