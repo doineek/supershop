@@ -835,12 +835,75 @@ def get_combo_package_banner_slides(conn):
     return slides
 
 
+def get_base_sku(sku):
+    """Extracts the root SKU by stripping any trailing batch lot suffix like '-2', '-3'."""
+    if not sku:
+        return ""
+    return re.sub(r'-\d+$', '', str(sku).strip())
+
+
+def filter_online_products(products):
+    """
+    Filters products for online display (web storefront and customer mobile app):
+    Rule:
+    If a product has multiple batch lots (e.g. SKU 'A2000003', 'A2000003-2', 'A2000003-3'):
+    - If price increased in newer lot: show ONLY the new increased-price product.
+    - If price decreased in newer lot: show the earlier higher-priced product while it has stock > 0;
+      once that earlier product is stock out (stock_qty <= 0), show the new lower-priced product.
+    """
+    if not products:
+        return []
+
+    grouped = {}
+    item_order = []
+    for p in products:
+        p_dict = dict(p) if not isinstance(p, dict) else p
+        base = get_base_sku(p_dict.get("sku") or "")
+        if not base:
+            base = str(p_dict.get("id"))
+        if base not in grouped:
+            grouped[base] = []
+            item_order.append(base)
+        grouped[base].append(p_dict)
+
+    filtered = []
+    for base in item_order:
+        lots = grouped[base]
+        if len(lots) == 1:
+            filtered.append(lots[0])
+            continue
+
+        # Sort lots from earliest to latest: by sl_number (ascending), then id (ascending)
+        lots.sort(key=lambda x: (int(x.get("sl_number") or 1), int(x.get("id") or 0)))
+        latest_lot = lots[-1]
+        earlier_lots = lots[:-1]
+
+        # Check if any earlier lot has a HIGHER price and still has stock (> 0)
+        higher_priced_earlier_lot = None
+        for lot in earlier_lots:
+            lot_price = float(lot.get("sell_price") or 0)
+            latest_price = float(latest_lot.get("sell_price") or 0)
+            lot_stock = int(lot.get("stock_qty") or 0)
+            if lot_price > latest_price and lot_stock > 0:
+                higher_priced_earlier_lot = lot
+                break
+
+        if higher_priced_earlier_lot:
+            # Price decreased: keep showing earlier higher-priced lot until sold out
+            filtered.append(higher_priced_earlier_lot)
+        else:
+            # Price increased or earlier lot is stock out: show the latest lot!
+            filtered.append(latest_lot)
+
+    return filtered
+
+
 def render_storefront():
     conn = get_connection()
     today_date = datetime.now().strftime("%Y-%m-%d")
     
     # Active Products (exclude expired)
-    products = conn.execute("""
+    raw_products = conn.execute("""
         SELECT p.*, 
                c.name AS category_name,
                s.name AS sub_category_name,
@@ -852,6 +915,9 @@ def render_storefront():
         WHERE (p.expiry_date IS NULL OR p.expiry_date = '' OR p.expiry_date >= ?)
         ORDER BY p.name
     """, (today_date,)).fetchall()
+    
+    # Apply online batch pricing display rule
+    products = filter_online_products(raw_products)
     
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     categories_tree = get_categories_tree_data(conn)
@@ -1571,7 +1637,19 @@ def restock_product(product_id):
         return redirect(url_for("products"))
 
     if request.method == "POST":
-        sku_clean = orig["sku"]
+        base_sku = get_base_sku(orig["sku"])
+        try:
+            new_sl = int(request.form.get("sl_number") or ((orig.get("sl_number") or 1) + 1))
+        except ValueError:
+            new_sl = (orig.get("sl_number") or 1) + 1
+
+        sku_clean = request.form.get("sku", "").strip()
+        if not sku_clean or sku_clean == orig["sku"]:
+            if new_sl > 1:
+                sku_clean = f"{base_sku}-{new_sl}"
+            else:
+                sku_clean = orig["sku"]
+
         name = request.form.get("name", orig["name"]).strip()
         brand = request.form.get("brand", orig["brand"] or "").strip()
         unit = request.form.get("unit", orig["unit"] or "").strip()
@@ -1581,11 +1659,6 @@ def restock_product(product_id):
             added_qty = int(request.form.get("stock_qty") or 0)
         except ValueError:
             added_qty = 0
-
-        try:
-            new_sl = int(request.form.get("sl_number") or ((orig.get("sl_number") or 1) + 1))
-        except ValueError:
-            new_sl = (orig.get("sl_number") or 1) + 1
 
         cost_price = float(request.form.get("cost_price") or orig["cost_price"])
         mrp = float(request.form.get("mrp") or orig["mrp"])
@@ -1608,54 +1681,110 @@ def restock_product(product_id):
         if uploaded_urls:
             image_url = ", ".join(uploaded_urls) + (f", {image_url}" if image_url else "")
 
-        new_total_stock = orig["stock_qty"] + added_qty
+        # Check if product with this batch SKU already exists in database
+        existing_batch = conn.execute("SELECT * FROM products WHERE sku = ?", (sku_clean,)).fetchone()
+        
+        if existing_batch and existing_batch["id"] != orig["id"]:
+            # Batch product already exists: update its stock and details
+            target_product_id = existing_batch["id"]
+            new_total_stock = existing_batch["stock_qty"] + added_qty
+            conn.execute("""
+                UPDATE products SET name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                                     cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                                     sl_number=?, description=?, image_url=?, expiry_date=?
+                WHERE id=?
+            """, (
+                name, brand, unit,
+                request.form.get("category_id") or orig["category_id"],
+                request.form.get("sub_category_id") or orig["sub_category_id"],
+                request.form.get("sub_sub_category_id") or orig["sub_sub_category_id"],
+                cost_price, mrp, sell_price, vat_pct,
+                new_total_stock, low_stock_threshold,
+                new_sl, description, image_url, expiry_date,
+                target_product_id
+            ))
+            conn.commit()
+        elif sku_clean == orig["sku"]:
+            # Same SKU: update the original product
+            target_product_id = orig["id"]
+            new_total_stock = orig["stock_qty"] + added_qty
+            conn.execute("""
+                UPDATE products SET name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
+                                     cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
+                                     sl_number=?, description=?, image_url=?, expiry_date=?
+                WHERE id=?
+            """, (
+                name, brand, unit,
+                request.form.get("category_id") or orig["category_id"],
+                request.form.get("sub_category_id") or orig["sub_category_id"],
+                request.form.get("sub_sub_category_id") or orig["sub_sub_category_id"],
+                cost_price, mrp, sell_price, vat_pct,
+                new_total_stock, low_stock_threshold,
+                new_sl, description, image_url, expiry_date,
+                target_product_id
+            ))
+            conn.commit()
+        else:
+            # NEW BATCH PRODUCT CREATION (e.g. A2000003-2)
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO products (sku, name, brand, unit, category_id, sub_category_id, sub_sub_category_id,
+                                     cost_price, mrp, sell_price, vat_pct, stock_qty, low_stock_threshold,
+                                     sl_number, description, image_url, is_trending, is_flash_sale, is_offer, is_promotion,
+                                     offer_title, offer_type, offer_value, offer_base, expiry_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                sku_clean, name, brand, unit,
+                request.form.get("category_id") or orig["category_id"],
+                request.form.get("sub_category_id") or orig["sub_category_id"],
+                request.form.get("sub_sub_category_id") or orig["sub_sub_category_id"],
+                cost_price, mrp, sell_price, vat_pct,
+                added_qty, low_stock_threshold,
+                new_sl, description, image_url,
+                orig["is_trending"], orig["is_flash_sale"], orig["is_offer"], orig["is_promotion"],
+                orig["offer_title"], orig["offer_type"], orig["offer_value"], orig["offer_base"],
+                expiry_date
+            ))
+            target_product_id = cur.lastrowid
+            conn.commit()
 
-        conn.execute("""
-            UPDATE products SET name=?, brand=?, unit=?, category_id=?, sub_category_id=?, sub_sub_category_id=?,
-                                 cost_price=?, mrp=?, sell_price=?, vat_pct=?, stock_qty=?, low_stock_threshold=?,
-                                 sl_number=?, description=?, image_url=?, expiry_date=?
-            WHERE id=?
-        """, (
-            name, brand, unit,
-            request.form.get("category_id") or orig["category_id"],
-            request.form.get("sub_category_id") or orig["sub_category_id"],
-            request.form.get("sub_sub_category_id") or orig["sub_sub_category_id"],
-            cost_price, mrp, sell_price, vat_pct,
-            new_total_stock, low_stock_threshold,
-            new_sl, description, image_url, expiry_date,
-            product_id
-        ))
-        conn.commit()
-
-        # Generate barcode tags for the newly added restock quantity
+        # Generate barcode tags for the new batch quantity
         new_unit_ids = []
         if added_qty > 0:
-            new_unit_ids = create_product_units(conn, product_id, added_qty, sell_price=sell_price, mrp=mrp, batch_sl=new_sl)
-            conn.commit()  # commit the newly inserted unit rows
+            new_unit_ids = create_product_units(conn, target_product_id, added_qty, sell_price=sell_price, mrp=mrp, batch_sl=new_sl)
+            conn.commit()
 
         conn.close()
 
         # Push update to Firebase Firestore
-        remote_control.push_product_to_cloud(product_id)
+        remote_control.push_product_to_cloud(target_product_id)
 
-        flash(f"Product '{name}' successfully restocked with {added_qty} unit(s) (SL: {new_sl}). Total stock is now {new_total_stock}!", "success")
+        flash(f"Batch product '{sku_clean}' successfully created with {added_qty} unit(s) (SL: {new_sl})!", "success")
         if added_qty > 0 and new_unit_ids:
-            # Redirect to tag print page for the new batch so admin can print tags immediately
-            return redirect(url_for("product_labels", product_id=product_id, batch_start_id=new_unit_ids[0], batch_sl=new_sl))
+            return redirect(url_for("product_labels", product_id=target_product_id, batch_start_id=new_unit_ids[0], batch_sl=new_sl))
         return redirect(url_for("products"))
 
     categories = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
     sub_categories = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     sub_sub_categories = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
     brands = conn.execute("SELECT * FROM brands ORDER BY name").fetchall()
-    conn.close()
 
     p_dict = dict(orig)
-    new_sl = (p_dict.get("sl_number") or 1) + 1
-    p_dict["sl_number"] = new_sl
-    p_dict["stock_qty"] = 10  # default suggested restock qty to add
+    base_sku = get_base_sku(orig["sku"])
+    max_sl_row = conn.execute("""
+        SELECT MAX(sl_number) AS m FROM products 
+        WHERE sku = ? OR sku LIKE ?
+    """, (base_sku, f"{base_sku}-%")).fetchone()
+    current_max_sl = max_sl_row["m"] if (max_sl_row and max_sl_row["m"]) else (orig.get("sl_number") or 1)
+    new_sl = current_max_sl + 1
+    new_sku = f"{base_sku}-{new_sl}"
 
-    flash(f"Restocking product: SL Number incremented to {new_sl}. You can modify price/stock/expiry and click Save Product.", "info")
+    p_dict["sl_number"] = new_sl
+    p_dict["sku"] = new_sku
+    p_dict["stock_qty"] = 10  # default suggested restock qty to add
+    conn.close()
+
+    flash(f"Restocking product: Batch SKU automatically set to '{new_sku}' (SL: {new_sl}). Adjust price/discount/stock and click Save Product.", "info")
     return render_template(
         "product_form.html",
         categories=categories,
@@ -1663,7 +1792,7 @@ def restock_product(product_id):
         sub_sub_categories=sub_sub_categories,
         brands=brands,
         product=p_dict,
-        form_title=f"📦 Restock Product: {orig['name']} (SL: {new_sl})"
+        form_title=f"📦 Restock Product Batch: {orig['name']} ({new_sku})"
     )
 
 
@@ -7697,6 +7826,9 @@ def api_products():
             ORDER BY p.name
         """, (today_date,)).fetchall()
     conn.close()
+
+    if not include_expired:
+        rows = filter_online_products(rows)
 
     result = []
     for r in rows:
