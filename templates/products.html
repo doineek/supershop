@@ -460,7 +460,7 @@ function openReturnModal(productId, productName, stockQty, costPrice, sellPrice)
   document.getElementById('returnProductNameLabel').innerHTML = 'Product: <strong>' + productName + '</strong>';
   document.getElementById('returnQtyInput').max = currentReturnMaxStock;
   document.getElementById('returnQtyInput').value = currentReturnMaxStock;
-  document.getElementById('returnMaxStockLabel').innerText = 'Available Stock: ' + stockQty + ' units | Cost: ৳' + currentReturnCostPrice.toFixed(2) + ' | Sell: ৳' + currentReturnSellPrice.toFixed(2);
+  document.getElementById('returnMaxStockLabel').innerText = 'Available Stock: ' + stockQty + ' units | Cost: TK ' + currentReturnCostPrice.toFixed(2) + ' | Sell: TK ' + currentReturnSellPrice.toFixed(2);
 
   // Default to None
   const rNone = document.getElementById('ledgerActionNone');
@@ -511,12 +511,12 @@ function updateReturnLedgerCalculation() {
     amountBox.style.display = 'block';
     const totalCost = (qty * currentReturnCostPrice).toFixed(2);
     amountInput.value = totalCost;
-    calcHint.innerText = `💡 Calculated: ${qty} units × ৳${currentReturnCostPrice.toFixed(2)} (Cost Price) = ৳${totalCost}`;
+    calcHint.innerText = `💡 Calculated: ${qty} units × TK ${currentReturnCostPrice.toFixed(2)} (Cost Price) = TK ${totalCost}`;
   } else if (selectedAction === 'customer_refund') {
     amountBox.style.display = 'block';
     const totalSell = (qty * currentReturnSellPrice).toFixed(2);
     amountInput.value = totalSell;
-    calcHint.innerText = `💡 Calculated: ${qty} units × ৳${currentReturnSellPrice.toFixed(2)} (Sell Price) = ৳${totalSell}`;
+    calcHint.innerText = `💡 Calculated: ${qty} units × TK ${currentReturnSellPrice.toFixed(2)} (Sell Price) = TK ${totalSell}`;
   } else {
     amountBox.style.display = 'none';
     amountInput.value = '0';
@@ -539,7 +539,7 @@ function closeReturnModal() {
 
     <form method="POST" id="returnProductForm" action="">
       <div style="margin-bottom:14px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Return Quantity (ফেরতকৃত সংখ্যা)*</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Return Quantity*</label>
         <div style="display:flex; gap:8px; align-items:center;">
           <input type="number" name="quantity" id="returnQtyInput" min="1" required oninput="updateReturnLedgerCalculation()" style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-weight:bold; font-size:15px; color:#d97706;">
           <button type="button" onclick="setReturnAllQty()" class="btn btn-outline" style="font-weight:bold; font-size:12px; padding:8px 12px; border-color:#d97706; color:#d97706;">Return All</button>
@@ -548,13 +548,13 @@ function closeReturnModal() {
       </div>
 
       <div style="margin-bottom:14px;">
-        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Return Reason (কারণ)</label>
+        <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Return Reason</label>
         <select id="reasonPresetSelect" onchange="handleReasonPresetChange(this)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:6px; font-size:13px; background:#fff;">
-          <option value="Customer Returned">Customer Returned (কাস্টমার ফেরত)</option>
-          <option value="Damaged / Broken">Damaged / Broken (নষ্ট বা ক্ষতিগ্রস্ত)</option>
-          <option value="Date Expired">Date Expired (মেয়াদোত্তীর্ণ)</option>
-          <option value="Vendor Return">Vendor Return (ভেন্ডর ফেরত)</option>
-          <option value="custom">Other / Custom Reason (অন্যান্য)</option>
+          <option value="Customer Returned">Customer Returned</option>
+          <option value="Damaged / Broken">Damaged / Broken</option>
+          <option value="Date Expired">Date Expired</option>
+          <option value="Vendor Return">Vendor Return</option>
+          <option value="custom">Other / Custom Reason</option>
         </select>
         <input type="text" name="reason" id="returnReasonInput" value="Customer Returned" placeholder="Specify reason..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">
       </div>
@@ -562,34 +562,34 @@ function closeReturnModal() {
       <!-- Financial Ledger Options -->
       <div style="margin-bottom:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
         <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:8px; color:#0f172a;">
-          💰 Financial &amp; Ledger Adjustment (আর্থিক সমন্বয়)
+          💰 Financial &amp; Ledger Adjustment
         </label>
         <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
           <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
             <input type="radio" name="ledger_action" id="ledgerActionNone" value="none" checked onchange="updateReturnLedgerCalculation()" style="margin-top:2px;">
             <span>
-              <strong>কোনো আর্থিক এন্ট্রি নয় (None)</strong>
-              <div style="font-size:11px; color:#64748b;">শুধুমাত্র ইনভেন্টরি স্টক কমবে, অ্যাকাউন্টিং লেজারে কোনো খরচ বা ক্যাশ আউট এন্ট্রি হবে না।</div>
+              <strong>None (Inventory Only)</strong>
+              <div style="font-size:11px; color:#64748b;">Reduces inventory stock only. No financial expense or cash refund entry in ledger.</div>
             </span>
           </label>
           <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
             <input type="radio" name="ledger_action" id="ledgerActionLoss" value="loss_expense" onchange="updateReturnLedgerCalculation()" style="margin-top:2px;">
             <span>
-              <strong style="color:#dc2626;">📉 ক্ষতি সমন্বয় (Loss / Damaged Goods Expense)</strong>
-              <div style="font-size:11px; color:#64748b;">কেনা দাম (Cost Price × Qty) লেজারে Loss / Damaged Goods Expense হিসেবে যুক্ত হবে।</div>
+              <strong style="color:#dc2626;">📉 Loss / Damaged Goods Expense</strong>
+              <div style="font-size:11px; color:#64748b;">Cost Price × Qty recorded as Loss Expense in the ledger.</div>
             </span>
           </label>
           <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
             <input type="radio" name="ledger_action" id="ledgerActionRefund" value="customer_refund" onchange="updateReturnLedgerCalculation()" style="margin-top:2px;">
             <span>
-              <strong style="color:#d97706;">💸 কাস্টমার রিফান্ড (Customer Return Refund Outflow)</strong>
-              <div style="font-size:11px; color:#64748b;">বিক্রয় মূল্য (Sell Price × Qty) ক্যাশ রিফান্ড খরচ হিসেবে লেজারে এন্ট্রি হবে।</div>
+              <strong style="color:#d97706;">💸 Customer Return Refund Outflow</strong>
+              <div style="font-size:11px; color:#64748b;">Sell Price × Qty recorded as Cash Refund Expense in the ledger.</div>
             </span>
           </label>
         </div>
 
         <div id="ledgerAmountContainer" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1;">
-          <label style="display:block; font-size:0.8rem; font-weight:bold; margin-bottom:4px; color:#334155;">Adjustable Ledger Amount (টাকার পরিমাণ - TK):</label>
+          <label style="display:block; font-size:0.8rem; font-weight:bold; margin-bottom:4px; color:#334155;">Adjustable Ledger Amount (TK):</label>
           <input type="number" step="0.01" name="ledger_amount" id="returnLedgerAmountInput" value="0" style="width:100%; padding:8px 12px; border:1px solid #94a3b8; border-radius:6px; font-weight:bold; font-size:14px; color:#0f172a;">
           <div id="ledgerCalcHint" style="font-size:11px; color:#0284c7; margin-top:4px;"></div>
         </div>

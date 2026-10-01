@@ -289,10 +289,14 @@
     function formatAlertTimeAgo(dtStr) {
       if (!dtStr) return 'Recently';
       try {
-        const d = new Date(dtStr.replace(' ', 'T'));
+        let s = dtStr.replace(' ', 'T');
+        if (!s.includes('Z') && !s.includes('+')) {
+          s += '+06:00';
+        }
+        const d = new Date(s);
         const now = new Date();
         const diffSec = Math.floor((now - d) / 1000);
-        if (isNaN(diffSec) || diffSec < 0) return dtStr.slice(11, 16);
+        if (isNaN(diffSec) || diffSec < 0) return dtStr.slice(11, 16) || 'Just now';
         if (diffSec < 60) return 'Just now';
         const diffMin = Math.floor(diffSec / 60);
         if (diffMin < 60) return `${diffMin}m ago`;

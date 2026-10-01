@@ -1256,7 +1256,7 @@ def sync_expired_products():
     Auto-detects expired products (expiry_date <= today), logs them into returned_items,
     sets active stock to 0, optionally records Loss Expense if enabled, and pushes updates to Cloud Firestore.
     """
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = get_bd_now().strftime("%Y-%m-%d")
     conn = get_connection()
     ensure_returned_items_columns(conn)
     try:
@@ -1293,7 +1293,7 @@ def sync_expired_products():
                         f"Loss / Expired Goods: {ep['name']} ({qty} units)",
                         tot_loss,
                         today_date,
-                        datetime.now().isoformat()
+                        get_bd_now_iso()
                     ))
                     ledger_id = cur.lastrowid
                     ledger_action = 'loss_expense'
@@ -1307,7 +1307,7 @@ def sync_expired_products():
                         ep["id"], ep["name"], qty,
                         f"Date Expired ({ep['expiry_date']})",
                         ep["expiry_date"],
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        get_bd_now().strftime("%Y-%m-%d %H:%M:%S"),
                         cost_p, sell_p, ledger_action, ledger_id, ledger_amt
                     ))
                 # Set active stock in products table to 0 so it's not sellable
@@ -1890,8 +1890,8 @@ def return_product(product_id):
         else:
             ledger_amount = 0.0
 
-    today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_str = get_bd_now().strftime("%Y-%m-%d %H:%M:%S")
+    today_date = get_bd_now().strftime("%Y-%m-%d")
 
     ledger_entry_id = None
     if ledger_action == "loss_expense" and ledger_amount > 0:
@@ -1903,7 +1903,7 @@ def return_product(product_id):
             f"Loss / Damaged Goods: {product['name']} ({ret_qty} units)",
             ledger_amount,
             today_date,
-            datetime.now().isoformat()
+            get_bd_now_iso()
         ))
         ledger_entry_id = cur.lastrowid
     elif ledger_action == "customer_refund" and ledger_amount > 0:
@@ -1915,7 +1915,7 @@ def return_product(product_id):
             f"Customer Return Refund: {product['name']} ({ret_qty} units)",
             ledger_amount,
             today_date,
-            datetime.now().isoformat()
+            get_bd_now_iso()
         ))
         ledger_entry_id = cur.lastrowid
     else:
@@ -1999,7 +1999,7 @@ def update_returned_item_ledger(return_id):
         else:
             ledger_amount = 0.0
 
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = get_bd_now().strftime("%Y-%m-%d")
     old_ledger_id = item["ledger_entry_id"]
 
     if old_ledger_id:
@@ -2019,7 +2019,7 @@ def update_returned_item_ledger(return_id):
             f"Loss / Damaged Goods: {item['item_name']} ({qty} units)",
             ledger_amount,
             today_date,
-            datetime.now().isoformat()
+            get_bd_now_iso()
         ))
         new_ledger_id = cur.lastrowid
     elif ledger_action == "customer_refund" and ledger_amount > 0:
@@ -2031,7 +2031,7 @@ def update_returned_item_ledger(return_id):
             f"Customer Return Refund: {item['item_name']} ({qty} units)",
             ledger_amount,
             today_date,
-            datetime.now().isoformat()
+            get_bd_now_iso()
         ))
         new_ledger_id = cur.lastrowid
     else:
@@ -2068,7 +2068,7 @@ def batch_record_expired_loss():
         AND reason LIKE '%Expired%'
     """).fetchall()
 
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = get_bd_now().strftime("%Y-%m-%d")
     count = 0
     total_val = 0.0
 
@@ -2085,7 +2085,7 @@ def batch_record_expired_loss():
                 f"Loss / Expired Goods: {item['item_name']} ({qty} units)",
                 tot,
                 today_date,
-                datetime.now().isoformat()
+                get_bd_now_iso()
             ))
             lid = cur.lastrowid
             conn.execute("""
@@ -8731,8 +8731,8 @@ def api_portal_alerts():
     3. Returned and expired items
     Tracks read/unread state and audit log of who marked or unmarked each alert.
     """
-    today_date = datetime.now().strftime("%Y-%m-%d")
-    in_7_days = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    today_date = get_bd_now().strftime("%Y-%m-%d")
+    in_7_days = (get_bd_now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
     try:
         sync_expired_products()
@@ -8898,7 +8898,7 @@ def api_portal_alerts_mark():
     user_id = session.get("user_id")
     username = session.get("username") or "Admin"
     role = session.get("role") or "staff"
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_bd_now().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = get_connection()
     ensure_portal_notifications_table(conn)
@@ -8958,9 +8958,9 @@ def api_portal_alerts_mark_all_read():
     user_id = session.get("user_id")
     username = session.get("username") or "Admin"
     role = session.get("role") or "staff"
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    today_date = datetime.now().strftime("%Y-%m-%d")
-    in_7_days = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    now_str = get_bd_now().strftime("%Y-%m-%d %H:%M:%S")
+    today_date = get_bd_now().strftime("%Y-%m-%d")
+    in_7_days = (get_bd_now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
     conn = get_connection()
     ensure_portal_notifications_table(conn)

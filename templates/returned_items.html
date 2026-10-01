@@ -99,34 +99,34 @@
     <form method="POST" id="editLedgerForm" action="">
       <div style="margin-bottom:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
         <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:8px; color:#0f172a;">
-          Select Ledger Action (আর্থিক সমন্বয় নির্বাচন করুন)
+          Select Ledger Action
         </label>
         <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
           <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
             <input type="radio" name="ledger_action" id="modalLedgerNone" value="none" onchange="updateModalLedgerCalc(true)" style="margin-top:2px;">
             <span>
-              <strong>কোনো আর্থিক এন্ট্রি নয় (None)</strong>
-              <div style="font-size:11px; color:#64748b;">লেজারে কোনো খরচের এন্ট্রি থাকবে না (আগের এন্ট্রি থাকলে তা মুছে যাবে)।</div>
+              <strong>None (Remove / Unrecord)</strong>
+              <div style="font-size:11px; color:#64748b;">No expense entry in ledger (any previous entry for this item will be removed).</div>
             </span>
           </label>
           <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
             <input type="radio" name="ledger_action" id="modalLedgerLoss" value="loss_expense" onchange="updateModalLedgerCalc(true)" style="margin-top:2px;">
             <span>
-              <strong style="color:#dc2626;">📉 ক্ষতি সমন্বয় (Loss / Damaged Goods Expense)</strong>
-              <div style="font-size:11px; color:#64748b;">কেনা দাম (Cost Price × Qty) অনুযায়ী লেজারে ক্ষতি হিসেবে যুক্ত হবে।</div>
+              <strong style="color:#dc2626;">📉 Loss / Damaged Goods Expense</strong>
+              <div style="font-size:11px; color:#64748b;">Recorded in ledger as Loss Expense according to Cost Price × Qty.</div>
             </span>
           </label>
           <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
             <input type="radio" name="ledger_action" id="modalLedgerRefund" value="customer_refund" onchange="updateModalLedgerCalc(true)" style="margin-top:2px;">
             <span>
-              <strong style="color:#d97706;">💸 কাস্টমার রিফান্ড (Customer Return Refund Outflow)</strong>
-              <div style="font-size:11px; color:#64748b;">বিক্রয় মূল্য (Sell Price × Qty) অনুযায়ী কাস্টমার ক্যাশ রিফান্ড খরচ হিসেবে যুক্ত হবে।</div>
+              <strong style="color:#d97706;">💸 Customer Return Refund Outflow</strong>
+              <div style="font-size:11px; color:#64748b;">Recorded in ledger as Cash Refund Expense according to Sell Price × Qty.</div>
             </span>
           </label>
         </div>
 
         <div id="modalAmountContainer" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1;">
-          <label style="display:block; font-size:0.8rem; font-weight:bold; margin-bottom:4px; color:#334155;">Adjustable Ledger Amount (টাকার পরিমাণ - TK):</label>
+          <label style="display:block; font-size:0.8rem; font-weight:bold; margin-bottom:4px; color:#334155;">Adjustable Ledger Amount (TK):</label>
           <input type="number" step="0.01" name="ledger_amount" id="modalLedgerAmountInput" value="0" style="width:100%; padding:8px 12px; border:1px solid #94a3b8; border-radius:6px; font-weight:bold; font-size:14px; color:#0f172a;">
           <div id="modalLedgerHint" style="font-size:11px; color:#0284c7; margin-top:4px;"></div>
         </div>
@@ -152,7 +152,7 @@ function openLedgerModal(itemId, itemName, qty, costPrice, sellPrice, currentAct
 
   document.getElementById('editLedgerForm').action = "/returned_items/" + itemId + "/ledger";
   document.getElementById('modalItemName').innerText = itemName;
-  document.getElementById('modalItemMeta').innerText = `Quantity: ${currentEditQty} units | Cost Price: ৳${currentEditCostPrice.toFixed(2)} | Sell Price: ৳${currentEditSellPrice.toFixed(2)}`;
+  document.getElementById('modalItemMeta').innerText = `Quantity: ${currentEditQty} units | Cost Price: TK ${currentEditCostPrice.toFixed(2)} | Sell Price: TK ${currentEditSellPrice.toFixed(2)}`;
 
   if (currentAction === 'loss_expense') {
     document.getElementById('modalLedgerLoss').checked = true;
@@ -189,14 +189,14 @@ function updateModalLedgerCalc(resetValue = true) {
     if (resetValue || !amtInput.value || parseFloat(amtInput.value) <= 0) {
       amtInput.value = totalCost;
     }
-    hint.innerText = `💡 Calculated: ${currentEditQty} units × ৳${currentEditCostPrice.toFixed(2)} (Cost Price) = ৳${totalCost}`;
+    hint.innerText = `💡 Calculated: ${currentEditQty} units × TK ${currentEditCostPrice.toFixed(2)} (Cost Price) = TK ${totalCost}`;
   } else if (selected === 'customer_refund') {
     container.style.display = 'block';
     const totalSell = (currentEditQty * currentEditSellPrice).toFixed(2);
     if (resetValue || !amtInput.value || parseFloat(amtInput.value) <= 0) {
       amtInput.value = totalSell;
     }
-    hint.innerText = `💡 Calculated: ${currentEditQty} units × ৳${currentEditSellPrice.toFixed(2)} (Sell Price) = ৳${totalSell}`;
+    hint.innerText = `💡 Calculated: ${currentEditQty} units × TK ${currentEditSellPrice.toFixed(2)} (Sell Price) = TK ${totalSell}`;
   } else {
     container.style.display = 'none';
     if (resetValue) amtInput.value = '0';
