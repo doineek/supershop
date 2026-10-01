@@ -2176,7 +2176,7 @@
           </div>
         </div>
 
-        <a href="/download-apk" class="apk-download-top-btn" title="Download Android App ({{ settings.apk_filename or 'doineek_' ~ settings.app_version_short ~ '.apk' }})">
+        <a href="{{ direct_apk_url or settings.apk_download_url or '/download-apk' }}" class="apk-download-top-btn" title="Download Android App ({{ settings.apk_filename or 'doineek_' ~ settings.app_version_short ~ '.apk' }})" target="_blank" rel="noopener">
           App {{ settings.app_version_short or 'v1.0.15' }}
         </a>
       </div>
@@ -2931,7 +2931,7 @@
         </div>
       </div>
 
-      <a href="/download-apk" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin-bottom:10px; background:#0d9488;">
+      <a href="{{ direct_apk_url or settings.apk_download_url or '/download-apk' }}" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin-bottom:10px; background:#0d9488;" target="_blank" rel="noopener">
         <span>📥</span> Download Android App ({{ settings.apk_filename or 'doineek_' ~ settings.app_version_short ~ '.apk' }})
       </a>
 
