@@ -544,7 +544,7 @@
       </div>
 
       <div style="font-size: 0.8rem; background: #ecfdf5; color: #065f46; padding: 8px 12px; border-radius: 8px; border: 1px solid #a7f3d0; text-align: center;">
-        💡 প্রেসক্রিপশনের <b>৪টি কোণা টেনে</b> নিখুঁতভাবে সিলেক্ট করুন (টানার সময় কোণায় <b>জুম লুপ</b> দেখাবে)।
+        💡 প্রেসক্রিপশনের <b>৪টি কোণা, ৪টি ধার (Edges) বা মাঝখানে ধরে</b> পুরো বক্সটি ড্র্যাগ করে সিলেক্ট করুন (কোণায় <b>জুম লুপ</b> দেখাবে)।
       </div>
 
       <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid #e2e8f0;">
@@ -808,6 +808,33 @@
     drawAdminCrop();
   }
 
+  // Admin Point in Polygon & Distance to Segment Helpers
+  function adminPointInPoly(pt, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+          (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function adminDistToSegment(p, a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+    let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  }
+
+  let adminDragMode = null; // null | { type: 'corner', idx: 0..3 } | { type: 'edge', edge: 0..3 } | { type: 'body' }
+  let adminDragStart = { x: 0, y: 0 };
+  let adminDragInitPts = [];
+
   function drawAdminCrop() {
     const canvas = document.getElementById("adminCropCanvas");
     if (!canvas || !adminSmartImg.width) return;
@@ -830,7 +857,7 @@
 
     // Dim outside crop polygon
     ctx.save();
-    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.50)";
     ctx.beginPath();
     ctx.rect(0, 0, canvas.width, canvas.height);
     ctx.moveTo(cPts[0].x, cPts[0].y);
@@ -841,9 +868,9 @@
     ctx.fill("evenodd");
     ctx.restore();
 
-    // Rectangle Border (Emerald Green)
+    // Rectangle Border (Emerald Green, or pink if body/edge dragged)
     ctx.save();
-    ctx.strokeStyle = "#10b981";
+    ctx.strokeStyle = (adminDragMode && (adminDragMode.type === 'body' || adminDragMode.type === 'edge')) ? "#f43f5e" : "#10b981";
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(cPts[0].x, cPts[0].y);
@@ -854,11 +881,31 @@
     ctx.stroke();
     ctx.restore();
 
+    // 4 Edge Midpoint Handles
+    const edgeMidpoints = [
+      { x: (cPts[0].x + cPts[1].x) / 2, y: (cPts[0].y + cPts[1].y) / 2 },
+      { x: (cPts[1].x + cPts[2].x) / 2, y: (cPts[1].y + cPts[2].y) / 2 },
+      { x: (cPts[2].x + cPts[3].x) / 2, y: (cPts[2].y + cPts[3].y) / 2 },
+      { x: (cPts[3].x + cPts[0].x) / 2, y: (cPts[3].y + cPts[0].y) / 2 }
+    ];
+
+    edgeMidpoints.forEach((mp, eIdx) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(mp.x, mp.y, 6.5, 0, Math.PI * 2);
+      ctx.fillStyle = (adminDragMode && adminDragMode.type === 'edge' && adminDragMode.edge === eIdx) ? "#f43f5e" : "#10b981";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.restore();
+    });
+
     // 4 Corner Drag Handles (11px circles)
     cPts.forEach((pt, idx) => {
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
-      ctx.fillStyle = idx === adminActiveDragIdx ? "#ec4899" : "#10b981";
+      ctx.fillStyle = (adminDragMode && adminDragMode.type === 'corner' && adminDragMode.idx === idx) ? "#ec4899" : "#10b981";
       ctx.fill();
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = "#ffffff";
@@ -869,6 +916,19 @@
       ctx.fillStyle = "#ffffff";
       ctx.fill();
     });
+
+    // Center move icon hint
+    const centerBoxX = (cPts[0].x + cPts[1].x + cPts[2].x + cPts[3].x) / 4;
+    const centerBoxY = (cPts[0].y + cPts[1].y + cPts[2].y + cPts[3].y) / 4;
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.beginPath();
+    ctx.arc(centerBoxX, centerBoxY, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(16, 185, 129, 0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
   }
 
   function updateAdminLoupe(normPt) {
@@ -932,36 +992,143 @@
       const { pad, drawW, drawH } = adminSmartGeom;
       const cPts = adminSmartPts.map(p => ({ x: pad + p.x * drawW, y: pad + p.y * drawH }));
 
-      let bestIdx = -1;
-      let bestDist = 38;
+      // 1. Check Corners
+      let bestCorner = -1;
+      let bestCornerDist = 36;
       cPts.forEach((pt, i) => {
         const d = Math.hypot(pos.x - pt.x, pos.y - pt.y);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
+        if (d < bestCornerDist) { bestCornerDist = d; bestCorner = i; }
       });
 
-      if (bestIdx !== -1) {
+      if (bestCorner !== -1) {
         if (e.cancelable) e.preventDefault();
-        adminActiveDragIdx = bestIdx;
-        updateAdminLoupe(adminSmartPts[adminActiveDragIdx]);
+        adminDragMode = { type: 'corner', idx: bestCorner };
+        adminDragStart = pos;
+        adminDragInitPts = adminSmartPts.map(p => ({ ...p }));
+        updateAdminLoupe(adminSmartPts[bestCorner]);
         drawAdminCrop();
+        return;
       }
+
+      // 2. Check Edges
+      const edges = [
+        [cPts[0], cPts[1]], // Top
+        [cPts[1], cPts[2]], // Right
+        [cPts[2], cPts[3]], // Bottom
+        [cPts[3], cPts[0]]  // Left
+      ];
+      let bestEdge = -1;
+      let bestEdgeDist = 24;
+      edges.forEach((edge, i) => {
+        const d = adminDistToSegment(pos, edge[0], edge[1]);
+        if (d < bestEdgeDist) { bestEdgeDist = d; bestEdge = i; }
+      });
+
+      if (bestEdge !== -1) {
+        if (e.cancelable) e.preventDefault();
+        adminDragMode = { type: 'edge', edge: bestEdge };
+        adminDragStart = pos;
+        adminDragInitPts = adminSmartPts.map(p => ({ ...p }));
+        drawAdminCrop();
+        return;
+      }
+
+      // 3. Check Inside Polygon (Body Drag / Move Entire Box)
+      if (adminPointInPoly(pos, cPts)) {
+        if (e.cancelable) e.preventDefault();
+        adminDragMode = { type: 'body' };
+        adminDragStart = pos;
+        adminDragInitPts = adminSmartPts.map(p => ({ ...p }));
+        drawAdminCrop();
+        return;
+      }
+
+      // 4. Clicked outside, drag nearest edge
+      let closestEdge = 0;
+      let minDist = 99999;
+      edges.forEach((edge, i) => {
+        const d = adminDistToSegment(pos, edge[0], edge[1]);
+        if (d < minDist) { minDist = d; closestEdge = i; }
+      });
+      if (e.cancelable) e.preventDefault();
+      adminDragMode = { type: 'edge', edge: closestEdge };
+      adminDragStart = pos;
+      adminDragInitPts = adminSmartPts.map(p => ({ ...p }));
+      drawAdminCrop();
     }
 
     function onMove(e) {
-      if (adminActiveDragIdx === -1) return;
+      if (!adminDragMode) {
+        if (!e.touches && adminSmartImg.width) {
+          const pos = getPos(e);
+          const { pad, drawW, drawH } = adminSmartGeom;
+          const cPts = adminSmartPts.map(p => ({ x: pad + p.x * drawW, y: pad + p.y * drawH }));
+          let cornerNear = false;
+          cPts.forEach(pt => { if (Math.hypot(pos.x - pt.x, pos.y - pt.y) < 32) cornerNear = true; });
+          if (cornerNear) {
+            canvas.style.cursor = "nwse-resize";
+          } else if (adminPointInPoly(pos, cPts)) {
+            canvas.style.cursor = "move";
+          } else {
+            canvas.style.cursor = "crosshair";
+          }
+        }
+        return;
+      }
+
       if (e.cancelable) e.preventDefault();
       const pos = getPos(e);
       const { pad, drawW, drawH } = adminSmartGeom;
-      const nx = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
-      const ny = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+      const deltaNormX = (pos.x - adminDragStart.x) / drawW;
+      const deltaNormY = (pos.y - adminDragStart.y) / drawH;
+      const init = adminDragInitPts;
 
-      adminSmartPts[adminActiveDragIdx] = { x: nx, y: ny };
-      updateAdminLoupe(adminSmartPts[adminActiveDragIdx]);
+      if (adminDragMode.type === 'corner') {
+        const idx = adminDragMode.idx;
+        const nx = Math.max(0.0, Math.min(1.0, init[idx].x + deltaNormX));
+        const ny = Math.max(0.0, Math.min(1.0, init[idx].y + deltaNormY));
+        adminSmartPts[idx] = { x: nx, y: ny };
+        updateAdminLoupe(adminSmartPts[idx]);
+      } else if (adminDragMode.type === 'edge') {
+        const edge = adminDragMode.edge;
+        if (edge === 0) { // Top
+          const dy = deltaNormY;
+          adminSmartPts[0].y = Math.max(0.0, Math.min(adminSmartPts[3].y - 0.05, init[0].y + dy));
+          adminSmartPts[1].y = Math.max(0.0, Math.min(adminSmartPts[2].y - 0.05, init[1].y + dy));
+        } else if (edge === 1) { // Right
+          const dx = deltaNormX;
+          adminSmartPts[1].x = Math.max(adminSmartPts[0].x + 0.05, Math.min(1.0, init[1].x + dx));
+          adminSmartPts[2].x = Math.max(adminSmartPts[3].x + 0.05, Math.min(1.0, init[2].x + dx));
+        } else if (edge === 2) { // Bottom
+          const dy = deltaNormY;
+          adminSmartPts[2].y = Math.max(adminSmartPts[1].y + 0.05, Math.min(1.0, init[2].y + dy));
+          adminSmartPts[3].y = Math.max(adminSmartPts[0].y + 0.05, Math.min(1.0, init[3].y + dy));
+        } else if (edge === 3) { // Left
+          const dx = deltaNormX;
+          adminSmartPts[0].x = Math.max(0.0, Math.min(adminSmartPts[1].x - 0.05, init[0].x + dx));
+          adminSmartPts[3].x = Math.max(0.0, Math.min(adminSmartPts[2].x - 0.05, init[3].x + dx));
+        }
+      } else if (adminDragMode.type === 'body') {
+        const minX = Math.min(...init.map(p => p.x));
+        const maxX = Math.max(...init.map(p => p.x));
+        const minY = Math.min(...init.map(p => p.y));
+        const maxY = Math.max(...init.map(p => p.y));
+
+        const clampedDx = Math.max(-minX, Math.min(1.0 - maxX, deltaNormX));
+        const clampedDy = Math.max(-minY, Math.min(1.0 - maxY, deltaNormY));
+
+        adminSmartPts = init.map(p => ({
+          x: Math.max(0.0, Math.min(1.0, p.x + clampedDx)),
+          y: Math.max(0.0, Math.min(1.0, p.y + clampedDy))
+        }));
+      }
+
       drawAdminCrop();
     }
 
     function onEnd() {
-      adminActiveDragIdx = -1;
+      adminDragMode = null;
+      canvas.style.cursor = "default";
       const loupe = document.getElementById("adminLoupeCanvas");
       if (loupe) loupe.style.display = "none";
       drawAdminCrop();

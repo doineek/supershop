@@ -40,9 +40,38 @@
       </div>
 
       <div class="flex items-center gap-1.5 shrink-0">
-        <button type="button" id="btnToggleRecentOrders" onclick="toggleRecentOrders()" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold flex items-center gap-1 transition shadow-xs">
+        <!-- Customer Login / Profile Pill -->
+        <button type="button" id="headerBtnLogin" onclick="openCustomerAuthModal('login')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-bold flex items-center gap-1 shadow-xs transition shrink-0">
+          <span>👤</span> <span>লগইন</span>
+        </button>
+
+        <div id="headerUserPill" class="hidden relative">
+          <button type="button" onclick="toggleCustomerMenu()" class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-full flex items-center gap-1.5 transition shadow-xs">
+            <span id="headerUserAvatar" class="w-6 h-6 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">ক</span>
+            <span id="headerUserName" class="text-xs font-bold text-slate-800 max-w-[85px] truncate">গ্রাহক</span>
+            <span class="text-[10px] text-slate-400">▾</span>
+          </button>
+          
+          <div id="headerUserDropdown" class="hidden absolute right-0 mt-1.5 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 space-y-1 text-xs">
+            <div class="px-3 py-2 bg-emerald-50/80 rounded-xl border border-emerald-100">
+              <div id="dropUserName" class="font-bold text-slate-900 truncate">গ্রাহক নাম</div>
+              <div id="dropUserPhone" class="text-[11px] text-emerald-800 font-mono mt-0.5">017...</div>
+            </div>
+            <a href="/pharmacy/track" class="w-full text-left px-3 py-2 hover:bg-slate-50 rounded-xl flex items-center gap-2 font-medium text-slate-700 transition">
+              <span>📋</span> <span>আমার প্রেসক্রিপশন অর্ডার</span>
+            </a>
+            <a href="/" class="w-full text-left px-3 py-2 hover:bg-slate-50 rounded-xl flex items-center gap-2 font-medium text-slate-700 transition">
+              <span>🛒</span> <span>সুপারশপ মূল পেজ</span>
+            </a>
+            <button type="button" onclick="handleCustomerLogout()" class="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-600 rounded-xl flex items-center gap-2 font-bold transition">
+              <span>🚪</span> <span>লগআউট</span>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="btnToggleRecentOrders" onclick="toggleRecentOrders()" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold flex items-center gap-1 transition shadow-xs" title="অর্ডার ট্র্যাকিং">
           <span>📋</span>
-          <span class="hidden sm:inline">আমার</span> <span>অর্ডারসমূহ</span>
+          <span class="hidden sm:inline">অর্ডার</span>
           <span id="recentOrdersBadge" class="hidden px-1.5 py-0.2 bg-emerald-600 text-white rounded-full text-[10px] font-extrabold">০</span>
         </button>
         <a href="/" class="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-xs font-bold flex items-center gap-1 transition" title="সুপারশপ হোম পেজে ফিরুন">
@@ -309,10 +338,38 @@
 
       <!-- STEP 3: Delivery Details & Confirmation -->
       <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-        <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-extrabold">৩</span>
-          <span>ডেলিভারি তথ্য ও অর্ডার নিশ্চিতকরণ</span>
-        </h2>
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-extrabold">৩</span>
+            <span>ডেলিভারি তথ্য ও অর্ডার নিশ্চিতকরণ</span>
+          </h2>
+        </div>
+
+        <!-- Customer Login Status Banner -->
+        <div id="custLoginStatusBanner" class="hidden p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <div>
+              <span class="text-slate-500 text-[11px] block">সাইন-ইন করা একাউন্ট:</span>
+              <strong class="text-emerald-950 font-bold" id="badgeCustNameText">গ্রাহক নাম</strong>
+              <span class="text-slate-600 font-mono text-[11px] ml-1" id="badgeCustPhoneText">(017...)</span>
+            </div>
+          </div>
+          <button type="button" onclick="handleCustomerLogout()" class="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-[10px] font-bold transition">
+            লগআউট
+          </button>
+        </div>
+
+        <!-- Not Logged In Prompt Banner -->
+        <div id="custNotLoginPrompt" class="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+          <div>
+            <span class="text-blue-900 font-bold block">👋 আপনার কি কাস্টমার একাউন্ট আছে?</span>
+            <span class="text-blue-700 text-[11px]">লগইন করলে নাম ও ঠিকানা স্বয়ংক্রিয় পূরণ হবে</span>
+          </div>
+          <button type="button" onclick="openCustomerAuthModal('login')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 ml-2">
+            লগইন ➔
+          </button>
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div>
@@ -431,7 +488,7 @@
         </div>
 
         <p class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 text-center font-medium">
-          💡 ছবির <b>৪টি কোণা</b> টেনে প্রেসক্রিপশনের ৪ কোণায় মেলান (টানার সময় কোণায় <b>জুম লুপ</b> দেখাবে)।
+          💡 ছবির <b>৪টি কোণা, ৪টি ধার (Edges) বা মাঝখানে ধরে</b> পুরো বক্সটি ড্র্যাগ করে প্রেসক্রিপশনে মেলান (কোণায় <b>জুম লুপ</b> দেখাবে)।
         </p>
 
         <!-- Ratio & Auto Corners -->
@@ -610,6 +667,78 @@
   </div>
 
 
+  <!-- ==================== MODAL E: CUSTOMER AUTH (LOGIN / REGISTER) ==================== -->
+  <div id="customerAuthModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white max-w-sm w-full rounded-3xl shadow-2xl overflow-hidden border border-emerald-100">
+      
+      <!-- Modal Header -->
+      <div class="bg-slate-900 text-white p-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">👤</span>
+          <span class="font-bold text-sm" id="authModalHeaderTitle">গ্রাহক একাউন্ট লগইন</span>
+        </div>
+        <button type="button" onclick="closeCustomerAuthModal()" class="text-slate-400 hover:text-white text-2xl leading-none p-1">&times;</button>
+      </div>
+
+      <!-- Tab Buttons (Login vs Register) -->
+      <div class="flex border-b border-slate-200 bg-slate-50">
+        <button type="button" id="tabBtnAuthLogin" onclick="switchAuthTab('login')" class="flex-1 py-2.5 text-xs font-bold text-emerald-700 border-b-2 border-emerald-600 bg-white transition">
+          🔑 সাইন ইন / লগইন
+        </button>
+        <button type="button" id="tabBtnAuthRegister" onclick="switchAuthTab('register')" class="flex-1 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition">
+          ✨ নতুন একাউন্ট
+        </button>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <!-- Notice if triggered by order submit -->
+        <div id="authPromptNotice" class="hidden p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs font-medium leading-relaxed">
+          ℹ️ ঔষধ অর্ডার নিশ্চিত করতে আপনার একাউন্টে সাইন ইন করুন অথবা নতুন একাউন্ট খুলুন।
+        </div>
+
+        <!-- LOGIN FORM -->
+        <form id="pharmacyLoginForm" onsubmit="handlePharmacyLogin(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">১১ ডিজিট মোবাইল নম্বর:</label>
+            <input type="tel" id="rxLoginPhone" required maxlength="11" placeholder="যেমন: 01712345678" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">পাসওয়ার্ড:</label>
+            <input type="password" id="rxLoginPassword" required placeholder="আপনার পাসওয়ার্ড লিখুন" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          </div>
+          <button type="submit" id="btnRxLoginSubmit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5">
+            <span>🔑</span> <span>সাইন ইন করুন</span>
+          </button>
+        </form>
+
+        <!-- REGISTER FORM -->
+        <form id="pharmacyRegisterForm" onsubmit="handlePharmacyRegister(event)" class="hidden space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">আপনার পূর্ণ নাম *:</label>
+            <input type="text" id="rxRegName" required placeholder="যেমন: মোহাম্মদ করিম" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">১১ ডিজিট মোবাইল নম্বর *:</label>
+            <input type="tel" id="rxRegPhone" required maxlength="11" placeholder="যেমন: 01712345678" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *:</label>
+            <input type="password" id="rxRegPassword" required minlength="6" placeholder="গোপন পাসওয়ার্ড দিন" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ডেলিভারি ঠিকানা (ঐচ্ছিক):</label>
+            <input type="text" id="rxRegAddress" placeholder="যেমন: বাসা নং ১২, রোড নং ৩, টাঙ্গাইল" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          </div>
+          <button type="submit" id="btnRxRegSubmit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5">
+            <span>✨</span> <span>একাউন্ট তৈরি করুন</span>
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+
   <!-- ==================== JAVASCRIPT LOGIC ==================== -->
   <script>
     // State
@@ -640,10 +769,217 @@
     // Laptop Webcam Stream
     let webcamMediaStream = null;
 
+    // Customer Authentication State
+    let currentCustomer = null;
+    let pendingOrderSubmit = false;
+    try {
+      currentCustomer = JSON.parse(localStorage.getItem('supershop_logged_customer') || 'null');
+    } catch (e) { currentCustomer = null; }
+
+    function refreshPharmacyCustomerState() {
+      const headerBtnLogin = $("headerBtnLogin");
+      const headerUserPill = $("headerUserPill");
+      const headerUserName = $("headerUserName");
+      const headerUserAvatar = $("headerUserAvatar");
+      const dropUserName = $("dropUserName");
+      const dropUserPhone = $("dropUserPhone");
+      const custLoginBanner = $("custLoginStatusBanner");
+      const custNotLoginPrompt = $("custNotLoginPrompt");
+      const nameInp = $("customer_name");
+      const phoneInp = $("customer_phone");
+      const addrInp = $("delivery_address");
+
+      if (currentCustomer && currentCustomer.phone) {
+        if (headerBtnLogin) headerBtnLogin.classList.add("hidden");
+        if (headerUserPill) headerUserPill.classList.remove("hidden");
+        const cName = currentCustomer.name || ("গ্রাহক " + currentCustomer.phone.slice(-4));
+        if (headerUserName) headerUserName.textContent = cName;
+        if (dropUserName) dropUserName.textContent = cName;
+        if (dropUserPhone) dropUserPhone.textContent = currentCustomer.phone;
+        if (headerUserAvatar) headerUserAvatar.textContent = (cName[0] || "ক").toUpperCase();
+
+        if (custLoginBanner) custLoginBanner.classList.remove("hidden");
+        if (custNotLoginPrompt) custNotLoginPrompt.classList.add("hidden");
+        const badgeName = $("badgeCustNameText");
+        const badgePhone = $("badgeCustPhoneText");
+        if (badgeName) badgeName.textContent = cName;
+        if (badgePhone) badgePhone.textContent = `(${currentCustomer.phone})`;
+
+        if (nameInp && !nameInp.value) nameInp.value = currentCustomer.name || "";
+        if (phoneInp && !phoneInp.value) phoneInp.value = currentCustomer.phone || "";
+        if (addrInp && !addrInp.value) addrInp.value = currentCustomer.address || localStorage.getItem('cust_address') || "";
+      } else {
+        if (headerBtnLogin) headerBtnLogin.classList.remove("hidden");
+        if (headerUserPill) headerUserPill.classList.add("hidden");
+        if (custLoginBanner) custLoginBanner.classList.add("hidden");
+        if (custNotLoginPrompt) custNotLoginPrompt.classList.remove("hidden");
+      }
+    }
+
+    function toggleCustomerMenu() {
+      const drop = $("headerUserDropdown");
+      if (drop) drop.classList.toggle("hidden");
+    }
+
+    document.addEventListener("click", (e) => {
+      const pill = $("headerUserPill");
+      const drop = $("headerUserDropdown");
+      if (pill && drop && !pill.contains(e.target)) {
+        drop.classList.add("hidden");
+      }
+    });
+
+    function openCustomerAuthModal(tab = 'login', triggeredByOrder = false) {
+      pendingOrderSubmit = triggeredByOrder;
+      const modal = $("customerAuthModal");
+      const prompt = $("authPromptNotice");
+      if (prompt) {
+        if (triggeredByOrder) prompt.classList.remove("hidden");
+        else prompt.classList.add("hidden");
+      }
+      switchAuthTab(tab);
+      modal.classList.remove("hidden");
+    }
+
+    function closeCustomerAuthModal() {
+      $("customerAuthModal").classList.add("hidden");
+    }
+
+    function switchAuthTab(tab) {
+      const btnLogin = $("tabBtnAuthLogin");
+      const btnReg = $("tabBtnAuthRegister");
+      const formLogin = $("pharmacyLoginForm");
+      const formReg = $("pharmacyRegisterForm");
+      const title = $("authModalHeaderTitle");
+
+      if (tab === 'login') {
+        btnLogin.className = "flex-1 py-2.5 text-xs font-bold text-emerald-700 border-b-2 border-emerald-600 bg-white transition";
+        btnReg.className = "flex-1 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition";
+        formLogin.classList.remove("hidden");
+        formReg.classList.add("hidden");
+        title.textContent = "গ্রাহক সাইন ইন";
+        setTimeout(() => $("rxLoginPhone").focus(), 50);
+      } else {
+        btnReg.className = "flex-1 py-2.5 text-xs font-bold text-emerald-700 border-b-2 border-emerald-600 bg-white transition";
+        btnLogin.className = "flex-1 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition";
+        formReg.classList.remove("hidden");
+        formLogin.classList.add("hidden");
+        title.textContent = "নতুন একাউন্ট নিবন্ধন";
+        setTimeout(() => $("rxRegName").focus(), 50);
+      }
+    }
+
+    async function handlePharmacyLogin(e) {
+      e.preventDefault();
+      const phone = $("rxLoginPhone").value.trim();
+      const password = $("rxLoginPassword").value.trim();
+      const btn = $("btnRxLoginSubmit");
+
+      btn.disabled = true;
+      btn.innerText = "যাচাই হচ্ছে...";
+
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const u = data.user || {};
+          currentCustomer = {
+            phone: u.phone || phone,
+            name: u.name || ("গ্রাহক " + phone.slice(-4)),
+            email: u.email || "",
+            profile_image: u.profile_image || "",
+            address: u.address || ""
+          };
+          localStorage.setItem("supershop_logged_customer", JSON.stringify(currentCustomer));
+          refreshPharmacyCustomerState();
+          closeCustomerAuthModal();
+          alert("স্বাগতম, " + currentCustomer.name + "! সফলভাবে লগইন হয়েছে।");
+          if (pendingOrderSubmit) {
+            pendingOrderSubmit = false;
+            $("pharmacyOrderForm").dispatchEvent(new Event("submit", { cancelable: true }));
+          }
+        } else {
+          alert("লগইন ব্যর্থ হয়েছে: " + (data.message || "মোবাইল নম্বর বা পাসওয়ার্ড সঠিক নয়।"));
+        }
+      } catch (err) {
+        alert("সার্ভার সংযোগ সমস্যা। আবার চেষ্টা করুন।");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "<span>🔑</span> <span>সাইন ইন করুন</span>";
+      }
+    }
+
+    async function handlePharmacyRegister(e) {
+      e.preventDefault();
+      const name = $("rxRegName").value.trim();
+      const phone = $("rxRegPhone").value.trim();
+      const password = $("rxRegPassword").value.trim();
+      const address = $("rxRegAddress").value.trim();
+      const btn = $("btnRxRegSubmit");
+
+      if (!name || phone.length !== 11 || password.length < 6) {
+        alert("অনুগ্রহ করে সঠিক নাম, ১১ ডিজিটের মোবাইল নম্বর এবং কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = "একাউন্ট তৈরি হচ্ছে...";
+
+      try {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, phone, password, address, direct: true })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          currentCustomer = {
+            phone,
+            name,
+            email: "",
+            address: address || ""
+          };
+          localStorage.setItem("supershop_logged_customer", JSON.stringify(currentCustomer));
+          refreshPharmacyCustomerState();
+          closeCustomerAuthModal();
+          alert("অভিনন্দন! আপনার একাউন্ট সফলভাবে তৈরি হয়েছে।");
+          if (pendingOrderSubmit) {
+            pendingOrderSubmit = false;
+            $("pharmacyOrderForm").dispatchEvent(new Event("submit", { cancelable: true }));
+          }
+        } else {
+          alert("নিবন্ধন সমস্যা: " + (data.message || "একাউন্ট তৈরি করা সম্ভব হয়নি।"));
+        }
+      } catch (err) {
+        alert("সার্ভার সংযোগ সমস্যা।");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "<span>✨</span> <span>একাউন্ট তৈরি করুন</span>";
+      }
+    }
+
+    function handleCustomerLogout() {
+      if (confirm("আপনি কি আপনার কাস্টমার একাউন্ট থেকে লগআউট করতে চান?")) {
+        currentCustomer = null;
+        localStorage.removeItem("supershop_logged_customer");
+        refreshPharmacyCustomerState();
+        $("customer_name").value = "";
+        $("customer_phone").value = "";
+        $("delivery_address").value = "";
+        const drop = $("headerUserDropdown");
+        if (drop) drop.classList.add("hidden");
+      }
+    }
+
     // Helper
     const $ = id => document.getElementById(id);
 
     document.addEventListener("DOMContentLoaded", () => {
+      refreshPharmacyCustomerState();
       fetchMedicinesCatalog();
       loadRecentOrders();
       initSmartCanvasEvents();
@@ -807,6 +1143,33 @@
       return { x: tx * (1 - v) + bx * v, y: ty * (1 - v) + by * v };
     }
 
+    // Point in Polygon & Distance to Segment Helpers
+    function pointInPoly(pt, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+            (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function distToSegment(p, a, b) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+      let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    }
+
+    let smartDragMode = null; // null | { type: 'corner', idx: 0..3 } | { type: 'edge', edge: 0..3 } | { type: 'body' }
+    let smartDragStart = { x: 0, y: 0 };
+    let smartDragInitPts = [];
+
     function drawSmartCrop() {
       const canvas = $("smartCropCanvas");
       const cont = $("smartCropContainer");
@@ -836,20 +1199,20 @@
 
       // Darken outside quadrilateral
       ctx.save();
-      ctx.fillStyle = "rgba(0, 0, 0, 0.58)";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.52)";
       ctx.beginPath();
       ctx.rect(pad, pad, drawW, drawH);
       ctx.moveTo(cPts[0].x, cPts[0].y);
-      ctx.lineTo(cPts[1].x, cPts[1].y);
-      ctx.lineTo(cPts[2].x, cPts[2].y);
       ctx.lineTo(cPts[3].x, cPts[3].y);
+      ctx.lineTo(cPts[2].x, cPts[2].y);
+      ctx.lineTo(cPts[1].x, cPts[1].y);
       ctx.closePath();
       ctx.fill("evenodd");
       ctx.restore();
 
       // 3x3 internal perspective grid guide
       ctx.save();
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.45)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       [1 / 3, 2 / 3].forEach(t => {
@@ -863,9 +1226,9 @@
       });
       ctx.restore();
 
-      // Rectangle border
+      // Rectangle border (Emerald Green, or pink if body/edge dragged)
       ctx.save();
-      ctx.strokeStyle = "#10b981";
+      ctx.strokeStyle = (smartDragMode && (smartDragMode.type === 'body' || smartDragMode.type === 'edge')) ? "#f43f5e" : "#10b981";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(cPts[0].x, cPts[0].y);
@@ -876,11 +1239,31 @@
       ctx.stroke();
       ctx.restore();
 
+      // 4 Edge Midpoint Handles (Pill handles on Top, Right, Bottom, Left)
+      const edgeMidpoints = [
+        { x: (cPts[0].x + cPts[1].x) / 2, y: (cPts[0].y + cPts[1].y) / 2 },
+        { x: (cPts[1].x + cPts[2].x) / 2, y: (cPts[1].y + cPts[2].y) / 2 },
+        { x: (cPts[2].x + cPts[3].x) / 2, y: (cPts[2].y + cPts[3].y) / 2 },
+        { x: (cPts[3].x + cPts[0].x) / 2, y: (cPts[3].y + cPts[0].y) / 2 }
+      ];
+
+      edgeMidpoints.forEach((mp, eIdx) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mp.x, mp.y, 6.5, 0, Math.PI * 2);
+        ctx.fillStyle = (smartDragMode && smartDragMode.type === 'edge' && smartDragMode.edge === eIdx) ? "#f43f5e" : "#10b981";
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.restore();
+      });
+
       // 4 Corner handles (touch-friendly green circles)
       cPts.forEach((pt, idx) => {
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
-        ctx.fillStyle = idx === activeDragIdx ? "#ec4899" : "#10b981";
+        ctx.fillStyle = (smartDragMode && smartDragMode.type === 'corner' && smartDragMode.idx === idx) ? "#ec4899" : "#10b981";
         ctx.fill();
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = "#ffffff";
@@ -891,6 +1274,19 @@
         ctx.fillStyle = "#ffffff";
         ctx.fill();
       });
+
+      // Center move icon hint
+      const centerBoxX = (cPts[0].x + cPts[1].x + cPts[2].x + cPts[3].x) / 4;
+      const centerBoxY = (cPts[0].y + cPts[1].y + cPts[2].y + cPts[3].y) / 4;
+      ctx.save();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.beginPath();
+      ctx.arc(centerBoxX, centerBoxY, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.8)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
     }
 
     // 4-Corner Loupe Magnifier
@@ -956,36 +1352,145 @@
         const { pad, drawW, drawH } = smartGeom;
         const cPts = smartPts.map(p => ({ x: pad + p.x * drawW, y: pad + p.y * drawH }));
 
-        let bestIdx = -1;
-        let bestDist = 38;
+        // 1. Check 4 Corners (Highest Priority)
+        let bestCorner = -1;
+        let bestCornerDist = 36;
         cPts.forEach((pt, i) => {
           const d = Math.hypot(pos.x - pt.x, pos.y - pt.y);
-          if (d < bestDist) { bestDist = d; bestIdx = i; }
+          if (d < bestCornerDist) { bestCornerDist = d; bestCorner = i; }
         });
 
-        if (bestIdx !== -1) {
+        if (bestCorner !== -1) {
           if (e.cancelable) e.preventDefault();
-          activeDragIdx = bestIdx;
-          updateLoupe(smartPts[activeDragIdx]);
+          smartDragMode = { type: 'corner', idx: bestCorner };
+          smartDragStart = pos;
+          smartDragInitPts = smartPts.map(p => ({ ...p }));
+          updateLoupe(smartPts[bestCorner]);
           drawSmartCrop();
+          return;
         }
+
+        // 2. Check 4 Edges (Edges Drag)
+        const edges = [
+          [cPts[0], cPts[1]], // 0: Top
+          [cPts[1], cPts[2]], // 1: Right
+          [cPts[2], cPts[3]], // 2: Bottom
+          [cPts[3], cPts[0]]  // 3: Left
+        ];
+        let bestEdge = -1;
+        let bestEdgeDist = 24;
+        edges.forEach((edge, i) => {
+          const d = distToSegment(pos, edge[0], edge[1]);
+          if (d < bestEdgeDist) { bestEdgeDist = d; bestEdge = i; }
+        });
+
+        if (bestEdge !== -1) {
+          if (e.cancelable) e.preventDefault();
+          smartDragMode = { type: 'edge', edge: bestEdge };
+          smartDragStart = pos;
+          smartDragInitPts = smartPts.map(p => ({ ...p }));
+          drawSmartCrop();
+          return;
+        }
+
+        // 3. Check Inside Polygon (Body Drag / Move Entire Box)
+        if (pointInPoly(pos, cPts)) {
+          if (e.cancelable) e.preventDefault();
+          smartDragMode = { type: 'body' };
+          smartDragStart = pos;
+          smartDragInitPts = smartPts.map(p => ({ ...p }));
+          drawSmartCrop();
+          return;
+        }
+
+        // 4. If Clicked Outside, drag nearest edge
+        let closestEdge = 0;
+        let minDist = 99999;
+        edges.forEach((edge, i) => {
+          const d = distToSegment(pos, edge[0], edge[1]);
+          if (d < minDist) { minDist = d; closestEdge = i; }
+        });
+        if (e.cancelable) e.preventDefault();
+        smartDragMode = { type: 'edge', edge: closestEdge };
+        smartDragStart = pos;
+        smartDragInitPts = smartPts.map(p => ({ ...p }));
+        drawSmartCrop();
       }
 
       function onMove(e) {
-        if (activeDragIdx === -1) return;
+        if (!smartDragMode) {
+          // Dynamic Cursor on Hover
+          if (!e.touches && smartImg.width) {
+            const pos = getCanvasPos(e);
+            const { pad, drawW, drawH } = smartGeom;
+            const cPts = smartPts.map(p => ({ x: pad + p.x * drawW, y: pad + p.y * drawH }));
+            let cornerNear = false;
+            cPts.forEach(pt => { if (Math.hypot(pos.x - pt.x, pos.y - pt.y) < 32) cornerNear = true; });
+            if (cornerNear) {
+              canvas.style.cursor = "nwse-resize";
+            } else if (pointInPoly(pos, cPts)) {
+              canvas.style.cursor = "move";
+            } else {
+              canvas.style.cursor = "crosshair";
+            }
+          }
+          return;
+        }
+
         if (e.cancelable) e.preventDefault();
         const pos = getCanvasPos(e);
         const { pad, drawW, drawH } = smartGeom;
-        const nx = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
-        const ny = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+        const deltaNormX = (pos.x - smartDragStart.x) / drawW;
+        const deltaNormY = (pos.y - smartDragStart.y) / drawH;
+        const init = smartDragInitPts;
 
-        smartPts[activeDragIdx] = { x: nx, y: ny };
-        updateLoupe(smartPts[activeDragIdx]);
+        if (smartDragMode.type === 'corner') {
+          const idx = smartDragMode.idx;
+          const nx = Math.max(0.0, Math.min(1.0, init[idx].x + deltaNormX));
+          const ny = Math.max(0.0, Math.min(1.0, init[idx].y + deltaNormY));
+          smartPts[idx] = { x: nx, y: ny };
+          updateLoupe(smartPts[idx]);
+        } else if (smartDragMode.type === 'edge') {
+          const edge = smartDragMode.edge;
+          if (edge === 0) { // Top edge (0 & 1)
+            const dy = deltaNormY;
+            smartPts[0].y = Math.max(0.0, Math.min(smartPts[3].y - 0.05, init[0].y + dy));
+            smartPts[1].y = Math.max(0.0, Math.min(smartPts[2].y - 0.05, init[1].y + dy));
+          } else if (edge === 1) { // Right edge (1 & 2)
+            const dx = deltaNormX;
+            smartPts[1].x = Math.max(smartPts[0].x + 0.05, Math.min(1.0, init[1].x + dx));
+            smartPts[2].x = Math.max(smartPts[3].x + 0.05, Math.min(1.0, init[2].x + dx));
+          } else if (edge === 2) { // Bottom edge (2 & 3)
+            const dy = deltaNormY;
+            smartPts[2].y = Math.max(smartPts[1].y + 0.05, Math.min(1.0, init[2].y + dy));
+            smartPts[3].y = Math.max(smartPts[0].y + 0.05, Math.min(1.0, init[3].y + dy));
+          } else if (edge === 3) { // Left edge (3 & 0)
+            const dx = deltaNormX;
+            smartPts[0].x = Math.max(0.0, Math.min(smartPts[1].x - 0.05, init[0].x + dx));
+            smartPts[3].x = Math.max(0.0, Math.min(smartPts[2].x - 0.05, init[3].x + dx));
+          }
+        } else if (smartDragMode.type === 'body') {
+          // Move Entire Box
+          const minX = Math.min(...init.map(p => p.x));
+          const maxX = Math.max(...init.map(p => p.x));
+          const minY = Math.min(...init.map(p => p.y));
+          const maxY = Math.max(...init.map(p => p.y));
+
+          const clampedDx = Math.max(-minX, Math.min(1.0 - maxX, deltaNormX));
+          const clampedDy = Math.max(-minY, Math.min(1.0 - maxY, deltaNormY));
+
+          smartPts = init.map(p => ({
+            x: Math.max(0.0, Math.min(1.0, p.x + clampedDx)),
+            y: Math.max(0.0, Math.min(1.0, p.y + clampedDy))
+          }));
+        }
+
         drawSmartCrop();
       }
 
       function onEnd() {
-        activeDragIdx = -1;
+        smartDragMode = null;
+        canvas.style.cursor = "default";
         const loupe = $("smartLoupeCanvas");
         if (loupe) loupe.classList.add("hidden");
         drawSmartCrop();
@@ -1503,11 +2008,18 @@
 
     // Submit Order Form
     async function submitPharmacyOrder(event) {
-      event.preventDefault();
+      if (event) event.preventDefault();
 
-      const custName = $("customer_name").value.trim();
-      const custPhone = $("customer_phone").value.trim();
-      const deliveryAddr = $("delivery_address").value.trim();
+      // Check customer login (matches store.html customer panel requirement)
+      if (!currentCustomer || !currentCustomer.phone) {
+        pendingOrderSubmit = true;
+        openCustomerAuthModal('login', true);
+        return;
+      }
+
+      const custName = $("customer_name").value.trim() || currentCustomer.name || "";
+      const custPhone = $("customer_phone").value.trim() || currentCustomer.phone || "";
+      const deliveryAddr = $("delivery_address").value.trim() || currentCustomer.address || "";
       const district = $("district").value.trim();
       const area = $("area").value.trim();
       const overallDuration = parseInt($("overall_duration_days").value) || 0;

@@ -9568,9 +9568,8 @@ def api_auth_register():
         }), 400
 
     # Solution 2: Two-Tier Genuine Verification
-    # If phone was verified via WhatsApp OTP -> is_verified = 1
-    # If registered directly without WhatsApp -> is_verified = 0 (Requires phone confirmation before dispatch)
-    is_verified = 1 if phone in VERIFIED_PHONES else 0
+    # Customers registering from Web, App or Pharmacy have immediate active access
+    is_verified = 1
     if phone in VERIFIED_PHONES:
         VERIFIED_PHONES.discard(phone)
 
@@ -10682,6 +10681,16 @@ def _save_base64_image(data_uri, prefix="rx"):
         img_bytes = base64.b64decode(encoded)
         unique_name = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
 
+        # 1. Try Cloudflare R2 Upload first (Zero Egress, 0% Render Bandwidth)
+        try:
+            from cloudflare_r2 import upload_to_r2
+            r2_url, _ = upload_to_r2(img_bytes, unique_name)
+            if r2_url:
+                return r2_url, unique_name
+        except Exception as e:
+            print(f"[pharmacy] Cloudflare R2 base64 notice: {e}")
+
+        # 2. Try Cloudinary upload
         cloud_url = None
         try:
             cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions")
@@ -10715,10 +10724,19 @@ def _handle_prescription_upload():
         if ext in [".jpg", ".jpeg", ".png", ".webp", ".pdf"]:
             unique_name = f"rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
             
-            # Read file bytes for potential Cloudinary upload
+            # Read file bytes for potential Cloudflare R2 / Cloudinary upload
             file_bytes = file.read()
             
-            # Try Cloudinary upload first (saves Render bandwidth completely!)
+            # 1. Try Cloudflare R2 upload first
+            try:
+                from cloudflare_r2 import upload_to_r2
+                r2_url, _ = upload_to_r2(file_bytes, unique_name)
+                if r2_url:
+                    return r2_url, filename
+            except Exception as e:
+                print(f"[pharmacy] Cloudflare R2 file upload notice: {e}")
+
+            # 2. Try Cloudinary upload
             cloud_url = None
             try:
                 cloud_url = upload_to_cloudinary(file_bytes, folder="supershop/prescriptions")
@@ -10737,7 +10755,8 @@ def _handle_prescription_upload():
             return f"/static/uploads/prescriptions/{unique_name}", filename
 
     # 2. Check if client-compressed base64 data URI was sent
-    data_uri = request.form.get("prescription_base64") or (request.json and request.json.get("prescription_base64"))
+    _j = request.get_json(silent=True) or {}
+    data_uri = request.form.get("prescription_base64") or _j.get("prescription_base64")
     if data_uri and data_uri.startswith("data:image"):
         try:
             header, encoded = data_uri.split(",", 1)
@@ -10749,7 +10768,16 @@ def _handle_prescription_upload():
             img_bytes = base64.b64decode(encoded)
             unique_name = f"rx_compressed_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
 
-            # Try Cloudinary upload first
+            # 1. Try Cloudflare R2 upload first
+            try:
+                from cloudflare_r2 import upload_to_r2
+                r2_url, _ = upload_to_r2(img_bytes, unique_name)
+                if r2_url:
+                    return r2_url, unique_name
+            except Exception as e:
+                print(f"[pharmacy] Cloudflare R2 base64 notice: {e}")
+
+            # 2. Try Cloudinary upload
             cloud_url = None
             try:
                 cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions")
@@ -10884,8 +10912,7 @@ def pharmacy_place_order():
       - Can be prescription only, medicines only, or both
       - Must specify duration or quantity
     """
-    is_json = request.is_json
-    data = request.json if is_json else request.form
+    data = request.get_json(silent=True) or request.form or {}
 
     customer_name = (data.get("customer_name") or "").strip()
     customer_phone = (data.get("customer_phone") or "").strip()
@@ -11208,7 +11235,7 @@ def admin_pharmacy_orders():
     orders = conn.execute(sql, params).fetchall()
 
     # Active riders for assignment
-    riders = conn.execute("SELECT id, username, full_name, phone FROM users WHERE role = 'delivery' ORDER BY username ASC").fetchall()
+    riders = conn.execute("SELECT id, username, full_name FROM users WHERE role = 'delivery' AND is_active = 1 ORDER BY username ASC").fetchall()
 
     # Catalog medicines for quick review
     medicines = conn.execute("SELECT * FROM pharmacy_medicines WHERE is_active = 1 ORDER BY name ASC").fetchall()
@@ -11260,7 +11287,7 @@ def api_admin_pharmacy_generate_bill(order_id):
     sets quantities and unit prices, and confirms the order with calculated bill.
     Synchronizes with online_orders for rider & receipt generation.
     """
-    req_data = request.json or {}
+    req_data = request.get_json(silent=True) or request.form or {}
     items = req_data.get("items") or []
     admin_notes = (req_data.get("admin_notes") or "").strip()
     try:
@@ -11369,7 +11396,7 @@ def api_admin_pharmacy_update_status(order_id):
     'packed' -> 'on_the_way' (with rider assignment) -> 'delivered' (with OTP check) -> 'cancelled'
     """
     order_id = request.view_args.get("order_id")
-    data = request.json or request.form
+    data = request.get_json(silent=True) or request.form or {}
     new_status = (data.get("status") or "").strip()
     rider_id = data.get("rider_id")
     otp_code = (data.get("otp") or "").strip()
@@ -11471,7 +11498,7 @@ def api_admin_pharmacy_save_medicine():
     Adds or updates a medicine in the database.
     Allows real-time price updates (Rule 5: 'খেয়াল রাখতে হবে যেন নতুন দাম ও প্রোডাক্ট আপডেট থাকে')
     """
-    data = request.json or request.form
+    data = request.get_json(silent=True) or request.form or {}
     med_id = data.get("id")
     name = (data.get("name") or "").strip()
     generic_name = (data.get("generic_name") or "").strip()
@@ -11540,7 +11567,7 @@ def api_admin_pharmacy_update_prescription(order_id):
     Admin re-crops or enhances customer prescription image.
     Preserves original photo while updating enhanced prescription URL.
     """
-    data = request.json or request.form
+    data = request.get_json(silent=True) or request.form or {}
     enhanced_base64 = data.get("prescription_base64")
     if not enhanced_base64:
         return jsonify({"success": False, "message": "কোনো পরিবর্তিত ছবি পাওয়া যায়নি।"}), 400
