@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>{{ settings.shop_name or 'DOINEEK' }} ফার্মেসী | প্রেসক্রিপশন ও ঔষধ অর্ডার ট্র্যাকিং</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body { font-family: 'Hind Siliguri', sans-serif; -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-16">
+
+  <!-- Top Sticky Header -->
+  <header class="bg-white border-b border-emerald-100 sticky top-0 z-40 shadow-xs">
+    <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <a href="/pharmacy" class="w-8 h-8 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm transition">
+          ←
+        </a>
+        <div>
+          <h1 class="font-bold text-base text-slate-900 leading-tight">অর্ডার ট্র্যাকিং ও ইতিহাস</h1>
+          <p class="text-[11px] text-slate-500">প্রেসক্রিপশন কপি, অনুমোদিত বিল ও লাইভ ডেলিভারি ধাপ</p>
+        </div>
+      </div>
+      <a href="/pharmacy" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-bold transition flex items-center gap-1 shadow-xs">
+        <span>+ নতুন অর্ডার</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto px-4 py-4 space-y-4">
+
+    <!-- Search Box for Order No or Mobile -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+      <form id="trackSearchForm" onsubmit="searchOrder(event)" class="space-y-2">
+        <label class="block text-xs font-bold text-slate-700">
+          🔍 অর্ডার নম্বর বা মোবাইল নম্বর দিয়ে খুঁজুন:
+        </label>
+        <div class="flex gap-2">
+          <input type="text" id="searchInput" value="{{ order_number or search_phone or '' }}" placeholder="যেমন: RX-261110-1001 অথবা 017XXXXXXXX" class="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-xl text-xs sm:text-sm font-medium outline-hidden transition">
+          <button type="submit" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl transition shadow-xs shrink-0">
+            খুঁজুন
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Live Order Details Card (populated via JS) -->
+    <div id="orderDetailsCard" class="hidden bg-white rounded-3xl border border-emerald-100 shadow-md overflow-hidden space-y-4 pb-5">
+      
+      <!-- Card Header -->
+      <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 sm:p-5">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <div class="text-[11px] text-emerald-100">অর্ডার নম্বর:</div>
+            <div class="font-mono font-black text-lg sm:text-xl" id="dOrderNumber">RX-...</div>
+          </div>
+          <span id="dStatusBadge" class="px-3 py-1 bg-white/20 text-white text-xs font-extrabold rounded-full backdrop-blur-xs">
+            যাচাই চলছে
+          </span>
+        </div>
+        <div class="text-[11px] text-emerald-100 mt-2" id="dOrderTime">সময়: --</div>
+      </div>
+
+      <div class="px-4 sm:px-5 space-y-4">
+
+        <!-- OTP Alert -->
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center justify-between">
+          <div>
+            <div class="text-xs font-bold text-amber-900">🔑 ডেলিভারি ওটিপি (OTP) কোড:</div>
+            <div class="text-[10px] text-amber-700">ডেলিভারি পাওয়ার পর রাইডারকে এই ৪ ডিজিট কোডটি বলুন</div>
+          </div>
+          <div id="dOtpCode" class="font-mono font-black text-xl text-amber-900 bg-white border border-amber-300 px-3.5 py-1 rounded-xl shadow-xs">
+            ----
+          </div>
+        </div>
+
+        <!-- Stepper Progress Timeline -->
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">
+          <div class="text-xs font-bold text-slate-800 mb-2">লাইভ ডেলিভারি ধাপ:</div>
+          
+          <div id="stStep1" class="flex items-center gap-3 text-xs text-emerald-700 font-bold">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">✓</span>
+            <span>১. প্রেসক্রিপশন ও অর্ডার জমা হয়েছে</span>
+          </div>
+          <div id="stStep2" class="flex items-center gap-3 text-xs text-slate-400 font-medium">
+            <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-bold">২</span>
+            <span>২. ফার্মাসিস্ট প্রেসক্রিপশন যাচাই করছেন</span>
+          </div>
+          <div id="stStep3" class="flex items-center gap-3 text-xs text-slate-400 font-medium">
+            <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-bold">৩</span>
+            <span>৩. বিল প্রস্তুত ও অর্ডার নিশ্চিত</span>
+          </div>
+          <div id="stStep4" class="flex items-center gap-3 text-xs text-slate-400 font-medium">
+            <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-bold">৪</span>
+            <span>৪. ওষুধ প্যাকড সম্পন্ন</span>
+          </div>
+          <div id="stStep5" class="flex items-center gap-3 text-xs text-slate-400 font-medium">
+            <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-bold">৫</span>
+            <span>৫. রাইডার নিয়ে আসছেন (ডেলিভারির পথে)</span>
+          </div>
+          <div id="stStep6" class="flex items-center gap-3 text-xs text-slate-400 font-medium">
+            <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-bold">৬</span>
+            <span>৬. সফলভাবে ডেলিভার্ড সম্পন্ন</span>
+          </div>
+        </div>
+
+        <!-- Prescription Copy View (Rule 2) -->
+        <div id="dPrescriptionBox" class="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-800 flex-wrap gap-2">
+            <span>📄 আপনার প্রেসক্রিপশনের কপি:</span>
+            <div class="flex items-center gap-1.5">
+              <div id="rxToggleBtns" class="flex bg-slate-200/90 p-0.5 rounded-lg text-[10px]">
+                <button type="button" id="btnRxEnh" onclick="switchRxView('enhanced')" class="px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs">✨ এনহ্যান্সড</button>
+                <button type="button" id="btnRxOrig" onclick="switchRxView('original')" class="px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition">🖼️ মূল ছবি</button>
+              </div>
+              <button type="button" onclick="openRxFullView()" class="text-emerald-700 hover:underline text-[11px] font-bold ml-1">
+                🔍 ফুল ভিউ
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <img id="dPrescriptionImg" src="" alt="Prescription" onclick="openRxFullView()" class="w-20 h-20 object-cover rounded-xl border border-slate-200 cursor-pointer shadow-xs hover:opacity-90 transition">
+            <div class="text-xs text-slate-600 space-y-1">
+              <div id="dCustDuration">মেয়াদ: ৭ দিনের ওষুধ</div>
+              <div id="dCustNotes" class="text-slate-500 italic">নোট: -</div>
+              <div id="dRxViewBadge" class="text-[10px] text-emerald-700 font-semibold">✨ অপ্টিমাইজড ভিউ সক্রিয়</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Itemized Approved Bill Table -->
+        <div class="space-y-2">
+          <div class="text-xs font-bold text-slate-800">💊 অনুমোদিত ওষুধের তালিকা ও মূল্য বিবরণী:</div>
+          <div class="border border-slate-200 rounded-xl overflow-hidden">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                <tr>
+                  <th class="p-2.5">ওষুধের বিবরণ</th>
+                  <th class="p-2.5 text-center">পরিমাণ</th>
+                  <th class="p-2.5 text-right">একক মূল্য</th>
+                  <th class="p-2.5 text-right">মোট</th>
+                </tr>
+              </thead>
+              <tbody id="dBillItemsBody" class="divide-y divide-slate-100">
+                <tr>
+                  <td colspan="4" class="p-4 text-center text-slate-400">ফার্মাসিস্ট যাচাই করছেন, বিল তৈরি হলে এখানে প্রদর্শিত হবে।</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Total Bill Breakdown -->
+          <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 space-y-1 text-xs">
+            <div class="flex justify-between text-slate-700">
+              <span>ওষুধের সাব-টোটাল:</span>
+              <span id="dSubtotal" class="font-bold">৳০.০০</span>
+            </div>
+            <div class="flex justify-between text-slate-700">
+              <span>ডেলিভারি চার্জ:</span>
+              <span id="dDeliveryCharge" class="font-bold">৳৫০.০০</span>
+            </div>
+            <div class="border-t border-emerald-200 pt-1 flex justify-between font-extrabold text-slate-900 text-sm">
+              <span>সর্বমোট প্রদেয়:</span>
+              <span id="dGrandTotal" class="text-emerald-700">৳৫০.০০</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pharmacist Advice / Admin Notes -->
+        <div id="dPharmacistAdviceBox" class="hidden bg-blue-50 border border-blue-200 rounded-2xl p-3 text-xs text-blue-900">
+          <div class="font-bold mb-0.5">👨‍⚕️ ফার্মাসিস্ট পরামর্শ ও নিয়মাবলী:</div>
+          <div id="dPharmacistAdviceTxt" class="text-blue-800 leading-relaxed">-</div>
+        </div>
+
+        <!-- Rider Contact Card (if assigned) -->
+        <div id="dRiderCard" class="hidden bg-teal-50 border border-teal-200 rounded-2xl p-3.5 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <span class="text-2xl">🛵</span>
+            <div>
+              <div class="text-xs font-bold text-teal-900" id="dRiderName">রাইডার: নাম</div>
+              <div class="text-[11px] text-teal-700" id="dRiderPhone">মোবাইল: ০১৭১...</div>
+            </div>
+          </div>
+          <a id="dRiderCallBtn" href="tel:" class="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition shadow-xs">
+            📞 কল করুন
+          </a>
+        </div>
+
+        <!-- Customer & Address Summary -->
+        <div class="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-0.5">
+          <div><strong>গ্রাহক:</strong> <span id="dCustName">-</span> (<span id="dCustPhone">-</span>)</div>
+          <div><strong>ডেলিভারি ঠিকানা:</strong> <span id="dCustAddress">-</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Recent Orders List from LocalStorage (if not searching specific) -->
+    <div id="localOrdersBox" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+      <div class="text-xs font-bold text-slate-800 flex items-center justify-between border-b pb-1.5">
+        <span>📋 এই ডিভাইসে দেওয়া পূর্ববর্তী প্রেসক্রিপশন অর্ডারসমূহ:</span>
+        <button type="button" onclick="loadSavedLocalOrders()" class="text-[11px] text-emerald-700 font-bold hover:underline">
+          🔄 রিফ্রেশ
+        </button>
+      </div>
+      <div id="localOrdersList" class="space-y-1.5">
+        <p class="text-xs text-slate-400 text-center py-3">লোড হচ্ছে...</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Fullscreen Prescription Image Modal -->
+  <div id="rxFullModal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+      <div class="p-3 bg-slate-100 flex items-center justify-between border-b text-xs font-bold text-slate-800">
+        <div class="flex items-center gap-2">
+          <span>প্রেসক্রিপশনের সম্পূর্ণ ছবি</span>
+          <div class="flex bg-slate-200 p-0.5 rounded-lg text-[10px]">
+            <button type="button" id="modalBtnRxEnh" onclick="switchRxView('enhanced')" class="px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition">✨ এনহ্যান্সড</button>
+            <button type="button" id="modalBtnRxOrig" onclick="switchRxView('original')" class="px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition">🖼️ মূল ছবি</button>
+          </div>
+        </div>
+        <button type="button" onclick="closeRxFullView()" class="text-xl leading-none text-slate-500 hover:text-slate-800 p-1">&times;</button>
+      </div>
+      <div class="p-2 bg-slate-950 flex items-center justify-center max-h-[75vh] overflow-auto">
+        <img id="rxFullModalImg" src="" alt="Prescription" class="max-w-full max-h-[70vh] object-contain rounded-lg">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOrigRx = "";
+    let currentEnhRx = "";
+    let activeRxMode = "enhanced";
+
+    function switchRxView(mode) {
+      activeRxMode = mode;
+      const targetSrc = (mode === 'original' && currentOrigRx) ? currentOrigRx : (currentEnhRx || currentOrigRx);
+      if (!targetSrc) return;
+
+      const imgEl = document.getElementById("dPrescriptionImg");
+      const modalImgEl = document.getElementById("rxFullModalImg");
+      const badgeEl = document.getElementById("dRxViewBadge");
+      const btnEnh = document.getElementById("btnRxEnh");
+      const btnOrig = document.getElementById("btnRxOrig");
+      const mBtnEnh = document.getElementById("modalBtnRxEnh");
+      const mBtnOrig = document.getElementById("modalBtnRxOrig");
+
+      if (imgEl) imgEl.src = targetSrc;
+      if (modalImgEl) modalImgEl.src = targetSrc;
+
+      if (mode === 'original') {
+        if (badgeEl) badgeEl.innerText = "🖼️ ক্যামেরা থেকে তোলা আসল ছবি";
+        if (btnOrig) btnOrig.className = "px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs";
+        if (btnEnh) btnEnh.className = "px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition";
+        if (mBtnOrig) mBtnOrig.className = "px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs";
+        if (mBtnEnh) mBtnEnh.className = "px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition";
+      } else {
+        if (badgeEl) badgeEl.innerText = "✨ অপ্টিমাইজড / এনহ্যান্সড ভিউ";
+        if (btnEnh) btnEnh.className = "px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs";
+        if (btnOrig) btnOrig.className = "px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition";
+        if (mBtnEnh) mBtnEnh.className = "px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs";
+        if (mBtnOrig) mBtnOrig.className = "px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition";
+      }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      loadSavedLocalOrders();
+
+      const inputVal = document.getElementById("searchInput").value.trim();
+      if (inputVal) {
+        fetchAndDisplayOrder(inputVal);
+      }
+    });
+
+    function searchOrder(event) {
+      event.preventDefault();
+      const val = document.getElementById("searchInput").value.trim();
+      if (!val) {
+        alert("অনুগ্রহ করে অর্ডার নম্বর বা মোবাইল নম্বর লিখুন।");
+        return;
+      }
+      fetchAndDisplayOrder(val);
+    }
+
+    async function fetchAndDisplayOrder(orderNum) {
+      try {
+        const res = await fetch("/api/pharmacy/order-status/" + encodeURIComponent(orderNum));
+        const data = await res.json();
+        if (!data.success) {
+          alert("অর্ডারটি খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক অর্ডার নম্বর দিন।");
+          return;
+        }
+
+        renderOrderData(data);
+        document.getElementById("orderDetailsCard").classList.remove("hidden");
+        document.getElementById("orderDetailsCard").scrollIntoView({ behavior: 'smooth' });
+      } catch (e) {
+        alert("সার্ভার সংযোগ সমস্যা।");
+      }
+    }
+
+    function renderOrderData(d) {
+      document.getElementById("dOrderNumber").innerText = d.order_number;
+      document.getElementById("dStatusBadge").innerText = d.status_bn;
+      document.getElementById("dOrderTime").innerText = "অর্ডারের সময়: " + d.created_at.substring(0, 16).replace('T', ' ');
+      document.getElementById("dOtpCode").innerText = d.delivery_otp || "----";
+
+      // Stepper
+      const statusMap = {
+        "reviewing": 1,
+        "confirmed": 2,
+        "packed": 3,
+        "on_the_way": 4,
+        "delivered": 5
+      };
+      const curIdx = statusMap[d.order_status] !== undefined ? statusMap[d.order_status] : 1;
+      const stepIds = ["stStep1", "stStep2", "stStep3", "stStep4", "stStep5", "stStep6"];
+      
+      stepIds.forEach((sId, idx) => {
+        const el = document.getElementById(sId);
+        if (idx <= curIdx) {
+          el.className = "flex items-center gap-3 text-xs text-emerald-700 font-bold";
+          el.children[0].className = "w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold";
+          el.children[0].innerText = "✓";
+        } else {
+          el.className = "flex items-center gap-3 text-xs text-slate-400 font-medium";
+          el.children[0].className = "w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-bold";
+          el.children[0].innerText = (idx + 1).toString();
+        }
+      });
+
+      // Prescription copy
+      currentOrigRx = d.prescription_original_url || d.prescription_url || "";
+      currentEnhRx = d.prescription_enhanced_url || d.prescription_url || "";
+      if (currentOrigRx || currentEnhRx) {
+        switchRxView('enhanced');
+        document.getElementById("dCustDuration").innerText = `মেয়াদ: ${d.overall_duration_days || '৭'} দিনের ওষুধ`;
+        document.getElementById("dCustNotes").innerText = d.customer_notes ? `নোট: "${d.customer_notes}"` : "কোনো অতিরিক্ত নোট নেই";
+        document.getElementById("dPrescriptionBox").classList.remove("hidden");
+      } else {
+        document.getElementById("dPrescriptionBox").classList.add("hidden");
+      }
+
+      // Bill items
+      const items = (d.approved_items && d.approved_items.length > 0) ? d.approved_items : (d.requested_items || []);
+      const tbody = document.getElementById("dBillItemsBody");
+      if (items.length > 0) {
+        let html = "";
+        items.forEach(it => {
+          html += `
+            <tr class="hover:bg-slate-50">
+              <td class="p-2.5">
+                <strong class="text-slate-900">${it.name}</strong>
+                <span class="text-[10px] bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded-md font-bold">${it.dosage_form || ''}</span>
+                <div class="text-[10px] text-slate-500">${it.strength || it.generic_name || ''}</div>
+              </td>
+              <td class="p-2.5 text-center font-bold text-slate-800">${it.quantity}</td>
+              <td class="p-2.5 text-right font-medium">৳${parseFloat(it.unit_price).toFixed(2)}</td>
+              <td class="p-2.5 text-right font-extrabold text-emerald-700">৳${parseFloat(it.total_price).toFixed(2)}</td>
+            </tr>
+          `;
+        });
+        tbody.innerHTML = html;
+      } else {
+        tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">ফার্মাসিস্ট যাচাই করছেন, বিল তৈরি হলে এখানে প্রদর্শিত হবে।</td></tr>`;
+      }
+
+      // Totals
+      document.getElementById("dSubtotal").innerText = `৳${parseFloat(d.subtotal).toFixed(2)}`;
+      document.getElementById("dDeliveryCharge").innerText = `৳${parseFloat(d.delivery_charge).toFixed(2)}`;
+      document.getElementById("dGrandTotal").innerText = `৳${parseFloat(d.total_amount).toFixed(2)}`;
+
+      // Admin Advice
+      if (d.admin_notes) {
+        document.getElementById("dPharmacistAdviceTxt").innerText = d.admin_notes;
+        document.getElementById("dPharmacistAdviceBox").classList.remove("hidden");
+      } else {
+        document.getElementById("dPharmacistAdviceBox").classList.add("hidden");
+      }
+
+      // Rider
+      if (d.assigned_rider_name && (d.order_status === "on_the_way" || d.order_status === "packed" || d.order_status === "delivered")) {
+        document.getElementById("dRiderName").innerText = "রাইডার: " + d.assigned_rider_name;
+        document.getElementById("dRiderPhone").innerText = "মোবাইল: " + (d.assigned_rider_phone || "----");
+        document.getElementById("dRiderCallBtn").href = "tel:" + d.assigned_rider_phone;
+        document.getElementById("dRiderCard").classList.remove("hidden");
+      } else {
+        document.getElementById("dRiderCard").classList.add("hidden");
+      }
+
+      // Customer info
+      document.getElementById("dCustName").innerText = d.customer_name;
+      document.getElementById("dCustPhone").innerText = d.customer_phone;
+      document.getElementById("dCustAddress").innerText = `${d.delivery_address}, ${d.area}, ${d.district}`;
+    }
+
+    function openRxFullView() {
+      const targetSrc = (activeRxMode === 'original' && currentOrigRx) ? currentOrigRx : (currentEnhRx || currentOrigRx);
+      if (targetSrc) {
+        document.getElementById("rxFullModalImg").src = targetSrc;
+        switchRxView(activeRxMode);
+        document.getElementById("rxFullModal").classList.remove("hidden");
+      }
+    }
+
+    function closeRxFullView() {
+      document.getElementById("rxFullModal").classList.add("hidden");
+    }
+
+    function loadSavedLocalOrders() {
+      const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+      const list = document.getElementById("localOrdersList");
+      if (orders.length > 0) {
+        let html = "";
+        orders.forEach(o => {
+          html += `
+            <div onclick="fetchAndDisplayOrder('${o.order_number}')" class="p-2.5 bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 rounded-xl cursor-pointer transition flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="font-mono font-bold text-xs text-slate-900">${o.order_number}</span>
+                <span class="ml-1.5 px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${o.status_bn || 'যাচাই চলছে'}</span>
+                <div class="text-[10px] text-slate-500 mt-0.5">${o.duration || 'প্রেসক্রিপশন'} • OTP: <strong class="text-amber-800 font-mono">${o.delivery_otp || '----'}</strong></div>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="text-xs font-black text-emerald-700">৳${o.total_amount || '0'}</span>
+                <span class="block text-[10px] text-emerald-600 font-bold">বিস্তারিত ➔</span>
+              </div>
+            </div>
+          `;
+        });
+        list.innerHTML = html;
+      } else {
+        list.innerHTML = `<p class="text-xs text-slate-400 text-center py-3">এই ডিভাইসে পূর্বে সংরক্ষিত কোনো প্রেসক্রিপশন অর্ডার পাওয়া যায়নি।</p>`;
+      }
+    }
+  </script>
+
+</body>
+</html>

@@ -10658,5 +10658,923 @@ def static_apk_redirect(filename):
     """
     return redirect(GITHUB_LATEST_APK_URL, code=302)
 
+
+# =============================================================================
+# 💊 SUPER SHOP PHARMACY MODULE (ফার্মেসী সেবা ও প্রেসক্রিপশন অর্ডার)
+# 100% Bengali Interface matching https://qr-print-bd.onrender.com/
+# =============================================================================
+import uuid
+import base64
+import random
+import json
+
+def _save_base64_image(data_uri, prefix="rx"):
+    """Helper to decode base64 data URI and upload to Cloudinary or save locally."""
+    if not data_uri or not data_uri.startswith("data:image"):
+        return "", ""
+    try:
+        header, encoded = data_uri.split(",", 1)
+        ext = ".jpg"
+        if "webp" in header:
+            ext = ".webp"
+        elif "png" in header:
+            ext = ".png"
+        img_bytes = base64.b64decode(encoded)
+        unique_name = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
+
+        cloud_url = None
+        try:
+            cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions")
+        except Exception as e:
+            print(f"[pharmacy] Base64 upload notice: {e}")
+
+        if cloud_url:
+            return cloud_url, unique_name
+
+        upload_dir = os.path.join(app.root_path, "static", "uploads", "prescriptions")
+        os.makedirs(upload_dir, exist_ok=True)
+        save_path = os.path.join(upload_dir, unique_name)
+        with open(save_path, "wb") as f_out:
+            f_out.write(img_bytes)
+        return f"/static/uploads/prescriptions/{unique_name}", unique_name
+    except Exception as err:
+        print(f"[pharmacy] Base64 error: {err}")
+        return "", ""
+
+def _handle_prescription_upload():
+    """
+    Saves prescription image or document.
+    Prioritizes Cloudinary CDN to protect Render 5GB free bandwidth.
+    Falls back to local /static/uploads/prescriptions/ with high-compression if offline.
+    """
+    # 1. Check if multipart file uploaded
+    file = request.files.get("prescription_file") or request.files.get("file")
+    if file and file.filename:
+        filename = secure_filename(file.filename)
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in [".jpg", ".jpeg", ".png", ".webp", ".pdf"]:
+            unique_name = f"rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
+            
+            # Read file bytes for potential Cloudinary upload
+            file_bytes = file.read()
+            
+            # Try Cloudinary upload first (saves Render bandwidth completely!)
+            cloud_url = None
+            try:
+                cloud_url = upload_to_cloudinary(file_bytes, folder="supershop/prescriptions")
+            except Exception as e:
+                print(f"[pharmacy] Cloudinary prescription upload notice: {e}")
+                
+            if cloud_url:
+                return cloud_url, filename
+
+            # Local fallback storage
+            upload_dir = os.path.join(app.root_path, "static", "uploads", "prescriptions")
+            os.makedirs(upload_dir, exist_ok=True)
+            save_path = os.path.join(upload_dir, unique_name)
+            with open(save_path, "wb") as f_out:
+                f_out.write(file_bytes)
+            return f"/static/uploads/prescriptions/{unique_name}", filename
+
+    # 2. Check if client-compressed base64 data URI was sent
+    data_uri = request.form.get("prescription_base64") or (request.json and request.json.get("prescription_base64"))
+    if data_uri and data_uri.startswith("data:image"):
+        try:
+            header, encoded = data_uri.split(",", 1)
+            ext = ".jpg"
+            if "webp" in header:
+                ext = ".webp"
+            elif "png" in header:
+                ext = ".png"
+            img_bytes = base64.b64decode(encoded)
+            unique_name = f"rx_compressed_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
+
+            # Try Cloudinary upload first
+            cloud_url = None
+            try:
+                cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions")
+            except Exception as e:
+                print(f"[pharmacy] Base64 Cloudinary upload notice: {e}")
+
+            if cloud_url:
+                return cloud_url, unique_name
+
+            upload_dir = os.path.join(app.root_path, "static", "uploads", "prescriptions")
+            os.makedirs(upload_dir, exist_ok=True)
+            save_path = os.path.join(upload_dir, unique_name)
+            with open(save_path, "wb") as f_out:
+                f_out.write(img_bytes)
+            return f"/static/uploads/prescriptions/{unique_name}", unique_name
+        except Exception as err:
+            print(f"[pharmacy] Base64 decode error: {err}")
+
+    return "", ""
+
+
+@app.route("/pharmacy")
+def pharmacy_home():
+    """Customer-facing Pharmacy & Prescription Home (100% Bengali, QR-Print BD aesthetic)"""
+    conn = get_connection()
+    settings = get_all_settings(conn)
+    
+    # Load categories / dosage forms for filter pills
+    dosage_forms = [
+        {"id": "all", "name": "সব ধরনের ওষুধ", "icon": "💊"},
+        {"id": "ট্যাবলেট", "name": "ট্যাবলেট", "icon": "💊"},
+        {"id": "ক্যাপসুল", "name": "ক্যাপসুল", "icon": "💊"},
+        {"id": "সিরাপ", "name": "সিরাপ ও তরল", "icon": "🍯"},
+        {"id": "ইনজেকশন", "name": "ইনজেকশন", "icon": "💉"},
+        {"id": "ব্যান্ডেজ/ফার্স্ট এইড", "name": "গজ পট্টি ও ব্যান্ডেজ", "icon": "🩹"},
+        {"id": "ড্রপ", "name": "চোখ ও কানের ড্রপ", "icon": "💧"},
+        {"id": "মলম/ক্রিম", "name": "মলম ও ক্রিম", "icon": "🧴"},
+        {"id": "সাসপেনশন", "name": "সাসপেনশন", "icon": "🧪"},
+    ]
+    
+    # Get active delivery areas
+    delivery_areas = conn.execute("SELECT district, area FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    
+    # Quick count of active medicines
+    med_count_row = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()
+    total_medicines = med_count_row["c"] if med_count_row else 0
+    
+    conn.close()
+    return render_template(
+        "pharmacy.html",
+        settings=settings,
+        dosage_forms=dosage_forms,
+        delivery_areas=delivery_areas,
+        total_medicines=total_medicines,
+        active_tab="pharmacy"
+    )
+
+
+@app.route("/pharmacy/track")
+def pharmacy_track():
+    """Live Order Tracking Page for Pharmacy Orders"""
+    order_num = request.args.get("order", "").strip()
+    phone = request.args.get("phone", "").strip()
+    conn = get_connection()
+    settings = get_all_settings(conn)
+    conn.close()
+    return render_template(
+        "pharmacy_tracking.html",
+        settings=settings,
+        order_number=order_num,
+        search_phone=phone,
+        active_tab="pharmacy"
+    )
+
+
+@app.route("/pharmacy/my-orders")
+def pharmacy_my_orders():
+    """Customer Pharmacy Orders History"""
+    phone = request.args.get("phone", "").strip()
+    conn = get_connection()
+    settings = get_all_settings(conn)
+    orders = []
+    if phone:
+        orders = conn.execute(
+            "SELECT * FROM pharmacy_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 50",
+            (phone,)
+        ).fetchall()
+    conn.close()
+    return render_template(
+        "pharmacy_tracking.html",
+        settings=settings,
+        orders=orders,
+        search_phone=phone,
+        active_tab="pharmacy"
+    )
+
+
+@app.route("/api/pharmacy/medicines", methods=["GET"])
+@limiter.limit("120 per minute")
+def api_pharmacy_medicines():
+    """Lightweight autocomplete and catalog search for pharmacy medicines"""
+    q = (request.args.get("q") or "").strip()
+    dosage = (request.args.get("dosage") or request.args.get("cat") or "").strip()
+    
+    conn = get_connection()
+    query = "SELECT id, name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_prescription_required FROM pharmacy_medicines WHERE is_active = 1"
+    params = []
+
+    if dosage and dosage != "all":
+        query += " AND dosage_form = ?"
+        params.append(dosage)
+
+    if q:
+        query += " AND (name LIKE ? OR generic_name LIKE ? OR strength LIKE ?)"
+        q_wild = f"%{q}%"
+        params.extend([q_wild, q_wild, q_wild])
+
+    query += " ORDER BY name ASC LIMIT 50"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    medicines = [dict(r) for r in rows]
+    return jsonify({"success": True, "count": len(medicines), "medicines": medicines})
+
+
+@app.route("/pharmacy/order", methods=["POST"])
+@limiter.limit("15 per minute")
+def pharmacy_place_order():
+    """
+    Submits a pharmacy prescription / medicine order.
+    Validates quantity / duration strictly according to user rules:
+      - Can be prescription only, medicines only, or both
+      - Must specify duration or quantity
+    """
+    is_json = request.is_json
+    data = request.json if is_json else request.form
+
+    customer_name = (data.get("customer_name") or "").strip()
+    customer_phone = (data.get("customer_phone") or "").strip()
+    customer_email = (data.get("customer_email") or "").strip()
+    district = (data.get("district") or "Tangail").strip()
+    area = (data.get("area") or "Main Area").strip()
+    delivery_address = (data.get("delivery_address") or data.get("address_details") or "").strip()
+    order_type = (data.get("order_type") or "both").strip()
+    customer_notes = (data.get("customer_notes") or data.get("notes") or "").strip()
+    
+    try:
+        overall_duration_days = int(data.get("overall_duration_days") or data.get("duration_days") or 0)
+    except (ValueError, TypeError):
+        overall_duration_days = 0
+
+    # Parse items JSON
+    raw_items = data.get("items") or data.get("cart_items") or []
+    if isinstance(raw_items, str):
+        try:
+            raw_items = json.loads(raw_items)
+        except Exception:
+            raw_items = []
+
+    # Handle prescription file upload / base64 (enhanced & original)
+    prescription_url = (data.get("prescription_url") or "").strip()
+    prescription_filename = ""
+    if not prescription_url:
+        prescription_url, prescription_filename = _handle_prescription_upload()
+
+    # Original uncropped/unenhanced photo if sent separately
+    orig_base64 = data.get("prescription_original_base64")
+    prescription_original_url = ""
+    if orig_base64 and orig_base64.startswith("data:image"):
+        prescription_original_url, _ = _save_base64_image(orig_base64, prefix="rx_orig")
+    if not prescription_original_url:
+        prescription_original_url = prescription_url
+    prescription_enhanced_url = prescription_url
+
+    # --- Validations ---
+    if not customer_phone or len(re.sub(r'\D', '', customer_phone)) < 11:
+        return jsonify({"success": False, "message": "অনুগ্রহ করে আপনার সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন।"}), 400
+
+    if not customer_name:
+        customer_name = "সম্মানিত গ্রাহক"
+
+    if not delivery_address:
+        return jsonify({"success": False, "message": "অনুগ্রহ করে আপনার সম্পূর্ণ ডেলিভারি ঠিকানা দিন।"}), 400
+
+    # Check Block Status
+    conn = get_connection()
+    is_blocked, block_msg = check_customer_block(conn, customer_phone)
+    if is_blocked:
+        conn.close()
+        return jsonify({"success": False, "message": block_msg}), 403
+
+    # Rule 1 Requirement: Must provide prescription OR select medicines (or both)
+    has_prescription = bool(prescription_url)
+    has_items = bool(raw_items and len(raw_items) > 0)
+
+    if not has_prescription and not has_items:
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": "অনুগ্রহ করে একটি প্রেসক্রিপশন আপলোড করুন অথবা তালিকা থেকে ওষুধ নির্বাচন করুন।"
+        }), 400
+
+    # Rule 1 Requirement: Quantity or Duration must be specified
+    # "কিন্তু অবশ্যই পরিমান উল্লেখ থাকতে হবে। সে চাইলে তার পাশাপাশি লিখেও দিতে পারে (সব ঔষধ কয়দিনের লাগবে অথবা একেকটা ঔষধ একেক পরিমান বা দিনের লাগলেও সে তা সিলেক্ট করে দিতে পারবে)"
+    if has_prescription and not has_items:
+        if overall_duration_days <= 0 and len(customer_notes.strip()) < 2:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": "প্রেসক্রিপশন আপলোড করলে অবশ্যই ওষুধ কয়দিনের লাগবে (যেমন: ৭ দিন, ১০ দিন) অথবা নির্দিষ্ট ওষুধের পরিমাণ লিখে জানাতে হবে।"
+            }), 400
+
+    processed_items = []
+    subtotal = 0.0
+    for it in raw_items:
+        med_name = (it.get("name") or it.get("product_name") or it.get("medicine_name") or "").strip()
+        if not med_name:
+            continue
+        try:
+            qty = int(it.get("quantity") or it.get("qty") or 1)
+        except Exception:
+            qty = 1
+        if qty <= 0:
+            qty = 1
+
+        unit_price = float(it.get("unit_price") or it.get("price") or 0.0)
+        item_total = round(unit_price * qty, 2)
+        subtotal += item_total
+
+        processed_items.append({
+            "medicine_id": it.get("medicine_id") or it.get("id"),
+            "name": med_name,
+            "generic_name": it.get("generic_name") or "",
+            "dosage_form": it.get("dosage_form") or "ট্যাবলেট",
+            "strength": it.get("strength") or "",
+            "quantity": qty,
+            "unit": it.get("unit") or "পিস",
+            "duration_days": it.get("duration_days") or (f"{overall_duration_days} দিন" if overall_duration_days > 0 else ""),
+            "unit_price": unit_price,
+            "total_price": item_total
+        })
+
+    # Default delivery charge from settings
+    shop_settings = get_all_settings(conn)
+    delivery_charge = float(shop_settings.get("delivery_charge") or 50.0)
+    total_amount = round(subtotal + delivery_charge, 2) if subtotal > 0 else 0.0
+
+    # Determine order type
+    if has_prescription and processed_items:
+        determined_type = "both"
+    elif has_prescription:
+        determined_type = "prescription_only"
+    else:
+        determined_type = "medicines_only"
+
+    # Status: If prescription uploaded, pharmacist reviews it first ('reviewing').
+    # If OTC medicines selected with known prices, it can still go to review or new.
+    initial_status = "reviewing"
+    order_number = f"RX-{datetime.now().strftime('%y%m%d')}-{random.randint(1000, 9999)}"
+    delivery_otp = f"{random.randint(1000, 9999)}"
+    now_iso = get_bd_now_iso()
+
+    cur = conn.cursor()
+    # 1. Insert into pharmacy_orders
+    cur.execute("""
+        INSERT INTO pharmacy_orders (
+            order_number, customer_name, customer_phone, customer_email,
+            country, district, area, delivery_address, order_type,
+            prescription_url, prescription_original_url, prescription_enhanced_url,
+            prescription_local_filename, overall_duration_days,
+            customer_notes, requested_items_json, approved_items_json,
+            subtotal, delivery_charge, total_amount, order_status,
+            delivery_otp, payment_method, payment_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'Bangladesh', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', 'pending', ?, ?)
+    """, (
+        order_number, customer_name, customer_phone, customer_email,
+        district, area, delivery_address, determined_type,
+        prescription_url, prescription_original_url, prescription_enhanced_url,
+        prescription_filename, overall_duration_days,
+        customer_notes, json.dumps(processed_items, ensure_ascii=False), json.dumps(processed_items, ensure_ascii=False),
+        subtotal, delivery_charge, total_amount, initial_status,
+        delivery_otp, now_iso, now_iso
+    ))
+    pharm_order_id = cur.lastrowid
+
+    # 2. Insert into online_orders for Rider & POS integration
+    try:
+        cur.execute("""
+            INSERT INTO online_orders (
+                order_number, customer_name, customer_phone, customer_email,
+                country, district, area, address_details, payment_method,
+                payment_status, subtotal, delivery_charge, total_amount,
+                order_status, delivery_otp, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'Bangladesh', ?, ?, ?, 'cod', 'pending', ?, ?, ?, 'pending_confirmation', ?, ?, ?)
+        """, (
+            order_number, customer_name, customer_phone, customer_email,
+            district, area, delivery_address,
+            subtotal, delivery_charge, total_amount,
+            delivery_otp, now_iso, now_iso
+        ))
+        online_order_id = cur.lastrowid
+        cur.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE id = ?", (online_order_id, pharm_order_id))
+
+        # Insert items or placeholder in online_order_items
+        _fp = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+        _valid_pid = _fp["id"] if _fp else 1
+        if processed_items:
+            for itm in processed_items:
+                cur.execute("""
+                    INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (online_order_id, _valid_pid, f"💊 {itm['name']} ({itm.get('strength', '')})", itm['unit_price'], itm['unit_price'], itm['quantity'], itm['total_price']))
+        else:
+            note_summary = f"{overall_duration_days} দিনের ওষুধ" if overall_duration_days > 0 else "প্রেসক্রিপশন পর্যালোচনা"
+            cur.execute("""
+                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                VALUES (?, ?, ?, 0, 0, 1, 0)
+            """, (online_order_id, _valid_pid, f"💊 প্রেসক্রিপশন অর্ডার - {note_summary}"))
+            
+        # Cloud push
+        try:
+            remote_control.push_online_order_to_cloud(online_order_id)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[pharmacy] Online order sync notice: {e}")
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "order_number": order_number,
+        "order_id": pharm_order_id,
+        "delivery_otp": delivery_otp,
+        "message": "আপনার প্রেসক্রিপশন ও ওষুধ অর্ডার সফলভাবে সম্পন্ন হয়েছে! আমাদের ফার্মাসিস্ট যাচাই করে দ্রুত আপডেট জানাবেন।"
+    })
+
+
+@app.route("/api/pharmacy/order-status/<order_number>", methods=["GET"])
+def api_pharmacy_order_status(order_number):
+    """
+    Returns real-time status and prescription details for live customer tracking.
+    Synchronizes status dynamically if Rider confirmed/updated the order!
+    """
+    order_num = order_number.strip()
+    conn = get_connection()
+    
+    order = conn.execute("SELECT * FROM pharmacy_orders WHERE order_number = ? OR id = ?", (order_num, order_num)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "অর্ডারটি খুঁজে পাওয়া যায়নি।"}), 404
+
+    # Status synchronization with online_orders (Rider update check)
+    current_status = order["order_status"]
+    if order["online_order_id"]:
+        ol_order = conn.execute("SELECT order_status, assigned_rider_id, assigned_rider_name, assigned_rider_phone FROM online_orders WHERE id = ?", (order["online_order_id"],)).fetchone()
+        if ol_order:
+            ol_st = ol_order["order_status"]
+            # Map standard online statuses to pharmacy
+            st_map = {
+                "delivered": "delivered",
+                "on_the_way": "on_the_way",
+                "packed": "packed",
+                "verified": "confirmed",
+                "cancelled": "cancelled"
+            }
+            if ol_st in st_map and st_map[ol_st] != current_status:
+                current_status = st_map[ol_st]
+                conn.execute(
+                    "UPDATE pharmacy_orders SET order_status = ?, assigned_rider_name = ?, assigned_rider_phone = ?, updated_at = ? WHERE id = ?",
+                    (current_status, ol_order["assigned_rider_name"], ol_order["assigned_rider_phone"], get_bd_now_iso(), order["id"])
+                )
+                conn.commit()
+
+    # Status names in Bengali
+    status_bn_map = {
+        "reviewing": "ফার্মাসিস্ট প্রেসক্রিপশন যাচাই করছেন",
+        "confirmed": "অর্ডার নিশ্চিত ও বিল তৈরি সম্পন্ন",
+        "packed": "ওষুধ প্যাকড সম্পন্ন (ডেলিভারির জন্য প্রস্তুত)",
+        "on_the_way": "ডেলিভারির পথে (রাইডারের কাছে হস্তান্তরিত)",
+        "delivered": "সফলভাবে ডেলিভার্ড হয়েছে",
+        "cancelled": "অর্ডারটি বাতিল করা হয়েছে"
+    }
+
+    try:
+        req_items = json.loads(order["requested_items_json"] or "[]")
+    except Exception:
+        req_items = []
+
+    try:
+        app_items = json.loads(order["approved_items_json"] or "[]")
+    except Exception:
+        app_items = []
+
+    result = {
+        "success": True,
+        "order_number": order["order_number"],
+        "order_type": order["order_type"],
+        "order_status": current_status,
+        "status_bn": status_bn_map.get(current_status, current_status),
+        "customer_name": order["customer_name"],
+        "customer_phone": order["customer_phone"],
+        "delivery_address": order["delivery_address"],
+        "district": order["district"],
+        "area": order["area"],
+        "prescription_url": order["prescription_url"],
+        "prescription_original_url": order["prescription_original_url"] or order["prescription_url"],
+        "prescription_enhanced_url": order["prescription_enhanced_url"] or order["prescription_url"],
+        "overall_duration_days": order["overall_duration_days"],
+        "customer_notes": order["customer_notes"],
+        "requested_items": req_items,
+        "approved_items": app_items,
+        "subtotal": order["subtotal"],
+        "delivery_charge": order["delivery_charge"],
+        "total_amount": order["total_amount"],
+        "delivery_otp": order["delivery_otp"],
+        "assigned_rider_name": order["assigned_rider_name"],
+        "assigned_rider_phone": order["assigned_rider_phone"],
+        "admin_notes": order["admin_notes"],
+        "created_at": order["created_at"],
+        "confirmed_at": order["confirmed_at"],
+        "packed_at": order["packed_at"],
+        "on_the_way_at": order["on_the_way_at"],
+        "delivered_at": order["delivered_at"]
+    }
+    conn.close()
+    return jsonify(result)
+
+
+# -----------------------------------------------------------------------------
+# ADMIN & PHARMACIST COUNTER CONTROLS
+# -----------------------------------------------------------------------------
+
+@app.route("/admin/pharmacy-orders")
+@login_required
+def admin_pharmacy_orders():
+    """Admin & Pharmacist Counter Portal (Prescription review, bill generator, price updater)"""
+    conn = get_connection()
+    status_filter = request.args.get("status", "").strip()
+    search_q = request.args.get("q", "").strip()
+
+    sql = "SELECT * FROM pharmacy_orders WHERE 1=1"
+    params = []
+
+    if status_filter:
+        sql += " AND order_status = ?"
+        params.append(status_filter)
+
+    if search_q:
+        sql += " AND (order_number LIKE ? OR customer_phone LIKE ? OR customer_name LIKE ?)"
+        s_wild = f"%{search_q}%"
+        params.extend([s_wild, s_wild, s_wild])
+
+    sql += " ORDER BY id DESC LIMIT 100"
+    orders = conn.execute(sql, params).fetchall()
+
+    # Active riders for assignment
+    riders = conn.execute("SELECT id, username, full_name, phone FROM users WHERE role = 'delivery' ORDER BY username ASC").fetchall()
+
+    # Catalog medicines for quick review
+    medicines = conn.execute("SELECT * FROM pharmacy_medicines WHERE is_active = 1 ORDER BY name ASC").fetchall()
+
+    settings = get_all_settings(conn)
+    conn.close()
+
+    return render_template(
+        "admin_pharmacy.html",
+        orders=orders,
+        riders=riders,
+        medicines=medicines,
+        settings=settings,
+        active_status=status_filter,
+        search_query=search_q
+    )
+
+
+@app.route("/api/admin/pharmacy/orders/<int:order_id>/review", methods=["GET"])
+@login_required
+def api_admin_pharmacy_review(order_id):
+    """Fetches full order details for pharmacist inspection modal"""
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "Order not found."}), 404
+
+    data = dict(order)
+    try:
+        data["requested_items"] = json.loads(order["requested_items_json"] or "[]")
+    except Exception:
+        data["requested_items"] = []
+
+    try:
+        data["approved_items"] = json.loads(order["approved_items_json"] or "[]")
+    except Exception:
+        data["approved_items"] = []
+
+    conn.close()
+    return jsonify({"success": True, "order": data})
+
+
+@app.route("/api/admin/pharmacy/orders/<int:order_id>/generate-bill", methods=["POST"])
+@login_required
+def api_admin_pharmacy_generate_bill(order_id):
+    """
+    Admin / Pharmacist reviews prescription, adds/modifies medicines,
+    sets quantities and unit prices, and confirms the order with calculated bill.
+    Synchronizes with online_orders for rider & receipt generation.
+    """
+    req_data = request.json or {}
+    items = req_data.get("items") or []
+    admin_notes = (req_data.get("admin_notes") or "").strip()
+    try:
+        delivery_charge = float(req_data.get("delivery_charge") or 50.0)
+    except Exception:
+        delivery_charge = 50.0
+
+    if not items:
+        return jsonify({"success": False, "message": "অনুগ্রহ করে কমপক্ষে একটি ওষুধ বিলে যোগ করুন।"}), 400
+
+    processed_items = []
+    subtotal = 0.0
+    for it in items:
+        name = (it.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            qty = int(it.get("quantity") or 1)
+        except Exception:
+            qty = 1
+        unit_price = float(it.get("unit_price") or 0.0)
+        line_total = round(qty * unit_price, 2)
+        subtotal += line_total
+
+        processed_items.append({
+            "medicine_id": it.get("medicine_id"),
+            "name": name,
+            "generic_name": it.get("generic_name") or "",
+            "dosage_form": it.get("dosage_form") or "ট্যাবলেট",
+            "strength": it.get("strength") or "",
+            "quantity": qty,
+            "unit": it.get("unit") or "পিস",
+            "unit_price": unit_price,
+            "total_price": line_total
+        })
+
+    subtotal = round(subtotal, 2)
+    grand_total = round(subtotal + delivery_charge, 2)
+    now_iso = get_bd_now_iso()
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # 1. Update pharmacy_orders
+    cur.execute("""
+        UPDATE pharmacy_orders SET
+            approved_items_json = ?,
+            subtotal = ?,
+            delivery_charge = ?,
+            total_amount = ?,
+            admin_notes = ?,
+            order_status = 'confirmed',
+            confirmed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (
+        json.dumps(processed_items, ensure_ascii=False),
+        subtotal, delivery_charge, grand_total,
+        admin_notes, now_iso, now_iso, order_id
+    ))
+
+    # 2. Synchronize with online_orders & online_order_items
+    order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
+    if order and order["online_order_id"]:
+        ol_id = order["online_order_id"]
+        cur.execute("""
+            UPDATE online_orders SET
+                subtotal = ?,
+                delivery_charge = ?,
+                total_amount = ?,
+                order_status = 'verified',
+                confirmed_at = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (subtotal, delivery_charge, grand_total, now_iso, now_iso, ol_id))
+
+        # Re-populate online_order_items
+        _fp = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+        _valid_pid = _fp["id"] if _fp else 1
+        cur.execute("DELETE FROM online_order_items WHERE order_id = ?", (ol_id,))
+        for itm in processed_items:
+            cur.execute("""
+                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (ol_id, _valid_pid, f"💊 {itm['name']} ({itm.get('strength', '')})", itm['unit_price'], itm['unit_price'], itm['quantity'], itm['total_price']))
+
+        try:
+            remote_control.push_online_order_to_cloud(ol_id)
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": f"অর্ডার #{order['order_number']} এর বিল সফলভাবে নিশ্চিত করা হয়েছে (মোট বিল: ৳{grand_total})। গ্রাহক নোটিফিকেশন দেখতে পারবেন।"
+    })
+
+
+@app.route("/api/admin/pharmacy/orders/<int:order_id>/update-status", methods=["POST"])
+@login_required
+def api_admin_pharmacy_update_status(order_id):
+    """
+    Updates the lifecycle status of a pharmacy order:
+    'packed' -> 'on_the_way' (with rider assignment) -> 'delivered' (with OTP check) -> 'cancelled'
+    """
+    order_id = request.view_args.get("order_id")
+    data = request.json or request.form
+    new_status = (data.get("status") or "").strip()
+    rider_id = data.get("rider_id")
+    otp_code = (data.get("otp") or "").strip()
+
+    valid_statuses = ["reviewing", "confirmed", "packed", "on_the_way", "delivered", "cancelled"]
+    if new_status not in valid_statuses:
+        return jsonify({"success": False, "message": "অবৈধ স্ট্যাটাস।"}), 400
+
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "অর্ডার পাওয়া যায়নি।"}), 404
+
+    # OTP check if marking delivered
+    if new_status == "delivered":
+        if otp_code and otp_code != order["delivery_otp"]:
+            conn.close()
+            return jsonify({"success": False, "message": "ভুল ডেলিভারি ওটিপি কোড! অনুগ্রহ করে গ্রাহকের ৪ ডিজিট কোড মিলিয়ে দিন।"}), 400
+
+    now_iso = get_bd_now_iso()
+    rider_name = order["assigned_rider_name"]
+    rider_phone = order["assigned_rider_phone"]
+
+    if rider_id:
+        rider = conn.execute("SELECT * FROM users WHERE id = ?", (rider_id,)).fetchone()
+        if rider:
+            rider_name = rider["full_name"] if rider["full_name"] else rider["username"]
+            rider_phone = rider["username"]
+
+    cur = conn.cursor()
+    
+    # Update pharmacy_orders
+    time_col = ""
+    if new_status == "packed":
+        time_col = ", packed_at = ?"
+    elif new_status == "on_the_way":
+        time_col = ", on_the_way_at = ?"
+    elif new_status == "delivered":
+        time_col = ", delivered_at = ?"
+    elif new_status == "cancelled":
+        time_col = ", cancelled_at = ?"
+
+    query = f"""
+        UPDATE pharmacy_orders SET
+            order_status = ?,
+            assigned_rider_id = COALESCE(?, assigned_rider_id),
+            assigned_rider_name = ?,
+            assigned_rider_phone = ?,
+            updated_at = ?
+            {time_col}
+        WHERE id = ?
+    """
+    params = [new_status, rider_id, rider_name, rider_phone, now_iso]
+    if time_col:
+        params.append(now_iso)
+    params.append(order_id)
+
+    cur.execute(query, params)
+
+    # Sync with online_orders
+    if order["online_order_id"]:
+        ol_id = order["online_order_id"]
+        ol_st_map = {
+            "reviewing": "new",
+            "confirmed": "verified",
+            "packed": "packed",
+            "on_the_way": "on_the_way",
+            "delivered": "delivered",
+            "cancelled": "cancelled"
+        }
+        target_ol_st = ol_st_map.get(new_status, new_status)
+        cur.execute("""
+            UPDATE online_orders SET
+                order_status = ?,
+                assigned_rider_id = COALESCE(?, assigned_rider_id),
+                assigned_rider_name = ?,
+                assigned_rider_phone = ?,
+                payment_status = CASE WHEN ? = 'delivered' THEN 'paid' ELSE payment_status END,
+                updated_at = ?
+            WHERE id = ?
+        """, (target_ol_st, rider_id, rider_name, rider_phone, new_status, now_iso, ol_id))
+
+        try:
+            remote_control.push_online_order_to_cloud(ol_id)
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": f"অর্ডার স্ট্যাটাস সফলভাবে '{new_status}' করা হয়েছে।"})
+
+
+@app.route("/api/admin/pharmacy/medicines/save", methods=["POST"])
+@login_required
+def api_admin_pharmacy_save_medicine():
+    """
+    Adds or updates a medicine in the database.
+    Allows real-time price updates (Rule 5: 'খেয়াল রাখতে হবে যেন নতুন দাম ও প্রোডাক্ট আপডেট থাকে')
+    """
+    data = request.json or request.form
+    med_id = data.get("id")
+    name = (data.get("name") or "").strip()
+    generic_name = (data.get("generic_name") or "").strip()
+    dosage_form = (data.get("dosage_form") or "ট্যাবলেট").strip()
+    strength = (data.get("strength") or "").strip()
+    manufacturer = (data.get("manufacturer") or "").strip()
+    description = (data.get("description") or "").strip()
+    
+    try:
+        unit_price = float(data.get("unit_price") or 0.0)
+    except Exception:
+        unit_price = 0.0
+
+    try:
+        strip_price = float(data.get("strip_price") or 0.0)
+    except Exception:
+        strip_price = 0.0
+
+    try:
+        strip_size = int(data.get("strip_size") or 10)
+    except Exception:
+        strip_size = 10
+
+    try:
+        stock_qty = int(data.get("stock_qty") or 999)
+    except Exception:
+        stock_qty = 999
+
+    is_rx = 1 if data.get("is_prescription_required") in [1, "1", True, "true"] else 0
+    now_iso = get_bd_now_iso()
+
+    if not name:
+        return jsonify({"success": False, "message": "ঔষধের নাম প্রদান করা আবশ্যক।"}), 400
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if med_id:
+        cur.execute("""
+            UPDATE pharmacy_medicines SET
+                name = ?, generic_name = ?, dosage_form = ?, strength = ?,
+                manufacturer = ?, unit_price = ?, strip_price = ?, strip_size = ?,
+                stock_qty = ?, is_prescription_required = ?, description = ?, updated_at = ?
+            WHERE id = ?
+        """, (name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
+        msg = f"'{name}' এর তথ্য ও মূল্য সফলভাবে আপডেট করা হয়েছে।"
+    else:
+        cur.execute("""
+            INSERT INTO pharmacy_medicines (
+                name, generic_name, dosage_form, strength, manufacturer,
+                unit_price, strip_price, strip_size, stock_qty, is_prescription_required,
+                image_url, description, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
+        """, (name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
+        msg = f"নতুন ঔষধ '{name}' সফলভাবে ক্যাটালগে যুক্ত করা হয়েছে।"
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": msg})
+
+
+@app.route("/api/admin/pharmacy/orders/<int:order_id>/update-prescription", methods=["POST"])
+@login_required
+def api_admin_pharmacy_update_prescription(order_id):
+    """
+    Admin re-crops or enhances customer prescription image.
+    Preserves original photo while updating enhanced prescription URL.
+    """
+    data = request.json or request.form
+    enhanced_base64 = data.get("prescription_base64")
+    if not enhanced_base64:
+        return jsonify({"success": False, "message": "কোনো পরিবর্তিত ছবি পাওয়া যায়নি।"}), 400
+
+    new_url, _ = _save_base64_image(enhanced_base64, prefix="rx_admin_enhanced")
+    if not new_url:
+        return jsonify({"success": False, "message": "ছবি প্রসেস করতে সমস্যা হয়েছে।"}), 500
+
+    conn = get_connection()
+    now_iso = get_bd_now_iso()
+    conn.execute(
+        "UPDATE pharmacy_orders SET prescription_url = ?, prescription_enhanced_url = ?, updated_at = ? WHERE id = ?",
+        (new_url, new_url, now_iso, order_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "new_url": new_url,
+        "message": "প্রেসক্রিপশন সফলভাবে ক্রপ ও এনহ্যান্স করে আপডেট করা হয়েছে।"
+    })
+
+
+@app.route("/api/admin/pharmacy/medicines/<int:med_id>/delete", methods=["POST"])
+@login_required
+def api_admin_pharmacy_delete_medicine(med_id):
+    """Soft delete / deactivate a medicine from the pharmacy catalog"""
+    conn = get_connection()
+    conn.execute("UPDATE pharmacy_medicines SET is_active = 0, updated_at = ? WHERE id = ?", (get_bd_now_iso(), med_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "ঔষধটি সফলভাবে নিষ্ক্রিয় করা হয়েছে।"})
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

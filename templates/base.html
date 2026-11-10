@@ -115,6 +115,9 @@
     <a href="{{ url_for('online_orders') }}" class="sidebar-item {{ 'active' if request.path == '/online_orders' }}">
       <span class="sidebar-icon">📱</span><span>Online Orders</span>
     </a>
+    <a href="/admin/pharmacy-orders" class="sidebar-item {{ 'active' if request.path == '/admin/pharmacy-orders' }}">
+      <span class="sidebar-icon">💊</span><span>ফার্মেসী অর্ডার</span>
+    </a>
     <a href="{{ url_for('returned_items') }}" class="sidebar-item {{ 'active' if request.path == '/returned_items' }}">
       <span class="sidebar-icon">🚫</span><span>Returned / Expired</span>
     </a>

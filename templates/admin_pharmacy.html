@@ -1,0 +1,1491 @@
+{% extends "base.html" %}
+{% block title %}ফার্মেসী ও প্রেসক্রিপশন অর্ডার ম্যানেজমেন্ট - {{ settings.shop_name or 'DOINEEK' }}{% endblock %}
+
+{% block content %}
+<div style="font-family: 'Hind Siliguri', sans-serif;">
+
+  <!-- Header Section -->
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.8rem;">💊</span>
+        <h1 style="margin: 0; font-size: 1.7rem; font-weight: 800; color: #0f172a;">ফার্মেসী ও প্রেসক্রিপশন অর্ডার</h1>
+      </div>
+      <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.92rem;">
+        প্রেসক্রিপশন পর্যালোচনা, বিল জেনারেট, রাইডার অ্যাসাইন ও ঔষধ ক্যাটালগ ব্যবস্থাপনা
+      </p>
+    </div>
+
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <a href="/pharmacy" target="_blank" style="background: #059669; color: white; padding: 10px 16px; border-radius: 8px; font-weight: 700; text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+        <span>🌐</span> <span>কাস্টমার ফার্মেসী পেজ</span>
+      </a>
+      <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+        <span>🔄</span> <span>রিফ্রেশ</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Top Navigation Tabs (Orders vs Medicines Catalog) -->
+  <div style="display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
+    <button id="tabBtnOrders" onclick="switchAdminTab('orders')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #059669; border-bottom: 3px solid #059669; margin-bottom: -2px;">
+      📋 প্রেসক্রিপশন অর্ডারসমূহ (<span id="totalOrdersCount">{{ orders|length }}</span>)
+    </button>
+    <button id="tabBtnMedicines" onclick="switchAdminTab('medicines')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #64748b;">
+      💊 ঔষধ তালিকা ও মূল্য আপডেট (<span id="totalMedsCount">{{ medicines|length }}</span>)
+    </button>
+  </div>
+
+  <!-- ==================== TAB 1: ORDERS LIST ==================== -->
+  <div id="tabContentOrders">
+
+    <!-- Filters & Search Bar -->
+    <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+      
+      <!-- Filter Status Pills -->
+      <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+        <a href="/admin/pharmacy-orders" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#059669; color:white;' if not active_status else 'background:#f1f5f9; color:#475569;' }}">
+          সব অর্ডার
+        </a>
+        <a href="/admin/pharmacy-orders?status=reviewing" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#ea580c; color:white;' if active_status == 'reviewing' else 'background:#fff7ed; color:#c2410c;' }}">
+          ⏳ যাচাই বাকি
+        </a>
+        <a href="/admin/pharmacy-orders?status=confirmed" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#8b5cf6; color:white;' if active_status == 'confirmed' else 'background:#f5f3ff; color:#6d28d9;' }}">
+          ✅ অনুমোদিত
+        </a>
+        <a href="/admin/pharmacy-orders?status=packed" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#f59e0b; color:white;' if active_status == 'packed' else 'background:#fffbeb; color:#b45309;' }}">
+          📦 প্যাকড
+        </a>
+        <a href="/admin/pharmacy-orders?status=on_the_way" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#06b6d4; color:white;' if active_status == 'on_the_way' else 'background:#ecfeff; color:#0e7490;' }}">
+          🛵 ডেলিভারির পথে
+        </a>
+        <a href="/admin/pharmacy-orders?status=delivered" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#10b981; color:white;' if active_status == 'delivered' else 'background:#ecfdf5; color:#047857;' }}">
+          🎉 ডেলিভার্ড
+        </a>
+      </div>
+
+      <!-- Live Search Box -->
+      <form method="GET" action="/admin/pharmacy-orders" style="display: flex; gap: 8px; align-items: center; min-width: 280px;">
+        <input type="text" name="q" value="{{ search_query }}" placeholder="অর্ডার নং বা মোবাইল দিয়ে খুঁজুন..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 100%;">
+        <button type="submit" style="background: #334155; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; cursor: pointer;">খুঁজুন</button>
+      </form>
+    </div>
+
+    <!-- Orders Table -->
+    <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow-x: auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);">
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.92rem;">
+        <thead>
+          <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800;">
+            <th style="padding: 12px 16px;">অর্ডার নং ও সময়</th>
+            <th style="padding: 12px 16px;">গ্রাহক ও ঠিকানা</th>
+            <th style="padding: 12px 16px; text-align: center;">প্রেসক্রিপশন</th>
+            <th style="padding: 12px 16px;">মেয়াদ ও ওষুধের চাহিদা</th>
+            <th style="padding: 12px 16px;">মোট বিল</th>
+            <th style="padding: 12px 16px;">বর্তমান স্ট্যাটাস</th>
+            <th style="padding: 12px 16px; text-align: center;">অ্যাকশন</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if orders %}
+            {% for order in orders %}
+            {% set st = order.order_status %}
+            {% set st_bg = '#ffedd5' if st == 'reviewing' else ('#f5f3ff' if st == 'confirmed' else ('#fef3c7' if st == 'packed' else ('#cffafe' if st == 'on_the_way' else ('#d1fae5' if st == 'delivered' else '#fee2e2')))) %}
+            {% set st_color = '#c2410c' if st == 'reviewing' else ('#6d28d9' if st == 'confirmed' else ('#b45309' if st == 'packed' else ('#0e7490' if st == 'on_the_way' else ('#047857' if st == 'delivered' else '#b91c1c')))) %}
+            {% set st_text = 'যাচাই বাকি' if st == 'reviewing' else ('অনুমোদিত' if st == 'confirmed' else ('প্যাকড' if st == 'packed' else ('অন দ্য ওয়ে' if st == 'on_the_way' else ('ডেলিভার্ড' if st == 'delivered' else 'বাতিল')))) %}
+
+            <tr style="border-bottom: 1px solid #e2e8f0; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+              <td style="padding: 14px 16px; vertical-align: top;">
+                <div style="font-weight: 800; font-family: monospace; font-size: 0.98rem; color: #0f172a;">{{ order.order_number }}</div>
+                <div style="font-size: 0.78rem; color: #64748b; margin-top: 3px;">{{ order.created_at[:16].replace('T', ' ') }}</div>
+                <div style="margin-top: 4px;">
+                  <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3;">
+                    {{ '📸 শুধু প্রেসক্রিপশন' if order.order_type == 'prescription_only' else ('💊 শুধু ওষুধ' if order.order_type == 'medicines_only' else '🔄 উভয় একসাথে') }}
+                  </span>
+                </div>
+              </td>
+
+              <td style="padding: 14px 16px; vertical-align: top;">
+                <div style="font-weight: 700; color: #0f172a;">{{ order.customer_name }}</div>
+                <div style="font-size: 0.84rem; color: #2563eb; margin-top: 2px; font-weight: 600;">
+                  📞 {{ order.customer_phone }}
+                  <a href="tel:{{ order.customer_phone }}" style="margin-left: 4px; background:#eff6ff; padding:2px 6px; border-radius:4px; text-decoration:none; font-size:0.75rem;">Call</a>
+                  <a href="https://wa.me/88{{ order.customer_phone }}" target="_blank" style="margin-left: 2px; background:#ecfdf5; color:#047857; padding:2px 6px; border-radius:4px; text-decoration:none; font-size:0.75rem;">WhatsApp</a>
+                </div>
+                <div style="font-size: 0.8rem; color: #475569; margin-top: 4px;">
+                  📍 {{ order.area }}, {{ order.district }}<br>
+                  <span style="color: #64748b;">{{ order.delivery_address }}</span>
+                </div>
+              </td>
+
+              <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
+                {% if order.prescription_url %}
+                <div style="cursor: pointer; display: inline-block;" onclick="openImageZoom('{{ order.prescription_url }}')">
+                  <img src="{{ order.prescription_url }}" alt="RX" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1.5px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                  <div style="font-size: 0.72rem; color: #059669; font-weight: 700; margin-top: 2px;">🔍 বড় দেখুন</div>
+                </div>
+                {% else %}
+                <span style="color: #94a3b8; font-size: 0.8rem;">(নেই)</span>
+                {% endif %}
+              </td>
+
+              <td style="padding: 14px 16px; vertical-align: top;">
+                <div style="font-weight: 700; color: #059669; font-size: 0.85rem;">
+                  ⏱️ মেয়াদ: {{ order.overall_duration_days }} দিনের ওষুধ
+                </div>
+                {% if order.customer_notes %}
+                <div style="font-size: 0.8rem; color: #334155; background: #f8fafc; border: 1px dashed #cbd5e1; padding: 4px 8px; border-radius: 6px; margin-top: 4px;">
+                  💬 <em>"{{ order.customer_notes }}"</em>
+                </div>
+                {% endif %}
+              </td>
+
+              <td style="padding: 14px 16px; vertical-align: top;">
+                <div style="font-weight: 800; font-size: 1rem; color: #0f172a;">
+                  ৳{{ "%.2f"|format(order.total_amount) }}
+                </div>
+                <div style="font-size: 0.75rem; color: #64748b;">(ডেলিভারি: ৳{{ "%.2f"|format(order.delivery_charge) }})</div>
+              </td>
+
+              <td style="padding: 14px 16px; vertical-align: top;">
+                <span style="display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 800; background: {{ st_bg }}; color: {{ st_color }};">
+                  {{ st_text }}
+                </span>
+                <div style="font-size: 0.78rem; color: #475569; margin-top: 4px;">
+                  🔑 OTP: <strong style="font-family: monospace; color: #b91c1c; background: #fee2e2; padding: 1px 5px; border-radius: 4px;">{{ order.delivery_otp }}</strong>
+                </div>
+                {% if order.assigned_rider_name %}
+                <div style="font-size: 0.75rem; color: #1e40af; margin-top: 4px;">
+                  🛵 {{ order.assigned_rider_name }}
+                </div>
+                {% endif %}
+              </td>
+
+              <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
+                <div style="display: flex; flex-direction: column; gap: 6px; align-items: center;">
+                  <button type="button" onclick="openReviewModal({{ order.id }})" style="background: #059669; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.82rem; cursor: pointer; width: 100%;">
+                    🔍 রিভিউ ও বিল
+                  </button>
+
+                  <button type="button" onclick="openStatusModal({{ order.id }}, '{{ order.order_number }}', '{{ order.order_status }}')" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; width: 100%;">
+                    ⚙️ স্ট্যাটাস পরিবর্তন
+                  </button>
+
+                  {% if order.online_order_id %}
+                  <a href="/online_orders/{{ order.online_order_id }}/invoice" target="_blank" style="background: #2563eb; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; text-decoration: none; display: block; width: 100%; box-sizing: border-box;">
+                    🖨️ ইনভয়েস
+                  </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="7" style="padding: 30px; text-align: center; color: #94a3b8;">
+                কোনো প্রেসক্রিপশন বা ফার্মেসী অর্ডার পাওয়া যায়নি।
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+
+  <!-- ==================== TAB 2: MEDICINE CATALOG & PRICE UPDATER ==================== -->
+  <div id="tabContentMedicines" style="display: none;">
+
+    <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <h2 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;">ঔষধ ক্যাটালগ ও মূল্য তালিকা</h2>
+        <p style="margin: 3px 0 0 0; color: #64748b; font-size: 0.85rem;">নতুন ওষুধ যুক্ত করুন বা সরাসরি মূল্য ও স্টক আপডেট করুন</p>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <input type="text" id="catalogSearchInput" oninput="filterCatalogTable()" placeholder="ওষুধের নাম বা ধরণ দিয়ে খুঁজুন..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 220px;">
+        <button type="button" onclick="openAddMedicineModal()" style="background: #059669; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 0.88rem;">
+          + নতুন ওষুধ যোগ করুন
+        </button>
+      </div>
+    </div>
+
+    <!-- Medicines Table with Inline Price Updating -->
+    <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;" id="catalogTable">
+        <thead>
+          <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800;">
+            <th style="padding: 12px 14px;">ওষুধের নাম ও জেনেরিক</th>
+            <th style="padding: 12px 14px;">ধরণ ও স্ট্রেন্থ</th>
+            <th style="padding: 12px 14px;">কোম্পানি / প্রস্তুতকারক</th>
+            <th style="padding: 12px 14px;">খুচরা মূল্য (পিস/বোতল)</th>
+            <th style="padding: 12px 14px;">পাতা মূল্য (Strip)</th>
+            <th style="padding: 12px 14px;">স্টক</th>
+            <th style="padding: 12px 14px; text-align: center;">অ্যাকশন</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for med in medicines %}
+          <tr id="medRow_{{ med.id }}" style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 12px 14px;">
+              <strong style="color: #0f172a; font-size: 0.95rem;">{{ med.name }}</strong>
+              <div style="font-size: 0.78rem; color: #64748b;">{{ med.generic_name }}</div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <span style="background: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 700;">
+                {{ med.dosage_form }}
+              </span>
+              {% if med.strength %}
+              <span style="font-size: 0.78rem; color: #475569; margin-left: 4px;">{{ med.strength }}</span>
+              {% endif %}
+            </td>
+            <td style="padding: 12px 14px; color: #475569; font-size: 0.85rem;">
+              {{ med.manufacturer or 'N/A' }}
+            </td>
+            <td style="padding: 12px 14px;">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-weight: 700; color: #64748b;">৳</span>
+                <input type="number" step="0.10" id="medPrice_{{ med.id }}" value="{{ med.unit_price }}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #059669; font-size: 0.9rem;">
+              </div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-weight: 700; color: #64748b;">৳</span>
+                <input type="number" step="0.50" id="medStripPrice_{{ med.id }}" value="{{ med.strip_price }}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.9rem;">
+              </div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <input type="number" id="medStock_{{ med.id }}" value="{{ med.stock_qty }}" style="width: 70px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 600; font-size: 0.9rem;">
+            </td>
+            <td style="padding: 12px 14px; text-align: center;">
+              <div style="display: flex; gap: 6px; justify-content: center;">
+                <button type="button" onclick="saveQuickMedPrice({{ med.id }})" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
+                  💾 সেভ
+                </button>
+                <button type="button" onclick="openEditMedModal({{ med.id }})" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
+                  ✏️
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- ==================== MODAL 1: PRESCRIPTION REVIEW & BILL GENERATOR ==================== -->
+<div id="reviewModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: white; border-radius: 16px; width: 100%; max-width: 1050px; max-height: 92vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35); display: flex; flex-direction: column;">
+    
+    <!-- Modal Header -->
+    <div style="background: #059669; color: white; padding: 16px 20px; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800;">প্রেসক্রিপশন পর্যালোচনা ও বিল জেনারেট</h3>
+        <p id="reviewOrderNumSubtitle" style="margin: 2px 0 0 0; font-size: 0.85rem; color: #d1fae5; font-family: monospace;">অর্ডার নং: RX-...</p>
+      </div>
+      <button type="button" onclick="closeReviewModal()" style="background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.5rem; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;">&times;</button>
+    </div>
+
+    <!-- Modal Body (Two Column Layout: Left Prescription / Right Bill Builder) -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; flex: 1;" id="modalColumnsGrid">
+      
+      <!-- Left Column: Prescription Viewer with Original vs CamScanner Toggle & Admin Cropper -->
+      <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+          <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #0f172a;">📄 প্রেসক্রিপশন কপি</h4>
+          
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button type="button" id="adminBtnToggleEnhanced" onclick="adminTogglePrescriptionView('enhanced')" style="background: #059669; color: white; border: none; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
+              ✨ এনহ্যান্সড
+            </button>
+            <button type="button" id="adminBtnToggleOriginal" onclick="adminTogglePrescriptionView('original')" style="background: #e2e8f0; color: #334155; border: none; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
+              🖼️ আসল ছবি
+            </button>
+            <button type="button" onclick="rotateImage()" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">🔄 রোটেট</button>
+            <button type="button" onclick="openAdminCropModal()" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
+              📐 ক্রপ ও ফিল্টার
+            </button>
+            <a id="reviewRxDownloadLink" href="#" target="_blank" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-decoration: none; color: #0f172a;">🔍 ফুল ভিউ</a>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-height: 380px; max-height: 480px; overflow: auto; background: #020617; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative;">
+          <img id="reviewRxImage" src="" alt="Prescription" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.3s ease;">
+          <div id="noRxNotice" style="display: none; color: #94a3b8; font-size: 0.9rem;">কোনো প্রেসক্রিপশন ছবি আপলোড করা হয়নি। (শুধুমাত্র ওষুধ সিলেক্ট করা হয়েছে)</div>
+        </div>
+
+        <!-- Customer Note & Duration Info Box -->
+        <div style="margin-top: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px; font-size: 0.85rem;">
+          <div style="font-weight: 800; color: #92400e;" id="reviewCustDuration">⏱️ গ্রাহকের চাওয়া: ৭ দিনের ওষুধ</div>
+          <div style="color: #78350f; margin-top: 4px;" id="reviewCustNotes">💬 নোট: -</div>
+        </div>
+      </div>
+
+      <!-- Right Column: Medicine Builder & Bill Calculation -->
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        
+        <!-- Customer Info Summary -->
+        <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-weight: 800; color: #0f172a;" id="reviewCustName">নাম: -</div>
+            <div style="color: #2563eb; font-weight: 600;" id="reviewCustPhone">মোবাইল: -</div>
+          </div>
+          <div style="text-align: right; color: #475569;" id="reviewCustAddr">
+            ঠিকানা: -
+          </div>
+        </div>
+
+        <!-- Medicine Search to Add to Bill -->
+        <div style="position: relative;">
+          <label style="display: block; font-weight: 800; font-size: 0.85rem; color: #0f172a; margin-bottom: 4px;">
+            + প্রেসক্রিপশন দেখে ওষুধ সার্চ করে বিলে যোগ করুন:
+          </label>
+          <input type="text" id="billMedSearchInput" oninput="searchMedicinesForBill()" placeholder="ঔষধের নাম টাইপ করুন (যেমন: Napa, Seclo, Tofen)..." style="width: 100%; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          
+          <div id="billMedDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1.5px solid #cbd5e1; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); margin-top: 2px;"></div>
+        </div>
+
+        <!-- Bill Items Table -->
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; max-height: 240px; overflow-y: auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+            <thead>
+              <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #475569; font-weight: 800;">
+                <th style="padding: 8px 10px; text-align: left;">ওষুধের বিবরণ</th>
+                <th style="padding: 8px 10px; text-align: center; width: 80px;">পরিমাণ</th>
+                <th style="padding: 8px 10px; text-align: right; width: 85px;">একক মূল্য</th>
+                <th style="padding: 8px 10px; text-align: right; width: 85px;">মোট (৳)</th>
+                <th style="padding: 8px 6px; text-align: center; width: 36px;"></th>
+              </tr>
+            </thead>
+            <tbody id="billItemsTableBody">
+              <tr>
+                <td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">কোনো ওষুধ এখনো যোগ করা হয়নি।</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Bill Calculations & Delivery Fee -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; space-y: 8px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.88rem; color: #475569; margin-bottom: 6px;">
+            <span>ওষুধের সাব-টোটাল:</span>
+            <span style="font-weight: 800; color: #0f172a;" id="billSubtotalTxt">৳০.০০</span>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; color: #475569; margin-bottom: 6px;">
+            <span>ডেলিভারি চার্জ (৳):</span>
+            <input type="number" id="billDeliveryChargeInput" oninput="recalcBillTotals()" value="50" style="width: 70px; padding: 3px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700;">
+          </div>
+
+          <div style="display: flex; justify-content: space-between; font-size: 1.05rem; font-weight: 900; color: #059669; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+            <span>সর্বমোট বিল (ক্যাশ অন ডেলিভারি):</span>
+            <span id="billGrandTotalTxt">৳৫০.০০</span>
+          </div>
+        </div>
+
+        <!-- Pharmacist Advice / Notes -->
+        <div>
+          <label style="display: block; font-weight: 800; font-size: 0.82rem; color: #475569; margin-bottom: 4px;">ফার্মাসিস্ট পরামর্শ / নির্দেশনা (গ্রাহক দেখতে পারবেন):</label>
+          <input type="text" id="billAdminNotesInput" placeholder="যেমন: গ্যাস্ট্রিকের ওষুধ সকালে খালি পেটে খাবেন..." style="width: 100%; padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem; box-sizing: border-box;">
+        </div>
+
+        <!-- Confirm and Save Button -->
+        <button type="button" id="btnConfirmBillOrder" onclick="saveAndConfirmBill()" style="background: #059669; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 0.95rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px;">
+          <span>✅</span> <span>বিল নিশ্চিত ও অর্ডার কনফার্ম করুন</span>
+        </button>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ==================== MODAL 2: STATUS & RIDER ASSIGNMENT ==================== -->
+<div id="statusModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: white; border-radius: 14px; max-width: 450px; width: 100%; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">অর্ডার স্ট্যাটাস ও রাইডার আপডেট</h3>
+      <button type="button" onclick="closeStatusModal()" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b;">&times;</button>
+    </div>
+
+    <input type="hidden" id="statusOrderId">
+    <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 12px;">
+      অর্ডার নম্বর: <strong style="font-family: monospace; color: #0f172a;" id="statusOrderNumberTxt">RX-...</strong>
+    </div>
+
+    <div style="margin-bottom: 14px;">
+      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">নতুন স্ট্যাটাস নির্বাচন করুন:</label>
+      <select id="statusSelect" onchange="onStatusSelectChange()" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; font-weight: 600;">
+        <option value="reviewing">⏳ যাচাই বাকি (Reviewing)</option>
+        <option value="confirmed">✅ অনুমোদিত (Confirmed)</option>
+        <option value="packed">📦 প্যাকড সম্পন্ন (Packed)</option>
+        <option value="on_the_way">🛵 ডেলিভারির পথে (On The Way)</option>
+        <option value="delivered">🎉 ডেলিভার্ড সম্পন্ন (Delivered)</option>
+        <option value="cancelled">❌ বাতিল (Cancelled)</option>
+      </select>
+    </div>
+
+    <div id="riderSelectBox" style="margin-bottom: 14px;">
+      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">ডেলিভারি রাইডার নির্বাচন করুন:</label>
+      <select id="riderSelect" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;">
+        <option value="">-- রাইডার নির্বাচন করুন --</option>
+        {% for rider in riders %}
+        <option value="{{ rider.id }}">{{ rider.full_name or rider.username }} ({{ rider.username }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div id="otpInputBox" style="margin-bottom: 14px; display: none;">
+      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">গ্রাহকের ৪ ডিজিট ডেলিভারি OTP কোড:</label>
+      <input type="text" id="statusOtpInput" maxlength="4" placeholder="গ্রাহকের ওটিপি কোড লিখুন" style="width: 100%; padding: 9px 12px; border: 2px solid #f59e0b; border-radius: 8px; font-size: 1rem; font-family: monospace; text-align: center; letter-spacing: 4px;">
+    </div>
+
+    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+      <button type="button" onclick="closeStatusModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">বাতিল</button>
+      <button type="button" onclick="saveStatusUpdate()" style="padding: 8px 18px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">আপডেট করুন</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ==================== MODAL 3: ADD / EDIT MEDICINE (PRICE UPDATER) ==================== -->
+<div id="medModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: white; border-radius: 14px; max-width: 500px; width: 100%; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;" id="medModalTitle">নতুন ওষুধ যোগ করুন</h3>
+      <button type="button" onclick="closeMedModal()" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b;">&times;</button>
+    </div>
+
+    <form id="medForm" onsubmit="submitMedForm(event)" style="display: flex; flex-direction: column; gap: 12px;">
+      <input type="hidden" id="med_id" name="id">
+
+      <div>
+        <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">ওষুধের নাম (ট্রেড নাম) *</label>
+        <input type="text" id="form_name" name="name" required placeholder="যেমন: Napa Extra, Seclo 20mg, Savlon Liquid" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">ওষুধের ধরণ *</label>
+          <select id="form_dosage_form" name="dosage_form" required style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+            <option value="ট্যাবলেট">ট্যাবলেট (Tablet)</option>
+            <option value="ক্যাপসুল">ক্যাপসুল (Capsule)</option>
+            <option value="সিরাপ">সিরাপ (Syrup)</option>
+            <option value="ইনজেকশন">ইনজেকশন (Injection)</option>
+            <option value="ব্যান্ডেজ/ফার্স্ট এইড">গজ পট্টি ও ব্যান্ডেজ</option>
+            <option value="ড্রপ">ড্রপ (Eye/Ear Drop)</option>
+            <option value="মলম/ক্রিম">মলম ও ক্রিম (Cream/Ointment)</option>
+            <option value="সাসপেনশন">সাসপেনশন (Suspension)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">স্ট্রেন্থ / পাওয়ার</label>
+          <input type="text" id="form_strength" name="strength" placeholder="যেমন: 500mg, 20mg, 100ml" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">জেনেরিক নাম</label>
+          <input type="text" id="form_generic_name" name="generic_name" placeholder="যেমন: Paracetamol, Omeprazole" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">কোম্পানি / প্রস্তুতকারক</label>
+          <input type="text" id="form_manufacturer" name="manufacturer" placeholder="যেমন: Square, Beximco, Incepta" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">খুচরা মূল্য (৳) *</label>
+          <input type="number" step="0.10" id="form_unit_price" name="unit_price" required placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">পাতা মূল্য (৳)</label>
+          <input type="number" step="0.50" id="form_strip_price" name="strip_price" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">মজুদ স্টক</label>
+          <input type="number" id="form_stock_qty" name="stock_qty" value="999" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
+        <button type="button" onclick="closeMedModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">বাতিল</button>
+        <button type="submit" style="padding: 8px 20px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">সংরক্ষণ করুন</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ==================== MODAL 4: ADMIN CAMSCANNER 4-CORNER CROP & FILTER ==================== -->
+<div id="adminCropModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: white; border-radius: 16px; max-width: 580px; width: 100%; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); display: flex; flex-direction: column;">
+    
+    <div style="background: #0f172a; color: white; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+        <span>📐</span> <span>প্রেসক্রিপশন স্মার্ট ক্রপ ও ক্যামস্ক্যানার ফিল্টার</span>
+      </h3>
+      <button type="button" onclick="closeAdminCropModal()" style="background: none; border: none; color: #94a3b8; font-size: 1.6rem; cursor: pointer; line-height: 1;">&times;</button>
+    </div>
+
+    <!-- STAGE 1: Corner Crop & Loupe -->
+    <div id="adminCropStage1" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div style="position: relative; background: #020617; border-radius: 12px; overflow: hidden; height: 360px; display: flex; align-items: center; justify-content: center;" id="adminCropCanvasBox">
+        <canvas id="adminCropCanvas" style="cursor: crosshair; touch-action: none; max-width: 100%; max-height: 100%;"></canvas>
+        <canvas id="adminLoupeCanvas" width="104" height="104" style="display: none; position: absolute; top: 10px; left: 10px; border-radius: 50%; border: 2.5px solid #10b981; pointer-events: none; z-index: 20; background: #020617; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);"></canvas>
+      </div>
+
+      <div style="font-size: 0.8rem; background: #ecfdf5; color: #065f46; padding: 8px 12px; border-radius: 8px; border: 1px solid #a7f3d0; text-align: center;">
+        💡 প্রেসক্রিপশনের <b>৪টি কোণা টেনে</b> নিখুঁতভাবে সিলেক্ট করুন (টানার সময় কোণায় <b>জুম লুপ</b> দেখাবে)।
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid #e2e8f0;">
+        <button type="button" onclick="resetAdminCropCorners()" style="padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+          🔄 রিসেট
+        </button>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" onclick="closeAdminCropModal()" style="padding: 6px 14px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+            বাতিল
+          </button>
+          <button type="button" onclick="applyAdminPerspectiveWarp()" style="padding: 7px 18px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+            <span>✨</span> <span>সোজা ও ক্রপ করুন</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGE 2: Filter Selector & Save -->
+    <div id="adminCropStage2" style="display: none; padding: 16px; flex-direction: column; gap: 10px;">
+      <div style="position: relative; background: #020617; border-radius: 12px; overflow: hidden; height: 350px; display: flex; align-items: center; justify-content: center; padding: 6px;">
+        <canvas id="adminFilterCanvas" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px;"></canvas>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center;">
+        <button type="button" id="adminFx_magic_color" onclick="applyAdminFilter('magic_color')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; border: 2px solid #059669; background: #ecfdf5; color: #047857; cursor: pointer;">
+          ✨ ম্যাজিক কালার
+        </button>
+        <button type="button" id="adminFx_hd_clear" onclick="applyAdminFilter('hd_clear')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
+          🖋️ শার্প ক্লিয়ার
+        </button>
+        <button type="button" id="adminFx_bw_doc" onclick="applyAdminFilter('bw_doc')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
+          📄 সাদাকালো
+        </button>
+        <button type="button" id="adminFx_none" onclick="applyAdminFilter('none')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
+          🖼️ আসল ক্রপ
+        </button>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+        <button type="button" onclick="backToAdminCorners()" style="padding: 6px 14px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+          ◀ কোণা পরিবর্তন
+        </button>
+        <button type="button" id="btnAdminSaveEnhancedRx" onclick="saveAdminEnhancedPrescription()" style="padding: 7px 20px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+          <span>💾</span> <span>আপডেট সংরক্ষণ করুন</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- JavaScript Admin Logic -->
+<script>
+  let currentReviewOrderId = null;
+  let activeBillItems = [];
+  let currentRotation = 0;
+  let medicinesCatalog = [];
+  let currentOrderData = null;
+  let adminActivePrescriptionView = "enhanced"; // 'enhanced' or 'original'
+
+  function switchAdminTab(tab) {
+    const ordersTabBtn = document.getElementById("tabBtnOrders");
+    const medsTabBtn = document.getElementById("tabBtnMedicines");
+    const ordersContent = document.getElementById("tabContentOrders");
+    const medsContent = document.getElementById("tabContentMedicines");
+
+    if (tab === "orders") {
+      ordersTabBtn.style.color = "#059669";
+      ordersTabBtn.style.borderBottom = "3px solid #059669";
+      medsTabBtn.style.color = "#64748b";
+      medsTabBtn.style.borderBottom = "none";
+      ordersContent.style.display = "block";
+      medsContent.style.display = "none";
+    } else {
+      medsTabBtn.style.color = "#059669";
+      medsTabBtn.style.borderBottom = "3px solid #059669";
+      ordersTabBtn.style.color = "#64748b";
+      ordersTabBtn.style.borderBottom = "none";
+      medsContent.style.display = "block";
+      ordersContent.style.display = "none";
+    }
+  }
+
+  async function loadMedicinesMemory() {
+    try {
+      const res = await fetch("/api/pharmacy/medicines");
+      const d = await res.json();
+      if (d.success) medicinesCatalog = d.medicines;
+    } catch (e) {}
+  }
+  loadMedicinesMemory();
+
+  async function openReviewModal(orderId) {
+    currentReviewOrderId = orderId;
+    currentRotation = 0;
+    adminActivePrescriptionView = "enhanced";
+    
+    try {
+      const res = await fetch(`/api/admin/pharmacy/orders/${orderId}/review`);
+      const data = await res.json();
+      if (!data.success) {
+        alert("অর্ডার তথ্য লোড করতে সমস্যা হয়েছে।");
+        return;
+      }
+
+      const o = data.order;
+      currentOrderData = o;
+
+      document.getElementById("reviewOrderNumSubtitle").innerText = `অর্ডার নং: ${o.order_number} (${o.created_at.substring(0, 16).replace('T', ' ')})`;
+      document.getElementById("reviewCustName").innerText = `নাম: ${o.customer_name}`;
+      document.getElementById("reviewCustPhone").innerText = `মোবাইল: ${o.customer_phone}`;
+      document.getElementById("reviewCustAddr").innerHTML = `ঠিকানা: ${o.delivery_address}<br><small style="color:#64748b;">${o.area}, ${o.district}</small>`;
+      document.getElementById("reviewCustDuration").innerText = `⏱️ গ্রাহকের চাওয়া: ${o.overall_duration_days || '৭'} দিনের ওষুধ`;
+      document.getElementById("reviewCustNotes").innerText = `💬 নোট: ${o.customer_notes || '(কোনো অতিরিক্ত নোট নেই)'}`;
+      document.getElementById("billDeliveryChargeInput").value = o.delivery_charge || 50;
+      document.getElementById("billAdminNotesInput").value = o.admin_notes || "";
+
+      adminUpdatePrescriptionDisplay();
+
+      activeBillItems = (o.approved_items && o.approved_items.length > 0) ? o.approved_items : (o.requested_items || []);
+      renderBillTable();
+
+      document.getElementById("reviewModal").style.display = "flex";
+    } catch (err) {
+      alert("তথ্য লোড করা সম্ভব হয়নি।");
+    }
+  }
+
+  function adminTogglePrescriptionView(mode) {
+    adminActivePrescriptionView = mode;
+    adminUpdatePrescriptionDisplay();
+  }
+
+  function adminUpdatePrescriptionDisplay() {
+    if (!currentOrderData) return;
+    const o = currentOrderData;
+    const rxImg = document.getElementById("reviewRxImage");
+    const noRx = document.getElementById("noRxNotice");
+    const downLink = document.getElementById("reviewRxDownloadLink");
+    const btnEnh = document.getElementById("adminBtnToggleEnhanced");
+    const btnOrig = document.getElementById("adminBtnToggleOriginal");
+
+    const targetUrl = adminActivePrescriptionView === "original"
+      ? (o.prescription_original_url || o.prescription_url)
+      : (o.prescription_enhanced_url || o.prescription_url);
+
+    if (adminActivePrescriptionView === "enhanced") {
+      btnEnh.style.background = "#059669"; btnEnh.style.color = "white";
+      btnOrig.style.background = "#e2e8f0"; btnOrig.style.color = "#334155";
+    } else {
+      btnOrig.style.background = "#059669"; btnOrig.style.color = "white";
+      btnEnh.style.background = "#e2e8f0"; btnEnh.style.color = "#334155";
+    }
+
+    if (targetUrl) {
+      rxImg.src = targetUrl;
+      rxImg.style.transform = `rotate(${currentRotation}deg)`;
+      rxImg.style.display = "block";
+      noRx.style.display = "none";
+      downLink.href = targetUrl;
+      downLink.style.display = "inline-block";
+    } else {
+      rxImg.style.display = "none";
+      noRx.style.display = "block";
+      downLink.style.display = "none";
+    }
+  }
+
+  function closeReviewModal() {
+    document.getElementById("reviewModal").style.display = "none";
+    currentReviewOrderId = null;
+  }
+
+  function rotateImage() {
+    currentRotation = (currentRotation + 90) % 360;
+    document.getElementById("reviewRxImage").style.transform = `rotate(${currentRotation}deg)`;
+  }
+
+  function openImageZoom(url) {
+    window.open(url, '_blank');
+  }
+
+  // ==================== ADMIN 4-CORNER SMART CROP & LOUPE MAGNIFIER ====================
+  let adminSmartImg = new Image();
+  let adminSmartPts = [
+    { x: 0.05, y: 0.05 },
+    { x: 0.95, y: 0.05 },
+    { x: 0.95, y: 0.95 },
+    { x: 0.05, y: 0.95 }
+  ];
+  let adminActiveDragIdx = -1;
+  let adminSmartGeom = { pad: 12, drawW: 0, drawH: 0 };
+  let adminBaseWarpedCanvas = null;
+  let adminCurrentFx = "magic_color";
+
+  function openAdminCropModal() {
+    if (!currentOrderData || (!currentOrderData.prescription_original_url && !currentOrderData.prescription_url)) {
+      alert("ক্রপ করার মতো কোনো প্রেসক্রিপশন ছবি নেই।");
+      return;
+    }
+    const srcUrl = currentOrderData.prescription_original_url || currentOrderData.prescription_url;
+    
+    adminSmartImg = new Image();
+    adminSmartImg.crossOrigin = "anonymous";
+    adminSmartImg.onload = function() {
+      resetAdminCropCorners();
+      document.getElementById("adminCropStage1").style.display = "flex";
+      document.getElementById("adminCropStage2").style.display = "none";
+      document.getElementById("adminCropModal").style.display = "flex";
+      setTimeout(setupAdminCropCanvas, 50);
+    };
+    adminSmartImg.onerror = function() {
+      const fallbackImg = new Image();
+      fallbackImg.onload = function() {
+        adminSmartImg = fallbackImg;
+        resetAdminCropCorners();
+        document.getElementById("adminCropStage1").style.display = "flex";
+        document.getElementById("adminCropStage2").style.display = "none";
+        document.getElementById("adminCropModal").style.display = "flex";
+        setTimeout(setupAdminCropCanvas, 50);
+      };
+      fallbackImg.src = srcUrl;
+    };
+    adminSmartImg.src = srcUrl;
+  }
+
+  function closeAdminCropModal() {
+    document.getElementById("adminCropModal").style.display = "none";
+  }
+
+  function resetAdminCropCorners() {
+    adminSmartPts = [
+      { x: 0.05, y: 0.05 },
+      { x: 0.95, y: 0.05 },
+      { x: 0.95, y: 0.95 },
+      { x: 0.05, y: 0.95 }
+    ];
+  }
+
+  function setupAdminCropCanvas() {
+    const box = document.getElementById("adminCropCanvasBox");
+    const canvas = document.getElementById("adminCropCanvas");
+    if (!box || !canvas || !adminSmartImg.width) return;
+
+    const maxW = box.clientWidth || 500;
+    const maxH = box.clientHeight || 350;
+    const pad = 14;
+
+    const availW = maxW - pad * 2;
+    const availH = maxH - pad * 2;
+    const scale = Math.min(availW / adminSmartImg.width, availH / adminSmartImg.height);
+    const drawW = Math.round(adminSmartImg.width * scale);
+    const drawH = Math.round(adminSmartImg.height * scale);
+
+    canvas.width = drawW + pad * 2;
+    canvas.height = drawH + pad * 2;
+    adminSmartGeom = { pad, drawW, drawH };
+
+    initAdminCropCanvasEvents();
+    drawAdminCrop();
+  }
+
+  function drawAdminCrop() {
+    const canvas = document.getElementById("adminCropCanvas");
+    if (!canvas || !adminSmartImg.width) return;
+    const ctx = canvas.getContext("2d");
+    const { pad, drawW, drawH } = adminSmartGeom;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Dark background
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Source Image
+    ctx.drawImage(adminSmartImg, pad, pad, drawW, drawH);
+
+    const cPts = adminSmartPts.map(p => ({
+      x: pad + p.x * drawW,
+      y: pad + p.y * drawH
+    }));
+
+    // Dim outside crop polygon
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.moveTo(cPts[0].x, cPts[0].y);
+    ctx.lineTo(cPts[3].x, cPts[3].y);
+    ctx.lineTo(cPts[2].x, cPts[2].y);
+    ctx.lineTo(cPts[1].x, cPts[1].y);
+    ctx.closePath();
+    ctx.fill("evenodd");
+    ctx.restore();
+
+    // Rectangle Border (Emerald Green)
+    ctx.save();
+    ctx.strokeStyle = "#10b981";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(cPts[0].x, cPts[0].y);
+    ctx.lineTo(cPts[1].x, cPts[1].y);
+    ctx.lineTo(cPts[2].x, cPts[2].y);
+    ctx.lineTo(cPts[3].x, cPts[3].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // 4 Corner Drag Handles (11px circles)
+    cPts.forEach((pt, idx) => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+      ctx.fillStyle = idx === adminActiveDragIdx ? "#ec4899" : "#10b981";
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+    });
+  }
+
+  function updateAdminLoupe(normPt) {
+    const loupe = document.getElementById("adminLoupeCanvas");
+    if (!loupe || !adminSmartImg.width) return;
+    loupe.style.display = "block";
+
+    if (normPt.x < 0.45 && normPt.y < 0.45) {
+      loupe.style.left = "auto";
+      loupe.style.right = "10px";
+    } else {
+      loupe.style.right = "auto";
+      loupe.style.left = "10px";
+    }
+
+    const lctx = loupe.getContext("2d");
+    const lw = loupe.width, lh = loupe.height;
+    lctx.clearRect(0, 0, lw, lh);
+    lctx.fillStyle = "#020617";
+    lctx.fillRect(0, 0, lw, lh);
+
+    const srcX = normPt.x * adminSmartImg.width;
+    const srcY = normPt.y * adminSmartImg.height;
+    const zoomRadius = Math.max(28, Math.min(adminSmartImg.width, adminSmartImg.height) * 0.08);
+
+    lctx.drawImage(
+      adminSmartImg,
+      srcX - zoomRadius, srcY - zoomRadius, zoomRadius * 2, zoomRadius * 2,
+      0, 0, lw, lh
+    );
+
+    // Crosshair in Loupe
+    lctx.strokeStyle = "#10b981";
+    lctx.lineWidth = 1.5;
+    lctx.beginPath();
+    lctx.moveTo(lw / 2, 0); lctx.lineTo(lw / 2, lh);
+    lctx.moveTo(0, lh / 2); lctx.lineTo(lw, lh / 2);
+    lctx.stroke();
+  }
+
+  function initAdminCropCanvasEvents() {
+    const canvas = document.getElementById("adminCropCanvas");
+    if (!canvas || canvas.dataset.bound) return;
+    canvas.dataset.bound = "1";
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    function onStart(e) {
+      if (!adminSmartImg.width) return;
+      const pos = getPos(e);
+      const { pad, drawW, drawH } = adminSmartGeom;
+      const cPts = adminSmartPts.map(p => ({ x: pad + p.x * drawW, y: pad + p.y * drawH }));
+
+      let bestIdx = -1;
+      let bestDist = 38;
+      cPts.forEach((pt, i) => {
+        const d = Math.hypot(pos.x - pt.x, pos.y - pt.y);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      });
+
+      if (bestIdx !== -1) {
+        if (e.cancelable) e.preventDefault();
+        adminActiveDragIdx = bestIdx;
+        updateAdminLoupe(adminSmartPts[adminActiveDragIdx]);
+        drawAdminCrop();
+      }
+    }
+
+    function onMove(e) {
+      if (adminActiveDragIdx === -1) return;
+      if (e.cancelable) e.preventDefault();
+      const pos = getPos(e);
+      const { pad, drawW, drawH } = adminSmartGeom;
+      const nx = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
+      const ny = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+
+      adminSmartPts[adminActiveDragIdx] = { x: nx, y: ny };
+      updateAdminLoupe(adminSmartPts[adminActiveDragIdx]);
+      drawAdminCrop();
+    }
+
+    function onEnd() {
+      adminActiveDragIdx = -1;
+      const loupe = document.getElementById("adminLoupeCanvas");
+      if (loupe) loupe.style.display = "none";
+      drawAdminCrop();
+    }
+
+    canvas.addEventListener("mousedown", onStart);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onEnd);
+
+    canvas.addEventListener("touchstart", onStart, { passive: false });
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+  }
+
+  function solveHomographyAdmin8x8(p, dstW, dstH) {
+    const src = p;
+    const dst = [[0, 0], [dstW, 0], [dstW, dstH], [0, dstH]];
+    const A = [];
+    const B = [];
+
+    for (let i = 0; i < 4; i++) {
+      const sx = src[i][0], sy = src[i][1];
+      const dx = dst[i][0], dy = dst[i][1];
+      A.push([dx, dy, 1, 0, 0, 0, -dx * sx, -dy * sx]);
+      B.push(sx);
+      A.push([0, 0, 0, dx, dy, 1, -dx * sy, -dy * sy]);
+      B.push(sy);
+    }
+
+    for (let i = 0; i < 8; i++) {
+      let maxRow = i;
+      for (let r = i + 1; r < 8; r++) {
+        if (Math.abs(A[r][i]) > Math.abs(A[maxRow][i])) maxRow = r;
+      }
+      [A[i], A[maxRow]] = [A[maxRow], A[i]];
+      [B[i], B[maxRow]] = [B[maxRow], B[i]];
+
+      for (let r = i + 1; r < 8; r++) {
+        const c = A[r][i] / (A[i][i] || 1e-12);
+        for (let j = i; j < 8; j++) A[r][j] -= c * A[i][j];
+        B[r] -= c * B[i];
+      }
+    }
+
+    const h = new Array(8);
+    for (let i = 7; i >= 0; i--) {
+      let s = B[i];
+      for (let j = i + 1; j < 8; j++) s -= A[i][j] * h[j];
+      h[i] = s / (A[i][i] || 1e-12);
+    }
+    return h;
+  }
+
+  function warpAdminPerspective(imgEl, pts) {
+    const sw = imgEl.naturalWidth || imgEl.width;
+    const sh = imgEl.naturalHeight || imgEl.height;
+    const p = pts.map(pt => [pt.x * sw, pt.y * sh]);
+
+    const wTop = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]);
+    const wBot = Math.hypot(p[2][0] - p[3][0], p[2][1] - p[3][1]);
+    const hLeft = Math.hypot(p[3][0] - p[0][0], p[3][1] - p[0][1]);
+    const hRight = Math.hypot(p[2][0] - p[1][0], p[2][1] - p[1][1]);
+
+    let outW = Math.max(120, Math.round((wTop + wBot) * 0.5));
+    let outH = Math.max(120, Math.round((hLeft + hRight) * 0.5));
+
+    const maxDim = 1200;
+    if (Math.max(outW, outH) > maxDim) {
+      const sc = maxDim / Math.max(outW, outH);
+      outW = Math.round(outW * sc);
+      outH = Math.round(outH * sc);
+    }
+
+    const srcCvs = document.createElement("canvas");
+    srcCvs.width = sw;
+    srcCvs.height = sh;
+    const sCtx = srcCvs.getContext("2d");
+    sCtx.drawImage(imgEl, 0, 0);
+    const srcData = sCtx.getImageData(0, 0, sw, sh).data;
+
+    const dstCvs = document.createElement("canvas");
+    dstCvs.width = outW;
+    dstCvs.height = outH;
+    const dCtx = dstCvs.getContext("2d");
+    const dstImgData = dCtx.createImageData(outW, outH);
+    const dstData = dstImgData.data;
+
+    const h = solveHomographyAdmin8x8(p, outW, outH);
+    const h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4], h5 = h[5], h6 = h[6], h7 = h[7];
+
+    let idx = 0;
+    const maxX = sw - 1, maxY = sh - 1;
+    for (let y = 0; y < outH; y++) {
+      const hy1 = h1 * y + h2;
+      const hy4 = h4 * y + h5;
+      const hy7 = h7 * y + 1.0;
+      for (let x = 0; x < outW; x++) {
+        const w = 1.0 / (h6 * x + hy7);
+        let u = (h0 * x + hy1) * w;
+        let v = (h3 * x + hy4) * w;
+        if (u < 0) u = 0; else if (u > maxX) u = maxX;
+        if (v < 0) v = 0; else if (v > maxY) v = maxY;
+        const x0 = u | 0, y0 = v | 0;
+        const sIdx = (y0 * sw + x0) << 2;
+        dstData[idx] = srcData[sIdx];
+        dstData[idx + 1] = srcData[sIdx + 1];
+        dstData[idx + 2] = srcData[sIdx + 2];
+        dstData[idx + 3] = 255;
+        idx += 4;
+      }
+    }
+    dCtx.putImageData(dstImgData, 0, 0);
+    return dstCvs;
+  }
+
+  function applyAdminPerspectiveWarp() {
+    if (!adminSmartImg.width) return;
+    adminBaseWarpedCanvas = warpAdminPerspective(adminSmartImg, adminSmartPts);
+    document.getElementById("adminCropStage1").style.display = "none";
+    document.getElementById("adminCropStage2").style.display = "flex";
+    applyAdminFilter(adminCurrentFx);
+  }
+
+  function backToAdminCorners() {
+    document.getElementById("adminCropStage2").style.display = "none";
+    document.getElementById("adminCropStage1").style.display = "flex";
+    setupAdminCropCanvas();
+  }
+
+  function applyAdminFilter(fx) {
+    adminCurrentFx = fx;
+    ["magic_color", "hd_clear", "bw_doc", "none"].forEach(f => {
+      const btn = document.getElementById("adminFx_" + f);
+      if (btn) {
+        if (f === fx) {
+          btn.style.borderColor = "#059669";
+          btn.style.background = "#ecfdf5";
+          btn.style.color = "#047857";
+          btn.style.fontWeight = "800";
+        } else {
+          btn.style.borderColor = "#cbd5e1";
+          btn.style.background = "#f8fafc";
+          btn.style.color = "#334155";
+          btn.style.fontWeight = "700";
+        }
+      }
+    });
+
+    if (!adminBaseWarpedCanvas) return;
+    const filterCvs = document.getElementById("adminFilterCanvas");
+    filterCvs.width = adminBaseWarpedCanvas.width;
+    filterCvs.height = adminBaseWarpedCanvas.height;
+    const ctx = filterCvs.getContext("2d");
+    ctx.drawImage(adminBaseWarpedCanvas, 0, 0);
+
+    if (fx !== "none") {
+      const imgData = ctx.getImageData(0, 0, filterCvs.width, filterCvs.height);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        let r = d[i], g = d[i + 1], b = d[i + 2];
+        if (fx === "magic_color") {
+          r = r > 218 ? 255 : Math.max(0, Math.min(255, (r - 128) * 1.34 + 134));
+          g = g > 218 ? 255 : Math.max(0, Math.min(255, (g - 128) * 1.34 + 134));
+          b = b > 218 ? 255 : Math.max(0, Math.min(255, (b - 128) * 1.34 + 134));
+        } else if (fx === "hd_clear") {
+          r = Math.max(0, Math.min(255, (r - 128) * 1.25 + 130));
+          g = Math.max(0, Math.min(255, (g - 128) * 1.25 + 130));
+          b = Math.max(0, Math.min(255, (b - 128) * 1.25 + 130));
+        } else if (fx === "bw_doc") {
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          const v = lum > 140 ? 255 : (lum < 75 ? 0 : Math.round((lum - 75) * 3.92));
+          r = g = b = v;
+        }
+        d[i] = r; d[i + 1] = g; d[i + 2] = b;
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+  }
+
+  async function saveAdminEnhancedPrescription() {
+    if (!currentReviewOrderId || !adminBaseWarpedCanvas) return;
+    const filterCvs = document.getElementById("adminFilterCanvas");
+    const dataUrl = filterCvs.toDataURL("image/jpeg", 0.90);
+
+    const btn = document.getElementById("btnAdminSaveEnhancedRx");
+    btn.disabled = true;
+    btn.innerText = "সংরক্ষণ হচ্ছে...";
+
+    try {
+      const res = await fetch(`/api/admin/pharmacy/orders/${currentReviewOrderId}/update-prescription`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prescription_base64: dataUrl })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        currentOrderData.prescription_enhanced_url = data.new_url;
+        currentOrderData.prescription_url = data.new_url;
+        adminActivePrescriptionView = "enhanced";
+        adminUpdatePrescriptionDisplay();
+        closeAdminCropModal();
+      } else {
+        alert("ত্রুটি: " + data.message);
+      }
+    } catch (err) {
+      alert("সার্ভার সমস্যা হয়েছে।");
+    } finally {
+      btn.disabled = false;
+      btn.innerText = "💾 আপডেট সংরক্ষণ করুন";
+    }
+  }
+
+  // Bill Autocomplete Search
+  function searchMedicinesForBill() {
+    const q = document.getElementById("billMedSearchInput").value.trim().toLowerCase();
+    const dropdown = document.getElementById("billMedDropdown");
+
+    if (q.length < 1) {
+      dropdown.style.display = "none";
+      return;
+    }
+
+    const matches = medicinesCatalog.filter(m => {
+      return m.name.toLowerCase().includes(q) || (m.generic_name || "").toLowerCase().includes(q);
+    }).slice(0, 10);
+
+    if (matches.length === 0) {
+      dropdown.innerHTML = `<div style="padding: 10px; text-align: center; color: #94a3b8; font-size: 0.8rem;">কোনো ওষুধ পাওয়া যায়নি।</div>`;
+      dropdown.style.display = "block";
+      return;
+    }
+
+    let html = "";
+    matches.forEach(m => {
+      html += `
+        <div onclick="addMedToActiveBill(${m.id})" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
+          <div>
+            <strong style="color: #0f172a; font-size: 0.85rem;">${m.name}</strong>
+            <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">${m.dosage_form}</span>
+            <div style="font-size: 0.75rem; color: #64748b;">${m.generic_name || ''} (${m.strength || ''})</div>
+          </div>
+          <div style="font-weight: 800; color: #059669; font-size: 0.85rem;">৳${parseFloat(m.unit_price).toFixed(2)}</div>
+        </div>
+      `;
+    });
+
+    dropdown.innerHTML = html;
+    dropdown.style.display = "block";
+  }
+
+  function addMedToActiveBill(medId) {
+    const med = medicinesCatalog.find(x => x.id === medId);
+    if (!med) return;
+
+    activeBillItems.push({
+      medicine_id: med.id,
+      name: med.name,
+      generic_name: med.generic_name,
+      dosage_form: med.dosage_form,
+      strength: med.strength,
+      quantity: 10,
+      unit_price: parseFloat(med.unit_price),
+      total_price: Math.round(10 * parseFloat(med.unit_price) * 100) / 100
+    });
+
+    document.getElementById("billMedSearchInput").value = "";
+    document.getElementById("billMedDropdown").style.display = "none";
+    renderBillTable();
+  }
+
+  function removeBillItem(idx) {
+    activeBillItems.splice(idx, 1);
+    renderBillTable();
+  }
+
+  function onBillQtyChange(idx, val) {
+    const qty = parseInt(val) || 1;
+    activeBillItems[idx].quantity = qty;
+    activeBillItems[idx].total_price = Math.round(qty * activeBillItems[idx].unit_price * 100) / 100;
+    renderBillTable();
+  }
+
+  function onBillPriceChange(idx, val) {
+    const p = parseFloat(val) || 0.0;
+    activeBillItems[idx].unit_price = p;
+    activeBillItems[idx].total_price = Math.round(activeBillItems[idx].quantity * p * 100) / 100;
+    renderBillTable();
+  }
+
+  function renderBillTable() {
+    const tbody = document.getElementById("billItemsTableBody");
+    if (!activeBillItems || activeBillItems.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">কোনো ওষুধ এখনো যোগ করা হয়নি। উপরের বক্সে নাম লিখে সার্চ করে যোগ করুন।</td></tr>`;
+      recalcBillTotals();
+      return;
+    }
+
+    let html = "";
+    activeBillItems.forEach((it, idx) => {
+      html += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 10px;">
+            <strong style="color: #0f172a;">${it.name}</strong>
+            <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 4px; border-radius: 4px;">${it.dosage_form}</span>
+            <div style="font-size: 0.75rem; color: #64748b;">${it.strength || it.generic_name || ''}</div>
+          </td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <input type="number" min="1" value="${it.quantity}" onchange="onBillQtyChange(${idx}, this.value)" style="width: 55px; padding: 4px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700;">
+          </td>
+          <td style="padding: 8px 10px; text-align: right;">
+            <input type="number" step="0.10" value="${it.unit_price}" onchange="onBillPriceChange(${idx}, this.value)" style="width: 65px; padding: 4px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700;">
+          </td>
+          <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #059669;">
+            ৳${parseFloat(it.total_price).toFixed(2)}
+          </td>
+          <td style="padding: 8px 6px; text-align: center;">
+            <button type="button" onclick="removeBillItem(${idx})" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1rem; font-weight: bold;">✕</button>
+          </td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+    recalcBillTotals();
+  }
+
+  function recalcBillTotals() {
+    let subtotal = 0;
+    activeBillItems.forEach(it => subtotal += (it.total_price || 0));
+    const delCharge = parseFloat(document.getElementById("billDeliveryChargeInput").value) || 0;
+    const grandTotal = subtotal + delCharge;
+
+    document.getElementById("billSubtotalTxt").innerText = `৳${subtotal.toFixed(2)}`;
+    document.getElementById("billGrandTotalTxt").innerText = `৳${grandTotal.toFixed(2)}`;
+  }
+
+  async function saveAndConfirmBill() {
+    if (!currentReviewOrderId) return;
+    if (activeBillItems.length === 0) {
+      alert("অনুগ্রহ করে বিলে অন্তত একটি ওষুধ যোগ করুন।");
+      return;
+    }
+
+    const delCharge = parseFloat(document.getElementById("billDeliveryChargeInput").value) || 50;
+    const notes = document.getElementById("billAdminNotesInput").value.trim();
+
+    const btn = document.getElementById("btnConfirmBillOrder");
+    btn.disabled = true;
+    btn.innerText = "সংরক্ষণ হচ্ছে...";
+
+    try {
+      const res = await fetch(`/api/admin/pharmacy/orders/${currentReviewOrderId}/generate-bill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: activeBillItems,
+          delivery_charge: delCharge,
+          admin_notes: notes
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        location.reload();
+      } else {
+        alert("ত্রুটি: " + data.message);
+      }
+    } catch (err) {
+      alert("সার্ভার সমস্যা হয়েছে।");
+    } finally {
+      btn.disabled = false;
+      btn.innerText = "✅ বিল নিশ্চিত ও অর্ডার কনফার্ম করুন";
+    }
+  }
+
+  function openStatusModal(orderId, orderNum, currentStatus) {
+    document.getElementById("statusOrderId").value = orderId;
+    document.getElementById("statusOrderNumberTxt").innerText = orderNum;
+    document.getElementById("statusSelect").value = currentStatus;
+    onStatusSelectChange();
+    document.getElementById("statusModal").style.display = "flex";
+  }
+
+  function closeStatusModal() {
+    document.getElementById("statusModal").style.display = "none";
+  }
+
+  function onStatusSelectChange() {
+    const st = document.getElementById("statusSelect").value;
+    const otpBox = document.getElementById("otpInputBox");
+    if (st === "delivered") otpBox.style.display = "block";
+    else otpBox.style.display = "none";
+  }
+
+  async function saveStatusUpdate() {
+    const orderId = document.getElementById("statusOrderId").value;
+    const status = document.getElementById("statusSelect").value;
+    const riderId = document.getElementById("riderSelect").value;
+    const otp = document.getElementById("statusOtpInput").value.trim();
+
+    try {
+      const res = await fetch(`/api/admin/pharmacy/orders/${orderId}/update-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: status,
+          rider_id: riderId ? parseInt(riderId) : null,
+          otp: otp
+        })
+      });
+
+      const d = await res.json();
+      if (d.success) {
+        alert(d.message);
+        location.reload();
+      } else {
+        alert("ত্রুটি: " + d.message);
+      }
+    } catch (e) {
+      alert("স্ট্যাটাস আপডেট ব্যর্থ হয়েছে।");
+    }
+  }
+
+  function filterCatalogTable() {
+    const q = document.getElementById("catalogSearchInput").value.toLowerCase();
+    const rows = document.querySelectorAll("#catalogTable tbody tr");
+    rows.forEach(r => {
+      const txt = r.innerText.toLowerCase();
+      r.style.display = txt.includes(q) ? "" : "none";
+    });
+  }
+
+  async function saveQuickMedPrice(medId) {
+    const unitPrice = parseFloat(document.getElementById(`medPrice_${medId}`).value) || 0;
+    const stripPrice = parseFloat(document.getElementById(`medStripPrice_${medId}`).value) || 0;
+    const stockQty = parseInt(document.getElementById(`medStock_${medId}`).value) || 0;
+
+    const med = medicinesCatalog.find(x => x.id === medId);
+    if (!med) return;
+
+    try {
+      const res = await fetch("/api/admin/pharmacy/medicines/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: medId,
+          name: med.name,
+          generic_name: med.generic_name,
+          dosage_form: med.dosage_form,
+          strength: med.strength,
+          manufacturer: med.manufacturer,
+          unit_price: unitPrice,
+          strip_price: stripPrice,
+          stock_qty: stockQty
+        })
+      });
+
+      const d = await res.json();
+      if (d.success) {
+        const row = document.getElementById(`medRow_${medId}`);
+        row.style.background = "#dcfce7";
+        setTimeout(() => row.style.background = "white", 1200);
+      } else {
+        alert("আপডেট ব্যর্থ: " + d.message);
+      }
+    } catch (e) {
+      alert("সার্ভার সংযোগ সমস্যা।");
+    }
+  }
+
+  function openAddMedicineModal() {
+    document.getElementById("medForm").reset();
+    document.getElementById("med_id").value = "";
+    document.getElementById("medModalTitle").innerText = "নতুন ওষুধ যোগ করুন";
+    document.getElementById("medModal").style.display = "flex";
+  }
+
+  function openEditMedModal(medId) {
+    const med = medicinesCatalog.find(x => x.id === medId);
+    if (!med) return;
+
+    document.getElementById("med_id").value = med.id;
+    document.getElementById("form_name").value = med.name;
+    document.getElementById("form_generic_name").value = med.generic_name || "";
+    document.getElementById("form_dosage_form").value = med.dosage_form;
+    document.getElementById("form_strength").value = med.strength || "";
+    document.getElementById("form_manufacturer").value = med.manufacturer || "";
+    document.getElementById("form_unit_price").value = med.unit_price;
+    document.getElementById("form_strip_price").value = med.strip_price || 0;
+    document.getElementById("form_stock_qty").value = med.stock_qty || 999;
+
+    document.getElementById("medModalTitle").innerText = "ওষুধের তথ্য ও মূল্য পরিবর্তন";
+    document.getElementById("medModal").style.display = "flex";
+  }
+
+  function closeMedModal() {
+    document.getElementById("medModal").style.display = "none";
+  }
+
+  async function submitMedForm(event) {
+    event.preventDefault();
+    const f = document.getElementById("medForm");
+    const formData = new FormData(f);
+    const data = Object.fromEntries(formData.entries());
+
+    try {
+      const res = await fetch("/api/admin/pharmacy/medicines/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        alert(resData.message);
+        location.reload();
+      } else {
+        alert("ত্রুটি: " + resData.message);
+      }
+    } catch (e) {
+      alert("সংরক্ষণ সম্ভব হয়নি।");
+    }
+  }
+</script>
+
+{% endblock %}

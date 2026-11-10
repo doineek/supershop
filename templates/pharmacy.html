@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>{{ settings.shop_name or 'DOINEEK' }} ফার্মেসী | প্রেসক্রিপশন ও ঔষধ হোম ডেলিভারি</title>
+  
+  <!-- Tailwind CSS & Bengali Google Font (Hind Siliguri) matching QR-Printing -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body { font-family: 'Hind Siliguri', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-20">
+
+  <!-- Top Sticky Header -->
+  <header class="bg-white border-b border-emerald-100 sticky top-0 z-40 shadow-xs backdrop-blur-md bg-white/95">
+    <div class="max-w-xl mx-auto px-4 py-2.5 flex items-center justify-between gap-2">
+      <div class="min-w-0 flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-md shrink-0">
+          💊
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <h1 class="font-bold text-base sm:text-lg text-slate-900 leading-tight truncate">
+              {{ settings.shop_name or 'DOINEEK' }} ফার্মেসী
+            </h1>
+            <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md shrink-0">প্রেসক্রিপশন সেবা</span>
+          </div>
+          <p class="text-[11px] text-slate-500 truncate">রেজিস্টার্ড ফার্মাসিস্ট দ্বারা ভেরিফাইড ঔষধ ও স্বাস্থ্যপণ্য</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" id="btnToggleRecentOrders" onclick="toggleRecentOrders()" class="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold flex items-center gap-1 transition shadow-xs">
+          <span>📋</span>
+          <span class="hidden sm:inline">আমার</span> <span>অর্ডারসমূহ</span>
+          <span id="recentOrdersBadge" class="hidden px-1.5 py-0.2 bg-emerald-600 text-white rounded-full text-[10px] font-extrabold">০</span>
+        </button>
+        <a href="/" class="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-xs font-bold flex items-center gap-1 transition" title="সুপারশপ হোম পেজে ফিরুন">
+          <span>🏠</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Live Status & Shop Timing Bar -->
+  <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white py-1.5 px-4 text-xs shadow-inner">
+    <div class="max-w-xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-300 pulse-dot shadow-xs"></span>
+        <span class="font-medium text-[11px] sm:text-xs">ফার্মেসী খোলা আছে • দ্রুততম সময়ে হোম ডেলিভারি</span>
+      </div>
+      <a href="tel:{{ settings.shop_phone or '+8801700000000' }}" class="text-[11px] font-bold text-emerald-100 hover:text-white flex items-center gap-1">
+        <span>📞 হেল্পলাইন</span>
+      </a>
+    </div>
+  </div>
+
+  <main class="max-w-xl mx-auto px-4 py-4 space-y-4">
+
+    <!-- Recent Orders & Live Tracking Panel -->
+    <div id="recentOrdersPanel" class="hidden bg-white rounded-2xl border border-emerald-200 shadow-md overflow-hidden transition-all">
+      <div class="px-4 py-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-base">📋</span>
+          <div>
+            <h2 class="font-bold text-xs sm:text-sm text-slate-900">আমার সাম্প্রতিক প্রেসক্রিপশন ও ঔষধ অর্ডার</h2>
+            <p class="text-[10px] text-slate-500">লাইভ স্ট্যাটাস দেখতে যে কোনো অর্ডারে ক্লিক করুন</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="refreshRecentOrders()" class="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold transition shadow-xs" title="রিফ্রেশ">
+            🔄 রিফ্রেশ
+          </button>
+          <button type="button" onclick="toggleRecentOrders()" class="text-slate-400 hover:text-slate-700 px-1.5 text-lg font-bold leading-none">&times;</button>
+        </div>
+      </div>
+      <div id="recentOrdersList" class="divide-y divide-slate-100 max-h-72 overflow-y-auto p-2 space-y-1.5">
+        <p class="text-xs text-slate-400 text-center py-4">এখনো কোনো অর্ডার দেওয়া হয়নি।</p>
+      </div>
+    </div>
+
+    <!-- Mode Switcher Tabs (3 Modes: Prescription Only / Medicines Only / Both) -->
+    <div class="bg-white p-1 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-3 gap-1">
+      <button type="button" id="tabModeRxOnly" onclick="setOrderMode('prescription_only')" class="py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center bg-emerald-600 text-white shadow-xs flex flex-col sm:flex-row items-center justify-center gap-1">
+        <span>📸</span>
+        <span>শুধু প্রেসক্রিপশন</span>
+      </button>
+      <button type="button" id="tabModeBoth" onclick="setOrderMode('both')" class="py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1">
+        <span>🔄</span>
+        <span>উভয় একসাথে</span>
+      </button>
+      <button type="button" id="tabModeMedOnly" onclick="setOrderMode('medicines_only')" class="py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1">
+        <span>💊</span>
+        <span>ঔষধ সিলেক্ট</span>
+      </button>
+    </div>
+
+    <!-- Notice banner based on mode -->
+    <div id="modeNoticeBox" class="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-900">
+      <span class="text-base shrink-0">ℹ️</span>
+      <div id="modeNoticeText" class="leading-relaxed">
+        <strong>প্রেসক্রিপশন আপলোড সুবিধা:</strong> মোবাইল বা ল্যাপটপ থেকে প্রেসক্রিপশনের ছবি তুলুন। প্রয়োজনে ৪ কোণায় জুম করে সোজা করতে পারবেন এবং ক্যামস্ক্যানারের মত ঝকঝকে করতে পারবেন।
+      </div>
+    </div>
+
+    <form id="pharmacyOrderForm" onsubmit="submitPharmacyOrder(event)">
+
+      <!-- STEP 1: Prescription Upload Box (Hidden in medicines_only mode) -->
+      <div id="stepUploadCard" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-extrabold">১</span>
+            <span>প্রেসক্রিপশনের ছবি বা ফাইল আপলোড</span>
+          </h2>
+          <span class="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+            মোবাইল / ল্যাপটপ ক্যামেরা
+          </span>
+        </div>
+
+        <!-- Hidden Inputs for Files and Base64 -->
+        <input type="file" id="rxFileInput" accept="image/*,.pdf" class="hidden" onchange="handleFileSelected(event)">
+        <input type="file" id="rxCameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelected(event)">
+        <input type="hidden" id="prescription_base64" name="prescription_base64">
+        <input type="hidden" id="prescription_original_base64" name="prescription_original_base64">
+
+        <!-- Drag & Drop / Upload Action Area -->
+        <div id="dropzoneRx" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-5 text-center transition bg-slate-50/70 hover:bg-emerald-50/30">
+          <div class="text-3xl mb-1.5">📷</div>
+          <p class="font-bold text-slate-800 text-sm">মোবাইল বা ল্যাপটপ থেকে প্রেসক্রিপশন আপলোড করুন</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">ছবি তোলার পর ক্রপ ও ক্যামস্ক্যানার ফিল্টার ব্যবহার করতে পারবেন</p>
+          
+          <div class="mt-3.5 flex items-center justify-center gap-2 flex-wrap">
+            <!-- Mobile Camera Button -->
+            <button type="button" onclick="document.getElementById('rxCameraInput').click()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
+              <span>📱</span> <span>মোবাইল ক্যামেরা</span>
+            </button>
+            
+            <!-- Laptop / Webcam Capture Button -->
+            <button type="button" onclick="openLaptopWebcamModal()" class="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
+              <span>💻</span> <span>ল্যাপটপ ক্যামেরা</span>
+            </button>
+
+            <!-- File / Gallery Button -->
+            <button type="button" onclick="document.getElementById('rxFileInput').click()" class="px-3.5 py-1.5 bg-white border border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700 rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
+              <span>📁</span> <span>ফাইল বা গ্যালারি</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Preview Card with CamScanner Tools & Original Toggle -->
+        <div id="rxPreviewCard" class="hidden bg-slate-50 border border-emerald-200 rounded-2xl p-3.5 space-y-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="relative shrink-0">
+                <img id="rxThumbImg" src="" alt="Prescription" class="w-16 h-16 object-cover rounded-xl border border-slate-300 shadow-xs cursor-pointer" onclick="openPreviewModal()">
+                <span id="activeFilterBadge" class="absolute -bottom-1 -right-1 px-1.5 py-0.2 bg-emerald-600 text-white text-[9px] font-black rounded-md shadow-xs">এনহ্যান্সড</span>
+              </div>
+              <div class="min-w-0">
+                <p id="rxFileName" class="text-xs font-bold text-slate-900 truncate">prescription.jpg</p>
+                <p id="rxFileSizeInfo" class="text-[11px] text-emerald-700 font-semibold mt-0.5">✅ সাইজ অপ্টিমাইজড</p>
+                
+                <!-- Toggle Original vs Enhanced -->
+                <div class="flex items-center gap-1.5 mt-1">
+                  <button type="button" id="btnViewEnhanced" onclick="toggleViewImage('enhanced')" class="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded-md shadow-2xs">
+                    ✨ এনহ্যান্সড
+                  </button>
+                  <button type="button" id="btnViewOriginal" onclick="toggleViewImage('original')" class="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-md">
+                    🖼️ আসল ছবি
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <button type="button" onclick="removeSelectedFile()" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition shrink-0">
+              🗑️ মুছুন
+            </button>
+          </div>
+
+          <!-- Action bar: Smart Crop & CamScanner Filter Triggers -->
+          <div class="pt-2 border-t border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+            <button type="button" onclick="openSmartCropModal()" class="flex-1 py-1.5 px-2.5 bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs">
+              <span>📐</span> <span>৪-কোণা স্মার্ট ক্রপ ও সোজা করুন</span>
+            </button>
+            
+            <button type="button" onclick="openFilterQuickSelect()" class="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs">
+              <span>✨</span> <span>ক্যামস্ক্যানার ফিল্টার</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Duration, Quantity & Medicine Selection -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-extrabold">২</span>
+            <span>ওষুধের মেয়াদ ও পরিমাণ নির্বাচন</span>
+          </h2>
+          <span class="text-[11px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+            * পরিমাণ আবশ্যক
+          </span>
+        </div>
+
+        <!-- Section 2A: Overall Duration (সব ঔষধ কয়দিনের লাগবে?) -->
+        <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+          <label class="block text-xs font-bold text-slate-800 mb-1.5 flex items-center justify-between">
+            <span>⏱️ সব ওষুধ কয়দিনের জন্য লাগবে?</span>
+            <span class="text-[11px] text-slate-500 font-normal">যেকোনো একটি নির্বাচন করুন</span>
+          </label>
+          <div class="grid grid-cols-3 sm:grid-cols-6 gap-1.5" id="durationPillsContainer">
+            <button type="button" onclick="selectDuration(3, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৩ দিন</button>
+            <button type="button" onclick="selectDuration(5, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৫ দিন</button>
+            <button type="button" onclick="selectDuration(7, this)" class="duration-pill py-1.5 px-2 bg-emerald-600 border border-emerald-600 rounded-lg text-xs font-bold text-white shadow-2xs transition text-center">৭ দিন</button>
+            <button type="button" onclick="selectDuration(10, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১০ দিন</button>
+            <button type="button" onclick="selectDuration(14, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১৪ দিন</button>
+            <button type="button" onclick="selectDuration(30, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১ মাস (৩০ দিন)</button>
+          </div>
+          <input type="hidden" id="overall_duration_days" name="overall_duration_days" value="7">
+          <p class="text-[10px] text-slate-500 mt-1.5">
+            * যদি একেক ওষুধের জন্য আলাদা পরিমাণ বা দিন লাগে, তবে নিচের তালিকা থেকে ওষুধ নির্বাচন করুন অথবা নোটে লিখে দিন।
+          </p>
+        </div>
+
+        <!-- Section 2B: Search and Select Specific Medicines -->
+        <div id="medicineSelectionSection" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-bold text-slate-800">
+              🔍 ঔষধ বা স্বাস্থ্যপণ্য খুঁজুন ও যোগ করুন:
+            </label>
+            <span class="text-[10px] text-slate-500">সিরাপ, ক্যাপসুল, ট্যাবলেট, ইনজেকশন, গজ পট্টি ইত্যাদি</span>
+          </div>
+
+          <!-- Dosage Form Filter Bar -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+            <button type="button" onclick="filterDosage('all', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shrink-0 shadow-2xs">
+              সব ধরনের ওষুধ
+            </button>
+            <button type="button" onclick="filterDosage('ট্যাবলেট', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💊 ট্যাবলেট
+            </button>
+            <button type="button" onclick="filterDosage('ক্যাপসুল', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💊 ক্যাপসুল
+            </button>
+            <button type="button" onclick="filterDosage('সিরাপ', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🍯 সিরাপ
+            </button>
+            <button type="button" onclick="filterDosage('ইনজেকশন', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💉 ইনজেকশন
+            </button>
+            <button type="button" onclick="filterDosage('ব্যান্ডেজ/ফার্স্ট এইড', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🩹 গজ পট্টি ও ব্যান্ডেজ
+            </button>
+            <button type="button" onclick="filterDosage('ড্রপ', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💧 আই/ইয়ার ড্রপ
+            </button>
+            <button type="button" onclick="filterDosage('মলম/ক্রিম', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🧴 মলম ও ক্রিম
+            </button>
+          </div>
+
+          <!-- Live Search Input & Dropdown -->
+          <div class="relative">
+            <div class="relative flex items-center">
+              <span class="absolute left-3 text-slate-400">🔍</span>
+              <input type="text" id="medicineSearchInput" oninput="onMedicineSearchInput()" onfocus="onMedicineSearchFocus()" placeholder="ওষুধের নাম বা উপাদান লিখুন (যেমন: Napa, Seclo, Savlon, Bandage)..." class="w-full pl-9 pr-8 py-2.5 bg-slate-50 border-2 border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs sm:text-sm font-medium outline-hidden transition">
+              <button type="button" id="btnClearSearch" onclick="clearMedicineSearch()" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-base font-bold">&times;</button>
+            </div>
+            
+            <div id="medicineDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
+              <div class="p-3 text-center text-xs text-slate-400">খোঁজা হচ্ছে...</div>
+            </div>
+          </div>
+
+          <!-- Selected Medicines List -->
+          <div id="selectedMedicinesBox" class="space-y-2">
+            <div class="flex items-center justify-between text-xs font-bold text-slate-700 border-b pb-1">
+              <span>নির্বাচিত ঔষধের তালিকা (<span id="selectedCountText">০</span>টি)</span>
+              <span id="selectedSubtotalBadge" class="text-emerald-700 font-extrabold">সম্ভাব্য মোট: ৳০.০০</span>
+            </div>
+
+            <div id="selectedMedicinesList" class="space-y-2">
+              <div id="emptyMedicinesNotice" class="text-center py-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                <p class="text-xs text-slate-500 font-medium">কোনো নির্দিষ্ট ওষুধ যোগ করা হয়নি।</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">আপনি চাইলে শুধুমাত্র প্রেসক্রিপশন আপলোড করেও সম্পূর্ণ অর্ডার দিতে পারেন।</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2C: Notes -->
+        <div class="bg-slate-50/70 p-3 rounded-xl border border-slate-200 space-y-1.5">
+          <label class="block text-xs font-bold text-slate-800 flex items-center justify-between">
+            <span>✍️ বিশেষ নির্দেশনা বা অতিরিক্ত নিয়মাবলী:</span>
+            <span class="text-[10px] text-slate-400">ঐচ্ছিক</span>
+          </label>
+          <textarea id="customer_notes" name="customer_notes" rows="2" placeholder="যেমন: প্রেসক্রিপশনের গ্যাস্ট্রিকের ওষুধ ৭ দিনের জন্য দিন, নাপা লাগবে না, অথবা নির্দিষ্ট কোনো নিয়ম থাকলে এখানে লিখে দিন..." class="w-full p-2.5 bg-white border border-slate-200 focus:border-emerald-500 rounded-xl text-xs outline-hidden transition resize-none"></textarea>
+        </div>
+      </div>
+
+      <!-- STEP 3: Delivery Details & Confirmation -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-extrabold">৩</span>
+          <span>ডেলিভারি তথ্য ও অর্ডার নিশ্চিতকরণ</span>
+        </h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">আপনার নাম <span class="text-red-500">*</span></label>
+            <input type="text" id="customer_name" name="customer_name" required placeholder="পুরো নাম লিখুন" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">মোবাইল নম্বর (১১ ডিজিট) <span class="text-red-500">*</span></label>
+            <input type="tel" id="customer_phone" name="customer_phone" required placeholder="017XXXXXXXX" maxlength="11" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition font-mono">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">জেলা</label>
+            <select id="district" name="district" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+              <option value="Tangail" selected>টাঙ্গাইল (Tangail)</option>
+              <option value="Dhaka">ঢাকা (Dhaka)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">এরিয়া / থানা</label>
+            <input type="text" id="area" name="area" value="Tangail Sadar" placeholder="এলাকা বা থানা" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">সম্পূর্ণ ডেলিভারি ঠিকানা <span class="text-red-500">*</span></label>
+          <input type="text" id="delivery_address" name="delivery_address" required placeholder="বাসা নম্বর, রোড নম্বর, এলাকার নাম বা ল্যান্ডমার্ক..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+        </div>
+
+        <!-- Bill Estimate Card -->
+        <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-3.5 space-y-1.5">
+          <div class="flex items-center justify-between text-xs text-slate-700">
+            <span>ওষুধের সম্ভাব্য মূল্য:</span>
+            <span id="billEstimateMedicines" class="font-bold">৳০.০০</span>
+          </div>
+          <div class="flex items-center justify-between text-xs text-slate-700">
+            <span>হোম ডেলিভারি চার্জ:</span>
+            <span id="billEstimateDelivery" class="font-bold">৳{{ settings.delivery_charge or '50' }}</span>
+          </div>
+          <div class="border-t border-emerald-200 pt-1.5 flex items-center justify-between text-xs font-extrabold text-slate-900">
+            <span>সর্বমোট প্রদেয় (ক্যাশ অন ডেলিভারি):</span>
+            <span id="billEstimateGrandTotal" class="text-emerald-700 text-sm font-black">৳{{ settings.delivery_charge or '50' }}</span>
+          </div>
+          <p class="text-[10px] text-emerald-800 leading-tight pt-1">
+            * প্রেসক্রিপশন আপলোড করা হলে আমাদের রেজিস্টার্ড ফার্মাসিস্ট প্রতিটি ওষুধের সঠিক দাম হিসাব করে চূড়ান্ত বিল তৈরি করবেন এবং তা আপনার অর্ডারে যুক্ত হবে।
+          </p>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" id="btnSubmitOrder" class="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm sm:text-base rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2">
+          <span id="btnSubmitIcon">🚀</span>
+          <span id="btnSubmitText">প্রেসক্রিপশন ও ঔষধ অর্ডার কনফার্ম করুন</span>
+          <svg id="btnSubmitSpinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+        </button>
+
+      </div>
+    </form>
+  </main>
+
+
+  <!-- ==================== MODAL A: LAPTOP / PC WEBCAM CAPTURE ==================== -->
+  <div id="webcamModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-3">
+    <div class="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200">
+      <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-xs sm:text-sm flex items-center gap-2">
+          <span>💻</span> <span>ল্যাপটপ / কম্পিউটার ক্যামেরা দিয়ে ছবি তুলুন</span>
+        </h3>
+        <button type="button" onclick="closeLaptopWebcamModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+      </div>
+
+      <div class="p-3 space-y-3">
+        <div class="relative bg-black rounded-2xl overflow-hidden aspect-4/3 flex items-center justify-center">
+          <video id="webcamVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+          <div id="webcamLoadingNotice" class="absolute text-xs text-white bg-black/60 px-3 py-1.5 rounded-lg">
+            ক্যামেরা চালু হচ্ছে...
+          </div>
+        </div>
+
+        <div class="flex items-center justify-center gap-2 pt-1">
+          <button type="button" onclick="captureWebcamFrame()" class="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition flex items-center gap-2">
+            <span>📸</span> <span>ছবি তুলুন</span>
+          </button>
+          <button type="button" onclick="closeLaptopWebcamModal()" class="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">
+            বাতিল
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL B: CAMSCANNER 4-CORNER SMART PERSPECTIVE CROP + LOUPE MAGNIFIER ==================== -->
+  <div id="cropModal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-white max-w-lg w-full rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-emerald-200">
+      
+      <!-- Modal Header -->
+      <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-xs sm:text-sm flex items-center gap-2">
+          <span>📐</span> <span id="cropModalTitleText">স্মার্ট ক্রপ ও সোজা করুন (CamScanner Crop)</span>
+        </h3>
+        <button type="button" onclick="closeSmartCropModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+      </div>
+
+      <!-- VIEW 1: 4-Corner Draggable Perspective Canvas with Loupe Magnifier -->
+      <div id="cropStageEditor" class="p-3 space-y-2.5">
+        <div class="relative bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center h-[350px] max-h-[48vh] select-none touch-none" id="smartCropContainer">
+          <canvas id="smartCropCanvas" class="block cursor-crosshair touch-none"></canvas>
+          
+          <!-- Magnifier Loupe: 4-Corner Zoom Loupe showing 2.5x Zoom with Crosshair -->
+          <canvas id="smartLoupeCanvas" width="104" height="104" class="hidden absolute top-2.5 left-2.5 rounded-full border-2 border-emerald-400 shadow-2xl pointer-events-none z-20 bg-slate-950"></canvas>
+        </div>
+
+        <p class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 text-center font-medium">
+          💡 ছবির <b>৪টি কোণা</b> টেনে প্রেসক্রিপশনের ৪ কোণায় মেলান (টানার সময় কোণায় <b>জুম লুপ</b> দেখাবে)।
+        </p>
+
+        <!-- Ratio & Auto Corners -->
+        <div class="grid grid-cols-4 gap-1.5 text-center text-xs">
+          <button type="button" onclick="autoResetSmartCorners()" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg">🔄 রিসেট</button>
+          <button type="button" onclick="setSmartAspect('free')" id="ratioBtn_free" class="py-1.5 px-1 bg-emerald-600 text-white font-bold rounded-lg shadow-xs">ফ্রি সাইজ</button>
+          <button type="button" onclick="setSmartAspect('a4')" id="ratioBtn_a4" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg">A4 পেপার</button>
+          <button type="button" onclick="setSmartAspect('square')" id="ratioBtn_square" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg">১:১ স্কয়ার</button>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+          <button type="button" onclick="closeSmartCropModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">
+            বাতিল
+          </button>
+          <button type="button" onclick="applySmartPerspectiveWarp()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md">
+            <span>✨</span> <span>সোজা ও ক্রপ করুন</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- VIEW 2: CamScanner Enhance Filter Selector -->
+      <div id="cropStageFilter" class="hidden p-3 space-y-2.5">
+        <div class="flex items-center justify-between text-xs font-bold text-slate-700">
+          <span>✨ ফিল্টার নির্বাচন করুন:</span>
+          <span id="activeFilterNameBadge" class="text-emerald-700">ম্যাজিক কালার</span>
+        </div>
+
+        <!-- Result Preview Canvas Box -->
+        <div class="relative bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center h-[330px] max-h-[46vh] p-2 border border-slate-800">
+          <canvas id="filterPreviewCanvas" class="max-h-full max-w-full object-contain rounded-lg shadow-md"></canvas>
+        </div>
+
+        <!-- CamScanner Filter Buttons -->
+        <div class="grid grid-cols-4 gap-1.5 text-center text-[11px]">
+          <button type="button" id="fxBtn_magic_color" onclick="setEnhanceFilter('magic_color')" class="py-2 px-1 rounded-xl font-bold border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs">
+            ✨ ম্যাজিক কালার
+          </button>
+          <button type="button" id="fxBtn_hd_clear" onclick="setEnhanceFilter('hd_clear')" class="py-2 px-1 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-500">
+            🖋️ শার্প ক্লিয়ার
+          </button>
+          <button type="button" id="fxBtn_bw_doc" onclick="setEnhanceFilter('bw_doc')" class="py-2 px-1 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-500">
+            📄 সাদাকালো
+          </button>
+          <button type="button" id="fxBtn_none" onclick="setEnhanceFilter('none')" class="py-2 px-1 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-500">
+            🖼️ আসল ক্রপ
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="backToCornerCrop()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1">
+            <span>◀</span> <span>কোণা পরিবর্তন</span>
+          </button>
+          <button type="button" onclick="confirmCroppedAndEnhanced()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md">
+            <span>✅</span> <span>এই ছবিটি ব্যবহার করুন</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL C: FULLSCREEN IMAGE VIEWER ==================== -->
+  <div id="previewModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+      <div class="px-4 py-3 bg-slate-100 flex items-center justify-between border-b">
+        <h3 class="font-bold text-xs text-slate-800" id="previewModalTitle">প্রেসক্রিপশনের ছবি</h3>
+        <button type="button" onclick="closePreviewModal()" class="text-slate-500 hover:text-slate-800 text-xl font-bold leading-none">&times;</button>
+      </div>
+      <div class="p-2 max-h-[75vh] overflow-auto flex items-center justify-center bg-slate-950">
+        <img id="previewModalImg" src="" alt="Prescription" class="max-w-full max-h-[70vh] object-contain rounded-lg">
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL D: ORDER SUCCESS & LIVE TRACKING ==================== -->
+  <div id="orderSuccessModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-emerald-100">
+      <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-5 rounded-t-3xl relative text-center">
+        <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-2 text-2xl backdrop-blur-xs">
+          ✅
+        </div>
+        <h3 class="text-lg font-bold">অর্ডারটি সফলভাবে জমা হয়েছে!</h3>
+        <p class="text-xs text-emerald-100 mt-0.5">অর্ডার নম্বর: <span id="successOrderNumber" class="font-mono font-black text-white bg-white/20 px-2 py-0.5 rounded-md">RX-...</span></p>
+        <button type="button" onclick="closeSuccessModal()" class="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold">&times;</button>
+      </div>
+
+      <div class="p-4 sm:p-5 space-y-4">
+        
+        <!-- Delivery OTP Card -->
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center justify-between">
+          <div>
+            <div class="text-[11px] font-bold text-amber-800">🔑 ডেলিভারি ওটিপি (OTP) কোড:</div>
+            <div class="text-[10px] text-amber-600">পণ্য বুঝে পেয়ে রাইডারকে এই কোডটি বলুন</div>
+          </div>
+          <div id="successDeliveryOtp" class="font-mono font-black text-xl text-amber-900 bg-white border border-amber-300 px-3 py-1 rounded-xl shadow-xs">
+            ----
+          </div>
+        </div>
+
+        <!-- Live Status Stepper -->
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-800 mb-2">
+            <span>লাইভ ডেলিভারি ট্র্যাকিং ধাপ:</span>
+            <span id="successStatusBadge" class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-full">যাচাই চলছে</span>
+          </div>
+
+          <div class="space-y-2.5 text-xs">
+            <div id="stepPlaced" class="flex items-center gap-2.5 text-emerald-700 font-bold">
+              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">✓</span>
+              <span>১. প্রেসক্রিপশন ও অর্ডার জমা হয়েছে</span>
+            </div>
+            <div id="stepReview" class="flex items-center gap-2.5 text-emerald-700 font-bold">
+              <span class="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center font-bold">⏳</span>
+              <span>২. ফার্মাসিস্ট প্রেসক্রিপশন যাচাই করছেন</span>
+            </div>
+            <div id="stepConfirmed" class="flex items-center gap-2.5 text-slate-400 font-medium">
+              <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-medium">৩</span>
+              <span>৩. বিল প্রস্তুত ও অর্ডার নিশ্চিত</span>
+            </div>
+            <div id="stepPacked" class="flex items-center gap-2.5 text-slate-400 font-medium">
+              <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-medium">৪</span>
+              <span>৪. ওষুধ প্যাকড সম্পন্ন</span>
+            </div>
+            <div id="stepOnTheWay" class="flex items-center gap-2.5 text-slate-400 font-medium">
+              <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-medium">৫</span>
+              <span>৫. রাইডার নিয়ে আসছেন (On the way)</span>
+            </div>
+            <div id="stepDelivered" class="flex items-center gap-2.5 text-slate-400 font-medium">
+              <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-medium">৬</span>
+              <span>৬. সফলভাবে ডেলিভার্ড</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Uploaded Prescription Thumbnail with Original vs Enhanced View Toggle -->
+        <div id="successRxCard" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3">
+          <img id="successRxThumb" src="" alt="Prescription" class="w-16 h-16 object-cover rounded-xl border border-slate-200 cursor-pointer shadow-xs" onclick="openSuccessPreview()">
+          <div class="min-w-0 flex-1">
+            <div class="text-xs font-bold text-slate-800">প্রেসক্রিপশনের কপি</div>
+            <div id="successDurationTxt" class="text-[11px] text-slate-500 mt-0.5">মেয়াদ: ৭ দিনের ওষুধ</div>
+            <div class="flex items-center gap-2 mt-1">
+              <button type="button" onclick="openSuccessPreview()" class="text-[11px] text-emerald-700 font-bold hover:underline">
+                🔍 বড় করে দেখুন
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rider Details (if assigned) -->
+        <div id="successRiderCard" class="hidden bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <span class="text-2xl">🛵</span>
+            <div>
+              <div class="text-xs font-bold text-blue-900" id="successRiderName">রাইডার: নাম</div>
+              <div class="text-[11px] text-blue-700" id="successRiderPhone">মোবাইল: ০১৭১...</div>
+            </div>
+          </div>
+          <a id="successRiderCallBtn" href="tel:" class="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-xs">
+            📞 কল দিন
+          </a>
+        </div>
+
+        <div class="flex items-center justify-center gap-2 pt-2">
+          <button type="button" onclick="copyOrderTrackingLink()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+            <span>🔗</span> <span>ট্র্যাকিং লিংক কপি</span>
+          </button>
+          <button type="button" onclick="closeSuccessModal()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition">
+            ঠিক আছে
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+  <script>
+    // State
+    let currentMode = "both";
+    let selectedMedicines = [];
+    let catalogMedicines = [];
+    const DELIVERY_CHARGE = parseFloat("{{ settings.delivery_charge or 50 }}");
+
+    // Images State: Original vs Enhanced
+    let originalRawDataUri = "";
+    let currentEnhancedDataUri = "";
+    let activeViewMode = "enhanced"; // 'enhanced' or 'original'
+
+    // Smart Crop State
+    let smartImg = new Image();
+    let smartPts = [
+      { x: 0.05, y: 0.05 }, // top-left
+      { x: 0.95, y: 0.05 }, // top-right
+      { x: 0.95, y: 0.95 }, // bottom-right
+      { x: 0.05, y: 0.95 }  // bottom-left
+    ];
+    let activeDragIdx = -1;
+    let smartGeom = { pad: 16, drawW: 300, drawH: 300 };
+    let currentSmartAspect = "free";
+    let baseWarpedCanvas = null;
+    let currentCropFilter = "magic_color";
+
+    // Laptop Webcam Stream
+    let webcamMediaStream = null;
+
+    // Helper
+    const $ = id => document.getElementById(id);
+
+    document.addEventListener("DOMContentLoaded", () => {
+      fetchMedicinesCatalog();
+      loadRecentOrders();
+      initSmartCanvasEvents();
+
+      const savedPhone = localStorage.getItem("supershop_cust_phone") || "";
+      const savedName = localStorage.getItem("supershop_cust_name") || "";
+      const savedAddr = localStorage.getItem("supershop_cust_addr") || "";
+      if (savedPhone) $("customer_phone").value = savedPhone;
+      if (savedName) $("customer_name").value = savedName;
+      if (savedAddr) $("delivery_address").value = savedAddr;
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const trackOrderNum = urlParams.get("order");
+      if (trackOrderNum) trackSpecificOrder(trackOrderNum);
+    });
+
+    // -------------------------------------------------------------
+    // WEBCAM (LAPTOP / PC) CAPTURE
+    // -------------------------------------------------------------
+    async function openLaptopWebcamModal() {
+      const modal = $("webcamModal");
+      const video = $("webcamVideo");
+      const notice = $("webcamLoadingNotice");
+
+      modal.classList.remove("hidden");
+      notice.classList.remove("hidden");
+      notice.innerText = "ক্যামেরা চালু হচ্ছে...";
+
+      try {
+        webcamMediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: "user" },
+          audio: false
+        });
+        video.srcObject = webcamMediaStream;
+        video.onloadedmetadata = () => {
+          notice.classList.add("hidden");
+        };
+      } catch (err) {
+        alert("ল্যাপটপের ক্যামেরা চালু করা সম্ভব হয়নি। অনুগ্রহ করে ক্যামেরার অনুমতি চেক করুন বা ফাইল আপলোড ব্যবহার করুন।");
+        closeLaptopWebcamModal();
+      }
+    }
+
+    function closeLaptopWebcamModal() {
+      if (webcamMediaStream) {
+        webcamMediaStream.getTracks().forEach(t => t.stop());
+        webcamMediaStream = null;
+      }
+      $("webcamModal").classList.add("hidden");
+    }
+
+    function captureWebcamFrame() {
+      const video = $("webcamVideo");
+      if (!video || !video.videoWidth) return;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const capturedDataUri = canvas.toDataURL("image/jpeg", 0.92);
+      closeLaptopWebcamModal();
+
+      // Set as original photo and immediately open Smart Crop
+      loadNewPrescriptionImage(capturedDataUri, "webcam_prescription.jpg");
+    }
+
+    // -------------------------------------------------------------
+    // FILE / CAMERA INPUT HANDLER
+    // -------------------------------------------------------------
+    function handleFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const isImage = file.type.startsWith("image/");
+      const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
+
+      if (!isImage && !isPdf) {
+        alert("শুধুমাত্র ছবি (JPG, PNG, WebP) অথবা PDF ফাইল আপলোড করুন।");
+        return;
+      }
+
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          loadNewPrescriptionImage(e.target.result, file.name);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // PDF fallback
+        originalRawDataUri = "pdf_placeholder";
+        currentEnhancedDataUri = "pdf_placeholder";
+        $("rxThumbImg").src = "https://cdn-icons-png.flaticon.com/512/337/337946.png";
+        $("rxFileName").innerText = file.name;
+        $("rxFileSizeInfo").innerText = `PDF ফাইল (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+        $("dropzoneRx").classList.add("hidden");
+        $("rxPreviewCard").classList.remove("hidden");
+      }
+    }
+
+    function loadNewPrescriptionImage(dataUri, fileName) {
+      originalRawDataUri = dataUri;
+      $("prescription_original_base64").value = dataUri;
+      $("rxFileName").innerText = fileName || "prescription.jpg";
+
+      // Load image into smart crop canvas
+      smartImg = new Image();
+      smartImg.onload = function() {
+        autoResetSmartCorners();
+        openSmartCropModal();
+      };
+      smartImg.src = dataUri;
+    }
+
+    // -------------------------------------------------------------
+    // 4-CORNER SMART PERSPECTIVE CROP & LOUPE MAGNIFIER
+    // -------------------------------------------------------------
+    function openSmartCropModal() {
+      if (!smartImg.src) return;
+      $("cropStageEditor").classList.remove("hidden");
+      $("cropStageFilter").classList.add("hidden");
+      $("cropModal").classList.remove("hidden");
+
+      setTimeout(() => {
+        drawSmartCrop();
+      }, 50);
+    }
+
+    function closeSmartCropModal() {
+      $("cropModal").classList.add("hidden");
+    }
+
+    function autoResetSmartCorners() {
+      smartPts = [
+        { x: 0.05, y: 0.05 },
+        { x: 0.95, y: 0.05 },
+        { x: 0.95, y: 0.95 },
+        { x: 0.05, y: 0.95 }
+      ];
+      drawSmartCrop();
+    }
+
+    function setSmartAspect(aspect) {
+      currentSmartAspect = aspect;
+      ["free", "a4", "square"].forEach(a => {
+        const btn = $("ratioBtn_" + a);
+        if (btn) {
+          btn.className = a === aspect
+            ? "py-1.5 px-1 bg-emerald-600 text-white font-bold rounded-lg shadow-xs"
+            : "py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg";
+        }
+      });
+    }
+
+    function bilerp(p0, p1, p2, p3, u, v) {
+      const tx = p0.x * (1 - u) + p1.x * u;
+      const ty = p0.y * (1 - u) + p1.y * u;
+      const bx = p3.x * (1 - u) + p2.x * u;
+      const by = p3.y * (1 - u) + p2.y * u;
+      return { x: tx * (1 - v) + bx * v, y: ty * (1 - v) + by * v };
+    }
+
+    function drawSmartCrop() {
+      const canvas = $("smartCropCanvas");
+      const cont = $("smartCropContainer");
+      if (!canvas || !cont || !smartImg.width) return;
+
+      const pad = 16;
+      const availW = Math.max(200, (cont.clientWidth || 360) - pad * 2 - 4);
+      const availH = Math.max(200, (cont.clientHeight || 340) - pad * 2 - 4);
+      const scale = Math.min(availW / smartImg.width, availH / smartImg.height);
+      const drawW = Math.round(smartImg.width * scale);
+      const drawH = Math.round(smartImg.height * scale);
+
+      canvas.width = drawW + pad * 2;
+      canvas.height = drawH + pad * 2;
+      smartGeom = { pad, drawW, drawH };
+
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw base image
+      ctx.drawImage(smartImg, pad, pad, drawW, drawH);
+
+      const cPts = smartPts.map(p => ({
+        x: pad + p.x * drawW,
+        y: pad + p.y * drawH
+      }));
+
+      // Darken outside quadrilateral
+      ctx.save();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.58)";
+      ctx.beginPath();
+      ctx.rect(pad, pad, drawW, drawH);
+      ctx.moveTo(cPts[0].x, cPts[0].y);
+      ctx.lineTo(cPts[1].x, cPts[1].y);
+      ctx.lineTo(cPts[2].x, cPts[2].y);
+      ctx.lineTo(cPts[3].x, cPts[3].y);
+      ctx.closePath();
+      ctx.fill("evenodd");
+      ctx.restore();
+
+      // 3x3 internal perspective grid guide
+      ctx.save();
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      [1 / 3, 2 / 3].forEach(t => {
+        const vTop = bilerp(cPts[0], cPts[1], cPts[2], cPts[3], t, 0);
+        const vBot = bilerp(cPts[0], cPts[1], cPts[2], cPts[3], t, 1);
+        ctx.beginPath(); ctx.moveTo(vTop.x, vTop.y); ctx.lineTo(vBot.x, vBot.y); ctx.stroke();
+
+        const hLeft = bilerp(cPts[0], cPts[1], cPts[2], cPts[3], 0, t);
+        const hRight = bilerp(cPts[0], cPts[1], cPts[2], cPts[3], 1, t);
+        ctx.beginPath(); ctx.moveTo(hLeft.x, hLeft.y); ctx.lineTo(hRight.x, hRight.y); ctx.stroke();
+      });
+      ctx.restore();
+
+      // Rectangle border
+      ctx.save();
+      ctx.strokeStyle = "#10b981";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(cPts[0].x, cPts[0].y);
+      ctx.lineTo(cPts[1].x, cPts[1].y);
+      ctx.lineTo(cPts[2].x, cPts[2].y);
+      ctx.lineTo(cPts[3].x, cPts[3].y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+
+      // 4 Corner handles (touch-friendly green circles)
+      cPts.forEach((pt, idx) => {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+        ctx.fillStyle = idx === activeDragIdx ? "#ec4899" : "#10b981";
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+      });
+    }
+
+    // 4-Corner Loupe Magnifier
+    function updateLoupe(normPt) {
+      const loupe = $("smartLoupeCanvas");
+      if (!loupe || !smartImg.width) return;
+      loupe.classList.remove("hidden");
+
+      // Place loupe opposite to the active finger/corner
+      if (normPt.x < 0.45 && normPt.y < 0.45) {
+        loupe.style.left = "auto";
+        loupe.style.right = "10px";
+      } else {
+        loupe.style.right = "auto";
+        loupe.style.left = "10px";
+      }
+
+      const lctx = loupe.getContext("2d");
+      const lw = loupe.width, lh = loupe.height;
+      lctx.clearRect(0, 0, lw, lh);
+      lctx.fillStyle = "#020617";
+      lctx.fillRect(0, 0, lw, lh);
+
+      const srcX = normPt.x * smartImg.width;
+      const srcY = normPt.y * smartImg.height;
+      const zoomRadius = Math.max(28, Math.min(smartImg.width, smartImg.height) * 0.08);
+
+      lctx.drawImage(
+        smartImg,
+        srcX - zoomRadius, srcY - zoomRadius, zoomRadius * 2, zoomRadius * 2,
+        0, 0, lw, lh
+      );
+
+      // Green Crosshair in Loupe
+      lctx.strokeStyle = "#10b981";
+      lctx.lineWidth = 1.5;
+      lctx.beginPath();
+      lctx.moveTo(lw / 2, 0); lctx.lineTo(lw / 2, lh);
+      lctx.moveTo(0, lh / 2); lctx.lineTo(lw, lh / 2);
+      lctx.stroke();
+    }
+
+    function initSmartCanvasEvents() {
+      const canvas = $("smartCropCanvas");
+      if (!canvas || canvas.dataset.bound) return;
+      canvas.dataset.bound = "1";
+
+      function getCanvasPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY
+        };
+      }
+
+      function onStart(e) {
+        if (!smartImg.width) return;
+        const pos = getCanvasPos(e);
+        const { pad, drawW, drawH } = smartGeom;
+        const cPts = smartPts.map(p => ({ x: pad + p.x * drawW, y: pad + p.y * drawH }));
+
+        let bestIdx = -1;
+        let bestDist = 38;
+        cPts.forEach((pt, i) => {
+          const d = Math.hypot(pos.x - pt.x, pos.y - pt.y);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+
+        if (bestIdx !== -1) {
+          if (e.cancelable) e.preventDefault();
+          activeDragIdx = bestIdx;
+          updateLoupe(smartPts[activeDragIdx]);
+          drawSmartCrop();
+        }
+      }
+
+      function onMove(e) {
+        if (activeDragIdx === -1) return;
+        if (e.cancelable) e.preventDefault();
+        const pos = getCanvasPos(e);
+        const { pad, drawW, drawH } = smartGeom;
+        const nx = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
+        const ny = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+
+        smartPts[activeDragIdx] = { x: nx, y: ny };
+        updateLoupe(smartPts[activeDragIdx]);
+        drawSmartCrop();
+      }
+
+      function onEnd() {
+        activeDragIdx = -1;
+        const loupe = $("smartLoupeCanvas");
+        if (loupe) loupe.classList.add("hidden");
+        drawSmartCrop();
+      }
+
+      canvas.addEventListener("mousedown", onStart);
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onEnd);
+
+      canvas.addEventListener("touchstart", onStart, { passive: false });
+      window.addEventListener("touchmove", onMove, { passive: false });
+      window.addEventListener("touchend", onEnd);
+    }
+
+    // -------------------------------------------------------------
+    // PERSPECTIVE WARP (8-POINT HOMOGRAPHY) & CAMSCANNER ENHANCE
+    // -------------------------------------------------------------
+    function solveHomography8x8(p, dstW, dstH) {
+      const src = p;
+      const dst = [[0, 0], [dstW, 0], [dstW, dstH], [0, dstH]];
+      const A = [];
+      const B = [];
+
+      for (let i = 0; i < 4; i++) {
+        const sx = src[i][0], sy = src[i][1];
+        const dx = dst[i][0], dy = dst[i][1];
+        A.push([dx, dy, 1, 0, 0, 0, -dx * sx, -dy * sx]);
+        B.push(sx);
+        A.push([0, 0, 0, dx, dy, 1, -dx * sy, -dy * sy]);
+        B.push(sy);
+      }
+
+      // Gaussian elimination
+      for (let i = 0; i < 8; i++) {
+        let maxRow = i;
+        for (let r = i + 1; r < 8; r++) {
+          if (Math.abs(A[r][i]) > Math.abs(A[maxRow][i])) maxRow = r;
+        }
+        [A[i], A[maxRow]] = [A[maxRow], A[i]];
+        [B[i], B[maxRow]] = [B[maxRow], B[i]];
+
+        for (let r = i + 1; r < 8; r++) {
+          const c = A[r][i] / (A[i][i] || 1e-12);
+          for (let j = i; j < 8; j++) A[r][j] -= c * A[i][j];
+          B[r] -= c * B[i];
+        }
+      }
+
+      const h = new Array(8);
+      for (let i = 7; i >= 0; i--) {
+        let s = B[i];
+        for (let j = i + 1; j < 8; j++) s -= A[i][j] * h[j];
+        h[i] = s / (A[i][i] || 1e-12);
+      }
+      return h;
+    }
+
+    function warpPerspectiveClientSide(imgEl, pts, aspectKey) {
+      const sw = imgEl.naturalWidth || imgEl.width;
+      const sh = imgEl.naturalHeight || imgEl.height;
+      const p = pts.map(pt => [pt.x * sw, pt.y * sh]);
+
+      const wTop = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]);
+      const wBot = Math.hypot(p[2][0] - p[3][0], p[2][1] - p[3][1]);
+      const hLeft = Math.hypot(p[3][0] - p[0][0], p[3][1] - p[0][1]);
+      const hRight = Math.hypot(p[2][0] - p[1][0], p[2][1] - p[1][1]);
+
+      let outW = Math.max(120, Math.round((wTop + wBot) * 0.5));
+      let outH = Math.max(120, Math.round((hLeft + hRight) * 0.5));
+
+      if (aspectKey === "a4") {
+        const tr = 210.0 / 297.0;
+        if (outW >= outH * tr) outH = Math.max(120, Math.round(outW / tr));
+        else outW = Math.max(120, Math.round(outH * tr));
+      } else if (aspectKey === "square") {
+        const sz = Math.round((outW + outH) / 2);
+        outW = outH = sz;
+      }
+
+      const maxDim = 1200;
+      if (Math.max(outW, outH) > maxDim) {
+        const sc = maxDim / Math.max(outW, outH);
+        outW = Math.round(outW * sc);
+        outH = Math.round(outH * sc);
+      }
+
+      const srcCvs = document.createElement("canvas");
+      srcCvs.width = sw;
+      srcCvs.height = sh;
+      const sCtx = srcCvs.getContext("2d");
+      sCtx.drawImage(imgEl, 0, 0);
+      const srcData = sCtx.getImageData(0, 0, sw, sh).data;
+
+      const dstCvs = document.createElement("canvas");
+      dstCvs.width = outW;
+      dstCvs.height = outH;
+      const dCtx = dstCvs.getContext("2d");
+      const dstImgData = dCtx.createImageData(outW, outH);
+      const dstData = dstImgData.data;
+
+      const h = solveHomography8x8(p, outW, outH);
+      const h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4], h5 = h[5], h6 = h[6], h7 = h[7];
+
+      let idx = 0;
+      const maxX = sw - 1, maxY = sh - 1;
+      for (let y = 0; y < outH; y++) {
+        const hy1 = h1 * y + h2;
+        const hy4 = h4 * y + h5;
+        const hy7 = h7 * y + 1.0;
+        for (let x = 0; x < outW; x++) {
+          const w = 1.0 / (h6 * x + hy7);
+          let u = (h0 * x + hy1) * w;
+          let v = (h3 * x + hy4) * w;
+          if (u < 0) u = 0; else if (u > maxX) u = maxX;
+          if (v < 0) v = 0; else if (v > maxY) v = maxY;
+          const x0 = u | 0, y0 = v | 0;
+          const sIdx = (y0 * sw + x0) << 2;
+          dstData[idx] = srcData[sIdx];
+          dstData[idx + 1] = srcData[sIdx + 1];
+          dstData[idx + 2] = srcData[sIdx + 2];
+          dstData[idx + 3] = 255;
+          idx += 4;
+        }
+      }
+      dCtx.putImageData(dstImgData, 0, 0);
+      return dstCvs;
+    }
+
+    // CamScanner Enhancement Filters (Magic Color, Sharp, B&W)
+    function applyCamScannerFilter(srcCvs, fx) {
+      if (!srcCvs || fx === "none") return srcCvs;
+
+      const w = srcCvs.width, h = srcCvs.height;
+      const outCvs = document.createElement("canvas");
+      outCvs.width = w;
+      outCvs.height = h;
+      const ctx = outCvs.getContext("2d");
+      ctx.drawImage(srcCvs, 0, 0);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        let r = d[i], g = d[i + 1], b = d[i + 2];
+
+        if (fx === "magic_color") {
+          // CamScanner Magic Color S-curve: whitens background paper & deepens ink
+          r = r > 218 ? 255 : Math.max(0, Math.min(255, (r - 128) * 1.34 + 134));
+          g = g > 218 ? 255 : Math.max(0, Math.min(255, (g - 128) * 1.34 + 134));
+          b = b > 218 ? 255 : Math.max(0, Math.min(255, (b - 128) * 1.34 + 134));
+        } else if (fx === "hd_clear") {
+          // High definition contrast boost
+          r = Math.max(0, Math.min(255, (r - 128) * 1.25 + 130));
+          g = Math.max(0, Math.min(255, (g - 128) * 1.25 + 130));
+          b = Math.max(0, Math.min(255, (b - 128) * 1.25 + 130));
+        } else if (fx === "bw_doc") {
+          // Clean black and white document threshold
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          const v = lum > 140 ? 255 : (lum < 75 ? 0 : Math.round((lum - 75) * 3.92));
+          r = g = b = v;
+        }
+
+        d[i] = r;
+        d[i + 1] = g;
+        d[i + 2] = b;
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      return outCvs;
+    }
+
+    function applySmartPerspectiveWarp() {
+      // Warp perspective to rectangle
+      baseWarpedCanvas = warpPerspectiveClientSide(smartImg, smartPts, currentSmartAspect);
+
+      // Switch to Filter Stage
+      $("cropStageEditor").classList.add("hidden");
+      $("cropStageFilter").classList.remove("hidden");
+
+      setEnhanceFilter("magic_color");
+    }
+
+    function backToCornerCrop() {
+      $("cropStageFilter").classList.add("hidden");
+      $("cropStageEditor").classList.remove("hidden");
+      drawSmartCrop();
+    }
+
+    function setEnhanceFilter(fx) {
+      currentCropFilter = fx;
+      const labels = {
+        magic_color: "ম্যাজিক কালার",
+        hd_clear: "শার্প ক্লিয়ার",
+        bw_doc: "সাদাকালো",
+        none: "আসল ক্রপ"
+      };
+      $("activeFilterNameBadge").innerText = labels[fx] || fx;
+
+      ["magic_color", "hd_clear", "bw_doc", "none"].forEach(k => {
+        const btn = $("fxBtn_" + k);
+        if (btn) {
+          btn.className = k === fx
+            ? "py-2 px-1 rounded-xl font-bold border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs"
+            : "py-2 px-1 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-500";
+        }
+      });
+
+      if (!baseWarpedCanvas) return;
+      const filteredCvs = applyCamScannerFilter(baseWarpedCanvas, fx);
+
+      // Render to preview canvas
+      const pv = $("filterPreviewCanvas");
+      pv.width = filteredCvs.width;
+      pv.height = filteredCvs.height;
+      const pvCtx = pv.getContext("2d");
+      pvCtx.drawImage(filteredCvs, 0, 0);
+    }
+
+    function openFilterQuickSelect() {
+      if (!currentEnhancedDataUri) return;
+      openSmartCropModal();
+      applySmartPerspectiveWarp();
+    }
+
+    function confirmCroppedAndEnhanced() {
+      const pv = $("filterPreviewCanvas");
+      if (!pv) return;
+
+      currentEnhancedDataUri = pv.toDataURL("image/jpeg", 0.85);
+      $("prescription_base64").value = currentEnhancedDataUri;
+
+      // Update UI preview card
+      $("rxThumbImg").src = currentEnhancedDataUri;
+      $("activeFilterBadge").innerText = $("activeFilterNameBadge").innerText;
+      $("dropzoneRx").classList.add("hidden");
+      $("rxPreviewCard").classList.remove("hidden");
+
+      closeSmartCropModal();
+    }
+
+    // Toggle view between Original vs Enhanced
+    function toggleViewImage(mode) {
+      activeViewMode = mode;
+      const btnEnh = $("btnViewEnhanced");
+      const btnOrig = $("btnViewOriginal");
+
+      if (mode === "enhanced") {
+        $("rxThumbImg").src = currentEnhancedDataUri || originalRawDataUri;
+        btnEnh.className = "px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded-md shadow-2xs";
+        btnOrig.className = "px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-md";
+      } else {
+        $("rxThumbImg").src = originalRawDataUri;
+        btnOrig.className = "px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded-md shadow-2xs";
+        btnEnh.className = "px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-md";
+      }
+    }
+
+    function removeSelectedFile() {
+      $("rxFileInput").value = "";
+      $("rxCameraInput").value = "";
+      $("prescription_base64").value = "";
+      $("prescription_original_base64").value = "";
+      originalRawDataUri = "";
+      currentEnhancedDataUri = "";
+      $("dropzoneRx").classList.remove("hidden");
+      $("rxPreviewCard").classList.add("hidden");
+    }
+
+    function openPreviewModal() {
+      const src = activeViewMode === "original" ? originalRawDataUri : (currentEnhancedDataUri || originalRawDataUri);
+      if (src) {
+        $("previewModalImg").src = src;
+        $("previewModalTitle").innerText = activeViewMode === "original" ? "প্রেসক্রিপশন (আসল ছবি)" : "প্রেসক্রিপশন (ক্যামস্ক্যানার এনহ্যান্সড)";
+        $("previewModal").classList.remove("hidden");
+      }
+    }
+
+    function closePreviewModal() {
+      $("previewModal").classList.add("hidden");
+    }
+
+    // -------------------------------------------------------------
+    // MEDICINE CATALOG & ORDER SUBMISSION
+    // -------------------------------------------------------------
+    function setOrderMode(mode) {
+      currentMode = mode;
+      const tabRx = $("tabModeRxOnly");
+      const tabBoth = $("tabModeBoth");
+      const tabMed = $("tabModeMedOnly");
+      
+      [tabRx, tabBoth, tabMed].forEach(t => {
+        t.className = "py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1";
+      });
+
+      const activeClasses = "py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center bg-emerald-600 text-white shadow-xs flex flex-col sm:flex-row items-center justify-center gap-1";
+      const stepUploadCard = $("stepUploadCard");
+      const modeNoticeText = $("modeNoticeText");
+
+      if (mode === "prescription_only") {
+        tabRx.className = activeClasses;
+        stepUploadCard.classList.remove("hidden");
+        modeNoticeText.innerHTML = "<strong>শুধু প্রেসক্রিপশন আপলোড:</strong> প্রেসক্রিপশনের ছবি আপলোড করুন এবং কয়দিনের ওষুধ লাগবে নির্বাচন করুন। আমাদের ফার্মাসিস্ট দেখে সঠিক ওষুধ ও বিল প্রস্তুত করবেন।";
+      } else if (mode === "medicines_only") {
+        tabMed.className = activeClasses;
+        stepUploadCard.classList.add("hidden");
+        modeNoticeText.innerHTML = "<strong>ঔষধ নির্বাচন সেবা:</strong> তালিকা থেকে প্রয়োজনীয় ওষুধ (ট্যাবলেট, ক্যাপসুল, সিরাপ, ব্যান্ডেজ ইত্যাদি) সার্চ করে সিলেক্ট করুন ও পরিমাণ নির্ধারণ করুন।";
+      } else {
+        tabBoth.className = activeClasses;
+        stepUploadCard.classList.remove("hidden");
+        modeNoticeText.innerHTML = "<strong>উভয় একসাথে:</strong> প্রেসক্রিপশন আপলোড করুন এবং পাশাপাশি তালিকা থেকে প্রয়োজনীয় ওষুধ বা ফার্স্ট এইড আইটেম (স্যাভলন, গজ ইত্যাদি) সিলেক্ট করুন।";
+      }
+    }
+
+    function selectDuration(days, btn) {
+      $("overall_duration_days").value = days;
+      document.querySelectorAll(".duration-pill").forEach(p => {
+        p.className = "duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center";
+      });
+      btn.className = "duration-pill py-1.5 px-2 bg-emerald-600 border border-emerald-600 rounded-lg text-xs font-bold text-white shadow-2xs transition text-center";
+    }
+
+    async function fetchMedicinesCatalog() {
+      try {
+        const res = await fetch("/api/pharmacy/medicines");
+        const data = await res.json();
+        if (data.success) catalogMedicines = data.medicines;
+      } catch (err) {}
+    }
+
+    function filterDosage(dosage, btn) {
+      document.querySelectorAll(".dosage-filter-pill").forEach(p => {
+        p.className = "dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0";
+      });
+      btn.className = "dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shrink-0 shadow-2xs";
+      
+      const q = $("medicineSearchInput").value.trim().toLowerCase();
+      renderMedicineSuggestions(dosage, q);
+    }
+
+    let searchDebounceTimer = null;
+    function onMedicineSearchInput() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        const activeBtn = document.querySelector(".dosage-filter-pill.bg-emerald-600");
+        const dosage = activeBtn ? (activeBtn.innerText.includes("ট্যাবলেট") ? "ট্যাবলেট" : (activeBtn.innerText.includes("ক্যাপসুল") ? "ক্যাপসুল" : (activeBtn.innerText.includes("সিরাপ") ? "সিরাপ" : "all"))) : "all";
+        renderMedicineSuggestions(dosage, $("medicineSearchInput").value.trim().toLowerCase());
+      }, 250);
+    }
+
+    function onMedicineSearchFocus() {
+      onMedicineSearchInput();
+    }
+
+    function clearMedicineSearch() {
+      $("medicineSearchInput").value = "";
+      $("btnClearSearch").classList.add("hidden");
+      $("medicineDropdown").classList.add("hidden");
+    }
+
+    function renderMedicineSuggestions(dosage, q) {
+      const dropdown = $("medicineDropdown");
+      const btnClear = $("btnClearSearch");
+
+      if (q && q.length > 0) btnClear.classList.remove("hidden");
+      else btnClear.classList.add("hidden");
+
+      const filtered = catalogMedicines.filter(m => {
+        const matchDosage = !dosage || dosage === "all" || m.dosage_form.includes(dosage);
+        const matchName = !q || m.name.toLowerCase().includes(q) || (m.generic_name || "").toLowerCase().includes(q);
+        return matchDosage && matchName;
+      }).slice(0, 15);
+
+      if (filtered.length === 0) {
+        dropdown.innerHTML = `<div class="p-3 text-center text-xs text-slate-400">কোনো ঔষধ পাওয়া যায়নি। প্রেসক্রিপশন আপলোড করে অর্ডার করতে পারেন।</div>`;
+        dropdown.classList.remove("hidden");
+        return;
+      }
+
+      let html = "";
+      filtered.forEach(m => {
+        html += `
+          <div onclick="addMedicineItem(${m.id})" class="p-2.5 hover:bg-emerald-50/60 cursor-pointer flex items-center justify-between gap-2 transition">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-xs font-bold text-slate-900">${m.name}</span>
+                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${m.dosage_form}</span>
+                ${m.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${m.strength})</span>` : ''}
+              </div>
+              <p class="text-[10px] text-slate-500 truncate mt-0.5">${m.generic_name || m.manufacturer || ''}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs font-bold text-emerald-700">৳${parseFloat(m.unit_price).toFixed(2)}</div>
+              <span class="text-[10px] text-slate-400">প্রতি পিস/বোতল</span>
+            </div>
+          </div>
+        `;
+      });
+      dropdown.innerHTML = html;
+      dropdown.classList.remove("hidden");
+    }
+
+    document.addEventListener("click", e => {
+      const container = $("medicineSelectionSection");
+      if (container && !container.contains(e.target)) $("medicineDropdown").classList.add("hidden");
+    });
+
+    function addMedicineItem(medId) {
+      const med = catalogMedicines.find(x => x.id === medId);
+      if (!med) return;
+
+      const existing = selectedMedicines.find(x => x.id === medId);
+      if (existing) {
+        existing.quantity += 1;
+        existing.total_price = Math.round(existing.quantity * existing.unit_price * 100) / 100;
+      } else {
+        selectedMedicines.push({
+          id: med.id,
+          name: med.name,
+          generic_name: med.generic_name,
+          dosage_form: med.dosage_form,
+          strength: med.strength,
+          quantity: 1,
+          unit: med.dosage_form === "সিরাপ" ? "বোতল" : "পিস",
+          duration_days: $("overall_duration_days").value + " দিন",
+          unit_price: parseFloat(med.unit_price),
+          total_price: parseFloat(med.unit_price)
+        });
+      }
+
+      clearMedicineSearch();
+      renderSelectedMedicines();
+      updateBillEstimate();
+    }
+
+    function changeMedicineQty(idx, delta) {
+      if (!selectedMedicines[idx]) return;
+      selectedMedicines[idx].quantity += delta;
+      if (selectedMedicines[idx].quantity <= 0) {
+        selectedMedicines.splice(idx, 1);
+      } else {
+        selectedMedicines[idx].total_price = Math.round(selectedMedicines[idx].quantity * selectedMedicines[idx].unit_price * 100) / 100;
+      }
+      renderSelectedMedicines();
+      updateBillEstimate();
+    }
+
+    function removeMedicineItem(idx) {
+      selectedMedicines.splice(idx, 1);
+      renderSelectedMedicines();
+      updateBillEstimate();
+    }
+
+    function renderSelectedMedicines() {
+      const listContainer = $("selectedMedicinesList");
+      const countText = $("selectedCountText");
+      const subtotalBadge = $("selectedSubtotalBadge");
+
+      countText.innerText = selectedMedicines.length;
+
+      if (selectedMedicines.length === 0) {
+        listContainer.innerHTML = `
+          <div id="emptyMedicinesNotice" class="text-center py-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+            <p class="text-xs text-slate-500 font-medium">কোনো নির্দিষ্ট ওষুধ যোগ করা হয়নি।</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">আপনি চাইলে শুধুমাত্র প্রেসক্রিপশন আপলোড করেও সম্পূর্ণ অর্ডার দিতে পারেন।</p>
+          </div>
+        `;
+        subtotalBadge.innerText = "সম্ভাব্য মোট: ৳০.০০";
+        return;
+      }
+
+      let subtotal = 0;
+      let html = "";
+      selectedMedicines.forEach((item, idx) => {
+        subtotal += item.total_price;
+        html += `
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs space-y-2">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs font-bold text-slate-900">${item.name}</span>
+                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${item.dosage_form}</span>
+                  ${item.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${item.strength})</span>` : ''}
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">প্রতি ${item.unit}: ৳${item.unit_price.toFixed(2)}</div>
+              </div>
+              <button type="button" onclick="removeMedicineItem(${idx})" class="text-red-500 hover:text-red-700 text-sm p-1 leading-none" title="মুছুন">
+                🗑️
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 flex-wrap">
+              <div class="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                <button type="button" onclick="changeMedicineQty(${idx}, -1)" class="w-6 h-6 rounded-md bg-white text-slate-700 hover:bg-slate-200 font-bold text-xs flex items-center justify-center shadow-2xs">-</button>
+                <span class="px-2 text-xs font-extrabold text-slate-800">${item.quantity} ${item.unit}</span>
+                <button type="button" onclick="changeMedicineQty(${idx}, 1)" class="w-6 h-6 rounded-md bg-white text-slate-700 hover:bg-slate-200 font-bold text-xs flex items-center justify-center shadow-2xs">+</button>
+              </div>
+
+              <div class="flex items-center gap-1">
+                <span class="text-xs font-bold text-emerald-700 shrink-0">৳${item.total_price.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      listContainer.innerHTML = html;
+      subtotalBadge.innerText = `সম্ভাব্য মোট: ৳${subtotal.toFixed(2)}`;
+    }
+
+    function updateBillEstimate() {
+      let medTotal = 0;
+      selectedMedicines.forEach(m => medTotal += m.total_price);
+      const grandTotal = medTotal > 0 ? (medTotal + DELIVERY_CHARGE) : DELIVERY_CHARGE;
+      $("billEstimateMedicines").innerText = `৳${medTotal.toFixed(2)}`;
+      $("billEstimateGrandTotal").innerText = `৳${grandTotal.toFixed(2)}`;
+    }
+
+    // Submit Order Form
+    async function submitPharmacyOrder(event) {
+      event.preventDefault();
+
+      const custName = $("customer_name").value.trim();
+      const custPhone = $("customer_phone").value.trim();
+      const deliveryAddr = $("delivery_address").value.trim();
+      const district = $("district").value.trim();
+      const area = $("area").value.trim();
+      const overallDuration = parseInt($("overall_duration_days").value) || 0;
+      const notes = $("customer_notes").value.trim();
+
+      const hasPrescription = Boolean(currentEnhancedDataUri || originalRawDataUri);
+      const hasMedicines = selectedMedicines.length > 0;
+
+      if (!custPhone || custPhone.length < 11) {
+        alert("অনুগ্রহ করে আপনার সঠিক ১১ ডিজিটের মোবাইল নম্বর প্রদান করুন।");
+        $("customer_phone").focus();
+        return;
+      }
+
+      if (!deliveryAddr) {
+        alert("অনুগ্রহ করে সম্পূর্ণ ডেলিভারি ঠিকানা প্রদান করুন।");
+        $("delivery_address").focus();
+        return;
+      }
+
+      if (!hasPrescription && !hasMedicines) {
+        alert("অনুগ্রহ করে প্রেসক্রিপশন আপলোড করুন অথবা ঔষধ নির্বাচন করুন।");
+        return;
+      }
+
+      if (hasPrescription && !hasMedicines && overallDuration <= 0 && notes.length < 2) {
+        alert("প্রেসক্রিপশন আপলোড করলে ওষুধ কয়দিনের লাগবে নির্বাচন করুন অথবা নোটে লিখে দিন।");
+        return;
+      }
+
+      localStorage.setItem("supershop_cust_phone", custPhone);
+      localStorage.setItem("supershop_cust_name", custName);
+      localStorage.setItem("supershop_cust_addr", deliveryAddr);
+
+      const payload = {
+        customer_name: custName,
+        customer_phone: custPhone,
+        delivery_address: deliveryAddr,
+        district: district,
+        area: area,
+        order_type: currentMode,
+        overall_duration_days: overallDuration,
+        customer_notes: notes,
+        prescription_base64: currentEnhancedDataUri || originalRawDataUri,
+        prescription_original_base64: originalRawDataUri,
+        items: selectedMedicines
+      };
+
+      const btnSubmit = $("btnSubmitOrder");
+      const btnIcon = $("btnSubmitIcon");
+      const btnText = $("btnSubmitText");
+      const btnSpinner = $("btnSubmitSpinner");
+
+      btnSubmit.disabled = true;
+      btnIcon.classList.add("hidden");
+      btnSpinner.classList.remove("hidden");
+      btnText.innerText = "অর্ডার প্রসেস হচ্ছে...";
+
+      try {
+        const response = await fetch("/pharmacy/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const resData = await response.json();
+        if (resData.success) {
+          saveOrderToLocalStorage({
+            order_number: resData.order_number,
+            order_id: resData.order_id,
+            delivery_otp: resData.delivery_otp,
+            created_at: new Date().toISOString(),
+            status: "reviewing",
+            status_bn: "ফার্মাসিস্ট যাচাই করছেন",
+            total_amount: $("billEstimateGrandTotal").innerText.replace("৳", ""),
+            prescription_url: currentEnhancedDataUri || originalRawDataUri,
+            duration: overallDuration + " দিনের ওষুধ"
+          });
+
+          removeSelectedFile();
+          selectedMedicines = [];
+          renderSelectedMedicines();
+          $("customer_notes").value = "";
+
+          showSuccessTrackingModal(resData.order_number, resData.delivery_otp, overallDuration);
+          loadRecentOrders();
+        } else {
+          alert("ত্রুটি: " + (resData.message || "অর্ডার সম্পন্ন করা যায়নি।"));
+        }
+      } catch (err) {
+        alert("সার্ভার সংযোগে সমস্যা হয়েছে।");
+      } finally {
+        btnSubmit.disabled = false;
+        btnIcon.classList.remove("hidden");
+        btnSpinner.classList.add("hidden");
+        btnText.innerText = "প্রেসক্রিপশন ও ঔষধ অর্ডার কনফার্ম করুন";
+      }
+    }
+
+    // Success Tracking Modal
+    function showSuccessTrackingModal(orderNumber, deliveryOtp, durationDays) {
+      $("successOrderNumber").innerText = orderNumber;
+      $("successDeliveryOtp").innerText = deliveryOtp;
+      $("successStatusBadge").innerText = "যাচাই চলছে";
+      $("successDurationTxt").innerText = `মেয়াদ: ${durationDays} দিনের ওষুধ`;
+
+      const displayImg = currentEnhancedDataUri || originalRawDataUri;
+      if (displayImg) {
+        $("successRxThumb").src = displayImg;
+        $("successRxCard").classList.remove("hidden");
+      } else {
+        $("successRxCard").classList.add("hidden");
+      }
+
+      $("orderSuccessModal").classList.remove("hidden");
+    }
+
+    function closeSuccessModal() {
+      $("orderSuccessModal").classList.add("hidden");
+    }
+
+    function openSuccessPreview() {
+      const src = $("successRxThumb").src;
+      if (src) {
+        $("previewModalImg").src = src;
+        $("previewModal").classList.remove("hidden");
+      }
+    }
+
+    function copyOrderTrackingLink() {
+      const orderNum = $("successOrderNumber").innerText;
+      const trackUrl = window.location.origin + "/pharmacy?order=" + orderNum;
+      navigator.clipboard.writeText(trackUrl).then(() => {
+        alert("ট্র্যাকিং লিংক কপি হয়েছে: " + trackUrl);
+      }).catch(() => {
+        prompt("ট্র্যাকিং লিংকটি কপি করুন:", trackUrl);
+      });
+    }
+
+    // Recent Orders in LocalStorage
+    function saveOrderToLocalStorage(orderObj) {
+      let orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+      orders.unshift(orderObj);
+      if (orders.length > 20) orders = orders.slice(0, 20);
+      localStorage.setItem("supershop_rx_orders", JSON.stringify(orders));
+    }
+
+    function toggleRecentOrders() {
+      const panel = $("recentOrdersPanel");
+      panel.classList.toggle("hidden");
+      if (!panel.classList.contains("hidden")) refreshRecentOrders();
+    }
+
+    function loadRecentOrders() {
+      const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+      const badge = $("recentOrdersBadge");
+      const list = $("recentOrdersList");
+
+      if (orders.length > 0) {
+        badge.innerText = orders.length;
+        badge.classList.remove("hidden");
+
+        let html = "";
+        orders.forEach(o => {
+          html += `
+            <div onclick="trackSpecificOrder('${o.order_number}')" class="p-2.5 bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-300 rounded-xl cursor-pointer transition flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono font-bold text-xs text-slate-900">${o.order_number}</span>
+                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">${o.status_bn || 'যাচাই চলছে'}</span>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5">${o.duration || 'প্রেসক্রিপশন'} • ওটিপি: <strong class="font-mono text-amber-700">${o.delivery_otp || '----'}</strong></div>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="text-xs font-black text-emerald-700">৳${o.total_amount || '0'}</span>
+                <span class="block text-[10px] text-emerald-600 font-bold">ট্র্যাক ➔</span>
+              </div>
+            </div>
+          `;
+        });
+        list.innerHTML = html;
+      } else {
+        badge.classList.add("hidden");
+        list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">এখনো কোনো অর্ডার দেওয়া হয়নি।</p>`;
+      }
+    }
+
+    async function refreshRecentOrders() {
+      const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+      if (orders.length === 0) return;
+
+      for (let o of orders) {
+        try {
+          const res = await fetch("/api/pharmacy/order-status/" + o.order_number);
+          const data = await res.json();
+          if (data.success) {
+            o.status = data.order_status;
+            o.status_bn = data.status_bn;
+            o.total_amount = data.total_amount;
+            o.assigned_rider_name = data.assigned_rider_name;
+            o.assigned_rider_phone = data.assigned_rider_phone;
+          }
+        } catch (e) {}
+      }
+      localStorage.setItem("supershop_rx_orders", JSON.stringify(orders));
+      loadRecentOrders();
+    }
+
+    async function trackSpecificOrder(orderNumber) {
+      try {
+        const res = await fetch("/api/pharmacy/order-status/" + orderNumber);
+        const data = await res.json();
+        if (!data.success) {
+          alert("অর্ডারটি খুঁজে পাওয়া যায়নি।");
+          return;
+        }
+
+        $("successOrderNumber").innerText = data.order_number;
+        $("successDeliveryOtp").innerText = data.delivery_otp || "----";
+        $("successStatusBadge").innerText = data.status_bn;
+        $("successDurationTxt").innerText = `মেয়াদ: ${data.overall_duration_days || '৭'} দিনের ওষুধ`;
+
+        const displayImg = data.prescription_url;
+        if (displayImg) {
+          $("successRxThumb").src = displayImg;
+          $("successRxCard").classList.remove("hidden");
+        } else {
+          $("successRxCard").classList.add("hidden");
+        }
+
+        const st = data.order_status;
+        const steps = ["stepPlaced", "stepReview", "stepConfirmed", "stepPacked", "stepOnTheWay", "stepDelivered"];
+        const statusMap = { "reviewing": 1, "confirmed": 2, "packed": 3, "on_the_way": 4, "delivered": 5 };
+        const currentIdx = statusMap[st] !== undefined ? statusMap[st] : 1;
+
+        steps.forEach((stepId, idx) => {
+          const el = $(stepId);
+          if (idx <= currentIdx) {
+            el.className = "flex items-center gap-2.5 text-emerald-700 font-bold";
+            el.children[0].className = "w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold";
+            el.children[0].innerText = "✓";
+          } else {
+            el.className = "flex items-center gap-2.5 text-slate-400 font-medium";
+            el.children[0].className = "w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center font-medium";
+            el.children[0].innerText = (idx + 1).toString();
+          }
+        });
+
+        const riderCard = $("successRiderCard");
+        if (data.assigned_rider_name && (st === "on_the_way" || st === "packed" || st === "delivered")) {
+          $("successRiderName").innerText = "রাইডার: " + data.assigned_rider_name;
+          $("successRiderPhone").innerText = "মোবাইল: " + (data.assigned_rider_phone || "----");
+          $("successRiderCallBtn").href = "tel:" + data.assigned_rider_phone;
+          riderCard.classList.remove("hidden");
+        } else {
+          riderCard.classList.add("hidden");
+        }
+
+        $("orderSuccessModal").classList.remove("hidden");
+      } catch (err) {
+        alert("অর্ডার ট্র্যাকিং তথ্য লোড করা যায়নি।");
+      }
+    }
+  </script>
+
+</body>
+</html>
