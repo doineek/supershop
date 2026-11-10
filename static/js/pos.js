@@ -43,41 +43,105 @@ const customerMobileInput = document.getElementById("customerMobileInput");
 
 const allTiles = Array.from(document.querySelectorAll(".pos-product"));
 
+let posMedsLoaded = false;
+let posMedSearchTimer = null;
+
 function switchPosCatalog(tab) {
   const prodList = document.getElementById("productList");
   const pkgList = document.getElementById("packageList");
+  const medList = document.getElementById("medicineList");
   const tabProdBtn = document.getElementById("posTabProducts");
   const tabPkgBtn = document.getElementById("posTabPackages");
+  const tabMedBtn = document.getElementById("posTabMedicines");
+
+  // Reset tab button styles
+  if (tabProdBtn) { tabProdBtn.style.background = "#f1f5f9"; tabProdBtn.style.color = "#475569"; tabProdBtn.style.borderColor = "#cbd5e1"; }
+  if (tabPkgBtn) { tabPkgBtn.style.background = "#fff7ed"; tabPkgBtn.style.color = "#ea580c"; tabPkgBtn.style.borderColor = "#fed7aa"; }
+  if (tabMedBtn) { tabMedBtn.style.background = "#ecfdf5"; tabMedBtn.style.color = "#047857"; tabMedBtn.style.borderColor = "#a7f3d0"; }
+
+  if (prodList) prodList.style.display = "none";
+  if (pkgList) pkgList.style.display = "none";
+  if (medList) medList.style.display = "none";
 
   if (tab === "packages") {
-    if (prodList) prodList.style.display = "none";
     if (pkgList) pkgList.style.display = "grid";
-    if (tabProdBtn) {
-      tabProdBtn.style.background = "#f1f5f9";
-      tabProdBtn.style.color = "#475569";
-      tabProdBtn.style.borderColor = "#cbd5e1";
-    }
-    if (tabPkgBtn) {
-      tabPkgBtn.style.background = "#ea580c";
-      tabPkgBtn.style.color = "#ffffff";
-      tabPkgBtn.style.borderColor = "#ea580c";
+    if (tabPkgBtn) { tabPkgBtn.style.background = "#ea580c"; tabPkgBtn.style.color = "#ffffff"; tabPkgBtn.style.borderColor = "#ea580c"; }
+  } else if (tab === "medicines") {
+    if (medList) medList.style.display = "flex";
+    if (tabMedBtn) { tabMedBtn.style.background = "#059669"; tabMedBtn.style.color = "#ffffff"; tabMedBtn.style.borderColor = "#059669"; }
+    if (!posMedsLoaded) {
+      loadPosMedicines("");
     }
   } else {
     if (prodList) prodList.style.display = "grid";
-    if (pkgList) pkgList.style.display = "none";
-    if (tabProdBtn) {
-      tabProdBtn.style.background = "#0284c7";
-      tabProdBtn.style.color = "#ffffff";
-      tabProdBtn.style.borderColor = "#0284c7";
-    }
-    if (tabPkgBtn) {
-      tabPkgBtn.style.background = "#fff7ed";
-      tabPkgBtn.style.color = "#ea580c";
-      tabPkgBtn.style.borderColor = "#ea580c";
-    }
+    if (tabProdBtn) { tabProdBtn.style.background = "#0284c7"; tabProdBtn.style.color = "#ffffff"; tabProdBtn.style.borderColor = "#0284c7"; }
   }
 }
 window.switchPosCatalog = switchPosCatalog;
+
+async function loadPosMedicines(q = "") {
+  const grid = document.getElementById("posMedGrid");
+  if (!grid) return;
+  grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:15px; color:#64748b; font-size:12px;">ঔষধ লোড হচ্ছে...</div>`;
+  try {
+    const res = await fetch("/api/pharmacy/medicines?q=" + encodeURIComponent(q));
+    const data = await res.json();
+    const list = data.medicines || [];
+    posMedsLoaded = true;
+
+    if (list.length === 0) {
+      grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:20px; color:#94a3b8; font-size:12px;">কোনো ওষুধ পাওয়া যায়নি।</div>`;
+      return;
+    }
+
+    grid.innerHTML = "";
+    list.forEach(m => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pos-product pos-medicine-btn";
+      btn.style.border = "1.5px solid #a7f3d0";
+      btn.style.background = "#ffffff";
+      btn.style.textAlign = "left";
+      btn.style.padding = "8px";
+      btn.style.borderRadius = "8px";
+      btn.style.cursor = "pointer";
+      btn.innerHTML = `
+        <span style="background:#059669; color:white; font-size:9px; font-weight:bold; padding:2px 5px; border-radius:4px; display:inline-block; margin-bottom:3px;">
+          💊 ${m.dosage_form || 'ট্যাবলেট'}
+        </span>
+        <div style="font-weight:700; font-size:12px; color:#0f172a; line-height:1.2;">${m.name}</div>
+        <div style="font-size:10px; color:#64748b;">${m.strength || m.generic_name || ''}</div>
+        <div style="color:#059669; font-weight:800; font-size:13px; margin-top:3px;">TK ${(parseFloat(m.unit_price) || 0).toFixed(2)}</div>
+        <div style="font-size:10px; color:#64748b;">Stock: ${m.stock_qty || 999}</div>
+      `;
+      btn.addEventListener("click", () => addToCart({
+        id: "med_" + m.id,
+        medicine_id: m.id,
+        name: `💊 ${m.name}` + (m.strength ? ` (${m.strength})` : ` (${m.dosage_form || 'ঔষধ'})`),
+        sku: `MED-${m.id}`,
+        price: parseFloat(m.unit_price) || 0,
+        mrp: parseFloat(m.unit_price) || 0,
+        vat_pct: 0,
+        stock: parseInt(m.stock_qty || 999, 10),
+        is_medicine: true,
+        serial: null
+      }));
+      grid.appendChild(btn);
+    });
+  } catch (err) {
+    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:15px; color:#ef4444; font-size:12px;">সার্ভার সংযোগ সমস্যা।</div>`;
+  }
+}
+window.loadPosMedicines = loadPosMedicines;
+
+function onPosMedSearchInput() {
+  clearTimeout(posMedSearchTimer);
+  posMedSearchTimer = setTimeout(() => {
+    const q = document.getElementById("posMedSearchInput")?.value.trim() || "";
+    loadPosMedicines(q);
+  }, 250);
+}
+window.onPosMedSearchInput = onPosMedSearchInput;
 
 const savedCustId = localStorage.getItem(CUSTOMER_ID_KEY);
 if (savedCustId) customerIdInput.value = savedCustId;
@@ -92,7 +156,7 @@ function saveCart() {
 
 function currentCartSerials() {
   let all = [];
-  Object.values(cart).forEach(item => { all = all.concat(item.serials.filter(Boolean)); });
+  Object.values(cart).forEach(item => { all = all.concat((item.serials || []).filter(Boolean)); });
   return all;
 }
 
@@ -101,11 +165,89 @@ function roundToWhole(amount) {
   return fraction >= 0.5 ? Math.ceil(amount) : Math.floor(amount);
 }
 
+let posLiveSearchTimer = null;
+const posSearchDropdown = document.getElementById("posSearchDropdown");
+
 searchBox.addEventListener("input", () => {
-  const term = searchBox.value.toLowerCase();
+  const term = searchBox.value.trim().toLowerCase();
   allTiles.forEach(btn => {
-    btn.style.display = btn.dataset.search.includes(term) ? "" : "none";
+    btn.style.display = btn.dataset.search && btn.dataset.search.includes(term) ? "" : "none";
   });
+
+  if (!posSearchDropdown) return;
+  if (term.length < 2) {
+    posSearchDropdown.style.display = "none";
+    return;
+  }
+
+  clearTimeout(posLiveSearchTimer);
+  posLiveSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch("/api/pos/search?q=" + encodeURIComponent(term));
+      const data = await res.json();
+      const results = data.results || [];
+      if (results.length === 0) {
+        posSearchDropdown.innerHTML = `<div style="padding:10px; text-align:center; color:#94a3b8; font-size:12px;">কোনো পণ্য বা ঔষধ পাওয়া যায়নি।</div>`;
+        posSearchDropdown.style.display = "block";
+        return;
+      }
+
+      let html = "";
+      results.forEach((item, idx) => {
+        html += `
+          <div class="pos-dropdown-item" data-idx="${idx}" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
+            <div>
+              <span style="font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px; color:white; background:${item.badge_color || '#059669'}; margin-right:4px;">
+                ${item.badge}
+              </span>
+              <strong style="font-size:13px; color:#0f172a;">${item.name}</strong>
+              ${item.generic_name ? `<div style="font-size:11px; color:#64748b;">${item.generic_name} ${item.manufacturer ? '· ' + item.manufacturer : ''}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <strong style="color:#059669; font-size:13px;">৳${item.price.toFixed(2)}</strong>
+              <div style="font-size:10px; color:#64748b;">স্টক: ${item.stock_qty}</div>
+            </div>
+          </div>
+        `;
+      });
+      posSearchDropdown.innerHTML = html;
+      posSearchDropdown.style.display = "block";
+
+      posSearchDropdown.querySelectorAll(".pos-dropdown-item").forEach(el => {
+        el.addEventListener("click", () => {
+          const item = results[parseInt(el.dataset.idx, 10)];
+          if (item) {
+            addToCart({
+              id: item.id,
+              name: item.name,
+              sku: item.sku,
+              price: item.price,
+              mrp: item.mrp || item.price,
+              vat_pct: item.vat_pct || 0,
+              stock: item.stock_qty,
+              is_package: item.is_package || false,
+              is_medicine: item.is_medicine || false,
+              offer_type: item.offer_type || "",
+              offer_value: item.offer_value || "",
+              offer_title: item.offer_title || "",
+              serial: null
+            });
+            searchBox.value = "";
+            posSearchDropdown.style.display = "none";
+            allTiles.forEach(btn => { btn.style.display = ""; });
+          }
+        });
+      });
+    } catch (e) {
+      posSearchDropdown.style.display = "none";
+    }
+  }, 200);
+});
+
+document.addEventListener("click", (e) => {
+  if (posSearchDropdown && !searchBox.contains(e.target) && !posSearchDropdown.contains(e.target)) {
+    posSearchDropdown.style.display = "none";
+  }
 });
 
 searchBox.addEventListener("keydown", async (e) => {
@@ -113,6 +255,8 @@ searchBox.addEventListener("keydown", async (e) => {
   e.preventDefault();
   const typed = searchBox.value.trim();
   if (!typed) return;
+  if (posSearchDropdown) posSearchDropdown.style.display = "none";
+
   try {
     const exclude = currentCartSerials().join(",");
     const res = await fetch("/pos/lookup?code=" + encodeURIComponent(typed) + "&exclude=" + encodeURIComponent(exclude));
@@ -121,6 +265,8 @@ searchBox.addEventListener("keydown", async (e) => {
     addToCart({
       id: data.id, name: data.name, sku: data.sku, price: data.price,
       mrp: data.mrp, vat_pct: data.vat_pct || 0, stock: data.stock_qty,
+      is_package: data.is_package || false,
+      is_medicine: data.is_medicine || false,
       serial: data.unit_serial || null,
     });
     searchBox.value = "";
@@ -273,12 +419,14 @@ function getEffectiveMaxOrderQty(item, maxLimit) {
 
 function addToCart(data) {
   const id = String(data.id);
-  const isPkg = data.is_package || data.isPkg || id.startsWith("pkg_");
+  const isMed = data.is_medicine || id.startsWith("med_");
+  const isPkg = !isMed && (data.is_package || data.isPkg || id.startsWith("pkg_"));
   if (!cart[id]) {
     cart[id] = {
-      name: data.name, sku: data.sku || (isPkg ? "COMBO" : ""), price: data.price, mrp: data.mrp || 0,
-      vat_pct: data.vat_pct || 0, stock: data.stock, quantity: 0, serials: [],
+      name: data.name, sku: data.sku || (isPkg ? "COMBO" : (isMed ? "PHARMACY" : "")), price: data.price, mrp: data.mrp || 0,
+      vat_pct: data.vat_pct || 0, stock: data.stock !== undefined ? data.stock : 999, quantity: 0, serials: [],
       is_package: isPkg,
+      is_medicine: isMed,
       offer_type: data.offer_type || "", offer_value: data.offer_value || "", offer_title: data.offer_title || ""
     };
   }
@@ -361,7 +509,7 @@ function renderCart() {
         <strong>${item.sku ? item.sku + " - " : ""}${item.name}</strong>${serialNote}${offerNote}
       </td>
       <td style="padding:8px 4px; text-align:center;">
-        <input class="qty-input" type="number" min="1" max="${item.stock}" value="${item.quantity}" 
+        <input class="qty-input" type="number" min="1" max="${item.stock || 999}" value="${item.quantity}" 
                data-id="${id}" style="width:55px; padding:4px; text-align:center; border:1px solid var(--line); border-radius:4px; font-weight:600;">
       </td>
       <td class="num" style="padding:8px 4px;">৳${item.price.toFixed(2)}</td>
@@ -453,14 +601,19 @@ checkoutBtn.addEventListener("click", async () => {
   const items = Object.keys(cart)
     .filter(id => cart[id].quantity > 0)
     .map(id => {
-      const isPkg = cart[id].is_package || String(id).startsWith("pkg_");
-      const cleanId = isPkg ? parseInt(String(id).replace("pkg_", ""), 10) : parseInt(id, 10);
+      const isMed = cart[id].is_medicine || String(id).startsWith("med_");
+      const isPkg = !isMed && (cart[id].is_package || String(id).startsWith("pkg_"));
+      const cleanId = isMed 
+        ? parseInt(String(id).replace("med_", ""), 10) 
+        : (isPkg ? parseInt(String(id).replace("pkg_", ""), 10) : parseInt(id, 10));
       return {
-        product_id: isPkg ? null : cleanId,
+        product_id: (isPkg || isMed) ? null : cleanId,
         package_id: isPkg ? cleanId : null,
+        medicine_id: isMed ? cleanId : null,
         is_package: isPkg,
+        is_medicine: isMed,
         quantity: cart[id].quantity,
-        serials: cart[id].serials.filter(Boolean),
+        serials: (cart[id].serials || []).filter(Boolean),
       };
     });
 

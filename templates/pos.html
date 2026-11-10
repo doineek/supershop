@@ -7,9 +7,11 @@
 <div class="pos-layout" style="display:grid; grid-template-columns: 1.4fr 0.9fr; gap:24px; align-items:start;">
   
   <div class="left-panel">
-    <div class="pos-search" style="display:flex; gap:8px; margin-bottom:14px;">
-      <input type="text" id="searchBox" placeholder="Scan Barcode (Enter) or Search SKU/Name..." style="flex:1; padding:12px; font-size:15px;">
+    <div class="pos-search" style="position:relative; display:flex; gap:8px; margin-bottom:14px;">
+      <input type="text" id="searchBox" placeholder="Scan Barcode (Enter) or Search Product/Medicine/SKU..." style="flex:1; padding:12px; font-size:15px; border-radius:8px; border:1.5px solid var(--line);">
       <button class="btn btn-gold" id="cameraBtn" title="Scan with camera">📷</button>
+      <!-- Autocomplete Dropdown for Products & Medicines -->
+      <div id="posSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:calc(100% - 50px); max-height:300px; overflow-y:auto; background:white; border:1.5px solid #059669; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.15); z-index:9999; margin-top:4px;"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px; padding:16px;">
@@ -35,12 +37,15 @@
     </div>
 
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <div style="display:flex; gap:6px;">
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
         <button type="button" id="posTabProducts" onclick="switchPosCatalog('products')" style="padding:6px 14px; border-radius:6px; border:1px solid #0284c7; background:#0284c7; color:#fff; font-weight:700; font-size:13px; cursor:pointer;">
           🛒 Products ({{ products|length }})
         </button>
         <button type="button" id="posTabPackages" onclick="switchPosCatalog('packages')" style="padding:6px 14px; border-radius:6px; border:1px solid #ea580c; background:#fff7ed; color:#ea580c; font-weight:700; font-size:13px; cursor:pointer;">
           🎁 Combo Packages ({{ packages|length }})
+        </button>
+        <button type="button" id="posTabMedicines" onclick="switchPosCatalog('medicines')" style="padding:6px 14px; border-radius:6px; border:1px solid #059669; background:#ecfdf5; color:#047857; font-weight:700; font-size:13px; cursor:pointer;">
+          💊 Pharmacy / ঔষধ ({{ total_medicines }})
         </button>
       </div>
     </div>
@@ -87,6 +92,18 @@
         <div class="pstock" style="font-size:11px; color:#64748b;">Avail: {{ pkg.combo_stock }} bundles</div>
       </button>
       {% endfor %}
+    </div>
+
+    <!-- Pharmacy Medicines Grid -->
+    <div class="pos-medicine-list" id="medicineList" style="display:none; flex-direction:column; gap:10px; max-height:340px;">
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="posMedSearchInput" oninput="onPosMedSearchInput()" placeholder="ঔষধের নাম বা ধরণ দিয়ে খুঁজুন (যেমন Napa, Seclo)..." style="flex:1; padding:8px 12px; border:1.5px solid #059669; border-radius:6px; font-size:13px; outline:none;">
+      </div>
+      <div id="posMedGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; overflow-y:auto; max-height:290px;">
+        <div style="grid-column:1/-1; text-align:center; padding:20px; color:#64748b; font-size:13px;">
+          ঔষধ লোড হচ্ছে...
+        </div>
+      </div>
     </div>
   </div>
 

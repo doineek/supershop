@@ -32,7 +32,7 @@
       📋 প্রেসক্রিপশন অর্ডারসমূহ (<span id="totalOrdersCount">{{ orders|length }}</span>)
     </button>
     <button id="tabBtnMedicines" onclick="switchAdminTab('medicines')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #64748b;">
-      💊 ঔষধ তালিকা ও মূল্য আপডেট (<span id="totalMedsCount">{{ medicines|length }}</span>)
+      💊 ঔষধ তালিকা ও মূল্য আপডেট (<span id="totalMedsCount">{{ total_medicines }}</span>)
     </button>
   </div>
 
@@ -203,14 +203,24 @@
       </div>
 
       <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-        <input type="text" id="catalogSearchInput" oninput="filterCatalogTable()" placeholder="ওষুধের নাম বা ধরণ দিয়ে খুঁজুন..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 220px;">
+        <select id="catalogDosageFilter" onchange="loadAdminMedsTable(1)" style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; background: white;">
+          <option value="all">সব ধরণ</option>
+          <option value="ট্যাবলেট">ট্যাবলেট</option>
+          <option value="ক্যাপসুল">ক্যাপসুল</option>
+          <option value="সিরাপ">সিরাপ</option>
+          <option value="ইনজেকশন">ইনজেকশন</option>
+          <option value="ড্রপ">ড্রপ</option>
+          <option value="মলম/ক্রিম">মলম/ক্রিম</option>
+          <option value="সাসপেনশন">সাসপেনশন</option>
+        </select>
+        <input type="text" id="catalogSearchInput" oninput="debounceAdminMedSearch()" placeholder="ওষুধের নাম বা কোম্পানি..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 240px;">
         <button type="button" onclick="openAddMedicineModal()" style="background: #059669; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 0.88rem;">
           + নতুন ওষুধ যোগ করুন
         </button>
       </div>
     </div>
 
-    <!-- Medicines Table with Inline Price Updating -->
+    <!-- Medicines Table with Dynamic AJAX Loading & Pagination -->
     <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow-x: auto;">
       <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;" id="catalogTable">
         <thead>
@@ -224,53 +234,27 @@
             <th style="padding: 12px 14px; text-align: center;">অ্যাকশন</th>
           </tr>
         </thead>
-        <tbody>
-          {% for med in medicines %}
-          <tr id="medRow_{{ med.id }}" style="border-bottom: 1px solid #f1f5f9;">
-            <td style="padding: 12px 14px;">
-              <strong style="color: #0f172a; font-size: 0.95rem;">{{ med.name }}</strong>
-              <div style="font-size: 0.78rem; color: #64748b;">{{ med.generic_name }}</div>
-            </td>
-            <td style="padding: 12px 14px;">
-              <span style="background: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 700;">
-                {{ med.dosage_form }}
-              </span>
-              {% if med.strength %}
-              <span style="font-size: 0.78rem; color: #475569; margin-left: 4px;">{{ med.strength }}</span>
-              {% endif %}
-            </td>
-            <td style="padding: 12px 14px; color: #475569; font-size: 0.85rem;">
-              {{ med.manufacturer or 'N/A' }}
-            </td>
-            <td style="padding: 12px 14px;">
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="font-weight: 700; color: #64748b;">৳</span>
-                <input type="number" step="0.10" id="medPrice_{{ med.id }}" value="{{ med.unit_price }}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #059669; font-size: 0.9rem;">
-              </div>
-            </td>
-            <td style="padding: 12px 14px;">
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="font-weight: 700; color: #64748b;">৳</span>
-                <input type="number" step="0.50" id="medStripPrice_{{ med.id }}" value="{{ med.strip_price }}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.9rem;">
-              </div>
-            </td>
-            <td style="padding: 12px 14px;">
-              <input type="number" id="medStock_{{ med.id }}" value="{{ med.stock_qty }}" style="width: 70px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 600; font-size: 0.9rem;">
-            </td>
-            <td style="padding: 12px 14px; text-align: center;">
-              <div style="display: flex; gap: 6px; justify-content: center;">
-                <button type="button" onclick="saveQuickMedPrice({{ med.id }})" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
-                  💾 সেভ
-                </button>
-                <button type="button" onclick="openEditMedModal({{ med.id }})" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
-                  ✏️
-                </button>
-              </div>
+        <tbody id="catalogTableBody">
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
+              ⏳ ঔষধ তালিকা লোড হচ্ছে...
             </td>
           </tr>
-          {% endfor %}
         </tbody>
       </table>
+    </div>
+
+    <!-- Pagination Toolbar -->
+    <div id="catalogPagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 10px 16px; background: white; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 0.88rem;">
+      <div id="catalogPageInfo" style="color: #475569; font-weight: 600;">পৃষ্ঠা ১ (মোট {{ total_medicines }} টি ওষুধ)</div>
+      <div style="display: flex; gap: 8px;">
+        <button type="button" id="btnPrevMedPage" onclick="changeAdminMedPage(-1)" style="padding: 6px 14px; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 6px; font-weight: 700; cursor: pointer;">
+          ⬅️ পূর্ববর্তী
+        </button>
+        <button type="button" id="btnNextMedPage" onclick="changeAdminMedPage(1)" style="padding: 6px 14px; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 6px; font-weight: 700; cursor: pointer;">
+          পরবর্তী ➡️
+        </button>
+      </div>
     </div>
 
   </div>
@@ -606,6 +590,13 @@
   let currentOrderData = null;
   let adminActivePrescriptionView = "enhanced"; // 'enhanced' or 'original'
 
+  let adminMedsCurrentPage = 1;
+  let adminMedsTotalPages = 1;
+  let adminMedsCache = [];
+  let adminMedsLoaded = false;
+  let adminMedSearchTimer = null;
+  let billMedSearchTimer = null;
+
   function switchAdminTab(tab) {
     const ordersTabBtn = document.getElementById("tabBtnOrders");
     const medsTabBtn = document.getElementById("tabBtnMedicines");
@@ -626,17 +617,118 @@
       ordersTabBtn.style.borderBottom = "none";
       medsContent.style.display = "block";
       ordersContent.style.display = "none";
+      if (!adminMedsLoaded) {
+        loadAdminMedsTable(1);
+      }
     }
   }
 
-  async function loadMedicinesMemory() {
+  async function loadAdminMedsTable(page = 1) {
+    adminMedsCurrentPage = page;
+    const q = (document.getElementById("catalogSearchInput")?.value || "").trim();
+    const dosage = document.getElementById("catalogDosageFilter")?.value || "all";
+    const tbody = document.getElementById("catalogTableBody");
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 25px; color: #64748b;">⏳ অনুসন্ধান করা হচ্ছে...</td></tr>`;
+    }
+
     try {
-      const res = await fetch("/api/pharmacy/medicines");
+      const res = await fetch(`/api/admin/pharmacy/medicines/list?page=${page}&q=${encodeURIComponent(q)}&dosage=${encodeURIComponent(dosage)}&per_page=30`);
       const d = await res.json();
-      if (d.success) medicinesCatalog = d.medicines;
-    } catch (e) {}
+      if (!d.success) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">লোড করতে সমস্যা হয়েছে</td></tr>`;
+        return;
+      }
+
+      adminMedsLoaded = true;
+      adminMedsCache = d.medicines || [];
+      adminMedsTotalPages = d.total_pages || 1;
+
+      // Update count & pagination
+      const totalCountEl = document.getElementById("totalMedsCount");
+      if (totalCountEl) totalCountEl.innerText = d.total;
+      const pageInfoEl = document.getElementById("catalogPageInfo");
+      if (pageInfoEl) pageInfoEl.innerText = `পৃষ্ঠা ${d.page} / ${d.total_pages} (মোট ${d.total.toLocaleString()} টি ওষুধ)`;
+
+      const btnPrev = document.getElementById("btnPrevMedPage");
+      const btnNext = document.getElementById("btnNextMedPage");
+      if (btnPrev) btnPrev.disabled = d.page <= 1;
+      if (btnNext) btnNext.disabled = d.page >= d.total_pages;
+
+      if (adminMedsCache.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">কোনো ঔষধ পাওয়া যায়নি।</td></tr>`;
+        return;
+      }
+
+      let html = "";
+      adminMedsCache.forEach(m => {
+        html += `
+          <tr id="medRow_${m.id}" style="border-bottom: 1px solid #f1f5f9; transition: background 0.3s;">
+            <td style="padding: 12px 14px;">
+              <strong style="color: #0f172a; font-size: 0.95rem;">${escapeHtml(m.name)}</strong>
+              <div style="font-size: 0.78rem; color: #64748b;">${escapeHtml(m.generic_name || '')}</div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <span style="background: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 700;">
+                ${escapeHtml(m.dosage_form || 'ট্যাবলেট')}
+              </span>
+              ${m.strength ? `<span style="font-size: 0.78rem; color: #475569; margin-left: 4px;">${escapeHtml(m.strength)}</span>` : ''}
+            </td>
+            <td style="padding: 12px 14px; color: #475569; font-size: 0.85rem;">
+              ${escapeHtml(m.manufacturer || 'N/A')}
+            </td>
+            <td style="padding: 12px 14px;">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-weight: 700; color: #64748b;">৳</span>
+                <input type="number" step="0.10" id="medPrice_${m.id}" value="${parseFloat(m.unit_price || 0).toFixed(2)}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #059669; font-size: 0.9rem;">
+              </div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-weight: 700; color: #64748b;">৳</span>
+                <input type="number" step="0.50" id="medStripPrice_${m.id}" value="${parseFloat(m.strip_price || 0).toFixed(2)}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.9rem;">
+              </div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <input type="number" id="medStock_${m.id}" value="${m.stock_qty || 999}" style="width: 70px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 600; font-size: 0.9rem;">
+            </td>
+            <td style="padding: 12px 14px; text-align: center;">
+              <div style="display: flex; gap: 6px; justify-content: center;">
+                <button type="button" onclick="saveQuickMedPrice(${m.id})" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
+                  💾 সেভ
+                </button>
+                <button type="button" onclick="openEditMedModal(${m.id})" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
+                  ✏️
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    } catch (e) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">লোড করতে ব্যর্থ হয়েছে</td></tr>`;
+    }
   }
-  loadMedicinesMemory();
+
+  function debounceAdminMedSearch() {
+    clearTimeout(adminMedSearchTimer);
+    adminMedSearchTimer = setTimeout(() => {
+      loadAdminMedsTable(1);
+    }, 250);
+  }
+
+  function changeAdminMedPage(delta) {
+    const targetPage = adminMedsCurrentPage + delta;
+    if (targetPage >= 1 && targetPage <= adminMedsTotalPages) {
+      loadAdminMedsTable(targetPage);
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
 
   async function openReviewModal(orderId) {
     currentReviewOrderId = orderId;
@@ -1342,8 +1434,9 @@
     }
   }
 
-  // Bill Autocomplete Search
+  // Bill Autocomplete Search (Real-time querying 21k medicines with debounce)
   function searchMedicinesForBill() {
+    clearTimeout(billMedSearchTimer);
     const q = document.getElementById("billMedSearchInput").value.trim().toLowerCase();
     const dropdown = document.getElementById("billMedDropdown");
 
@@ -1352,36 +1445,44 @@
       return;
     }
 
-    const matches = medicinesCatalog.filter(m => {
-      return m.name.toLowerCase().includes(q) || (m.generic_name || "").toLowerCase().includes(q);
-    }).slice(0, 10);
+    billMedSearchTimer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/pharmacy/medicines?q=" + encodeURIComponent(q));
+        const data = await res.json();
+        const matches = data.medicines || [];
 
-    if (matches.length === 0) {
-      dropdown.innerHTML = `<div style="padding: 10px; text-align: center; color: #94a3b8; font-size: 0.8rem;">কোনো ওষুধ পাওয়া যায়নি।</div>`;
-      dropdown.style.display = "block";
-      return;
-    }
+        if (matches.length === 0) {
+          dropdown.innerHTML = `<div style="padding: 10px; text-align: center; color: #94a3b8; font-size: 0.8rem;">কোনো ওষুধ পাওয়া যায়নি।</div>`;
+          dropdown.style.display = "block";
+          return;
+        }
 
-    let html = "";
-    matches.forEach(m => {
-      html += `
-        <div onclick="addMedToActiveBill(${m.id})" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
-          <div>
-            <strong style="color: #0f172a; font-size: 0.85rem;">${m.name}</strong>
-            <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">${m.dosage_form}</span>
-            <div style="font-size: 0.75rem; color: #64748b;">${m.generic_name || ''} (${m.strength || ''})</div>
-          </div>
-          <div style="font-weight: 800; color: #059669; font-size: 0.85rem;">৳${parseFloat(m.unit_price).toFixed(2)}</div>
-        </div>
-      `;
-    });
+        window._searchedMeds = window._searchedMeds || {};
+        let html = "";
+        matches.slice(0, 15).forEach(m => {
+          window._searchedMeds[m.id] = m;
+          html += `
+            <div onclick="addMedToActiveBill(${m.id})" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
+              <div>
+                <strong style="color: #0f172a; font-size: 0.85rem;">${escapeHtml(m.name)}</strong>
+                <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">${escapeHtml(m.dosage_form || 'ট্যাবলেট')}</span>
+                <div style="font-size: 0.75rem; color: #64748b;">${escapeHtml(m.generic_name || '')} (${escapeHtml(m.strength || '')})</div>
+              </div>
+              <div style="font-weight: 800; color: #059669; font-size: 0.85rem;">৳${parseFloat(m.unit_price).toFixed(2)}</div>
+            </div>
+          `;
+        });
 
-    dropdown.innerHTML = html;
-    dropdown.style.display = "block";
+        dropdown.innerHTML = html;
+        dropdown.style.display = "block";
+      } catch (e) {
+        dropdown.style.display = "none";
+      }
+    }, 200);
   }
 
   function addMedToActiveBill(medId) {
-    const med = medicinesCatalog.find(x => x.id === medId);
+    const med = (window._searchedMeds && window._searchedMeds[medId]) || adminMedsCache.find(x => x.id === medId);
     if (!med) return;
 
     activeBillItems.push({
@@ -1554,21 +1655,12 @@
     }
   }
 
-  function filterCatalogTable() {
-    const q = document.getElementById("catalogSearchInput").value.toLowerCase();
-    const rows = document.querySelectorAll("#catalogTable tbody tr");
-    rows.forEach(r => {
-      const txt = r.innerText.toLowerCase();
-      r.style.display = txt.includes(q) ? "" : "none";
-    });
-  }
-
   async function saveQuickMedPrice(medId) {
     const unitPrice = parseFloat(document.getElementById(`medPrice_${medId}`).value) || 0;
     const stripPrice = parseFloat(document.getElementById(`medStripPrice_${medId}`).value) || 0;
     const stockQty = parseInt(document.getElementById(`medStock_${medId}`).value) || 0;
 
-    const med = medicinesCatalog.find(x => x.id === medId);
+    const med = adminMedsCache.find(x => x.id === medId);
     if (!med) return;
 
     try {
@@ -1590,9 +1682,14 @@
 
       const d = await res.json();
       if (d.success) {
+        med.unit_price = unitPrice;
+        med.strip_price = stripPrice;
+        med.stock_qty = stockQty;
         const row = document.getElementById(`medRow_${medId}`);
-        row.style.background = "#dcfce7";
-        setTimeout(() => row.style.background = "white", 1200);
+        if (row) {
+          row.style.background = "#dcfce7";
+          setTimeout(() => row.style.background = "white", 1200);
+        }
       } else {
         alert("আপডেট ব্যর্থ: " + d.message);
       }
@@ -1609,7 +1706,7 @@
   }
 
   function openEditMedModal(medId) {
-    const med = medicinesCatalog.find(x => x.id === medId);
+    const med = adminMedsCache.find(x => x.id === medId);
     if (!med) return;
 
     document.getElementById("med_id").value = med.id;
@@ -1645,7 +1742,8 @@
       const resData = await res.json();
       if (resData.success) {
         alert(resData.message);
-        location.reload();
+        closeMedModal();
+        loadAdminMedsTable(adminMedsCurrentPage);
       } else {
         alert("ত্রুটি: " + resData.message);
       }

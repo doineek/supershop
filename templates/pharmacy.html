@@ -1849,46 +1849,57 @@
       $("medicineDropdown").classList.add("hidden");
     }
 
-    function renderMedicineSuggestions(dosage, q) {
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    async function renderMedicineSuggestions(dosage, q) {
       const dropdown = $("medicineDropdown");
       const btnClear = $("btnClearSearch");
 
       if (q && q.length > 0) btnClear.classList.remove("hidden");
       else btnClear.classList.add("hidden");
 
-      const filtered = catalogMedicines.filter(m => {
-        const matchDosage = !dosage || dosage === "all" || m.dosage_form.includes(dosage);
-        const matchName = !q || m.name.toLowerCase().includes(q) || (m.generic_name || "").toLowerCase().includes(q);
-        return matchDosage && matchName;
-      }).slice(0, 15);
+      try {
+        const url = `/api/pharmacy/medicines?q=${encodeURIComponent(q || '')}&dosage=${encodeURIComponent(dosage || 'all')}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const matches = data.medicines || [];
 
-      if (filtered.length === 0) {
-        dropdown.innerHTML = `<div class="p-3 text-center text-xs text-slate-400">কোনো ঔষধ পাওয়া যায়নি। প্রেসক্রিপশন আপলোড করে অর্ডার করতে পারেন।</div>`;
-        dropdown.classList.remove("hidden");
-        return;
-      }
+        window._pharmacyMedsMap = window._pharmacyMedsMap || {};
+        matches.forEach(m => window._pharmacyMedsMap[m.id] = m);
 
-      let html = "";
-      filtered.forEach(m => {
-        html += `
-          <div onclick="addMedicineItem(${m.id})" class="p-2.5 hover:bg-emerald-50/60 cursor-pointer flex items-center justify-between gap-2 transition">
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="text-xs font-bold text-slate-900">${m.name}</span>
-                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${m.dosage_form}</span>
-                ${m.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${m.strength})</span>` : ''}
+        if (matches.length === 0) {
+          dropdown.innerHTML = `<div class="p-3 text-center text-xs text-slate-400">কোনো ঔষধ পাওয়া যায়নি। প্রেসক্রিপশন আপলোড করে অর্ডার করতে পারেন।</div>`;
+          dropdown.classList.remove("hidden");
+          return;
+        }
+
+        let html = "";
+        matches.slice(0, 15).forEach(m => {
+          html += `
+            <div onclick="addMedicineItem(${m.id})" class="p-2.5 hover:bg-emerald-50/60 cursor-pointer flex items-center justify-between gap-2 transition">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs font-bold text-slate-900">${escapeHtml(m.name)}</span>
+                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(m.dosage_form || 'ট্যাবলেট')}</span>
+                  ${m.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(m.strength)})</span>` : ''}
+                </div>
+                <p class="text-[10px] text-slate-500 truncate mt-0.5">${escapeHtml(m.generic_name || m.manufacturer || '')}</p>
               </div>
-              <p class="text-[10px] text-slate-500 truncate mt-0.5">${m.generic_name || m.manufacturer || ''}</p>
+              <div class="text-right shrink-0">
+                <div class="text-xs font-bold text-emerald-700">৳${parseFloat(m.unit_price || 0).toFixed(2)}</div>
+                <span class="text-[10px] text-slate-400">প্রতি পিস/বোতল</span>
+              </div>
             </div>
-            <div class="text-right shrink-0">
-              <div class="text-xs font-bold text-emerald-700">৳${parseFloat(m.unit_price).toFixed(2)}</div>
-              <span class="text-[10px] text-slate-400">প্রতি পিস/বোতল</span>
-            </div>
-          </div>
-        `;
-      });
-      dropdown.innerHTML = html;
-      dropdown.classList.remove("hidden");
+          `;
+        });
+        dropdown.innerHTML = html;
+        dropdown.classList.remove("hidden");
+      } catch (err) {
+        dropdown.classList.add("hidden");
+      }
     }
 
     document.addEventListener("click", e => {
@@ -1897,7 +1908,7 @@
     });
 
     function addMedicineItem(medId) {
-      const med = catalogMedicines.find(x => x.id === medId);
+      const med = (window._pharmacyMedsMap && window._pharmacyMedsMap[medId]) || catalogMedicines.find(x => x.id === medId);
       if (!med) return;
 
       const existing = selectedMedicines.find(x => x.id === medId);

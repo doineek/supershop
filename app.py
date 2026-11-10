@@ -3509,9 +3509,43 @@ def pos_lookup():
     if not product:
         product = conn.execute("SELECT * FROM products WHERE sku = ? OR LOWER(name) = LOWER(?)", (code, code)).fetchone()
 
+    # 3. If not in regular products, check if it's a pharmacy medicine
+    if not product:
+        med_id = None
+        if code.lower().startswith("med_") or code.lower().startswith("med-"):
+            try:
+                med_id = int(re.sub(r"\D", "", code))
+            except Exception:
+                med_id = None
+
+        med_match = None
+        if med_id:
+            med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ? AND is_active = 1", (med_id,)).fetchone()
+        if not med_match:
+            med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND (LOWER(name) = LOWER(?) OR LOWER(name) LIKE ?) ORDER BY name ASC LIMIT 1", (code, f"{code}%")).fetchone()
+
+        if med_match:
+            conn.close()
+            return jsonify({
+                "id": f"med_{med_match['id']}",
+                "medicine_id": med_match["id"],
+                "is_medicine": True,
+                "name": f"💊 {med_match['name']}" + (f" ({med_match['strength']})" if med_match["strength"] else f" ({med_match['dosage_form']})"),
+                "sku": f"MED-{med_match['id']}",
+                "price": float(med_match["unit_price"] or 0),
+                "mrp": float(med_match["unit_price"] or 0),
+                "vat_pct": 0,
+                "stock_qty": int(med_match["stock_qty"] or 999),
+                "is_offer": 0,
+                "offer_type": "",
+                "offer_value": "",
+                "offer_title": "",
+                "unit_serial": None
+            })
+
     if not product:
         conn.close()
-        return jsonify({"error": f'No product found for tag or SKU "{code}".'}), 404
+        return jsonify({"error": f'No product or medicine found for "{code}".'}), 404
 
     # Check if expired
     today_date = datetime.now().strftime("%Y-%m-%d")
@@ -3564,6 +3598,94 @@ def pos_lookup():
     })
 
 
+@app.route("/api/pos/search")
+@login_required
+def api_pos_search():
+    """Unified fast search for POS: Products, Combo Packages, and Pharmacy Medicines"""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"results": []})
+
+    conn = get_connection()
+    results = []
+
+    # 1. Search products (by SKU or Name)
+    p_rows = conn.execute("""
+        SELECT id, name, sku, sell_price, mrp, stock_qty, vat_pct, offer_type, offer_value, offer_title
+        FROM products
+        WHERE (LOWER(name) LIKE ? OR LOWER(sku) LIKE ?) AND stock_qty > 0
+        ORDER BY name ASC LIMIT 8
+    """, (f"%{q.lower()}%", f"%{q.lower()}%")).fetchall()
+    for r in p_rows:
+        results.append({
+            "type": "product",
+            "id": r["id"],
+            "name": r["name"],
+            "sku": r["sku"] or "",
+            "price": float(r["sell_price"] or 0),
+            "mrp": float(r["mrp"] or 0),
+            "vat_pct": float(r["vat_pct"] or 0),
+            "stock_qty": int(r["stock_qty"] or 0),
+            "badge": "🛒 পণ্য",
+            "badge_color": "#2563eb",
+            "offer_type": r["offer_type"] or "",
+            "offer_value": r["offer_value"] or "",
+            "offer_title": r["offer_title"] or ""
+        })
+
+    # 2. Search pharmacy medicines (by Name or Generic)
+    med_rows = conn.execute("""
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, stock_qty
+        FROM pharmacy_medicines
+        WHERE is_active = 1 AND (LOWER(name) LIKE ? OR LOWER(generic_name) LIKE ?)
+        ORDER BY name ASC LIMIT 10
+    """, (f"%{q.lower()}%", f"%{q.lower()}%")).fetchall()
+    for r in med_rows:
+        results.append({
+            "type": "medicine",
+            "id": f"med_{r['id']}",
+            "medicine_id": r["id"],
+            "is_medicine": True,
+            "name": f"💊 {r['name']}" + (f" ({r['strength']})" if r["strength"] else f" ({r['dosage_form']})"),
+            "raw_name": r["name"],
+            "sku": f"MED-{r['id']}",
+            "price": float(r["unit_price"] or 0),
+            "mrp": float(r["unit_price"] or 0),
+            "vat_pct": 0,
+            "stock_qty": int(r["stock_qty"] or 999),
+            "badge": f"💊 {r['dosage_form'] or 'ঔষধ'}",
+            "badge_color": "#059669",
+            "generic_name": r["generic_name"] or "",
+            "manufacturer": r["manufacturer"] or ""
+        })
+
+    # 3. Search packages
+    pkg_rows = conn.execute("""
+        SELECT id, name, package_price
+        FROM packages
+        WHERE is_active = 1 AND LOWER(name) LIKE ?
+        ORDER BY name ASC LIMIT 4
+    """, (f"%{q.lower()}%",)).fetchall()
+    for r in pkg_rows:
+        results.append({
+            "type": "package",
+            "id": f"pkg_{r['id']}",
+            "package_id": r["id"],
+            "is_package": True,
+            "name": f"📦 {r['name']}",
+            "sku": "COMBO",
+            "price": float(r["package_price"] or 0),
+            "mrp": float(r["package_price"] or 0),
+            "vat_pct": 0,
+            "stock_qty": 99,
+            "badge": "🎁 কম্বো",
+            "badge_color": "#ea580c"
+        })
+
+    conn.close()
+    return jsonify({"results": results})
+
+
 @app.route("/pos")
 @login_required
 def pos():
@@ -3595,9 +3717,12 @@ def pos():
         p_dict["combo_stock"] = max(0, min_stock)
         packages.append(p_dict)
 
+    med_row = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()
+    total_medicines = med_row["c"] if med_row else 0
+
     shop_settings = get_all_settings(conn)
     conn.close()
-    return render_template("pos.html", products=all_products, packages=packages, settings=shop_settings)
+    return render_template("pos.html", products=all_products, packages=packages, settings=shop_settings, total_medicines=total_medicines)
 
 
 @app.route("/pos/checkout", methods=["POST"])
@@ -3630,8 +3755,37 @@ def checkout():
     line_details = []
 
     for item in items:
-        is_pkg = item.get("is_package") or str(item.get("product_id", "")).startswith("pkg_") or item.get("package_id")
-        if is_pkg:
+        is_med = item.get("is_medicine") or str(item.get("product_id", "")).startswith("med_") or item.get("medicine_id")
+        is_pkg = not is_med and (item.get("is_package") or str(item.get("product_id", "")).startswith("pkg_") or item.get("package_id"))
+
+        if is_med:
+            med_id = int(str(item.get("medicine_id") or item.get("product_id")).replace("med_", ""))
+            med = cur.execute("SELECT * FROM pharmacy_medicines WHERE id = ?", (med_id,)).fetchone()
+            if not med:
+                conn.close()
+                return jsonify({"error": "A medicine in the cart no longer exists."}), 400
+            quantity = int(item["quantity"])
+            if med["stock_qty"] is not None and med["stock_qty"] < quantity:
+                conn.close()
+                return jsonify({"error": f'Not enough stock for medicine "{med["name"]}" ({med["stock_qty"]} available, {quantity} requested).'}), 400
+
+            med_price = float(med["unit_price"] or 0)
+            line_subtotal = med_price * quantity
+            sub_total += line_subtotal
+            mrp_total += line_subtotal
+            line_details.append({
+                "is_medicine": True,
+                "medicine_id": med_id,
+                "medicine_name": med["name"],
+                "medicine_strength": med["strength"] or med["dosage_form"],
+                "quantity": quantity,
+                "unit_price": med_price,
+                "mrp_price": med_price,
+                "vat_pct": 0,
+                "line_vat": 0,
+                "cost_price": 0.0
+            })
+        elif is_pkg:
             pkg_id = int(str(item.get("package_id") or item.get("product_id")).replace("pkg_", ""))
             pkg = cur.execute("SELECT * FROM packages WHERE id = ?", (pkg_id,)).fetchone()
             if not pkg:
@@ -3765,7 +3919,18 @@ def checkout():
     sale_id = cur.lastrowid
 
     for ld in line_details:
-        if ld.get("is_package"):
+        if ld.get("is_medicine"):
+            med_id = ld["medicine_id"]
+            quantity = ld["quantity"]
+            cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (quantity, med_id))
+            first_p = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
+            fk_pid = first_p["id"] if first_p else 1
+            med_title = f"💊 {ld['medicine_name']}" + (f" ({ld['medicine_strength']})" if ld['medicine_strength'] else "")
+            cur.execute("""
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)
+            """, (sale_id, fk_pid, quantity, ld["unit_price"], ld["mrp_price"], med_title))
+        elif ld.get("is_package"):
             pkg_name = ld["package_name"]
             quantity = ld["quantity"]
             unit_price = ld["unit_price"]
@@ -4066,6 +4231,12 @@ def prepare_receipt_data(conn, sale_id):
             elif (i_dict.get("unit_serials") or "").startswith("📦"):
                 i_dict["product_name"] = i_dict.get("unit_serials")
                 i_dict["sku"] = "COMBO"
+                i_dict["offer_type"] = ""
+                i_dict["offer_title"] = ""
+                i_dict["offer_value"] = ""
+            elif (i_dict.get("unit_serials") or "").startswith("💊"):
+                i_dict["product_name"] = i_dict.get("unit_serials")
+                i_dict["sku"] = "PHARMACY"
                 i_dict["offer_type"] = ""
                 i_dict["offer_title"] = ""
                 i_dict["offer_value"] = ""
@@ -11237,8 +11408,9 @@ def admin_pharmacy_orders():
     # Active riders for assignment
     riders = conn.execute("SELECT id, username, full_name FROM users WHERE role = 'delivery' AND is_active = 1 ORDER BY username ASC").fetchall()
 
-    # Catalog medicines for quick review
-    medicines = conn.execute("SELECT * FROM pharmacy_medicines WHERE is_active = 1 ORDER BY name ASC").fetchall()
+    # Total medicines count (Lightweight - Zero Memory Pressure)
+    med_count_row = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()
+    total_medicines = med_count_row["c"] if med_count_row else 0
 
     settings = get_all_settings(conn)
     conn.close()
@@ -11247,7 +11419,7 @@ def admin_pharmacy_orders():
         "admin_pharmacy.html",
         orders=orders,
         riders=riders,
-        medicines=medicines,
+        total_medicines=total_medicines,
         settings=settings,
         active_status=status_filter,
         search_query=search_q
@@ -11277,6 +11449,54 @@ def api_admin_pharmacy_review(order_id):
 
     conn.close()
     return jsonify({"success": True, "order": data})
+
+
+@app.route("/api/admin/pharmacy/medicines/list", methods=["GET"])
+@login_required
+def api_admin_pharmacy_medicines_list():
+    """Fast server-side paginated & searchable medicine catalog for admin"""
+    q = (request.args.get("q") or "").strip()
+    dosage = (request.args.get("dosage") or "").strip()
+    page = max(1, int(request.args.get("page") or 1))
+    per_page = min(100, max(10, int(request.args.get("per_page") or 30)))
+    offset = (page - 1) * per_page
+
+    conn = get_connection()
+    where_clauses = ["is_active = 1"]
+    params = []
+
+    if dosage and dosage != "all":
+        where_clauses.append("dosage_form = ?")
+        params.append(dosage)
+
+    if q:
+        where_clauses.append("(name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ?)")
+        q_wild = f"%{q}%"
+        params.extend([q_wild, q_wild, q_wild])
+
+    where_sql = " AND ".join(where_clauses)
+    count_sql = f"SELECT COUNT(*) AS total FROM pharmacy_medicines WHERE {where_sql}"
+    total = conn.execute(count_sql, params).fetchone()["total"]
+
+    data_sql = f"""
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_prescription_required
+        FROM pharmacy_medicines
+        WHERE {where_sql}
+        ORDER BY name ASC
+        LIMIT ? OFFSET ?
+    """
+    rows = conn.execute(data_sql, params + [per_page, offset]).fetchall()
+    conn.close()
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    return jsonify({
+        "success": True,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "medicines": [dict(r) for r in rows]
+    })
 
 
 @app.route("/api/admin/pharmacy/orders/<int:order_id>/generate-bill", methods=["POST"])
