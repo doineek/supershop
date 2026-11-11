@@ -245,8 +245,8 @@
       // Refresh portal notifications
       fetchPortalNotifications();
 
-      // If currently on online_orders page, reload table immediately
-      if (window.location.pathname.includes('/online_orders')) {
+      // If currently on online_orders or admin/pharmacy page, reload table immediately
+      if (window.location.pathname.includes('/online_orders') || window.location.pathname.includes('/admin/pharmacy')) {
         setTimeout(function() {
           window.location.reload();
         }, 800);
@@ -445,8 +445,10 @@
             <div style="padding:10px 12px; background:${bgCol}; border:1px solid ${borderCol}; border-radius:10px; color:#1e293b; transition:all 0.15s ease;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                 <div style="font-weight:700; font-size:12px; color:#1d4ed8; display:flex; align-items:center; gap:5px;">
-                  <span>🛒</span>
-                  <a href="/online_orders" style="color:#1d4ed8; text-decoration:underline;">Order #${o.order_number}</a>
+                  <span>${o.is_pharmacy ? '💊' : '🛒'}</span>
+                  <a href="${o.order_url || (o.is_pharmacy ? '/admin/pharmacy' : '/online_orders')}" style="color:${o.is_pharmacy ? '#059669' : '#1d4ed8'}; text-decoration:underline;">
+                    ${o.is_pharmacy ? 'Pharmacy' : 'Order'} #${o.order_number}
+                  </a>
                   ${!o.is_read ? '<span style="display:inline-block; width:7px; height:7px; border-radius:999px; background:#ef4444;" title="Unread"></span>' : ''}
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">

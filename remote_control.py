@@ -460,6 +460,26 @@ def push_online_order_to_cloud(order_id):
     threading.Thread(target=_worker_push_online_order, args=(order_id,), daemon=True).start()
 
 
+def push_pharmacy_order_to_cloud(order_id):
+    """Upload pharmacy prescription order to Firestore in background."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            conn = get_connection()
+            order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
+            conn.close()
+            if order:
+                order_dict = dict(order)
+                doc_id = str(order["order_number"])
+                db.collection("pharmacy_orders").document(doc_id).set(order_dict)
+                print(f"[remote_control] [OK] Pharmacy Order #{order_id} ({doc_id}) pushed to Firebase.")
+        except Exception as e:
+            print(f"[remote_control] pharmacy order #{order_id} push failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def delete_online_order_from_cloud(order_number, order_id=None):
     """Mirror local online order deletion into Firestore."""
     def _worker():
@@ -1060,6 +1080,128 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
         print(f"[remote_control] online orders sync failed: {e}")
 
 
+def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
+    """
+    Live listener watching `pharmacy_orders` collection in Firestore.
+    Syncs pharmacy orders across Render and local servers in real time!
+    """
+    def _do():
+        conn = get_connection()
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                order_num = data.get("order_number") or doc.id
+                if not order_num:
+                    continue
+
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    existing = conn.execute("SELECT id FROM pharmacy_orders WHERE order_number = ?", (order_num,)).fetchone()
+                    if existing:
+                        conn.execute("""
+                            UPDATE pharmacy_orders SET
+                                order_status = ?,
+                                approved_items_json = ?,
+                                subtotal = ?,
+                                delivery_charge = ?,
+                                total_amount = ?,
+                                assigned_rider_id = ?,
+                                assigned_rider_name = ?,
+                                assigned_rider_phone = ?,
+                                rider_fee = ?,
+                                admin_notes = ?,
+                                prescription_url = COALESCE(NULLIF(?, ''), prescription_url),
+                                prescription_enhanced_url = COALESCE(NULLIF(?, ''), prescription_enhanced_url),
+                                confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
+                                packed_at = COALESCE(NULLIF(?, ''), packed_at),
+                                on_the_way_at = COALESCE(NULLIF(?, ''), on_the_way_at),
+                                delivered_at = COALESCE(NULLIF(?, ''), delivered_at),
+                                cancelled_at = COALESCE(NULLIF(?, ''), cancelled_at),
+                                updated_at = ?
+                            WHERE order_number = ?
+                        """, (
+                            data.get("order_status", "reviewing"),
+                            data.get("approved_items_json", "[]"),
+                            float(data.get("subtotal") or 0.0),
+                            float(data.get("delivery_charge") or 50.0),
+                            float(data.get("total_amount") or 0.0),
+                            data.get("assigned_rider_id"),
+                            data.get("assigned_rider_name"),
+                            data.get("assigned_rider_phone"),
+                            float(data.get("rider_fee") or 0.0),
+                            data.get("admin_notes", ""),
+                            data.get("prescription_url", ""),
+                            data.get("prescription_enhanced_url", ""),
+                            data.get("confirmed_at", ""),
+                            data.get("packed_at", ""),
+                            data.get("on_the_way_at", ""),
+                            data.get("delivered_at", ""),
+                            data.get("cancelled_at", ""),
+                            datetime.now().isoformat(),
+                            order_num
+                        ))
+                    else:
+                        conn.execute("""
+                            INSERT INTO pharmacy_orders (
+                                order_number, customer_name, customer_phone, customer_email,
+                                country, district, area, delivery_address, order_type,
+                                prescription_url, prescription_original_url, prescription_enhanced_url,
+                                overall_duration_days, customer_notes, requested_items_json, approved_items_json,
+                                subtotal, delivery_charge, total_amount, order_status, delivery_otp,
+                                payment_method, payment_status, assigned_rider_id, assigned_rider_name,
+                                assigned_rider_phone, rider_fee, admin_notes, created_at, updated_at,
+                                confirmed_at, packed_at, on_the_way_at, delivered_at, cancelled_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            order_num,
+                            data.get("customer_name", ""),
+                            data.get("customer_phone", ""),
+                            data.get("customer_email", ""),
+                            data.get("country", "Bangladesh"),
+                            data.get("district", "Tangail"),
+                            data.get("area", "Tangail Sadar"),
+                            data.get("delivery_address", ""),
+                            data.get("order_type", "both"),
+                            data.get("prescription_url", ""),
+                            data.get("prescription_original_url", ""),
+                            data.get("prescription_enhanced_url", ""),
+                            int(data.get("overall_duration_days") or 7),
+                            data.get("customer_notes", ""),
+                            data.get("requested_items_json", "[]"),
+                            data.get("approved_items_json", "[]"),
+                            float(data.get("subtotal") or 0.0),
+                            float(data.get("delivery_charge") or 50.0),
+                            float(data.get("total_amount") or 0.0),
+                            data.get("order_status", "reviewing"),
+                            data.get("delivery_otp", ""),
+                            data.get("payment_method", "cod"),
+                            data.get("payment_status", "pending"),
+                            data.get("assigned_rider_id"),
+                            data.get("assigned_rider_name"),
+                            data.get("assigned_rider_phone"),
+                            float(data.get("rider_fee") or 0.0),
+                            data.get("admin_notes", ""),
+                            data.get("created_at", datetime.now().isoformat()),
+                            data.get("updated_at", datetime.now().isoformat()),
+                            data.get("confirmed_at", ""),
+                            data.get("packed_at", ""),
+                            data.get("on_the_way_at", ""),
+                            data.get("delivered_at", ""),
+                            data.get("cancelled_at", "")
+                        ))
+                elif change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM pharmacy_orders WHERE order_number = ?", (order_num,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(_do)
+        print(f"[remote_control] [SYNC] Real-time pharmacy orders synced across servers.")
+    except Exception as e:
+        print(f"[remote_control] Two-way pharmacy orders sync failed: {e}")
+
+
 def _on_users_change(doc_snapshots, changes, read_time):
     """
     Live listener watching `users` collection in Firestore.
@@ -1640,6 +1782,10 @@ def pull_all_from_cloud(blocking=False):
             except Exception:
                 order_docs = []
             try:
+                rx_order_docs = list(db.collection("pharmacy_orders").limit(300).stream())
+            except Exception:
+                rx_order_docs = []
+            try:
                 user_docs = list(db.collection("users").stream())
             except Exception:
                 user_docs = []
@@ -1964,6 +2110,96 @@ def pull_all_from_cloud(blocking=False):
                                     float(it.get("total_price") or 0.0)
                                 ))
 
+                    # 8b. Pull Pharmacy Orders
+                    for doc in rx_order_docs:
+                        data = doc.to_dict() or {}
+                        order_num = data.get("order_number") or doc.id
+                        if not order_num:
+                            continue
+                        existing = conn.execute("SELECT id FROM pharmacy_orders WHERE order_number = ?", (order_num,)).fetchone()
+                        if not existing:
+                            conn.execute("""
+                                INSERT INTO pharmacy_orders (
+                                    order_number, customer_name, customer_phone, customer_email,
+                                    country, district, area, delivery_address, order_type,
+                                    prescription_url, prescription_original_url, prescription_enhanced_url,
+                                    overall_duration_days, customer_notes, requested_items_json, approved_items_json,
+                                    subtotal, delivery_charge, total_amount, order_status, delivery_otp,
+                                    payment_method, payment_status, assigned_rider_id, assigned_rider_name,
+                                    assigned_rider_phone, rider_fee, admin_notes, created_at, updated_at,
+                                    confirmed_at, packed_at, on_the_way_at, delivered_at, cancelled_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                order_num,
+                                data.get("customer_name", ""),
+                                data.get("customer_phone", ""),
+                                data.get("customer_email", ""),
+                                data.get("country", "Bangladesh"),
+                                data.get("district", "Tangail"),
+                                data.get("area", "Tangail Sadar"),
+                                data.get("delivery_address", ""),
+                                data.get("order_type", "both"),
+                                data.get("prescription_url", ""),
+                                data.get("prescription_original_url", ""),
+                                data.get("prescription_enhanced_url", ""),
+                                int(data.get("overall_duration_days") or 7),
+                                data.get("customer_notes", ""),
+                                data.get("requested_items_json", "[]"),
+                                data.get("approved_items_json", "[]"),
+                                float(data.get("subtotal") or 0.0),
+                                float(data.get("delivery_charge") or 50.0),
+                                float(data.get("total_amount") or 0.0),
+                                data.get("order_status", "reviewing"),
+                                data.get("delivery_otp", ""),
+                                data.get("payment_method", "cod"),
+                                data.get("payment_status", "pending"),
+                                data.get("assigned_rider_id"),
+                                data.get("assigned_rider_name"),
+                                data.get("assigned_rider_phone"),
+                                float(data.get("rider_fee") or 0.0),
+                                data.get("admin_notes", ""),
+                                data.get("created_at", datetime.now().isoformat()),
+                                data.get("updated_at", datetime.now().isoformat()),
+                                data.get("confirmed_at", ""),
+                                data.get("packed_at", ""),
+                                data.get("on_the_way_at", ""),
+                                data.get("delivered_at", ""),
+                                data.get("cancelled_at", "")
+                            ))
+                        else:
+                            conn.execute("""
+                                UPDATE pharmacy_orders SET
+                                    order_status = ?,
+                                    approved_items_json = ?,
+                                    subtotal = ?,
+                                    delivery_charge = ?,
+                                    total_amount = ?,
+                                    assigned_rider_id = ?,
+                                    assigned_rider_name = ?,
+                                    assigned_rider_phone = ?,
+                                    rider_fee = ?,
+                                    admin_notes = ?,
+                                    prescription_url = COALESCE(NULLIF(?, ''), prescription_url),
+                                    prescription_enhanced_url = COALESCE(NULLIF(?, ''), prescription_enhanced_url),
+                                    updated_at = ?
+                                WHERE order_number = ?
+                            """, (
+                                data.get("order_status", "reviewing"),
+                                data.get("approved_items_json", "[]"),
+                                float(data.get("subtotal") or 0.0),
+                                float(data.get("delivery_charge") or 50.0),
+                                float(data.get("total_amount") or 0.0),
+                                data.get("assigned_rider_id"),
+                                data.get("assigned_rider_name"),
+                                data.get("assigned_rider_phone"),
+                                float(data.get("rider_fee") or 0.0),
+                                data.get("admin_notes", ""),
+                                data.get("prescription_url", ""),
+                                data.get("prescription_enhanced_url", ""),
+                                data.get("updated_at", datetime.now().isoformat()),
+                                order_num
+                            ))
+
                     # 9. Pull Delivery Areas
                     for a in (area_data.get("areas") or []):
                         if isinstance(a, dict) and a.get("district") and a.get("area"):
@@ -2113,6 +2349,7 @@ def start():
         db.collection("sales").on_snapshot(_on_sales_change)
         db.collection("customer_users").on_snapshot(_on_customer_users_change)
         db.collection("online_orders").on_snapshot(_on_online_orders_change)
+        db.collection("pharmacy_orders").on_snapshot(_on_pharmacy_orders_change)
         db.collection("users").on_snapshot(_on_users_change)
         db.collection("packages").on_snapshot(_on_packages_change)
         db.collection("deleted_packages").on_snapshot(_on_deleted_packages_change)

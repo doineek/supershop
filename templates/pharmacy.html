@@ -558,7 +558,14 @@
       </div>
       <div class="p-2 max-h-[75vh] overflow-auto flex items-center justify-center bg-slate-950">
         <img id="previewModalImg" src="" alt="Prescription" class="max-w-full max-h-[70vh] object-contain rounded-lg">
-        <iframe id="previewModalPdf" src="" class="hidden w-full h-[70vh] rounded-lg border-0 bg-white"></iframe>
+        <div id="previewModalPdfBox" class="hidden w-full flex flex-col items-center justify-center p-8 bg-slate-900 rounded-lg text-white text-center gap-3">
+          <div class="text-5xl">📄</div>
+          <div id="previewModalPdfName" class="text-sm font-bold text-slate-100">PDF প্রেসক্রিপশন ডকুমেন্ট</div>
+          <p class="text-xs text-slate-400">ডকুমেন্টটি পড়তে নিচে ক্লিক করে নতুন ট্যাবে ওপেন করুন</p>
+          <a id="previewModalPdfBtn" href="#" target="_blank" class="mt-2 inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-lg">
+            <span>🔍</span> <span>সম্পূর্ণ PDF দেখুন / ওপেন করুন</span>
+          </a>
+        </div>
       </div>
     </div>
   </div>
@@ -799,6 +806,7 @@
     let originalRawDataUri = "";
     let currentEnhancedDataUri = "";
     let lastSubmittedPrescriptionUrl = "";
+    let selectedPdfBlobUrl = "";
     let activeViewMode = "enhanced"; // 'enhanced' or 'original'
 
     // Smart Crop State
@@ -1196,7 +1204,14 @@
         };
         reader.readAsDataURL(file);
       } else {
-        // PDF document upload (Read real base64 bytes)
+        // PDF document upload (Read real base64 bytes + create local Blob URL for preview)
+        try {
+          if (selectedPdfBlobUrl) URL.revokeObjectURL(selectedPdfBlobUrl);
+          selectedPdfBlobUrl = URL.createObjectURL(file);
+        } catch (e) {
+          selectedPdfBlobUrl = "";
+        }
+
         const reader = new FileReader();
         reader.onload = function(e) {
           const pdfDataUri = e.target.result;
@@ -1901,30 +1916,41 @@
       $("prescription_original_base64").value = "";
       originalRawDataUri = "";
       currentEnhancedDataUri = "";
+      if (selectedPdfBlobUrl) {
+        try { URL.revokeObjectURL(selectedPdfBlobUrl); } catch (e) {}
+        selectedPdfBlobUrl = "";
+      }
       $("dropzoneRx").classList.remove("hidden");
       $("rxPreviewCard").classList.add("hidden");
     }
 
     function openPreviewModal() {
       const src = activeViewMode === "original" ? originalRawDataUri : (currentEnhancedDataUri || originalRawDataUri);
-      if (!src) return;
+      if (!src && !selectedPdfBlobUrl) return;
 
-      const isPdf = src.startsWith("data:application/pdf") || src.includes(".pdf");
+      const isPdf = Boolean(selectedPdfBlobUrl) || (src && (src.startsWith("data:application/pdf") || src.includes(".pdf")));
       const imgEl = $("previewModalImg");
-      const pdfEl = $("previewModalPdf");
+      const pdfBox = $("previewModalPdfBox");
+      const pdfBtn = $("previewModalPdfBtn");
 
       if (isPdf) {
         if (imgEl) imgEl.classList.add("hidden");
-        if (pdfEl) {
-          pdfEl.classList.remove("hidden");
-          pdfEl.src = src;
+        if (pdfBox) {
+          pdfBox.classList.remove("hidden");
+          const targetUrl = selectedPdfBlobUrl || src;
+          if (pdfBtn) {
+            pdfBtn.href = targetUrl;
+            pdfBtn.onclick = function(e) {
+              if (selectedPdfBlobUrl) {
+                window.open(selectedPdfBlobUrl, "_blank");
+                e.preventDefault();
+              }
+            };
+          }
         }
         $("previewModalTitle").innerText = "প্রেসক্রিপশন (PDF ডকুমেন্ট)";
       } else {
-        if (pdfEl) {
-          pdfEl.classList.add("hidden");
-          pdfEl.src = "";
-        }
+        if (pdfBox) pdfBox.classList.add("hidden");
         if (imgEl) {
           imgEl.classList.remove("hidden");
           imgEl.src = src;
@@ -2478,22 +2504,29 @@
 
     function openSuccessPreview() {
       const src = lastSubmittedPrescriptionUrl || $("successRxThumb").src;
-      if (!src) return;
-      const isPdf = src.startsWith("data:application/pdf") || src.includes(".pdf");
+      if (!src && !selectedPdfBlobUrl) return;
+      const isPdf = Boolean(selectedPdfBlobUrl) || (src && (src.startsWith("data:application/pdf") || src.includes(".pdf")));
       const imgEl = $("previewModalImg");
-      const pdfEl = $("previewModalPdf");
+      const pdfBox = $("previewModalPdfBox");
+      const pdfBtn = $("previewModalPdfBtn");
       if (isPdf) {
         if (imgEl) imgEl.classList.add("hidden");
-        if (pdfEl) {
-          pdfEl.classList.remove("hidden");
-          pdfEl.src = src;
+        if (pdfBox) {
+          pdfBox.classList.remove("hidden");
+          const targetUrl = selectedPdfBlobUrl || src;
+          if (pdfBtn) {
+            pdfBtn.href = targetUrl;
+            pdfBtn.onclick = function(e) {
+              if (selectedPdfBlobUrl) {
+                window.open(selectedPdfBlobUrl, "_blank");
+                e.preventDefault();
+              }
+            };
+          }
         }
         $("previewModalTitle").innerText = "প্রেসক্রিপশন (PDF ডকুমেন্ট)";
       } else {
-        if (pdfEl) {
-          pdfEl.classList.add("hidden");
-          pdfEl.src = "";
-        }
+        if (pdfBox) pdfBox.classList.add("hidden");
         if (imgEl) {
           imgEl.classList.remove("hidden");
           imgEl.src = src;
@@ -2596,9 +2629,14 @@
         $("successStatusBadge").innerText = data.status_bn;
         $("successDurationTxt").innerText = `মেয়াদ: ${data.overall_duration_days || '৭'} দিনের ওষুধ`;
 
+        lastSubmittedPrescriptionUrl = data.prescription_url || "";
         const displayImg = data.prescription_url;
         if (displayImg) {
-          $("successRxThumb").src = displayImg;
+          if (displayImg.toLowerCase().includes(".pdf")) {
+            $("successRxThumb").src = PDF_ICON_DATA;
+          } else {
+            $("successRxThumb").src = displayImg;
+          }
           $("successRxCard").classList.remove("hidden");
         } else {
           $("successRxCard").classList.add("hidden");

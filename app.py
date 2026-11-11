@@ -129,6 +129,7 @@ except Exception as e:
 def upload_to_cloudinary(file_or_bytes, folder="supershop/products", public_id=None, resource_type=None):
     """
     Uploads an image or document (file path, file object, bytes, or data URI) to Cloudinary.
+    Converts PDF documents to high-resolution JPEG images for fast, universal rendering across all devices.
     Returns secure HTTPS CDN URL on success, or None on failure/unconfigured.
     """
     if not CLOUDINARY_CONFIGURED:
@@ -136,26 +137,34 @@ def upload_to_cloudinary(file_or_bytes, folder="supershop/products", public_id=N
     try:
         import cloudinary
         import cloudinary.uploader
-        if not resource_type:
-            # Check if this is a PDF document
-            is_pdf = False
-            if isinstance(file_or_bytes, (bytes, bytearray)) and file_or_bytes.startswith(b"%PDF"):
-                is_pdf = True
-            elif isinstance(file_or_bytes, str) and ("application/pdf" in file_or_bytes or file_or_bytes.lower().endswith(".pdf")):
-                is_pdf = True
-            elif public_id and public_id.lower().endswith(".pdf"):
-                is_pdf = True
-            resource_type = "raw" if is_pdf else "auto"
+        
+        is_pdf = False
+        if isinstance(file_or_bytes, (bytes, bytearray)) and file_or_bytes.startswith(b"%PDF"):
+            is_pdf = True
+        elif isinstance(file_or_bytes, str) and ("application/pdf" in file_or_bytes or file_or_bytes.lower().endswith(".pdf")):
+            is_pdf = True
+        elif public_id and public_id.lower().endswith(".pdf"):
+            is_pdf = True
+
+        r_type = "image" if is_pdf else (resource_type or "auto")
         options = {
             "folder": folder,
-            "resource_type": resource_type,
+            "resource_type": r_type,
             "overwrite": True
         }
+        if is_pdf:
+            options["format"] = "jpg"
+            if public_id and public_id.lower().endswith(".pdf"):
+                public_id = public_id[:-4]
         if public_id:
             options["public_id"] = public_id
+
         res = cloudinary.uploader.upload(file_or_bytes, **options)
         if res and "secure_url" in res:
-            return res["secure_url"]
+            url = res["secure_url"]
+            if is_pdf and url.endswith(".pdf"):
+                url = url[:-4] + ".jpg"
+            return url
     except Exception as e:
         print(f"[cloudinary] Upload error: {e}")
     return None
@@ -8868,18 +8877,56 @@ def api_pending_orders_count():
     conn = get_connection()
     count_row = conn.execute("SELECT COUNT(*) FROM online_orders WHERE order_status IN ('new', 'pending')").fetchone()
     count = count_row[0] if count_row else 0
-    latest = conn.execute("SELECT id, order_number, total_amount, customer_name FROM online_orders WHERE order_status IN ('new', 'pending') ORDER BY id DESC LIMIT 1").fetchone()
+    latest = conn.execute("SELECT id, order_number, total_amount, customer_name, created_at FROM online_orders WHERE order_status IN ('new', 'pending') ORDER BY id DESC LIMIT 1").fetchone()
+
+    # Also check incoming pharmacy prescription orders in 'reviewing' state
+    rx_count_row = conn.execute("SELECT COUNT(*) FROM pharmacy_orders WHERE order_status = 'reviewing'").fetchone()
+    rx_count = rx_count_row[0] if rx_count_row else 0
+    rx_latest = conn.execute("SELECT id, order_number, total_amount, customer_name, created_at FROM pharmacy_orders WHERE order_status = 'reviewing' ORDER BY id DESC LIMIT 1").fetchone()
     conn.close()
-    latest_id = latest["id"] if latest else 0
-    latest_num = latest["order_number"] if latest else ""
-    latest_name = latest["customer_name"] if latest else ""
-    latest_amount = latest["total_amount"] if latest else 0
+
+    total_pending = count + rx_count
+    latest_id = 0
+    latest_num = ""
+    latest_name = ""
+    latest_amount = 0
+    order_type = "general"
+
+    if latest and rx_latest:
+        l_date = latest["created_at"] or ""
+        rx_date = rx_latest["created_at"] or ""
+        if rx_date >= l_date:
+            latest_id = 1000000 + rx_latest["id"]
+            latest_num = rx_latest["order_number"]
+            latest_name = f"{rx_latest['customer_name']} (ফার্মেসী)"
+            latest_amount = rx_latest["total_amount"]
+            order_type = "pharmacy"
+        else:
+            latest_id = latest["id"]
+            latest_num = latest["order_number"]
+            latest_name = latest["customer_name"]
+            latest_amount = latest["total_amount"]
+            order_type = "general"
+    elif rx_latest:
+        latest_id = 1000000 + rx_latest["id"]
+        latest_num = rx_latest["order_number"]
+        latest_name = f"{rx_latest['customer_name']} (ফার্মেসী)"
+        latest_amount = rx_latest["total_amount"]
+        order_type = "pharmacy"
+    elif latest:
+        latest_id = latest["id"]
+        latest_num = latest["order_number"]
+        latest_name = latest["customer_name"]
+        latest_amount = latest["total_amount"]
+        order_type = "general"
+
     return jsonify({
-        "pending_count": count,
+        "pending_count": total_pending,
         "latest_id": latest_id,
         "latest_num": latest_num,
         "latest_name": latest_name,
-        "latest_amount": latest_amount
+        "latest_amount": latest_amount,
+        "order_type": order_type
     })
 
 
@@ -8955,6 +9002,32 @@ def api_portal_alerts():
             od["last_action_by"] = r_info.get("last_action_by") if r_info else None
             od["last_action_at"] = r_info.get("last_action_at") if r_info else None
             orders_list.append(od)
+
+        # 1b. New Pharmacy Prescription Orders (status 'reviewing')
+        rx_order_rows = conn.execute("""
+            SELECT id, order_number, customer_name, customer_phone, total_amount, order_status, created_at, order_type
+            FROM pharmacy_orders
+            WHERE order_status = 'reviewing'
+            ORDER BY id DESC
+            LIMIT 15
+        """).fetchall()
+
+        for rx in rx_order_rows:
+            rxd = dict(rx)
+            key = f"rx_order_{rx['id']}"
+            r_info = read_map.get(key)
+            rxd["notif_key"] = key
+            rxd["notif_type"] = "order"
+            rxd["is_pharmacy"] = True
+            rxd["order_url"] = f"/admin/pharmacy?order={rx['id']}"
+            rxd["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            rxd["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            rxd["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            rxd["seen_at"] = r_info.get("seen_at") if r_info else None
+            rxd["last_action"] = r_info.get("last_action") if r_info else None
+            rxd["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            rxd["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            orders_list.append(rxd)
 
         # 2. Low Stock Items
         low_stock_rows = conn.execute("""
@@ -10876,8 +10949,7 @@ def _save_base64_image(data_uri, prefix="rx"):
         # 1. Try Cloudinary upload first (Permanent CDN with public browser URL)
         cloud_url = None
         try:
-            r_type = "raw" if ext == ".pdf" else "auto"
-            cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions", public_id=unique_name, resource_type=r_type)
+            cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions", public_id=unique_name)
         except Exception as e:
             print(f"[pharmacy] Cloudinary base64 notice: {e}")
 
@@ -10922,8 +10994,7 @@ def _handle_prescription_upload():
             # 1. Cloudinary upload first
             cloud_url = None
             try:
-                r_type = "raw" if ext == ".pdf" else "auto"
-                cloud_url = upload_to_cloudinary(file_bytes, folder="supershop/prescriptions", public_id=unique_name, resource_type=r_type)
+                cloud_url = upload_to_cloudinary(file_bytes, folder="supershop/prescriptions", public_id=unique_name)
             except Exception as e:
                 print(f"[pharmacy] Cloudinary prescription upload notice: {e}")
                 
@@ -11388,9 +11459,11 @@ def pharmacy_place_order():
                 VALUES (?, ?, ?, 0, 0, 1, 0)
             """, (online_order_id, _valid_pid, f"💊 প্রেসক্রিপশন অর্ডার - {note_summary}"))
             
-        # Cloud push
+        # Cloud push to Firebase Firestore for cross-server & redeploy persistence
         try:
-            remote_control.push_online_order_to_cloud(online_order_id)
+            remote_control.push_pharmacy_order_to_cloud(pharm_order_id)
+            if online_order_id:
+                remote_control.push_online_order_to_cloud(online_order_id)
         except Exception:
             pass
     except Exception as e:
@@ -11398,6 +11471,11 @@ def pharmacy_place_order():
 
     conn.commit()
     conn.close()
+
+    try:
+        remote_control.push_pharmacy_order_to_cloud(order_id)
+    except Exception:
+        pass
 
     return jsonify({
         "success": True,
@@ -11552,6 +11630,24 @@ def admin_pharmacy_orders():
         active_status=status_filter,
         search_query=search_q
     )
+
+
+@app.route("/api/admin/pharmacy/orders/latest-check", methods=["GET"])
+@login_required
+def api_admin_pharmacy_latest_check():
+    """Lightweight real-time check for incoming pharmacy prescription orders."""
+    conn = get_connection()
+    row = conn.execute("SELECT MAX(id) AS max_id, COUNT(*) AS c FROM pharmacy_orders WHERE order_status = 'reviewing'").fetchone()
+    latest = conn.execute("SELECT id, order_number, customer_name, total_amount FROM pharmacy_orders WHERE order_status = 'reviewing' ORDER BY id DESC LIMIT 1").fetchone()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "latest_id": row["max_id"] if row and row["max_id"] else 0,
+        "pending_count": row["c"] if row and row["c"] else 0,
+        "latest_order_number": latest["order_number"] if latest else "",
+        "latest_customer_name": latest["customer_name"] if latest else "",
+        "latest_total": latest["total_amount"] if latest else 0.0
+    })
 
 
 @app.route("/api/admin/pharmacy/orders/<int:order_id>/review", methods=["GET"])
@@ -11756,7 +11852,9 @@ def api_admin_pharmacy_generate_bill(order_id):
             """, (ol_id, _valid_pid, f"💊 {itm['name']} ({itm.get('strength', '')})", itm['unit_price'], itm['unit_price'], itm['quantity'], itm['total_price']))
 
         try:
-            remote_control.push_online_order_to_cloud(ol_id)
+            remote_control.push_pharmacy_order_to_cloud(order_id)
+            if ol_id:
+                remote_control.push_online_order_to_cloud(ol_id)
         except Exception:
             pass
 
@@ -11867,12 +11965,19 @@ def api_admin_pharmacy_update_status(order_id):
         """, (target_ol_st, rider_id, rider_name, rider_phone, new_status, now_iso, ol_id))
 
         try:
-            remote_control.push_online_order_to_cloud(ol_id)
+            remote_control.push_pharmacy_order_to_cloud(order_id)
+            if ol_id:
+                remote_control.push_online_order_to_cloud(ol_id)
         except Exception:
             pass
 
     conn.commit()
     conn.close()
+
+    try:
+        remote_control.push_pharmacy_order_to_cloud(order_id)
+    except Exception:
+        pass
 
     return jsonify({"success": True, "message": f"Order status updated to '{new_status}' successfully."})
 
@@ -12049,6 +12154,11 @@ def api_admin_pharmacy_update_prescription(order_id):
     )
     conn.commit()
     conn.close()
+
+    try:
+        remote_control.push_pharmacy_order_to_cloud(order_id)
+    except Exception:
+        pass
 
     return jsonify({
         "success": True,
