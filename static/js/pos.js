@@ -59,21 +59,21 @@ function switchPosCatalog(tab) {
   if (tabPkgBtn) { tabPkgBtn.style.background = "#fff7ed"; tabPkgBtn.style.color = "#ea580c"; tabPkgBtn.style.borderColor = "#fed7aa"; }
   if (tabMedBtn) { tabMedBtn.style.background = "#ecfdf5"; tabMedBtn.style.color = "#047857"; tabMedBtn.style.borderColor = "#a7f3d0"; }
 
-  if (prodList) prodList.style.display = "none";
-  if (pkgList) pkgList.style.display = "none";
-  if (medList) medList.style.display = "none";
+  if (prodList) { prodList.style.setProperty("display", "none", "important"); prodList.classList.add("hidden"); }
+  if (pkgList) { pkgList.style.setProperty("display", "none", "important"); pkgList.classList.add("hidden"); }
+  if (medList) { medList.style.setProperty("display", "none", "important"); medList.classList.add("hidden"); }
 
   if (tab === "packages") {
-    if (pkgList) pkgList.style.display = "flex";
+    if (pkgList) { pkgList.style.setProperty("display", "flex", "important"); pkgList.classList.remove("hidden"); }
     if (tabPkgBtn) { tabPkgBtn.style.background = "#ea580c"; tabPkgBtn.style.color = "#ffffff"; tabPkgBtn.style.borderColor = "#ea580c"; }
   } else if (tab === "medicines") {
-    if (medList) medList.style.display = "flex";
+    if (medList) { medList.style.setProperty("display", "flex", "important"); medList.classList.remove("hidden"); }
     if (tabMedBtn) { tabMedBtn.style.background = "#059669"; tabMedBtn.style.color = "#ffffff"; tabMedBtn.style.borderColor = "#059669"; }
     if (!posMedsLoaded) {
       loadPosMedicines("");
     }
   } else {
-    if (prodList) prodList.style.display = "flex";
+    if (prodList) { prodList.style.setProperty("display", "flex", "important"); prodList.classList.remove("hidden"); }
     if (tabProdBtn) { tabProdBtn.style.background = "#0284c7"; tabProdBtn.style.color = "#ffffff"; tabProdBtn.style.borderColor = "#0284c7"; }
   }
 }

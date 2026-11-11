@@ -355,14 +355,14 @@
           </button>
         </div>
 
-        <!-- Not Logged In Prompt Banner -->
-        <div id="custNotLoginPrompt" class="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+        <!-- Not Logged In Mandatory Login Prompt Banner -->
+        <div id="custNotLoginPrompt" class="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs">
           <div>
-            <span class="text-blue-900 font-bold block">👋 আপনার কি কাস্টমার একাউন্ট আছে?</span>
-            <span class="text-blue-700 text-[11px]">লগইন করলে নাম ও ঠিকানা স্বয়ংক্রিয় পূরণ হবে</span>
+            <span class="text-amber-950 font-extrabold block text-xs sm:text-sm">🔒 কাস্টমার একাউন্ট আবশ্যক</span>
+            <span class="text-amber-800 text-[11px]">প্রেসক্রিপশন ও ঔষধ অর্ডার করতে লগইন বাধ্যতামূলক (নাম ও ঠিকানা অটো ফিল হবে)</span>
           </div>
-          <button type="button" onclick="openCustomerAuthModal('login')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 ml-2">
-            লগইন ➔
+          <button type="button" onclick="openCustomerAuthModal('login', true)" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 ml-2 cursor-pointer">
+            🔑 লগইন / সাইন-আপ ➔
           </button>
         </div>
 
@@ -862,9 +862,38 @@
         if (badgeName) badgeName.textContent = cName;
         if (badgePhone) badgePhone.textContent = `(${currentCustomer.phone})`;
 
-        if (nameInp && !nameInp.value) nameInp.value = currentCustomer.name || "";
-        if (phoneInp && !phoneInp.value) phoneInp.value = currentCustomer.phone || "";
-        if (addrInp && !addrInp.value) addrInp.value = currentCustomer.address || localStorage.getItem('cust_address') || "";
+        // Automatic auto-fill for customer order information
+        if (nameInp) nameInp.value = currentCustomer.name || "";
+        if (phoneInp) phoneInp.value = currentCustomer.phone || "";
+        if (addrInp && (!addrInp.value || addrInp.value === '')) {
+          addrInp.value = currentCustomer.address || localStorage.getItem('cust_address') || "";
+        }
+        if (currentCustomer.district && $("district")) {
+          $("district").value = currentCustomer.district;
+          if (typeof onDistrictChange === "function") onDistrictChange(currentCustomer.district);
+        }
+        if (currentCustomer.area && $("area")) {
+          setTimeout(() => { if ($("area")) $("area").value = currentCustomer.area; }, 100);
+        }
+
+        // Background live profile sync to ensure newest saved address/name is populated
+        if (currentCustomer.phone) {
+          fetch('/api/customer/profile?phone=' + encodeURIComponent(currentCustomer.phone))
+            .then(r => r.json())
+            .then(data => {
+              if (data && data.success && data.user) {
+                const u = data.user;
+                let changed = false;
+                if (u.name && u.name !== currentCustomer.name) { currentCustomer.name = u.name; if (nameInp) nameInp.value = u.name; changed = true; }
+                if (u.address && u.address !== currentCustomer.address) { currentCustomer.address = u.address; if (addrInp && !addrInp.value) addrInp.value = u.address; changed = true; }
+                if (u.district && $("district") && !$("district").value) { $("district").value = u.district; onDistrictChange(u.district); }
+                if (u.area && $("area") && !$("area").value) { setTimeout(() => { if ($("area")) $("area").value = u.area; }, 100); }
+                if (changed) {
+                  localStorage.setItem("supershop_logged_customer", JSON.stringify(currentCustomer));
+                }
+              }
+            }).catch(() => {});
+        }
       } else {
         if (headerBtnLogin) headerBtnLogin.classList.remove("hidden");
         if (headerUserPill) headerUserPill.classList.add("hidden");
@@ -2356,9 +2385,10 @@
     async function submitPharmacyOrder(event) {
       if (event) event.preventDefault();
 
-      // Check customer login (matches store.html customer panel requirement)
+      // Mandatory Customer Login Check (Cannot order without customer account)
       if (!currentCustomer || !currentCustomer.phone) {
         pendingOrderSubmit = true;
+        alert("🔒 অর্ডার সম্পন্ন করতে কাস্টমার একাউন্টে লগইন থাকা বাধ্যতামূলক। অনুগ্রহ করে আপনার মোবাইল নম্বর ও পাসওয়ার্ড দিয়ে সাইন-ইন করুন (বা নতুন একাউন্ট রেজিস্টার করুন)।");
         openCustomerAuthModal('login', true);
         return;
       }

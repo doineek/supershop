@@ -10,7 +10,24 @@
       <tr><th>Username</th><th>Role</th><th>Created</th><th>Change Password</th><th>Actions</th></tr>
       {% for u in users %}
       <tr>
-        <td><strong>{{ u.username }}</strong></td>
+        <td>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <strong>{{ u.username }}</strong>
+            {% if u.full_name %}
+            <span style="font-size:12px; color:#64748b;">({{ u.full_name }})</span>
+            {% endif %}
+          </div>
+          {% if u.role == 'delivery' %}
+          <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            <a href="{{ url_for('riders_page') }}?rider_id={{ u.id }}" style="display:inline-flex; align-items:center; gap:4px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none;" title="Open Rider Management and Commission Dashboard">
+              🛵 Rider Panel
+            </a>
+            <a href="/riders/login-as/{{ u.id }}" style="display:inline-flex; align-items:center; gap:4px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none;" title="Log in as this Rider to view their dedicated delivery portal">
+              🔑 Login as Rider
+            </a>
+          </div>
+          {% endif %}
+        </td>
         <td><span class="badge badge-role">{{ u.role }}</span></td>
         <td>{{ u.created_at[:10] if u.created_at else '—' }}</td>
         <td>

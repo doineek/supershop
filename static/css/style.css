@@ -475,13 +475,25 @@ h2 {
 .pos-product-list,
 .pos-package-list,
 .pos-medicine-list {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 6px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
-  width: 100% !important;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.pos-product-list.hidden,
+.pos-package-list.hidden,
+.pos-medicine-list.hidden,
+.pos-product-list[style*="display: none"],
+.pos-package-list[style*="display: none"],
+.pos-medicine-list[style*="display: none"] {
+  display: none !important;
 }
 
 .pos-product,
@@ -498,10 +510,12 @@ h2 {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   min-height: unset;
   gap: 10px;
   margin-bottom: 0;
+  overflow: hidden;
 }
 
 .pos-product[style*="display: none"],

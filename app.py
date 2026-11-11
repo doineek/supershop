@@ -5298,6 +5298,49 @@ def delete_rider_admin():
     return redirect(url_for("riders_page"))
 
 
+@app.route("/riders/login-as/<int:rider_id>")
+@login_required
+@admin_required
+def rider_login_as(rider_id):
+    """Allow Admin to log in as a delivery rider directly from the Staff panel."""
+    conn = get_connection()
+    rider = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+    conn.close()
+    if not rider:
+        flash("Delivery rider not found.", "error")
+        return redirect(url_for("users"))
+
+    # Preserve admin identity for seamless one-click switch back
+    if not session.get("original_admin_id"):
+        session["original_admin_id"] = session.get("user_id")
+        session["original_admin_username"] = session.get("username")
+    
+    session["user_id"] = rider["id"]
+    session["username"] = rider["username"]
+    session["role"] = "delivery"
+    session["rider_full_name"] = rider["full_name"] or rider["username"]
+    flash(f"🛵 Logged in as Delivery Rider: {rider['full_name'] or rider['username']} ({rider['username']}).", "success")
+    return redirect(url_for("online_orders"))
+
+
+@app.route("/riders/switch-back-admin")
+@login_required
+def rider_switch_back_admin():
+    """Allow Admin who switched to Rider mode to instantly return to their Admin account."""
+    orig_id = session.get("original_admin_id")
+    orig_user = session.get("original_admin_username")
+    if orig_id and orig_user:
+        session["user_id"] = orig_id
+        session["username"] = orig_user
+        session["role"] = "admin"
+        session.pop("original_admin_id", None)
+        session.pop("original_admin_username", None)
+        session.pop("rider_full_name", None)
+        flash("🔙 Returned to Admin account successfully.", "success")
+        return redirect(url_for("users"))
+    return redirect(url_for("dashboard"))
+
+
 def check_customer_block(conn, phone):
     if not phone:
         return False, ""
@@ -7427,7 +7470,7 @@ def delete_ledger_entry(entry_id):
 @login_required
 def online_orders():
     conn = get_connection()
-    orders = conn.execute("SELECT * FROM online_orders ORDER BY id DESC").fetchall()
+    orders = conn.execute("SELECT * FROM online_orders WHERE order_number NOT LIKE 'RX-%' ORDER BY id DESC").fetchall()
     orders_list = []
     for ord_row in orders:
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
@@ -8875,9 +8918,9 @@ def api_place_order():
 @app.route("/api/orders/pending-count", methods=["GET"])
 def api_pending_orders_count():
     conn = get_connection()
-    count_row = conn.execute("SELECT COUNT(*) FROM online_orders WHERE order_status IN ('new', 'pending')").fetchone()
+    count_row = conn.execute("SELECT COUNT(*) FROM online_orders WHERE order_status IN ('new', 'pending') AND order_number NOT LIKE 'RX-%'").fetchone()
     count = count_row[0] if count_row else 0
-    latest = conn.execute("SELECT id, order_number, total_amount, customer_name, created_at FROM online_orders WHERE order_status IN ('new', 'pending') ORDER BY id DESC LIMIT 1").fetchone()
+    latest = conn.execute("SELECT id, order_number, total_amount, customer_name, created_at FROM online_orders WHERE order_status IN ('new', 'pending') AND order_number NOT LIKE 'RX-%' ORDER BY id DESC LIMIT 1").fetchone()
 
     # Also check incoming pharmacy prescription orders in 'reviewing' state
     rx_count_row = conn.execute("SELECT COUNT(*) FROM pharmacy_orders WHERE order_status = 'reviewing'").fetchone()

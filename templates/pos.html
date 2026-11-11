@@ -4,9 +4,9 @@
 <h1>Checkout · {{ shop.shop_name }}</h1>
 <p class="subtitle">Left: Interactive Cart & Catalog · Right: Payment & Total</p>
 
-<div class="pos-layout" style="display:grid; grid-template-columns: 1.4fr 0.9fr; gap:24px; align-items:start;">
+<div class="pos-layout" style="display:grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, 390px); gap:20px; align-items:start; width:100%; max-width:100%; box-sizing:border-box; overflow-x:hidden;">
   
-  <div class="left-panel">
+  <div class="left-panel" style="min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box;">
     <div class="pos-search" style="position:relative; display:flex; gap:8px; margin-bottom:14px;">
       <input type="text" id="searchBox" placeholder="Scan Barcode (Enter) or Search Product/Medicine/SKU..." style="flex:1; padding:12px; font-size:15px; border-radius:8px; border:1.5px solid var(--line);">
       <button class="btn btn-gold" id="cameraBtn" title="Scan with camera">📷</button>
@@ -146,7 +146,7 @@
     </div>
 
     <!-- Combo Packages List (Single Horizontal Row View, No Image) -->
-    <div class="pos-package-list" id="packageList" style="display:none; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; padding-right:4px;">
+    <div class="pos-package-list hidden" id="packageList" style="display:none; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; padding-right:4px;">
       {% for pkg in packages %}
       <button class="pos-product pos-package-btn pos-row-item"
               data-id="pkg_{{ pkg.id }}" data-pkg-id="{{ pkg.id }}" data-is-pkg="true" data-name="📦 {{ pkg.name }}" data-sku="COMBO"
@@ -182,7 +182,7 @@
     </div>
 
     <!-- Pharmacy Medicines List (Row View) -->
-    <div class="pos-medicine-list" id="medicineList" style="display:none; flex-direction:column; gap:10px; max-height:360px;">
+    <div class="pos-medicine-list hidden" id="medicineList" style="display:none; flex-direction:column; gap:10px; max-height:360px;">
       <div style="display:flex; gap:8px;">
         <input type="text" id="posMedSearchInput" oninput="onPosMedSearchInput()" placeholder="Search medicines by name, generic, company or SKU..." style="flex:1; padding:8px 12px; border:1.5px solid #059669; border-radius:6px; font-size:13px; outline:none;">
       </div>
@@ -194,7 +194,7 @@
     </div>
   </div>
 
-  <div class="cart-panel card" style="position:sticky; top:20px; padding:24px; background:#fff; border:2px solid var(--green);">
+  <div class="cart-panel card" style="position:sticky; top:20px; padding:20px; background:#fff; border:2px solid var(--green); min-width:0; max-width:100%; box-sizing:border-box;">
     <h2 style="font-size:18px; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:10px;">Payment Summary</h2>
     
     <div style="background:var(--green-soft); padding:16px; border-radius:10px; text-align:center; margin-bottom:18px;">

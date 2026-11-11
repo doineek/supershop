@@ -148,6 +148,18 @@
   {% endif %}
 
   <main class="page" {% if not session.user_id %}style="padding: 20px; margin: 0 auto; min-height: 90vh; display: flex; align-items: center; justify-content: center;"{% endif %}>
+    {% if session.original_admin_id %}
+    <div style="background: linear-gradient(135deg, #047857, #065f46); color: white; padding: 10px 18px; border-radius: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(4, 120, 87, 0.25); flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 0.92rem;">
+        <span style="font-size: 1.3rem;">🛵</span>
+        <span>Viewing as Delivery Rider: <strong>{{ session.rider_full_name or session.username }}</strong> (<code>{{ session.username }}</code>)</span>
+      </div>
+      <a href="{{ url_for('rider_switch_back_admin') }}" style="background: white; color: #065f46; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.82rem; text-decoration: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        🔙 Switch Back to Admin
+      </a>
+    </div>
+    {% endif %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flash-stack" {% if not session.user_id %}style="position: absolute; top: 20px;"{% endif %}>
