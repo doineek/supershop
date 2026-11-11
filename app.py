@@ -11497,8 +11497,36 @@ def api_pharmacy_order_status(order_number):
     
     order = conn.execute("SELECT * FROM pharmacy_orders WHERE order_number = ? OR id = ?", (order_num, order_num)).fetchone()
     if not order:
-        conn.close()
-        return jsonify({"success": False, "message": "অর্ডারটি খুঁজে পাওয়া যায়নি।"}), 404
+        # Check if it exists in online_orders and auto-reconstruct into pharmacy_orders
+        ol = conn.execute("SELECT * FROM online_orders WHERE order_number = ? OR id = ?", (order_num, order_num)).fetchone()
+        if ol:
+            items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ol["id"],)).fetchall()
+            items_json = json.dumps([dict(it) for it in items], ensure_ascii=False)
+            conn.execute("""
+                INSERT INTO pharmacy_orders (
+                    order_number, online_order_id, customer_name, customer_phone, customer_email,
+                    country, district, area, delivery_address, order_type,
+                    overall_duration_days, customer_notes, requested_items_json, approved_items_json,
+                    subtotal, delivery_charge, total_amount, order_status, delivery_otp,
+                    payment_method, payment_status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'both', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', 'pending', ?, ?)
+            """, (
+                ol["order_number"], ol["id"], ol["customer_name"] or "", ol["customer_phone"] or "", ol["customer_email"] or "",
+                ol["country"] or "Bangladesh", ol["district"] or "Tangail", ol["area"] or "Tangail Sadar",
+                ol["address_details"] or "", 7, "", items_json, items_json,
+                float(ol["subtotal"] or 0.0), float(ol["delivery_charge"] or 50.0), float(ol["total_amount"] or 0.0),
+                "reviewing" if ol["order_status"] in ("new", "pending", "pending_confirmation") else ol["order_status"],
+                ol["delivery_otp"] or "1234", ol["created_at"] or "", ol["updated_at"] or ""
+            ))
+            conn.commit()
+            order = conn.execute("SELECT * FROM pharmacy_orders WHERE order_number = ?", (ol["order_number"],)).fetchone()
+            try:
+                remote_control.push_pharmacy_order_to_cloud(order["id"])
+            except Exception:
+                pass
+        else:
+            conn.close()
+            return jsonify({"success": False, "message": "অর্ডারটি খুঁজে পাওয়া যায়নি।"}), 404
 
     # Status synchronization with online_orders (Rider update check)
     current_status = order["order_status"]
@@ -11583,11 +11611,43 @@ def api_pharmacy_order_status(order_number):
 # ADMIN & PHARMACIST COUNTER CONTROLS
 # -----------------------------------------------------------------------------
 
+@app.route("/admin/pharmacy")
 @app.route("/admin/pharmacy-orders")
 @login_required
 def admin_pharmacy_orders():
     """Admin & Pharmacist Counter Portal (Prescription review, bill generator, price updater)"""
     conn = get_connection()
+    
+    # Auto-reconcile any RX orders from online_orders into pharmacy_orders if missing
+    try:
+        missing_rx = conn.execute("""
+            SELECT * FROM online_orders 
+            WHERE order_number LIKE 'RX-%' 
+              AND order_number NOT IN (SELECT order_number FROM pharmacy_orders)
+        """).fetchall()
+        for m in missing_rx:
+            items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (m["id"],)).fetchall()
+            items_json = json.dumps([dict(it) for it in items], ensure_ascii=False)
+            conn.execute("""
+                INSERT INTO pharmacy_orders (
+                    order_number, online_order_id, customer_name, customer_phone, customer_email,
+                    country, district, area, delivery_address, order_type,
+                    overall_duration_days, customer_notes, requested_items_json, approved_items_json,
+                    subtotal, delivery_charge, total_amount, order_status, delivery_otp,
+                    payment_method, payment_status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'both', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', 'pending', ?, ?)
+            """, (
+                m["order_number"], m["id"], m["customer_name"] or "", m["customer_phone"] or "", m["customer_email"] or "",
+                m["country"] or "Bangladesh", m["district"] or "Tangail", m["area"] or "Tangail Sadar",
+                m["address_details"] or "", 7, "", items_json, items_json,
+                float(m["subtotal"] or 0.0), float(m["delivery_charge"] or 50.0), float(m["total_amount"] or 0.0),
+                "reviewing" if m["order_status"] in ("new", "pending", "pending_confirmation") else m["order_status"],
+                m["delivery_otp"] or "1234", m["created_at"] or "", m["updated_at"] or ""
+            ))
+            conn.commit()
+    except Exception as _reconcile_err:
+        print(f"[pharmacy] Reconcile notice: {_reconcile_err}")
+
     status_filter = request.args.get("status", "").strip()
     search_q = request.args.get("q", "").strip()
 

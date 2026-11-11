@@ -97,7 +97,7 @@
   <main class="max-w-xl mx-auto px-4 py-4 space-y-4">
 
     <!-- Recent Orders & Live Tracking Panel -->
-    <div id="recentOrdersPanel" class="hidden bg-white rounded-2xl border border-emerald-200 shadow-md overflow-hidden transition-all">
+    <div id="recentOrdersPanel" class="hidden bg-white rounded-2xl border border-emerald-200 shadow-md overflow-hidden transition-all scroll-mt-24">
       <div class="px-4 py-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-base">📋</span>
@@ -2556,8 +2556,20 @@
 
     function toggleRecentOrders() {
       const panel = $("recentOrdersPanel");
+      if (!panel) return;
+      const isOpening = panel.classList.contains("hidden");
       panel.classList.toggle("hidden");
-      if (!panel.classList.contains("hidden")) refreshRecentOrders();
+      if (isOpening) {
+        refreshRecentOrders();
+        // Immediately smooth-scroll viewport so user sees the expanded orders panel
+        setTimeout(() => {
+          panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 50);
+        panel.classList.add("ring-4", "ring-emerald-500", "shadow-xl");
+        setTimeout(() => {
+          panel.classList.remove("ring-4", "ring-emerald-500", "shadow-xl");
+        }, 2200);
+      }
     }
 
     function loadRecentOrders() {
