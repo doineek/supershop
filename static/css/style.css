@@ -476,7 +476,8 @@ h2 {
 
 .pos-product-list,
 .pos-package-list,
-.pos-medicine-list {
+.pos-medicine-list,
+.pos-catalog-panel {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -489,12 +490,17 @@ h2 {
   box-sizing: border-box;
 }
 
+.pos-catalog-panel {
+  display: none !important;
+}
+
+.pos-catalog-panel.active {
+  display: flex !important;
+}
+
 .pos-product-list.hidden,
 .pos-package-list.hidden,
-.pos-medicine-list.hidden,
-.pos-product-list[style*="display: none"],
-.pos-package-list[style*="display: none"],
-.pos-medicine-list[style*="display: none"] {
+.pos-medicine-list.hidden {
   display: none !important;
 }
 
@@ -518,11 +524,6 @@ h2 {
   gap: 10px;
   margin-bottom: 0;
   overflow: hidden;
-}
-
-.pos-product[style*="display: none"],
-.pos-row-item[style*="display: none"] {
-  display: none !important;
 }
 
 .pos-product:hover,

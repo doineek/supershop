@@ -37,6 +37,20 @@
     </div>
 
     <style>
+      .pos-catalog-panel {
+        display: none !important;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 380px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 4px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .pos-catalog-panel.active {
+        display: flex !important;
+      }
       .pos-row-item {
         display: flex;
         align-items: center;
@@ -52,10 +66,6 @@
         box-sizing: border-box;
         min-height: unset;
         margin-bottom: 0;
-      }
-      .pos-row-item[style*="display: none"],
-      .pos-product[style*="display: none"] {
-        display: none !important;
       }
       .pos-row-item:hover {
         border-color: #0284c7;
@@ -96,7 +106,7 @@
     </div>
 
     <!-- Regular Products List (Single Horizontal Row View, No Image) -->
-    <div class="pos-product-list" id="productList" style="display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; padding-right:4px;">
+    <div class="pos-product-list pos-catalog-panel active" id="productList">
       {% for p in products %}
       <button class="pos-product pos-row-item"
               data-id="{{ p.id }}" data-name="{{ p.name }}" data-sku="{{ p.sku }}"
@@ -146,7 +156,7 @@
     </div>
 
     <!-- Combo Packages List (Single Horizontal Row View, No Image) -->
-    <div class="pos-package-list hidden" id="packageList" style="display:none; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; padding-right:4px;">
+    <div class="pos-package-list pos-catalog-panel" id="packageList">
       {% for pkg in packages %}
       <button class="pos-product pos-package-btn pos-row-item"
               data-id="pkg_{{ pkg.id }}" data-pkg-id="{{ pkg.id }}" data-is-pkg="true" data-name="📦 {{ pkg.name }}" data-sku="COMBO"
@@ -182,11 +192,11 @@
     </div>
 
     <!-- Pharmacy Medicines List (Row View) -->
-    <div class="pos-medicine-list hidden" id="medicineList" style="display:none; flex-direction:column; gap:10px; max-height:360px;">
-      <div style="display:flex; gap:8px;">
+    <div class="pos-medicine-list pos-catalog-panel" id="medicineList">
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
         <input type="text" id="posMedSearchInput" oninput="onPosMedSearchInput()" placeholder="Search medicines by name, generic, company or SKU..." style="flex:1; padding:8px 12px; border:1.5px solid #059669; border-radius:6px; font-size:13px; outline:none;">
       </div>
-      <div id="posMedGrid" style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; max-height:310px; padding-right:4px;">
+      <div id="posMedGrid" style="display:flex; flex-direction:column; gap:6px; overflow-y:auto; max-height:330px; padding-right:4px;">
         <div style="text-align:center; padding:20px; color:#64748b; font-size:13px;">
           Loading medicines...
         </div>
@@ -242,6 +252,51 @@
 
 <script>
   window.POS_SETTINGS = {{ settings|tojson }};
+
+  function switchPosCatalog(tab) {
+    var prodList = document.getElementById("productList");
+    var pkgList = document.getElementById("packageList");
+    var medList = document.getElementById("medicineList");
+    var tabProdBtn = document.getElementById("posTabProducts");
+    var tabPkgBtn = document.getElementById("posTabPackages");
+    var tabMedBtn = document.getElementById("posTabMedicines");
+
+    // Hide all 3 panels cleanly
+    if (prodList) { prodList.classList.remove("active"); prodList.style.display = "none"; }
+    if (pkgList) { pkgList.classList.remove("active"); pkgList.style.display = "none"; }
+    if (medList) { medList.classList.remove("active"); medList.style.display = "none"; }
+
+    // Reset button appearances
+    if (tabProdBtn) { tabProdBtn.style.background = "#f1f5f9"; tabProdBtn.style.color = "#475569"; tabProdBtn.style.borderColor = "#cbd5e1"; }
+    if (tabPkgBtn) { tabPkgBtn.style.background = "#fff7ed"; tabPkgBtn.style.color = "#ea580c"; tabPkgBtn.style.borderColor = "#fed7aa"; }
+    if (tabMedBtn) { tabMedBtn.style.background = "#ecfdf5"; tabMedBtn.style.color = "#047857"; tabMedBtn.style.borderColor = "#a7f3d0"; }
+
+    if (tab === "packages") {
+      if (pkgList) {
+        pkgList.classList.add("active");
+        pkgList.style.display = "flex";
+        pkgList.querySelectorAll(".pos-product").forEach(function(btn) { btn.style.display = ""; });
+      }
+      if (tabPkgBtn) { tabPkgBtn.style.background = "#ea580c"; tabPkgBtn.style.color = "#ffffff"; tabPkgBtn.style.borderColor = "#ea580c"; }
+    } else if (tab === "medicines") {
+      if (medList) {
+        medList.classList.add("active");
+        medList.style.display = "flex";
+      }
+      if (tabMedBtn) { tabMedBtn.style.background = "#059669"; tabMedBtn.style.color = "#ffffff"; tabMedBtn.style.borderColor = "#059669"; }
+      if (typeof window.loadPosMedicines === "function") {
+        window.loadPosMedicines("");
+      }
+    } else {
+      if (prodList) {
+        prodList.classList.add("active");
+        prodList.style.display = "flex";
+        prodList.querySelectorAll(".pos-product").forEach(function(btn) { btn.style.display = ""; });
+      }
+      if (tabProdBtn) { tabProdBtn.style.background = "#0284c7"; tabProdBtn.style.color = "#ffffff"; tabProdBtn.style.borderColor = "#0284c7"; }
+    }
+  }
+  window.switchPosCatalog = switchPosCatalog;
 </script>
-<script src="{{ url_for('static', filename='js/pos.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pos.js') }}?v=20261111_v3"></script>
 {% endblock %}
