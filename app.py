@@ -5416,6 +5416,8 @@ def settings_page():
             "rider_delivery_fee": request.form.get("rider_delivery_fee", "50").strip() or "50",
             "apk_download_url": request.form.get("apk_download_url", "").strip(),
             "auto_record_expired_as_loss": "1" if request.form.get("auto_record_expired_as_loss") else "0",
+            "pharmacy_delivery_charge": request.form.get("pharmacy_delivery_charge", "50").strip() or "50",
+            "pharmacy_discount_percent": request.form.get("pharmacy_discount_percent", "0").strip() or "0",
         }
         update_settings(conn, values)
         conn.commit()
@@ -10973,23 +10975,77 @@ def _handle_prescription_upload():
     return "", ""
 
 
+def _init_pharmacy_db_schema():
+    """Ensure MRP, discount columns and English dosage forms exist in pharmacy_medicines."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        
+        # Check and add mrp column
+        try:
+            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN mrp REAL DEFAULT 0.0")
+        except Exception:
+            pass
+
+        # Check and add discount_percent column
+        try:
+            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN discount_percent REAL DEFAULT 0.0")
+        except Exception:
+            pass
+
+        # Standardize Bengali dosage forms to English
+        dosage_map = {
+            'ট্যাবলেট': 'Tablet',
+            'ক্যাপসুল': 'Capsule',
+            'সাসপেনশন': 'Suspension',
+            'সিরাপ': 'Syrup',
+            'সিরাপ/সলিউশন': 'Syrup',
+            'ইনজেকশন': 'Injection',
+            'ইনজেকশন/স্যালাইন': 'Injection',
+            'ইনহেলার': 'Inhaler',
+            'ড্রপ': 'Drops',
+            'মলম/ক্রিম': 'Ointment/Cream',
+            'জেল/মলম': 'Gel/Ointment',
+            'ব্যান্ডেজ/ফার্স্ট এইড': 'Bandage/First Aid',
+            'নাসাল স্প্রে': 'Nasal Spray',
+            'নেবুলাইজার সলিউশন': 'Nebulizer Solution',
+            'মাউথওয়াশ': 'Mouthwash',
+            'লোশন': 'Lotion',
+            'সাপোজিটরি': 'Suppository',
+        }
+        for bn, en in dosage_map.items():
+            cur.execute("UPDATE pharmacy_medicines SET dosage_form = ? WHERE dosage_form = ?", (en, bn))
+
+        # Set mrp = unit_price where mrp is 0 or null
+        cur.execute("UPDATE pharmacy_medicines SET mrp = unit_price WHERE (mrp IS NULL OR mrp <= 0.0) AND unit_price > 0")
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[_init_pharmacy_db_schema] notice: {e}")
+
+_init_pharmacy_db_schema()
+
+
 @app.route("/pharmacy")
 def pharmacy_home():
     """Customer-facing Pharmacy & Prescription Home (100% Bengali, QR-Print BD aesthetic)"""
     conn = get_connection()
     settings = get_all_settings(conn)
     
-    # Load categories / dosage forms for filter pills
+    # Load categories / dosage forms for filter pills (English names)
     dosage_forms = [
-        {"id": "all", "name": "সব ধরনের ওষুধ", "icon": "💊"},
-        {"id": "ট্যাবলেট", "name": "ট্যাবলেট", "icon": "💊"},
-        {"id": "ক্যাপসুল", "name": "ক্যাপসুল", "icon": "💊"},
-        {"id": "সিরাপ", "name": "সিরাপ ও তরল", "icon": "🍯"},
-        {"id": "ইনজেকশন", "name": "ইনজেকশন", "icon": "💉"},
-        {"id": "ব্যান্ডেজ/ফার্স্ট এইড", "name": "গজ পট্টি ও ব্যান্ডেজ", "icon": "🩹"},
-        {"id": "ড্রপ", "name": "চোখ ও কানের ড্রপ", "icon": "💧"},
-        {"id": "মলম/ক্রিম", "name": "মলম ও ক্রিম", "icon": "🧴"},
-        {"id": "সাসপেনশন", "name": "সাসপেনশন", "icon": "🧪"},
+        {"id": "all", "name": "All Medicines", "icon": "💊"},
+        {"id": "Tablet", "name": "Tablet", "icon": "💊"},
+        {"id": "Capsule", "name": "Capsule", "icon": "💊"},
+        {"id": "Syrup", "name": "Syrup", "icon": "🍯"},
+        {"id": "Suspension", "name": "Suspension", "icon": "🧪"},
+        {"id": "Injection", "name": "Injection", "icon": "💉"},
+        {"id": "Bandage/First Aid", "name": "Bandage / First Aid", "icon": "🩹"},
+        {"id": "Drops", "name": "Drops", "icon": "💧"},
+        {"id": "Ointment/Cream", "name": "Ointment / Cream", "icon": "🧴"},
+        {"id": "Inhaler", "name": "Inhaler", "icon": "💨"},
+        {"id": "Suppository", "name": "Suppository", "icon": "💊"},
     ]
     
     # Get active delivery areas
@@ -11052,29 +11108,105 @@ def pharmacy_my_orders():
 @app.route("/api/pharmacy/medicines", methods=["GET"])
 @limiter.limit("120 per minute")
 def api_pharmacy_medicines():
-    """Lightweight autocomplete and catalog search for pharmacy medicines"""
+    """Lightweight autocomplete and catalog search for pharmacy medicines with discounts and substitutes count"""
     q = (request.args.get("q") or "").strip()
     dosage = (request.args.get("dosage") or request.args.get("cat") or "").strip()
     
     conn = get_connection()
-    query = "SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_prescription_required FROM pharmacy_medicines WHERE is_active = 1"
+    shop_settings = get_all_settings(conn)
+    overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    query = "SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required FROM pharmacy_medicines WHERE is_active = 1"
     params = []
 
-    if dosage and dosage != "all":
-        query += " AND dosage_form = ?"
-        params.append(dosage)
+    if dosage and dosage.lower() != "all":
+        query += " AND (dosage_form = ? OR dosage_form LIKE ?)"
+        params.extend([dosage, f"%{dosage}%"])
 
     if q:
         query += " AND (name LIKE ? OR generic_name LIKE ? OR strength LIKE ? OR sku LIKE ?)"
         q_wild = f"%{q}%"
         params.extend([q_wild, q_wild, q_wild, q_wild])
 
-    query += " ORDER BY name ASC LIMIT 50"
+    query += " ORDER BY name ASC LIMIT 60"
     rows = conn.execute(query, params).fetchall()
     conn.close()
 
-    medicines = [dict(r) for r in rows]
-    return jsonify({"success": True, "count": len(medicines), "medicines": medicines})
+    medicines = []
+    for r in rows:
+        m = dict(r)
+        mrp_val = float(m.get("mrp") or m.get("unit_price") or 0.0)
+        if mrp_val <= 0:
+            mrp_val = float(m.get("unit_price") or 0.0)
+        prod_disc = float(m.get("discount_percent") or 0.0)
+        eff_disc = max(prod_disc, overall_disc)
+        if eff_disc > 0 and mrp_val > 0:
+            sell_p = round(mrp_val * (1.0 - eff_disc / 100.0), 2)
+        else:
+            sell_p = float(m.get("unit_price") or mrp_val)
+        m["mrp"] = mrp_val
+        m["discount_percent"] = eff_disc
+        m["sell_price"] = sell_p
+        m["unit_price"] = sell_p
+        medicines.append(m)
+
+    return jsonify({"success": True, "count": len(medicines), "overall_discount": overall_disc, "medicines": medicines})
+
+
+@app.route("/api/pharmacy/substitutes", methods=["GET"])
+@limiter.limit("120 per minute")
+def api_pharmacy_substitutes():
+    """Returns other brand medicines sharing the exact same generic name (with price comparison)"""
+    generic = (request.args.get("generic_name") or request.args.get("generic") or "").strip()
+    exclude_id = request.args.get("exclude_id", type=int) or 0
+    dosage_form = (request.args.get("dosage_form") or "").strip()
+    strength = (request.args.get("strength") or "").strip()
+
+    if not generic:
+        return jsonify({"success": False, "substitutes": [], "message": "Generic name is required."})
+
+    conn = get_connection()
+    shop_settings = get_all_settings(conn)
+    overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    query = """
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, stock_qty, is_prescription_required
+        FROM pharmacy_medicines
+        WHERE is_active = 1 AND LOWER(TRIM(generic_name)) = LOWER(TRIM(?))
+    """
+    params = [generic]
+    if exclude_id > 0:
+        query += " AND id != ?"
+        params.append(exclude_id)
+
+    query += " ORDER BY unit_price ASC LIMIT 30"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    substitutes = []
+    for r in rows:
+        m = dict(r)
+        mrp_val = float(m.get("mrp") or m.get("unit_price") or 0.0)
+        if mrp_val <= 0:
+            mrp_val = float(m.get("unit_price") or 0.0)
+        prod_disc = float(m.get("discount_percent") or 0.0)
+        eff_disc = max(prod_disc, overall_disc)
+        if eff_disc > 0 and mrp_val > 0:
+            sell_p = round(mrp_val * (1.0 - eff_disc / 100.0), 2)
+        else:
+            sell_p = float(m.get("unit_price") or mrp_val)
+        m["mrp"] = mrp_val
+        m["discount_percent"] = eff_disc
+        m["sell_price"] = sell_p
+        m["unit_price"] = sell_p
+        substitutes.append(m)
+
+    return jsonify({
+        "success": True,
+        "generic_name": generic,
+        "count": len(substitutes),
+        "substitutes": substitutes
+    })
 
 
 @app.route("/pharmacy/order", methods=["POST"])
@@ -11184,7 +11316,7 @@ def pharmacy_place_order():
             "medicine_id": it.get("medicine_id") or it.get("id"),
             "name": med_name,
             "generic_name": it.get("generic_name") or "",
-            "dosage_form": it.get("dosage_form") or "ট্যাবলেট",
+            "dosage_form": it.get("dosage_form") or "Tablet",
             "strength": it.get("strength") or "",
             "quantity": qty,
             "unit": it.get("unit") or "পিস",
@@ -11193,9 +11325,9 @@ def pharmacy_place_order():
             "total_price": item_total
         })
 
-    # Default delivery charge from settings
+    # Default delivery charge from pharmacy settings
     shop_settings = get_all_settings(conn)
-    delivery_charge = float(shop_settings.get("delivery_charge") or 50.0)
+    delivery_charge = float(shop_settings.get("pharmacy_delivery_charge") or shop_settings.get("delivery_charge") or 50.0)
     total_amount = round(subtotal + delivery_charge, 2) if subtotal > 0 else 0.0
 
     # Determine order type
@@ -11492,7 +11624,7 @@ def api_admin_pharmacy_medicines_list():
     total = conn.execute(count_sql, params).fetchone()["total"]
 
     data_sql = f"""
-        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_prescription_required
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required
         FROM pharmacy_medicines
         WHERE {where_sql}
         ORDER BY name ASC
@@ -11510,6 +11642,31 @@ def api_admin_pharmacy_medicines_list():
         "total_pages": total_pages,
         "medicines": [dict(r) for r in rows]
     })
+
+
+@app.route("/api/admin/pharmacy/settings", methods=["POST"])
+@login_required
+def api_admin_pharmacy_settings():
+    """Allows admin to update pharmacy delivery charge and overall pharmacy discount"""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    updates = {}
+    if "pharmacy_delivery_charge" in data:
+        try:
+            updates["pharmacy_delivery_charge"] = str(float(data.get("pharmacy_delivery_charge") or 50.0))
+        except Exception:
+            updates["pharmacy_delivery_charge"] = "50"
+    if "pharmacy_discount_percent" in data:
+        try:
+            updates["pharmacy_discount_percent"] = str(float(data.get("pharmacy_discount_percent") or 0.0))
+        except Exception:
+            updates["pharmacy_discount_percent"] = "0"
+    
+    if updates:
+        update_settings(conn, updates)
+        conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Pharmacy settings updated successfully.", "settings": updates})
 
 
 @app.route("/api/admin/pharmacy/orders/<int:order_id>/generate-bill", methods=["POST"])
@@ -11549,7 +11706,7 @@ def api_admin_pharmacy_generate_bill(order_id):
             "medicine_id": it.get("medicine_id"),
             "name": name,
             "generic_name": it.get("generic_name") or "",
-            "dosage_form": it.get("dosage_form") or "ট্যাবলেট",
+            "dosage_form": it.get("dosage_form") or "Tablet",
             "strength": it.get("strength") or "",
             "quantity": qty,
             "unit": it.get("unit") or "পিস",
@@ -11736,7 +11893,7 @@ def api_admin_pharmacy_save_medicine():
     med_id = data.get("id")
     name = (data.get("name") or "").strip()
     generic_name = (data.get("generic_name") or "").strip()
-    dosage_form = (data.get("dosage_form") or "ট্যাবলেট").strip()
+    dosage_form = (data.get("dosage_form") or "Tablet").strip()
     strength = (data.get("strength") or "").strip()
     manufacturer = (data.get("manufacturer") or "").strip()
     sku = (data.get("sku") or "").strip()
@@ -11746,6 +11903,24 @@ def api_admin_pharmacy_save_medicine():
         unit_price = float(data.get("unit_price") or 0.0)
     except Exception:
         unit_price = 0.0
+
+    try:
+        mrp = float(data.get("mrp") or 0.0)
+    except Exception:
+        mrp = 0.0
+
+    try:
+        discount_percent = float(data.get("discount_percent") or 0.0)
+    except Exception:
+        discount_percent = 0.0
+
+    # Auto compute unit_price and discount if one is given
+    if mrp > 0 and discount_percent > 0 and unit_price <= 0:
+        unit_price = round(mrp * (1.0 - discount_percent / 100.0), 2)
+    elif mrp > 0 and unit_price > 0 and discount_percent <= 0 and mrp > unit_price:
+        discount_percent = round(((mrp - unit_price) / mrp) * 100.0, 1)
+    elif mrp <= 0 and unit_price > 0:
+        mrp = unit_price
 
     try:
         strip_price = float(data.get("strip_price") or 0.0)
@@ -11785,10 +11960,11 @@ def api_admin_pharmacy_save_medicine():
         cur.execute("""
             UPDATE pharmacy_medicines SET
                 name = ?, generic_name = ?, dosage_form = ?, strength = ?,
-                manufacturer = ?, sku = ?, unit_price = ?, strip_price = ?, strip_size = ?,
-                stock_qty = ?, is_prescription_required = ?, description = ?, updated_at = ?
+                manufacturer = ?, sku = ?, unit_price = ?, mrp = ?, discount_percent = ?,
+                strip_price = ?, strip_size = ?, stock_qty = ?, is_prescription_required = ?,
+                description = ?, updated_at = ?
             WHERE id = ?
-        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
+        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
         msg = f"'{name}' (SKU: {sku}) details and price updated successfully."
     else:
         if not sku:
@@ -11806,10 +11982,10 @@ def api_admin_pharmacy_save_medicine():
         cur.execute("""
             INSERT INTO pharmacy_medicines (
                 name, generic_name, dosage_form, strength, manufacturer, sku,
-                unit_price, strip_price, strip_size, stock_qty, is_prescription_required,
-                image_url, description, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
-        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
+                unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty,
+                is_prescription_required, image_url, description, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
+        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
         med_id = cur.lastrowid
         msg = f"Medicine '{name}' (SKU: {sku}) added to catalog successfully."
 

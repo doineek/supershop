@@ -58,6 +58,20 @@
       <input type="number" step="1" name="delivery_charge" value="{{ settings.delivery_charge or 60 }}" required>
     </div>
     <div class="field">
+      <label>Pharmacy Delivery Charge (TK )</label>
+      <input type="number" step="1" name="pharmacy_delivery_charge" value="{{ settings.pharmacy_delivery_charge or 50 }}" placeholder="e.g. 50">
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
+        💡 Dedicated delivery fee specifically for pharmacy &amp; prescription orders.
+      </small>
+    </div>
+    <div class="field">
+      <label>Overall Pharmacy Discount (%)</label>
+      <input type="number" step="0.5" min="0" max="100" name="pharmacy_discount_percent" value="{{ settings.pharmacy_discount_percent or 0 }}" placeholder="e.g. 5">
+      <small style="color:#64748b; font-size:12px; display:block; margin-top:4px;">
+        💡 Flat storewide discount percentage on all medicines across the pharmacy. (0 = no overall discount)
+      </small>
+    </div>
+    <div class="field">
       <label>Promotion Banner Auto-Slide Interval (seconds)</label>
       <input type="number" step="1" min="1" max="60" name="promo_interval_sec" value="{{ settings.promo_interval_sec or 2 }}" required>
     </div>

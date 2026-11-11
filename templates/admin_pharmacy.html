@@ -26,6 +26,39 @@
     </div>
   </div>
 
+  <!-- Pharmacy Quick Settings & Discount Control Bar -->
+  <div style="background: white; border-radius: 12px; border: 1.5px solid #cbd5e1; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 1.4rem;">⚙️</span>
+      <div>
+        <strong style="color: #0f172a; font-size: 0.95rem; display: block;">Pharmacy Delivery Charge & Overall Discount Control</strong>
+        <span style="color: #64748b; font-size: 0.82rem;">Set separate delivery charge and global discount percentage for pharmacy</span>
+      </div>
+    </div>
+    
+    <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <label style="font-size: 0.82rem; font-weight: 700; color: #334155;">Delivery Charge:</label>
+        <div style="display: flex; align-items: center; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 2px 8px;">
+          <span style="color: #64748b; font-size: 0.82rem; font-weight: 700;">TK</span>
+          <input type="number" id="quickPharmDeliveryCharge" value="{{ settings.pharmacy_delivery_charge or 50 }}" style="width: 65px; border: none; background: transparent; padding: 5px; font-weight: 800; font-size: 0.9rem; text-align: right; outline: none;">
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <label style="font-size: 0.82rem; font-weight: 700; color: #334155;">Storewide Discount:</label>
+        <div style="display: flex; align-items: center; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 2px 8px;">
+          <input type="number" step="0.5" min="0" max="100" id="quickPharmDiscount" value="{{ settings.pharmacy_discount_percent or 0 }}" style="width: 55px; border: none; background: transparent; padding: 5px; font-weight: 800; font-size: 0.9rem; text-align: right; outline: none;">
+          <span style="color: #64748b; font-size: 0.82rem; font-weight: 700;">%</span>
+        </div>
+      </div>
+
+      <button type="button" onclick="savePharmacyQuickSettings()" id="btnSaveQuickSettings" style="background: #059669; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+        <span>💾</span> <span>Save Settings</span>
+      </button>
+    </div>
+  </div>
+
   <!-- Top Navigation Tabs (Orders vs Medicines Catalog) -->
   <div style="display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
     <button id="tabBtnOrders" onclick="switchAdminTab('orders')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #059669; border-bottom: 3px solid #059669; margin-bottom: -2px;">
@@ -211,13 +244,16 @@
         </select>
         <select id="catalogDosageFilter" onchange="loadAdminMedsTable(1)" style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; background: white;">
           <option value="all">All Forms</option>
-          <option value="ট্যাবলেট">Tablet</option>
-          <option value="ক্যাপসুল">Capsule</option>
-          <option value="সিরাপ">Syrup</option>
-          <option value="ইনজেকশন">Injection</option>
-          <option value="ড্রপ">Drop</option>
-          <option value="মলম/ক্রিম">Cream / Ointment</option>
-          <option value="সাসপেনশন">Suspension</option>
+          <option value="Tablet">Tablet</option>
+          <option value="Capsule">Capsule</option>
+          <option value="Syrup">Syrup</option>
+          <option value="Suspension">Suspension</option>
+          <option value="Injection">Injection</option>
+          <option value="Drops">Drop (Eye/Ear Drop)</option>
+          <option value="Ointment/Cream">Cream / Ointment</option>
+          <option value="Bandage/First Aid">Bandage / First Aid</option>
+          <option value="Inhaler">Inhaler</option>
+          <option value="Suppository">Suppository</option>
         </select>
         <input type="text" id="catalogSearchInput" oninput="debounceAdminMedSearch()" placeholder="Search name, generic, company or barcode..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 250px;">
         <button type="button" onclick="openAddMedicineModal()" style="background: #059669; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 0.88rem;">
@@ -234,7 +270,9 @@
             <th style="padding: 12px 14px;">Medicine & Generic</th>
             <th style="padding: 12px 14px;">Form & Strength</th>
             <th style="padding: 12px 14px;">Manufacturer</th>
-            <th style="padding: 12px 14px;">Retail Price (Unit)</th>
+            <th style="padding: 12px 14px;">MRP (TK)</th>
+            <th style="padding: 12px 14px;">Discount %</th>
+            <th style="padding: 12px 14px;">Sell Price (Unit)</th>
             <th style="padding: 12px 14px;">Strip Price</th>
             <th style="padding: 12px 14px;">Stock</th>
             <th style="padding: 12px 14px; text-align: center;">Action</th>
@@ -242,7 +280,7 @@
         </thead>
         <tbody id="catalogTableBody">
           <tr>
-            <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
+            <td colspan="9" style="text-align: center; padding: 30px; color: #64748b;">
               ⏳ Loading medicine catalog...
             </td>
           </tr>
@@ -478,14 +516,16 @@
         <div>
           <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Dosage Form *</label>
           <select id="form_dosage_form" name="dosage_form" required style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
-            <option value="ট্যাবলেট">Tablet</option>
-            <option value="ক্যাপসুল">Capsule</option>
-            <option value="সিরাপ">Syrup</option>
-            <option value="ইনজেকশন">Injection</option>
-            <option value="ব্যান্ডেজ/ফার্স্ট এইড">Bandage / First Aid</option>
-            <option value="ড্রপ">Drop (Eye/Ear Drop)</option>
-            <option value="মলম/ক্রিম">Cream / Ointment</option>
-            <option value="সাসপেনশন">Suspension</option>
+            <option value="Tablet">Tablet</option>
+            <option value="Capsule">Capsule</option>
+            <option value="Syrup">Syrup</option>
+            <option value="Suspension">Suspension</option>
+            <option value="Injection">Injection</option>
+            <option value="Bandage/First Aid">Bandage / First Aid</option>
+            <option value="Drops">Drops (Eye/Ear/Nasal)</option>
+            <option value="Ointment/Cream">Ointment / Cream</option>
+            <option value="Inhaler">Inhaler</option>
+            <option value="Suppository">Suppository</option>
           </select>
         </div>
         <div>
@@ -513,11 +553,22 @@
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; margin-bottom: 10px;">
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Retail Price (TK) *</label>
-          <input type="number" step="0.10" id="form_unit_price" name="unit_price" required placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">MRP (TK) *</label>
+          <input type="number" step="0.10" id="form_mrp" name="mrp" oninput="recalcMedPriceFromMrp()" required placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Discount (%)</label>
+          <input type="number" step="0.5" min="0" max="100" id="form_discount_percent" name="discount_percent" oninput="recalcMedPriceFromMrp()" value="0" placeholder="0" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #047857; margin-bottom: 4px;">Selling Price (TK) *</label>
+          <input type="number" step="0.10" id="form_unit_price" name="unit_price" oninput="recalcDiscountFromSellPrice()" required placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #10b981; border-radius: 8px; font-size: 0.88rem; font-weight: 800; color: #047857; background: #f0fdf4; box-sizing: border-box;">
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Strip Price (TK)</label>
           <input type="number" step="0.50" id="form_strip_price" name="strip_price" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
@@ -632,6 +683,74 @@
   let adminMedSearchTimer = null;
   let billMedSearchTimer = null;
 
+  async function savePharmacyQuickSettings() {
+    const charge = parseFloat(document.getElementById("quickPharmDeliveryCharge")?.value) || 0;
+    const discount = parseFloat(document.getElementById("quickPharmDiscount")?.value) || 0;
+    const btn = document.getElementById("btnSaveQuickSettings");
+    if (btn) { btn.disabled = true; btn.innerText = "Saving..."; }
+
+    try {
+      const res = await fetch("/api/admin/pharmacy/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          delivery_charge: charge,
+          discount_percent: discount
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        alert(d.message || "Pharmacy settings saved successfully.");
+      } else {
+        alert("Failed to save settings: " + (d.message || "Unknown error"));
+      }
+    } catch (e) {
+      alert("Error saving settings.");
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = "<span>💾</span> <span>Save Settings</span>"; }
+    }
+  }
+
+  function recalcMedPriceFromMrp() {
+    const mrp = parseFloat(document.getElementById("form_mrp")?.value) || 0;
+    const disc = parseFloat(document.getElementById("form_discount_percent")?.value) || 0;
+    const sellInput = document.getElementById("form_unit_price");
+    if (sellInput && mrp > 0) {
+      const sell = Math.max(0, mrp * (1 - disc / 100));
+      sellInput.value = sell.toFixed(2);
+    }
+  }
+
+  function recalcDiscountFromSellPrice() {
+    const mrp = parseFloat(document.getElementById("form_mrp")?.value) || 0;
+    const sell = parseFloat(document.getElementById("form_unit_price")?.value) || 0;
+    const discInput = document.getElementById("form_discount_percent");
+    if (discInput && mrp > 0) {
+      const disc = Math.max(0, ((mrp - sell) / mrp) * 100);
+      discInput.value = disc.toFixed(1);
+    }
+  }
+
+  function onRowPriceChange(medId) {
+    const mrp = parseFloat(document.getElementById(`medMrp_${medId}`)?.value) || 0;
+    const disc = parseFloat(document.getElementById(`medDiscount_${medId}`)?.value) || 0;
+    const priceInput = document.getElementById(`medPrice_${medId}`);
+    if (priceInput && mrp > 0) {
+      const sell = Math.max(0, mrp * (1 - disc / 100));
+      priceInput.value = sell.toFixed(2);
+    }
+  }
+
+  function onRowSellPriceChange(medId) {
+    const mrp = parseFloat(document.getElementById(`medMrp_${medId}`)?.value) || 0;
+    const sell = parseFloat(document.getElementById(`medPrice_${medId}`)?.value) || 0;
+    const discInput = document.getElementById(`medDiscount_${medId}`);
+    if (discInput && mrp > 0) {
+      const disc = Math.max(0, ((mrp - sell) / mrp) * 100);
+      discInput.value = disc.toFixed(1);
+    }
+  }
+
   function switchAdminTab(tab) {
     const ordersTabBtn = document.getElementById("tabBtnOrders");
     const medsTabBtn = document.getElementById("tabBtnMedicines");
@@ -665,14 +784,14 @@
     const mfg = document.getElementById("catalogManufacturerFilter")?.value || "all";
     const tbody = document.getElementById("catalogTableBody");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 25px; color: #64748b;">⏳ Searching medicines...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 25px; color: #64748b;">⏳ Searching medicines...</td></tr>`;
     }
 
     try {
       const res = await fetch(`/api/admin/pharmacy/medicines/list?page=${page}&q=${encodeURIComponent(q)}&dosage=${encodeURIComponent(dosage)}&mfg=${encodeURIComponent(mfg)}&per_page=30`);
       const d = await res.json();
       if (!d.success) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
         return;
       }
 
@@ -692,13 +811,16 @@
       if (btnNext) btnNext.disabled = d.page >= d.total_pages;
 
       if (adminMedsCache.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">No medicines found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 30px; color: #94a3b8;">No medicines found.</td></tr>`;
         return;
       }
 
       let html = "";
       adminMedsCache.forEach(m => {
         const medSku = m.sku || ('MED-' + String(m.id).padStart(5, '0'));
+        const mrpVal = parseFloat(m.mrp || m.unit_price || 0).toFixed(2);
+        const discVal = parseFloat(m.discount_percent || 0).toFixed(1);
+        const sellVal = parseFloat(m.unit_price || 0).toFixed(2);
         html += `
           <tr id="medRow_${m.id}" style="border-bottom: 1px solid #f1f5f9; transition: background 0.3s;">
             <td style="padding: 12px 14px;">
@@ -725,21 +847,33 @@
             <td style="padding: 12px 14px;">
               <div style="display: flex; align-items: center; gap: 4px;">
                 <span style="font-weight: 700; color: #64748b;">TK</span>
-                <input type="number" step="0.10" id="medPrice_${m.id}" value="${parseFloat(m.unit_price || 0).toFixed(2)}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #059669; font-size: 0.9rem;">
+                <input type="number" step="0.10" id="medMrp_${m.id}" oninput="onRowPriceChange(${m.id})" value="${mrpVal}" style="width: 75px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #334155; font-size: 0.88rem;">
+              </div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <div style="display: flex; align-items: center; gap: 2px;">
+                <input type="number" step="0.5" min="0" max="100" id="medDiscount_${m.id}" oninput="onRowPriceChange(${m.id})" value="${discVal}" style="width: 55px; padding: 4px 5px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #ea580c; font-size: 0.88rem; text-align: right;">
+                <span style="font-weight: 700; color: #ea580c; font-size: 0.82rem;">%</span>
               </div>
             </td>
             <td style="padding: 12px 14px;">
               <div style="display: flex; align-items: center; gap: 4px;">
                 <span style="font-weight: 700; color: #64748b;">TK</span>
-                <input type="number" step="0.50" id="medStripPrice_${m.id}" value="${parseFloat(m.strip_price || 0).toFixed(2)}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.9rem;">
+                <input type="number" step="0.10" id="medPrice_${m.id}" oninput="onRowSellPriceChange(${m.id})" value="${sellVal}" style="width: 75px; padding: 4px 6px; border: 1.5px solid #10b981; border-radius: 6px; font-weight: 800; color: #047857; font-size: 0.9rem; background: #f0fdf4;">
               </div>
             </td>
             <td style="padding: 12px 14px;">
-              <input type="number" id="medStock_${m.id}" value="${m.stock_qty || 999}" style="width: 70px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 600; font-size: 0.9rem;">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-weight: 700; color: #64748b;">TK</span>
+                <input type="number" step="0.50" id="medStripPrice_${m.id}" value="${parseFloat(m.strip_price || 0).toFixed(2)}" style="width: 75px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.88rem;">
+              </div>
+            </td>
+            <td style="padding: 12px 14px;">
+              <input type="number" id="medStock_${m.id}" value="${m.stock_qty || 999}" style="width: 65px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 600; font-size: 0.88rem;">
             </td>
             <td style="padding: 12px 14px; text-align: center;">
               <div style="display: flex; gap: 6px; justify-content: center;">
-                <button type="button" onclick="saveQuickMedPrice(${m.id})" title="Save price & stock" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
+                <button type="button" onclick="saveQuickMedPrice(${m.id})" title="Save price, discount & stock" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
                   💾 Save
                 </button>
                 <button type="button" onclick="openEditMedModal(${m.id})" title="Edit Medicine" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
@@ -755,7 +889,7 @@
       });
       tbody.innerHTML = html;
     } catch (e) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
     }
   }
 
@@ -1704,9 +1838,11 @@
   }
 
   async function saveQuickMedPrice(medId) {
-    const unitPrice = parseFloat(document.getElementById(`medPrice_${medId}`).value) || 0;
-    const stripPrice = parseFloat(document.getElementById(`medStripPrice_${medId}`).value) || 0;
-    const stockQty = parseInt(document.getElementById(`medStock_${medId}`).value) || 0;
+    const mrp = parseFloat(document.getElementById(`medMrp_${medId}`)?.value) || 0;
+    const discount = parseFloat(document.getElementById(`medDiscount_${medId}`)?.value) || 0;
+    const unitPrice = parseFloat(document.getElementById(`medPrice_${medId}`)?.value) || 0;
+    const stripPrice = parseFloat(document.getElementById(`medStripPrice_${medId}`)?.value) || 0;
+    const stockQty = parseInt(document.getElementById(`medStock_${medId}`)?.value) || 0;
 
     const med = adminMedsCache.find(x => x.id === medId);
     if (!med) return;
@@ -1723,6 +1859,8 @@
           strength: med.strength,
           manufacturer: med.manufacturer,
           sku: med.sku || "",
+          mrp: mrp > 0 ? mrp : unitPrice,
+          discount_percent: discount,
           unit_price: unitPrice,
           strip_price: stripPrice,
           stock_qty: stockQty
@@ -1731,6 +1869,8 @@
 
       const d = await res.json();
       if (d.success) {
+        med.mrp = mrp > 0 ? mrp : unitPrice;
+        med.discount_percent = discount;
         med.unit_price = unitPrice;
         med.strip_price = stripPrice;
         med.stock_qty = stockQty;
@@ -1772,6 +1912,9 @@
     document.getElementById("form_manufacturer_select").value = "";
     document.getElementById("form_manufacturer_custom").style.display = "none";
     document.getElementById("form_manufacturer_custom").value = "";
+    document.getElementById("form_mrp").value = "";
+    document.getElementById("form_discount_percent").value = "0";
+    document.getElementById("form_unit_price").value = "";
     const printBtn = document.getElementById("btnModalPrintBarcode");
     if (printBtn) printBtn.style.display = "none";
 
@@ -1820,6 +1963,10 @@
       }
     }
 
+    const mrp = med.mrp || med.unit_price || 0;
+    const disc = med.discount_percent || 0;
+    document.getElementById("form_mrp").value = mrp;
+    document.getElementById("form_discount_percent").value = disc;
     document.getElementById("form_unit_price").value = med.unit_price;
     document.getElementById("form_strip_price").value = med.strip_price || 0;
     document.getElementById("form_stock_qty").value = med.stock_qty || 999;

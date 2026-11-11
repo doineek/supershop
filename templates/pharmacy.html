@@ -251,31 +251,34 @@
             <span class="text-[10px] text-slate-500">সিরাপ, ক্যাপসুল, ট্যাবলেট, ইনজেকশন, গজ পট্টি ইত্যাদি</span>
           </div>
 
-          <!-- Dosage Form Filter Bar -->
+          <!-- Dosage Form Filter Bar (English Forms) -->
           <div class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-            <button type="button" onclick="filterDosage('all', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shrink-0 shadow-2xs">
-              সব ধরনের ওষুধ
+            <button type="button" data-dosage="all" onclick="filterDosage('all', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shrink-0 shadow-2xs">
+              All Forms
             </button>
-            <button type="button" onclick="filterDosage('ট্যাবলেট', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              💊 ট্যাবলেট
+            <button type="button" data-dosage="Tablet" onclick="filterDosage('Tablet', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💊 Tablet
             </button>
-            <button type="button" onclick="filterDosage('ক্যাপসুল', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              💊 ক্যাপসুল
+            <button type="button" data-dosage="Capsule" onclick="filterDosage('Capsule', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💊 Capsule
             </button>
-            <button type="button" onclick="filterDosage('সিরাপ', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              🍯 সিরাপ
+            <button type="button" data-dosage="Syrup" onclick="filterDosage('Syrup', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🍯 Syrup
             </button>
-            <button type="button" onclick="filterDosage('ইনজেকশন', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              💉 ইনজেকশন
+            <button type="button" data-dosage="Suspension" onclick="filterDosage('Suspension', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🧪 Suspension
             </button>
-            <button type="button" onclick="filterDosage('ব্যান্ডেজ/ফার্স্ট এইড', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              🩹 গজ পট্টি ও ব্যান্ডেজ
+            <button type="button" data-dosage="Injection" onclick="filterDosage('Injection', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💉 Injection
             </button>
-            <button type="button" onclick="filterDosage('ড্রপ', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              💧 আই/ইয়ার ড্রপ
+            <button type="button" data-dosage="Bandage/First Aid" onclick="filterDosage('Bandage/First Aid', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🩹 Bandage / First Aid
             </button>
-            <button type="button" onclick="filterDosage('মলম/ক্রিম', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
-              🧴 মলম ও ক্রিম
+            <button type="button" data-dosage="Drops" onclick="filterDosage('Drops', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              💧 Drops
+            </button>
+            <button type="button" data-dosage="Ointment/Cream" onclick="filterDosage('Ointment/Cream', this)" class="dosage-filter-pill px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 shrink-0">
+              🧴 Ointment / Cream
             </button>
           </div>
 
@@ -390,12 +393,12 @@
             <span id="billEstimateMedicines" class="font-bold">৳০.০০</span>
           </div>
           <div class="flex items-center justify-between text-xs text-slate-700">
-            <span>হোম ডেলিভারি চার্জ:</span>
-            <span id="billEstimateDelivery" class="font-bold">৳{{ settings.delivery_charge or '50' }}</span>
+            <span>ফার্মেসী হোম ডেলিভারি চার্জ:</span>
+            <span id="billEstimateDelivery" class="font-bold">৳{{ settings.pharmacy_delivery_charge or settings.delivery_charge or '50' }}</span>
           </div>
           <div class="border-t border-emerald-200 pt-1.5 flex items-center justify-between text-xs font-extrabold text-slate-900">
             <span>সর্বমোট প্রদেয় (ক্যাশ অন ডেলিভারি):</span>
-            <span id="billEstimateGrandTotal" class="text-emerald-700 text-sm font-black">৳{{ settings.delivery_charge or '50' }}</span>
+            <span id="billEstimateGrandTotal" class="text-emerald-700 text-sm font-black">৳{{ settings.pharmacy_delivery_charge or settings.delivery_charge or '50' }}</span>
           </div>
           <p class="text-[10px] text-emerald-800 leading-tight pt-1">
             * প্রেসক্রিপশন আপলোড করা হলে আমাদের রেজিস্টার্ড ফার্মাসিস্ট প্রতিটি ওষুধের সঠিক দাম হিসাব করে চূড়ান্ত বিল তৈরি করবেন এবং তা আপনার অর্ডারে যুক্ত হবে।
@@ -721,13 +724,53 @@
   </div>
 
 
+  <!-- ==================== MODAL E: GENERIC ALTERNATIVES / SUBSTITUTES COMPARISON ==================== -->
+  <div id="substitutesModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white max-w-lg w-full rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-emerald-200 max-h-[88vh]">
+      
+      <!-- Modal Header -->
+      <div class="px-4 py-3.5 bg-gradient-to-r from-emerald-800 to-teal-900 text-white flex items-center justify-between">
+        <div class="min-w-0 pr-2">
+          <h3 class="font-extrabold text-xs sm:text-sm flex items-center gap-2 truncate">
+            <span>🔄</span> <span id="subModalGenericTitle">একই জেনেরিকের বিকল্প ঔষধসমূহ</span>
+          </h3>
+          <p id="subModalSubtitle" class="text-[11px] text-emerald-200 truncate mt-0.5">বিভিন্ন কোম্পানির একই ফর্মুলার ঔষধের দামের তুলনা</p>
+        </div>
+        <button type="button" onclick="closeSubstitutesModal()" class="text-slate-300 hover:text-white text-2xl leading-none cursor-pointer">&times;</button>
+      </div>
+
+      <!-- Notice Banner inside modal -->
+      <div class="p-3 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between text-xs text-emerald-950">
+        <div>
+          <span class="font-bold">💡 সাশ্রয়ী ও বিশ্বস্ত ব্র্যান্ড বেছে নিন:</span>
+          <span class="text-[11px] text-slate-600 block">একই জেনেরিক উপাদান হওয়ায় কাজ ও গুণগত মান সম্পূর্ণ একই।</span>
+        </div>
+        <span id="subModalCountBadge" class="px-2 py-0.5 bg-emerald-600 text-white text-[11px] font-black rounded-full shrink-0">০টি পাওয়া গেছে</span>
+      </div>
+
+      <!-- Substitutes List -->
+      <div id="substitutesListContainer" class="p-3 overflow-y-auto divide-y divide-slate-100 space-y-2 max-h-[58vh]">
+        <div class="p-6 text-center text-xs text-slate-400">বিকল্প ঔষধ খোঁজা হচ্ছে...</div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <button type="button" onclick="closeSubstitutesModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer">
+          বন্ধ করুন
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+
   <!-- ==================== JAVASCRIPT LOGIC ==================== -->
   <script>
     // State
     let currentMode = "both";
     let selectedMedicines = [];
     let catalogMedicines = [];
-    const DELIVERY_CHARGE = parseFloat("{{ settings.delivery_charge or 50 }}");
+    const DELIVERY_CHARGE = parseFloat("{{ settings.pharmacy_delivery_charge or settings.delivery_charge or 50 }}");
 
     // Images State: Original vs Enhanced
     let originalRawDataUri = "";
@@ -1818,7 +1861,7 @@
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
         const activeBtn = document.querySelector(".dosage-filter-pill.bg-emerald-600");
-        const dosage = activeBtn ? (activeBtn.innerText.includes("ট্যাবলেট") ? "ট্যাবলেট" : (activeBtn.innerText.includes("ক্যাপসুল") ? "ক্যাপসুল" : (activeBtn.innerText.includes("সিরাপ") ? "সিরাপ" : "all"))) : "all";
+        const dosage = activeBtn ? (activeBtn.getAttribute("data-dosage") || "all") : "all";
         renderMedicineSuggestions(dosage, $("medicineSearchInput").value.trim().toLowerCase());
       }, 250);
     }
@@ -1861,20 +1904,41 @@
         }
 
         let html = "";
-        matches.slice(0, 15).forEach(m => {
+        matches.slice(0, 20).forEach(m => {
+          const hasDiscount = (m.discount_percent && m.discount_percent > 0) || (m.mrp && m.mrp > m.unit_price);
+          const hasGeneric = Boolean(m.generic_name && m.generic_name.trim().length > 1);
+
           html += `
-            <div onclick="addMedicineItem(${m.id})" class="p-2.5 hover:bg-emerald-50/60 cursor-pointer flex items-center justify-between gap-2 transition">
-              <div class="min-w-0">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-xs font-bold text-slate-900">${escapeHtml(m.name)}</span>
-                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(m.dosage_form || 'ট্যাবলেট')}</span>
-                  ${m.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(m.strength)})</span>` : ''}
+            <div class="p-2.5 hover:bg-emerald-50/50 transition border-b border-slate-100 last:border-b-0">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1 cursor-pointer" onclick="addMedicineItem(${m.id})">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-xs font-bold text-slate-900 hover:text-emerald-700">${escapeHtml(m.name)}</span>
+                    <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(m.dosage_form || 'Tablet')}</span>
+                    ${m.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(m.strength)})</span>` : ''}
+                  </div>
+                  <p class="text-[10px] text-slate-500 truncate mt-0.5">${escapeHtml(m.generic_name ? (m.generic_name + (m.manufacturer ? ' • ' + m.manufacturer : '')) : (m.manufacturer || ''))}</p>
                 </div>
-                <p class="text-[10px] text-slate-500 truncate mt-0.5">${escapeHtml(m.generic_name || m.manufacturer || '')}</p>
+
+                <div class="text-right shrink-0">
+                  <div class="flex items-center justify-end gap-1">
+                    ${hasDiscount ? `<span class="text-[10px] text-slate-400 line-through">৳${parseFloat(m.mrp || 0).toFixed(2)}</span>` : ''}
+                    <span class="text-xs font-bold text-emerald-700">৳${parseFloat(m.unit_price || 0).toFixed(2)}</span>
+                  </div>
+                  ${hasDiscount ? `<span class="px-1.5 py-0.2 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[9px] font-extrabold inline-block mt-0.5">${m.discount_percent}% OFF</span>` : `<span class="text-[9px] text-slate-400 block mt-0.5">প্রতি ${m.dosage_form === 'Syrup' ? 'বোতল' : 'পিস'}</span>`}
+                </div>
               </div>
-              <div class="text-right shrink-0">
-                <div class="text-xs font-bold text-emerald-700">৳${parseFloat(m.unit_price || 0).toFixed(2)}</div>
-                <span class="text-[10px] text-slate-400">প্রতি পিস/বোতল</span>
+
+              <div class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
+                ${hasGeneric ? `
+                  <button type="button" onclick="event.stopPropagation(); loadSubstitutesModal('${escapeHtml(m.generic_name)}', ${m.id}, '${escapeHtml(m.name)}')" class="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer">
+                    <span>🔄</span> <span>একই জেনেরিকের বিকল্প ব্র্যান্ড (${escapeHtml(m.generic_name)})</span>
+                  </button>
+                ` : '<span></span>'}
+
+                <button type="button" onclick="event.stopPropagation(); addMedicineItem(${m.id})" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer">
+                  <span>+</span> <span>যোগ করুন</span>
+                </button>
               </div>
             </div>
           `;
@@ -1891,6 +1955,85 @@
       if (container && !container.contains(e.target)) $("medicineDropdown").classList.add("hidden");
     });
 
+    // -------------------------------------------------------------
+    // GENERIC ALTERNATIVES / SUBSTITUTES MODAL LOGIC
+    // -------------------------------------------------------------
+    async function loadSubstitutesModal(genericName, excludeId, baseName) {
+      if (!genericName) return;
+      const modal = $("substitutesModal");
+      const title = $("subModalGenericTitle");
+      const subtitle = $("subModalSubtitle");
+      const container = $("substitutesListContainer");
+      const countBadge = $("subModalCountBadge");
+
+      title.innerText = `জেনেরিক: ${genericName}`;
+      subtitle.innerText = `"${baseName}" এর সমতুল্য বিভিন্ন ব্র্যান্ডের দাম ও তালিকা`;
+      container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">একই জেনেরিকের বিকল্প ঔষধ খোঁজা হচ্ছে...</div>`;
+      modal.classList.remove("hidden");
+
+      try {
+        const res = await fetch(`/api/pharmacy/substitutes?generic_name=${encodeURIComponent(genericName)}&exclude_id=${excludeId}`);
+        const data = await res.json();
+        const subs = data.substitutes || [];
+        countBadge.innerText = `${subs.length}টি ব্র্যান্ড পাওয়া গেছে`;
+
+        if (subs.length === 0) {
+          container.innerHTML = `
+            <div class="p-6 text-center text-xs text-slate-500">
+              এই মুহূর্তে "${escapeHtml(genericName)}" জেনেরিকের অন্য কোনো বিকল্প ব্র্যান্ডের স্টক পাওয়া যায়নি।
+            </div>
+          `;
+          return;
+        }
+
+        let html = "";
+        subs.forEach(s => {
+          window._pharmacyMedsMap = window._pharmacyMedsMap || {};
+          window._pharmacyMedsMap[s.id] = s;
+          const hasDiscount = (s.discount_percent && s.discount_percent > 0) || (s.mrp && s.mrp > s.sell_price);
+
+          html += `
+            <div class="pt-2 pb-1 flex items-center justify-between gap-2 transition hover:bg-emerald-50/40 p-2 rounded-xl">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <strong class="text-xs font-extrabold text-slate-900">${escapeHtml(s.name)}</strong>
+                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(s.dosage_form || 'Tablet')}</span>
+                  ${s.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(s.strength)})</span>` : ''}
+                </div>
+                <p class="text-[10px] text-slate-500 truncate mt-0.5 font-medium">🏢 ${escapeHtml(s.manufacturer || 'স্বীকৃত কোম্পানি')}</p>
+              </div>
+              
+              <div class="text-right shrink-0 flex items-center gap-2">
+                <div>
+                  <div class="flex items-center justify-end gap-1">
+                    ${hasDiscount ? `<span class="text-[10px] text-slate-400 line-through">৳${parseFloat(s.mrp || 0).toFixed(2)}</span>` : ''}
+                    <span class="text-xs font-bold text-emerald-700">৳${parseFloat(s.sell_price || s.unit_price || 0).toFixed(2)}</span>
+                  </div>
+                  ${hasDiscount ? `<span class="px-1.5 py-0.2 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[9px] font-extrabold block text-right">${s.discount_percent}% OFF</span>` : `<span class="text-[10px] text-slate-400 block text-right">প্রতি পিস/বোতল</span>`}
+                </div>
+                
+                <button type="button" onclick="selectSubstituteItem(${s.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer">
+                  + সিলেক্ট
+                </button>
+              </div>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      } catch (err) {
+        container.innerHTML = `<div class="p-6 text-center text-xs text-red-500">বিকল্প লোড করতে সমস্যা হয়েছে।</div>`;
+      }
+    }
+
+    function selectSubstituteItem(medId) {
+      addMedicineItem(medId);
+      closeSubstitutesModal();
+    }
+
+    function closeSubstitutesModal() {
+      $("substitutesModal").classList.add("hidden");
+    }
+
     function addMedicineItem(medId) {
       const med = (window._pharmacyMedsMap && window._pharmacyMedsMap[medId]) || catalogMedicines.find(x => x.id === medId);
       if (!med) return;
@@ -1904,13 +2047,15 @@
           id: med.id,
           name: med.name,
           generic_name: med.generic_name,
-          dosage_form: med.dosage_form,
+          dosage_form: med.dosage_form || 'Tablet',
           strength: med.strength,
           quantity: 1,
-          unit: med.dosage_form === "সিরাপ" ? "বোতল" : "পিস",
+          unit: (med.dosage_form && med.dosage_form.toLowerCase().includes('syrup')) ? "বোতল" : "পিস",
           duration_days: $("overall_duration_days").value + " দিন",
-          unit_price: parseFloat(med.unit_price),
-          total_price: parseFloat(med.unit_price)
+          unit_price: parseFloat(med.sell_price || med.unit_price),
+          mrp: parseFloat(med.mrp || med.unit_price),
+          discount_percent: parseFloat(med.discount_percent || 0),
+          total_price: parseFloat(med.sell_price || med.unit_price)
         });
       }
 
@@ -1959,30 +2104,43 @@
       let html = "";
       selectedMedicines.forEach((item, idx) => {
         subtotal += item.total_price;
+        const hasDiscount = (item.discount_percent && item.discount_percent > 0) || (item.mrp && item.mrp > item.unit_price);
+        const hasGeneric = Boolean(item.generic_name && item.generic_name.trim().length > 1);
+
         html += `
           <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs space-y-2">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-xs font-bold text-slate-900">${item.name}</span>
-                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${item.dosage_form}</span>
-                  ${item.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${item.strength})</span>` : ''}
+                  <span class="text-xs font-bold text-slate-900">${escapeHtml(item.name)}</span>
+                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(item.dosage_form)}</span>
+                  ${item.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(item.strength)})</span>` : ''}
                 </div>
-                <div class="text-[10px] text-slate-400 mt-0.5">প্রতি ${item.unit}: ৳${item.unit_price.toFixed(2)}</div>
+                <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>প্রতি ${item.unit}:</span>
+                  ${hasDiscount ? `<span class="text-slate-400 line-through">৳${item.mrp.toFixed(2)}</span>` : ''}
+                  <span class="font-bold text-emerald-700">৳${item.unit_price.toFixed(2)}</span>
+                  ${hasDiscount ? `<span class="px-1 py-0.1 bg-rose-50 text-rose-600 rounded text-[9px] font-extrabold border border-rose-200">${item.discount_percent}% OFF</span>` : ''}
+                </div>
               </div>
-              <button type="button" onclick="removeMedicineItem(${idx})" class="text-red-500 hover:text-red-700 text-sm p-1 leading-none" title="মুছুন">
+              <button type="button" onclick="removeMedicineItem(${idx})" class="text-red-500 hover:text-red-700 text-sm p-1 leading-none cursor-pointer" title="মুছুন">
                 🗑️
               </button>
             </div>
 
-            <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 flex-wrap">
+            <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 flex-wrap">
               <div class="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
-                <button type="button" onclick="changeMedicineQty(${idx}, -1)" class="w-6 h-6 rounded-md bg-white text-slate-700 hover:bg-slate-200 font-bold text-xs flex items-center justify-center shadow-2xs">-</button>
+                <button type="button" onclick="changeMedicineQty(${idx}, -1)" class="w-6 h-6 rounded-md bg-white text-slate-700 hover:bg-slate-200 font-bold text-xs flex items-center justify-center shadow-2xs cursor-pointer">-</button>
                 <span class="px-2 text-xs font-extrabold text-slate-800">${item.quantity} ${item.unit}</span>
-                <button type="button" onclick="changeMedicineQty(${idx}, 1)" class="w-6 h-6 rounded-md bg-white text-slate-700 hover:bg-slate-200 font-bold text-xs flex items-center justify-center shadow-2xs">+</button>
+                <button type="button" onclick="changeMedicineQty(${idx}, 1)" class="w-6 h-6 rounded-md bg-white text-slate-700 hover:bg-slate-200 font-bold text-xs flex items-center justify-center shadow-2xs cursor-pointer">+</button>
               </div>
 
-              <div class="flex items-center gap-1">
+              <div class="flex items-center gap-2">
+                ${hasGeneric ? `
+                  <button type="button" onclick="loadSubstitutesModal('${escapeHtml(item.generic_name)}', ${item.id}, '${escapeHtml(item.name)}')" class="text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 px-2 py-1 rounded-md border border-teal-200 cursor-pointer">
+                    🔄 বিকল্প ব্র্যান্ড
+                  </button>
+                ` : ''}
                 <span class="text-xs font-bold text-emerald-700 shrink-0">৳${item.total_price.toFixed(2)}</span>
               </div>
             </div>
