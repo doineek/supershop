@@ -126,9 +126,9 @@ except Exception as e:
     print(f"[cloudinary] Initialization notice: {e}")
 
 
-def upload_to_cloudinary(file_or_bytes, folder="supershop/products", public_id=None):
+def upload_to_cloudinary(file_or_bytes, folder="supershop/products", public_id=None, resource_type=None):
     """
-    Uploads an image (file path, file object, bytes, or data URI) to Cloudinary.
+    Uploads an image or document (file path, file object, bytes, or data URI) to Cloudinary.
     Returns secure HTTPS CDN URL on success, or None on failure/unconfigured.
     """
     if not CLOUDINARY_CONFIGURED:
@@ -136,9 +136,19 @@ def upload_to_cloudinary(file_or_bytes, folder="supershop/products", public_id=N
     try:
         import cloudinary
         import cloudinary.uploader
+        if not resource_type:
+            # Check if this is a PDF document
+            is_pdf = False
+            if isinstance(file_or_bytes, (bytes, bytearray)) and file_or_bytes.startswith(b"%PDF"):
+                is_pdf = True
+            elif isinstance(file_or_bytes, str) and ("application/pdf" in file_or_bytes or file_or_bytes.lower().endswith(".pdf")):
+                is_pdf = True
+            elif public_id and public_id.lower().endswith(".pdf"):
+                is_pdf = True
+            resource_type = "raw" if is_pdf else "auto"
         options = {
             "folder": folder,
-            "resource_type": "image",
+            "resource_type": resource_type,
             "overwrite": True
         }
         if public_id:
@@ -10844,38 +10854,46 @@ import random
 import json
 
 def _save_base64_image(data_uri, prefix="rx"):
-    """Helper to decode base64 data URI and upload to Cloudinary or save locally."""
-    if not data_uri or not data_uri.startswith("data:image"):
+    """Helper to decode base64 data URI (image or PDF) and upload to Cloudinary CDN or save locally."""
+    if not data_uri or not (data_uri.startswith("data:image") or data_uri.startswith("data:application/pdf") or data_uri.startswith("data:application/octet-stream") or data_uri.startswith("data:binary")):
         return "", ""
     try:
         header, encoded = data_uri.split(",", 1)
         ext = ".jpg"
-        if "webp" in header:
+        content_type = "image/jpeg"
+        if "pdf" in header:
+            ext = ".pdf"
+            content_type = "application/pdf"
+        elif "webp" in header:
             ext = ".webp"
+            content_type = "image/webp"
         elif "png" in header:
             ext = ".png"
+            content_type = "image/png"
         img_bytes = base64.b64decode(encoded)
         unique_name = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
 
-        # 1. Try Cloudflare R2 Upload first (Zero Egress, 0% Render Bandwidth)
+        # 1. Try Cloudinary upload first (Permanent CDN with public browser URL)
+        cloud_url = None
+        try:
+            r_type = "raw" if ext == ".pdf" else "auto"
+            cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions", public_id=unique_name, resource_type=r_type)
+        except Exception as e:
+            print(f"[pharmacy] Cloudinary base64 notice: {e}")
+
+        if cloud_url:
+            return cloud_url, unique_name
+
+        # 2. Try Cloudflare R2 if public domain is available
         try:
             from cloudflare_r2 import upload_to_r2
-            r2_url, _ = upload_to_r2(img_bytes, unique_name)
+            r2_url, _ = upload_to_r2(img_bytes, unique_name, content_type=content_type)
             if r2_url:
                 return r2_url, unique_name
         except Exception as e:
             print(f"[pharmacy] Cloudflare R2 base64 notice: {e}")
 
-        # 2. Try Cloudinary upload
-        cloud_url = None
-        try:
-            cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions")
-        except Exception as e:
-            print(f"[pharmacy] Base64 upload notice: {e}")
-
-        if cloud_url:
-            return cloud_url, unique_name
-
+        # 3. Local fallback storage
         upload_dir = os.path.join(app.root_path, "static", "uploads", "prescriptions")
         os.makedirs(upload_dir, exist_ok=True)
         save_path = os.path.join(upload_dir, unique_name)
@@ -10888,9 +10906,9 @@ def _save_base64_image(data_uri, prefix="rx"):
 
 def _handle_prescription_upload():
     """
-    Saves prescription image or document.
-    Prioritizes Cloudinary CDN to protect Render 5GB free bandwidth.
-    Falls back to local /static/uploads/prescriptions/ with high-compression if offline.
+    Saves prescription image or PDF document.
+    Prioritizes Cloudinary CDN to protect Render 5GB free bandwidth and allow instant viewing.
+    Falls back to Cloudflare R2 or local /static/uploads/prescriptions/.
     """
     # 1. Check if multipart file uploaded
     file = request.files.get("prescription_file") or request.files.get("file")
@@ -10899,30 +10917,29 @@ def _handle_prescription_upload():
         ext = os.path.splitext(filename)[1].lower()
         if ext in [".jpg", ".jpeg", ".png", ".webp", ".pdf"]:
             unique_name = f"rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
-            
-            # Read file bytes for potential Cloudflare R2 / Cloudinary upload
             file_bytes = file.read()
-            
-            # 1. Try Cloudflare R2 upload first
-            try:
-                from cloudflare_r2 import upload_to_r2
-                r2_url, _ = upload_to_r2(file_bytes, unique_name)
-                if r2_url:
-                    return r2_url, filename
-            except Exception as e:
-                print(f"[pharmacy] Cloudflare R2 file upload notice: {e}")
 
-            # 2. Try Cloudinary upload
+            # 1. Cloudinary upload first
             cloud_url = None
             try:
-                cloud_url = upload_to_cloudinary(file_bytes, folder="supershop/prescriptions")
+                r_type = "raw" if ext == ".pdf" else "auto"
+                cloud_url = upload_to_cloudinary(file_bytes, folder="supershop/prescriptions", public_id=unique_name, resource_type=r_type)
             except Exception as e:
                 print(f"[pharmacy] Cloudinary prescription upload notice: {e}")
                 
             if cloud_url:
                 return cloud_url, filename
 
-            # Local fallback storage
+            # 2. Try Cloudflare R2
+            try:
+                from cloudflare_r2 import upload_to_r2
+                r2_url, _ = upload_to_r2(file_bytes, unique_name, content_type="application/pdf" if ext == ".pdf" else "image/jpeg")
+                if r2_url:
+                    return r2_url, filename
+            except Exception as e:
+                print(f"[pharmacy] Cloudflare R2 file upload notice: {e}")
+
+            # 3. Local fallback storage
             upload_dir = os.path.join(app.root_path, "static", "uploads", "prescriptions")
             os.makedirs(upload_dir, exist_ok=True)
             save_path = os.path.join(upload_dir, unique_name)
@@ -10930,47 +10947,11 @@ def _handle_prescription_upload():
                 f_out.write(file_bytes)
             return f"/static/uploads/prescriptions/{unique_name}", filename
 
-    # 2. Check if client-compressed base64 data URI was sent
+    # 2. Check if client base64 data URI was sent (images or PDF)
     _j = request.get_json(silent=True) or {}
     data_uri = request.form.get("prescription_base64") or _j.get("prescription_base64")
-    if data_uri and data_uri.startswith("data:image"):
-        try:
-            header, encoded = data_uri.split(",", 1)
-            ext = ".jpg"
-            if "webp" in header:
-                ext = ".webp"
-            elif "png" in header:
-                ext = ".png"
-            img_bytes = base64.b64decode(encoded)
-            unique_name = f"rx_compressed_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
-
-            # 1. Try Cloudflare R2 upload first
-            try:
-                from cloudflare_r2 import upload_to_r2
-                r2_url, _ = upload_to_r2(img_bytes, unique_name)
-                if r2_url:
-                    return r2_url, unique_name
-            except Exception as e:
-                print(f"[pharmacy] Cloudflare R2 base64 notice: {e}")
-
-            # 2. Try Cloudinary upload
-            cloud_url = None
-            try:
-                cloud_url = upload_to_cloudinary(img_bytes, folder="supershop/prescriptions")
-            except Exception as e:
-                print(f"[pharmacy] Base64 Cloudinary upload notice: {e}")
-
-            if cloud_url:
-                return cloud_url, unique_name
-
-            upload_dir = os.path.join(app.root_path, "static", "uploads", "prescriptions")
-            os.makedirs(upload_dir, exist_ok=True)
-            save_path = os.path.join(upload_dir, unique_name)
-            with open(save_path, "wb") as f_out:
-                f_out.write(img_bytes)
-            return f"/static/uploads/prescriptions/{unique_name}", unique_name
-        except Exception as err:
-            print(f"[pharmacy] Base64 decode error: {err}")
+    if data_uri and (data_uri.startswith("data:image") or data_uri.startswith("data:application/pdf") or data_uri.startswith("data:application/octet-stream") or data_uri.startswith("data:binary")):
+        return _save_base64_image(data_uri, prefix="rx_upload")
 
     return "", ""
 
@@ -11048,8 +11029,12 @@ def pharmacy_home():
         {"id": "Suppository", "name": "Suppository", "icon": "💊"},
     ]
     
-    # Get active delivery areas
-    delivery_areas = conn.execute("SELECT district, area FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    # Get active delivery areas (unique by district, area)
+    raw_areas = conn.execute("SELECT DISTINCT district, area FROM delivery_areas WHERE is_active = 1 ORDER BY district, area").fetchall()
+    delivery_areas = [dict(r) for r in raw_areas if r["area"]]
+    districts = sorted(list(set([r["district"].strip() for r in delivery_areas if r.get("district") and r["district"].strip()])))
+    if not districts:
+        districts = ["Tangail"]
     
     # Quick count of active medicines
     med_count_row = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()
@@ -11061,6 +11046,7 @@ def pharmacy_home():
         settings=settings,
         dosage_forms=dosage_forms,
         delivery_areas=delivery_areas,
+        districts=districts,
         total_medicines=total_medicines,
         active_tab="pharmacy"
     )
@@ -11251,7 +11237,7 @@ def pharmacy_place_order():
     # Original uncropped/unenhanced photo if sent separately
     orig_base64 = data.get("prescription_original_base64")
     prescription_original_url = ""
-    if orig_base64 and orig_base64.startswith("data:image"):
+    if orig_base64 and (orig_base64.startswith("data:image") or orig_base64.startswith("data:application/pdf")):
         prescription_original_url, _ = _save_base64_image(orig_base64, prefix="rx_orig")
     if not prescription_original_url:
         prescription_original_url = prescription_url
@@ -11500,6 +11486,8 @@ def api_pharmacy_order_status(order_number):
         "delivery_charge": order["delivery_charge"],
         "total_amount": order["total_amount"],
         "delivery_otp": order["delivery_otp"],
+        "online_order_id": order["online_order_id"],
+        "invoice_url": f"/online_orders/{order['online_order_id']}/invoice" if order["online_order_id"] else None,
         "assigned_rider_name": order["assigned_rider_name"],
         "assigned_rider_phone": order["assigned_rider_phone"],
         "admin_notes": order["admin_notes"],
@@ -11586,6 +11574,9 @@ def api_admin_pharmacy_review(order_id):
         data["approved_items"] = json.loads(order["approved_items_json"] or "[]")
     except Exception:
         data["approved_items"] = []
+
+    ol_id = data.get("online_order_id")
+    data["invoice_url"] = f"/online_orders/{ol_id}/invoice" if ol_id else ""
 
     conn.close()
     return jsonify({"success": True, "order": data})
@@ -11772,9 +11763,14 @@ def api_admin_pharmacy_generate_bill(order_id):
     conn.commit()
     conn.close()
 
+    ol_id = order["online_order_id"] if order else None
+    invoice_url = f"/online_orders/{ol_id}/invoice" if ol_id else None
+
     return jsonify({
         "success": True,
-        "message": f"Order #{order['order_number']} bill confirmed successfully (Total: TK {grand_total:.2f})."
+        "message": f"Order #{order['order_number']} bill confirmed successfully (Total: TK {grand_total:.2f}).",
+        "online_order_id": ol_id,
+        "invoice_url": invoice_url
     })
 
 

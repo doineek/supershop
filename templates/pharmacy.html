@@ -282,15 +282,25 @@
             </button>
           </div>
 
-          <!-- Live Search Input & Dropdown -->
-          <div class="relative">
+          <!-- Live Search Input & Dropdown (Prominent Eye-Catching Glowing Design) -->
+          <div class="relative bg-gradient-to-r from-emerald-50 via-teal-50/80 to-emerald-50 p-2.5 sm:p-3 rounded-2xl border-2 border-emerald-500 shadow-md shadow-emerald-500/10">
+            <div class="flex items-center justify-between mb-1.5 px-1">
+              <label for="medicineSearchInput" class="text-xs sm:text-sm font-black text-emerald-900 flex items-center gap-1.5">
+                <span class="text-base animate-pulse">💊</span>
+                <span>ঔষধের নাম বা উপকরণ লিখুন:</span>
+              </label>
+              <span class="text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-full shadow-xs">
+                ⚡ ১৫,০০০+ ডাটাবেজ
+              </span>
+            </div>
+
             <div class="relative flex items-center">
-              <span class="absolute left-3 text-slate-400">🔍</span>
-              <input type="text" id="medicineSearchInput" oninput="onMedicineSearchInput()" onfocus="onMedicineSearchFocus()" placeholder="ওষুধের নাম বা উপাদান লিখুন (যেমন: Napa, Seclo, Savlon, Bandage)..." class="w-full pl-9 pr-8 py-2.5 bg-slate-50 border-2 border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs sm:text-sm font-medium outline-hidden transition">
-              <button type="button" id="btnClearSearch" onclick="clearMedicineSearch()" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-base font-bold">&times;</button>
+              <span class="absolute left-3.5 text-emerald-600 text-base font-extrabold">🔍</span>
+              <input type="text" id="medicineSearchInput" oninput="onMedicineSearchInput()" onfocus="onMedicineSearchFocus()" placeholder="ঔষধের ব্র্যান্ড বা জেনেরিক উপাদান লিখুন (যেমন: Napa, Seclo, Savlon, Bandage)..." class="w-full pl-10 pr-9 py-2.5 sm:py-3 bg-white border-2 border-emerald-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-200/50 rounded-xl text-xs sm:text-sm font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal outline-none shadow-xs transition">
+              <button type="button" id="btnClearSearch" onclick="clearMedicineSearch()" class="hidden absolute right-3 text-slate-400 hover:text-red-500 text-xl font-bold transition">&times;</button>
             </div>
             
-            <div id="medicineDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
+            <div id="medicineDropdown" class="hidden absolute top-full left-0 right-0 mt-1.5 bg-white border-2 border-emerald-300 rounded-2xl shadow-2xl z-40 max-h-72 overflow-y-auto divide-y divide-slate-100">
               <div class="p-3 text-center text-xs text-slate-400">খোঁজা হচ্ছে...</div>
             </div>
           </div>
@@ -369,15 +379,18 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">জেলা</label>
-            <select id="district" name="district" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
-              <option value="Tangail" selected>টাঙ্গাইল (Tangail)</option>
-              <option value="Dhaka">ঢাকা (Dhaka)</option>
+            <label class="block text-xs font-bold text-slate-700 mb-1">জেলা <span class="text-red-500">*</span></label>
+            <select id="district" name="district" onchange="onDistrictChange(this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-bold text-slate-800 outline-none transition">
+              {% for d in districts %}
+              <option value="{{ d }}" {{ 'selected' if d == 'Tangail' else '' }}>{{ d }}</option>
+              {% endfor %}
             </select>
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">এরিয়া / থানা</label>
-            <input type="text" id="area" name="area" value="Tangail Sadar" placeholder="এলাকা বা থানা" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+            <label class="block text-xs font-bold text-slate-700 mb-1">ডেলিভারি এরিয়া / থানা <span class="text-red-500">*</span></label>
+            <select id="area" name="area" required class="w-full px-3 py-2 bg-emerald-50/50 border border-emerald-300 focus:border-emerald-600 focus:bg-white rounded-xl text-xs font-bold text-slate-800 outline-none transition">
+              <!-- Dynamically populated from delivery_areas -->
+            </select>
           </div>
         </div>
 
@@ -545,6 +558,7 @@
       </div>
       <div class="p-2 max-h-[75vh] overflow-auto flex items-center justify-center bg-slate-950">
         <img id="previewModalImg" src="" alt="Prescription" class="max-w-full max-h-[70vh] object-contain rounded-lg">
+        <iframe id="previewModalPdf" src="" class="hidden w-full h-[70vh] rounded-lg border-0 bg-white"></iframe>
       </div>
     </div>
   </div>
@@ -748,6 +762,15 @@
         <span id="subModalCountBadge" class="px-2 py-0.5 bg-emerald-600 text-white text-[11px] font-black rounded-full shrink-0">০টি পাওয়া গেছে</span>
       </div>
 
+      <!-- Real-Time Brand Search Filter inside Substitutes Modal -->
+      <div class="px-3 py-2 bg-slate-50 border-b border-slate-200">
+        <div class="relative flex items-center">
+          <span class="absolute left-3 text-slate-400 text-xs">🔍</span>
+          <input type="text" id="subModalBrandSearch" oninput="filterSubstitutesByBrand()" placeholder="এখানে ব্র্যান্ড বা কোম্পানির নাম লিখুন (যেমন: Napa, Ace, Square, Beximco)..." class="w-full pl-8 pr-8 py-2 bg-white border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal outline-none transition">
+          <button type="button" onclick="clearSubModalBrandSearch()" id="btnClearSubSearch" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 text-sm font-bold">&times;</button>
+        </div>
+      </div>
+
       <!-- Substitutes List -->
       <div id="substitutesListContainer" class="p-3 overflow-y-auto divide-y divide-slate-100 space-y-2 max-h-[58vh]">
         <div class="p-6 text-center text-xs text-slate-400">বিকল্প ঔষধ খোঁজা হচ্ছে...</div>
@@ -775,6 +798,7 @@
     // Images State: Original vs Enhanced
     let originalRawDataUri = "";
     let currentEnhancedDataUri = "";
+    let lastSubmittedPrescriptionUrl = "";
     let activeViewMode = "enhanced"; // 'enhanced' or 'original'
 
     // Smart Crop State
@@ -1003,11 +1027,61 @@
     // Helper
     const $ = id => document.getElementById(id);
 
+    // Delivery areas dataset passed from backend
+    const allDeliveryAreas = {{ delivery_areas|tojson if delivery_areas else '[]' }};
+    const PDF_ICON_DATA = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='48' height='48'><path fill='%23ef4444' d='M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z'/><path fill='%23ffffff' d='M14 2v6h6'/><text x='7' y='18' fill='%23ffffff' font-size='6' font-family='sans-serif' font-weight='bold'>PDF</text></svg>";
+
+    function onDistrictChange(selectedDistrict) {
+      const areaSelect = $("area");
+      if (!areaSelect) return;
+      areaSelect.innerHTML = "";
+      
+      const selDistLower = (selectedDistrict || "").toLowerCase();
+      const filtered = (allDeliveryAreas || []).filter(item => {
+        if (!selectedDistrict) return true;
+        return item.district && item.district.toLowerCase() === selDistLower;
+      });
+      
+      let uniqueAreas = Array.from(new Set(filtered.map(item => item.area).filter(Boolean)));
+      
+      // Fallback if no specific areas found in DB for this district
+      if (uniqueAreas.length === 0) {
+        if (selDistLower === "tangail") {
+          uniqueAreas = ["Tangail Sadar", "Mirzapur", "Delduar", "Nagarpur", "Basail", "Kalihati", "Ghatail", "Bhuapur", "Gopalpur", "Madhupur", "Dhanbari", "Shakhipur"];
+        } else {
+          uniqueAreas = ["Sadar / Main Town", "Sub-district Area 1", "Sub-district Area 2"];
+        }
+      }
+
+      uniqueAreas.forEach(a => {
+        const opt = document.createElement("option");
+        opt.value = a;
+        opt.textContent = a;
+        areaSelect.appendChild(opt);
+      });
+
+      const savedArea = localStorage.getItem("supershop_cust_area");
+      if (savedArea && Array.from(areaSelect.options).some(o => o.value === savedArea)) {
+        areaSelect.value = savedArea;
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
       refreshPharmacyCustomerState();
       fetchMedicinesCatalog();
       loadRecentOrders();
       initSmartCanvasEvents();
+
+      // Initialize delivery areas dropdown based on district
+      const distSelect = $("district");
+      onDistrictChange(distSelect ? distSelect.value : "Tangail");
+
+      const areaSelect = $("area");
+      if (areaSelect) {
+        areaSelect.addEventListener("change", (e) => {
+          localStorage.setItem("supershop_cust_area", e.target.value);
+        });
+      }
 
       const savedPhone = localStorage.getItem("supershop_cust_phone") || "";
       const savedName = localStorage.getItem("supershop_cust_name") || "";
@@ -1122,21 +1196,42 @@
         };
         reader.readAsDataURL(file);
       } else {
-        // PDF fallback
-        originalRawDataUri = "pdf_placeholder";
-        currentEnhancedDataUri = "pdf_placeholder";
-        $("rxThumbImg").src = "https://cdn-icons-png.flaticon.com/512/337/337946.png";
-        $("rxFileName").innerText = file.name;
-        $("rxFileSizeInfo").innerText = `PDF ফাইল (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
-        $("dropzoneRx").classList.add("hidden");
-        $("rxPreviewCard").classList.remove("hidden");
+        // PDF document upload (Read real base64 bytes)
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const pdfDataUri = e.target.result;
+          originalRawDataUri = pdfDataUri;
+          currentEnhancedDataUri = pdfDataUri;
+          $("prescription_base64").value = pdfDataUri;
+          $("prescription_original_base64").value = pdfDataUri;
+
+          $("rxThumbImg").src = PDF_ICON_DATA;
+          $("rxFileName").innerText = file.name;
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+          $("rxFileSizeInfo").innerText = `PDF প্রেসক্রিপশন (${sizeMb} MB)`;
+
+          // Hide image crop/filter tools for PDF
+          const editBtn = $("btnEditPrescription");
+          if (editBtn) editBtn.classList.add("hidden");
+
+          $("dropzoneRx").classList.add("hidden");
+          $("rxPreviewCard").classList.remove("hidden");
+        };
+        reader.readAsDataURL(file);
       }
     }
 
     function loadNewPrescriptionImage(dataUri, fileName) {
       originalRawDataUri = dataUri;
+      currentEnhancedDataUri = dataUri;
       $("prescription_original_base64").value = dataUri;
+      $("prescription_base64").value = dataUri;
       $("rxFileName").innerText = fileName || "prescription.jpg";
+      $("rxThumbImg").src = dataUri;
+      $("dropzoneRx").classList.add("hidden");
+      $("rxPreviewCard").classList.remove("hidden");
+      const editBtn = $("btnEditPrescription");
+      if (editBtn) editBtn.classList.remove("hidden");
 
       // Load image into smart crop canvas
       smartImg = new Image();
@@ -1812,11 +1907,31 @@
 
     function openPreviewModal() {
       const src = activeViewMode === "original" ? originalRawDataUri : (currentEnhancedDataUri || originalRawDataUri);
-      if (src) {
-        $("previewModalImg").src = src;
+      if (!src) return;
+
+      const isPdf = src.startsWith("data:application/pdf") || src.includes(".pdf");
+      const imgEl = $("previewModalImg");
+      const pdfEl = $("previewModalPdf");
+
+      if (isPdf) {
+        if (imgEl) imgEl.classList.add("hidden");
+        if (pdfEl) {
+          pdfEl.classList.remove("hidden");
+          pdfEl.src = src;
+        }
+        $("previewModalTitle").innerText = "প্রেসক্রিপশন (PDF ডকুমেন্ট)";
+      } else {
+        if (pdfEl) {
+          pdfEl.classList.add("hidden");
+          pdfEl.src = "";
+        }
+        if (imgEl) {
+          imgEl.classList.remove("hidden");
+          imgEl.src = src;
+        }
         $("previewModalTitle").innerText = activeViewMode === "original" ? "প্রেসক্রিপশন (আসল ছবি)" : "প্রেসক্রিপশন (ক্যামস্ক্যানার এনহ্যান্সড)";
-        $("previewModal").classList.remove("hidden");
       }
+      $("previewModal").classList.remove("hidden");
     }
 
     function closePreviewModal() {
@@ -1956,8 +2071,86 @@
     });
 
     // -------------------------------------------------------------
-    // GENERIC ALTERNATIVES / SUBSTITUTES MODAL LOGIC
+    // GENERIC ALTERNATIVES / SUBSTITUTES MODAL LOGIC (With Real-Time Brand Search)
     // -------------------------------------------------------------
+    let _currentSubstitutesList = [];
+
+    function renderSubstitutesCards(list) {
+      const container = $("substitutesListContainer");
+      const countBadge = $("subModalCountBadge");
+      countBadge.innerText = `${list.length}টি ব্র্যান্ড পাওয়া গেছে`;
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="p-6 text-center text-xs text-slate-500">
+            কোনো ব্র্যান্ডের মিল পাওয়া যায়নি। নামের বানান পরিবর্তন করে চেষ্টা করুন।
+          </div>
+        `;
+        return;
+      }
+
+      let html = "";
+      list.forEach(s => {
+        window._pharmacyMedsMap = window._pharmacyMedsMap || {};
+        window._pharmacyMedsMap[s.id] = s;
+        const hasDiscount = (s.discount_percent && s.discount_percent > 0) || (s.mrp && s.mrp > s.sell_price);
+
+        html += `
+          <div class="pt-2 pb-1 flex items-center justify-between gap-2 transition hover:bg-emerald-50/40 p-2 rounded-xl">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <strong class="text-xs font-extrabold text-slate-900">${escapeHtml(s.name)}</strong>
+                <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(s.dosage_form || 'Tablet')}</span>
+                ${s.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(s.strength)})</span>` : ''}
+              </div>
+              <p class="text-[10px] text-slate-500 truncate mt-0.5 font-medium">🏢 ${escapeHtml(s.manufacturer || 'স্বীকৃত কোম্পানি')}</p>
+            </div>
+            
+            <div class="text-right shrink-0 flex items-center gap-2">
+              <div>
+                <div class="flex items-center justify-end gap-1">
+                  ${hasDiscount ? `<span class="text-[10px] text-slate-400 line-through">৳${parseFloat(s.mrp || 0).toFixed(2)}</span>` : ''}
+                  <span class="text-xs font-bold text-emerald-700">৳${parseFloat(s.sell_price || s.unit_price || 0).toFixed(2)}</span>
+                </div>
+                ${hasDiscount ? `<span class="px-1.5 py-0.2 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[9px] font-extrabold block text-right">${s.discount_percent}% OFF</span>` : `<span class="text-[10px] text-slate-400 block text-right">প্রতি পিস/বোতল</span>`}
+              </div>
+              
+              <button type="button" onclick="selectSubstituteItem(${s.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer">
+                + সিলেক্ট
+              </button>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function filterSubstitutesByBrand() {
+      const q = ($("subModalBrandSearch")?.value || "").trim().toLowerCase();
+      const clearBtn = $("btnClearSubSearch");
+      if (clearBtn) {
+        if (q) clearBtn.classList.remove("hidden");
+        else clearBtn.classList.add("hidden");
+      }
+      if (!q) {
+        renderSubstitutesCards(_currentSubstitutesList);
+        return;
+      }
+      const filtered = _currentSubstitutesList.filter(s => {
+        const name = (s.name || "").toLowerCase();
+        const mfg = (s.manufacturer || "").toLowerCase();
+        const str = (s.strength || "").toLowerCase();
+        return name.includes(q) || mfg.includes(q) || str.includes(q);
+      });
+      renderSubstitutesCards(filtered);
+    }
+
+    function clearSubModalBrandSearch() {
+      const inp = $("subModalBrandSearch");
+      if (inp) inp.value = "";
+      filterSubstitutesByBrand();
+    }
+
     async function loadSubstitutesModal(genericName, excludeId, baseName) {
       if (!genericName) return;
       const modal = $("substitutesModal");
@@ -1965,6 +2158,12 @@
       const subtitle = $("subModalSubtitle");
       const container = $("substitutesListContainer");
       const countBadge = $("subModalCountBadge");
+
+      // Reset search filter
+      const searchInp = $("subModalBrandSearch");
+      if (searchInp) searchInp.value = "";
+      const clearBtn = $("btnClearSubSearch");
+      if (clearBtn) clearBtn.classList.add("hidden");
 
       title.innerText = `জেনেরিক: ${genericName}`;
       subtitle.innerText = `"${baseName}" এর সমতুল্য বিভিন্ন ব্র্যান্ডের দাম ও তালিকা`;
@@ -1975,9 +2174,10 @@
         const res = await fetch(`/api/pharmacy/substitutes?generic_name=${encodeURIComponent(genericName)}&exclude_id=${excludeId}`);
         const data = await res.json();
         const subs = data.substitutes || [];
-        countBadge.innerText = `${subs.length}টি ব্র্যান্ড পাওয়া গেছে`;
+        _currentSubstitutesList = subs;
 
         if (subs.length === 0) {
+          countBadge.innerText = `০টি ব্র্যান্ড পাওয়া গেছে`;
           container.innerHTML = `
             <div class="p-6 text-center text-xs text-slate-500">
               এই মুহূর্তে "${escapeHtml(genericName)}" জেনেরিকের অন্য কোনো বিকল্প ব্র্যান্ডের স্টক পাওয়া যায়নি।
@@ -1986,40 +2186,7 @@
           return;
         }
 
-        let html = "";
-        subs.forEach(s => {
-          window._pharmacyMedsMap = window._pharmacyMedsMap || {};
-          window._pharmacyMedsMap[s.id] = s;
-          const hasDiscount = (s.discount_percent && s.discount_percent > 0) || (s.mrp && s.mrp > s.sell_price);
-
-          html += `
-            <div class="pt-2 pb-1 flex items-center justify-between gap-2 transition hover:bg-emerald-50/40 p-2 rounded-xl">
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <strong class="text-xs font-extrabold text-slate-900">${escapeHtml(s.name)}</strong>
-                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(s.dosage_form || 'Tablet')}</span>
-                  ${s.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(s.strength)})</span>` : ''}
-                </div>
-                <p class="text-[10px] text-slate-500 truncate mt-0.5 font-medium">🏢 ${escapeHtml(s.manufacturer || 'স্বীকৃত কোম্পানি')}</p>
-              </div>
-              
-              <div class="text-right shrink-0 flex items-center gap-2">
-                <div>
-                  <div class="flex items-center justify-end gap-1">
-                    ${hasDiscount ? `<span class="text-[10px] text-slate-400 line-through">৳${parseFloat(s.mrp || 0).toFixed(2)}</span>` : ''}
-                    <span class="text-xs font-bold text-emerald-700">৳${parseFloat(s.sell_price || s.unit_price || 0).toFixed(2)}</span>
-                  </div>
-                  ${hasDiscount ? `<span class="px-1.5 py-0.2 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[9px] font-extrabold block text-right">${s.discount_percent}% OFF</span>` : `<span class="text-[10px] text-slate-400 block text-right">প্রতি পিস/বোতল</span>`}
-                </div>
-                
-                <button type="button" onclick="selectSubstituteItem(${s.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer">
-                  + সিলেক্ট
-                </button>
-              </div>
-            </div>
-          `;
-        });
-        container.innerHTML = html;
+        renderSubstitutesCards(subs);
       } catch (err) {
         container.innerHTML = `<div class="p-6 text-center text-xs text-red-500">বিকল্প লোড করতে সমস্যা হয়েছে।</div>`;
       }
@@ -2291,7 +2458,12 @@
 
       const displayImg = currentEnhancedDataUri || originalRawDataUri;
       if (displayImg) {
-        $("successRxThumb").src = displayImg;
+        lastSubmittedPrescriptionUrl = displayImg;
+        if (displayImg.startsWith("data:application/pdf") || displayImg.includes(".pdf")) {
+          $("successRxThumb").src = PDF_ICON_DATA;
+        } else {
+          $("successRxThumb").src = displayImg;
+        }
         $("successRxCard").classList.remove("hidden");
       } else {
         $("successRxCard").classList.add("hidden");
@@ -2305,11 +2477,30 @@
     }
 
     function openSuccessPreview() {
-      const src = $("successRxThumb").src;
-      if (src) {
-        $("previewModalImg").src = src;
-        $("previewModal").classList.remove("hidden");
+      const src = lastSubmittedPrescriptionUrl || $("successRxThumb").src;
+      if (!src) return;
+      const isPdf = src.startsWith("data:application/pdf") || src.includes(".pdf");
+      const imgEl = $("previewModalImg");
+      const pdfEl = $("previewModalPdf");
+      if (isPdf) {
+        if (imgEl) imgEl.classList.add("hidden");
+        if (pdfEl) {
+          pdfEl.classList.remove("hidden");
+          pdfEl.src = src;
+        }
+        $("previewModalTitle").innerText = "প্রেসক্রিপশন (PDF ডকুমেন্ট)";
+      } else {
+        if (pdfEl) {
+          pdfEl.classList.add("hidden");
+          pdfEl.src = "";
+        }
+        if (imgEl) {
+          imgEl.classList.remove("hidden");
+          imgEl.src = src;
+        }
+        $("previewModalTitle").innerText = "প্রেসক্রিপশন";
       }
+      $("previewModal").classList.remove("hidden");
     }
 
     function copyOrderTrackingLink() {

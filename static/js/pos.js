@@ -101,33 +101,33 @@ async function loadPosMedicines(q = "") {
       btn.className = "pos-product pos-medicine-btn pos-row-item";
       const medSku = m.sku || ('MED-' + m.id);
 
+      btn.style.cssText = "display:flex; align-items:center; justify-content:space-between; width:100%; padding:8px 12px; gap:10px; white-space:nowrap; overflow:hidden;";
+
       btn.innerHTML = `
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <span style="background:#059669; color:white; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">
-              💊 ${m.dosage_form || 'Medicine'}
-            </span>
-            <strong style="color:#0f172a; font-size:13.5px;">${m.name}</strong>
-            ${m.strength ? `<span style="font-size:12px; color:#475569; font-weight:600;">(${m.strength})</span>` : ''}
-            <span style="font-family:monospace; font-weight:700; font-size:11px; background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; border:1px solid #bae6fd;">
-              SKU: ${medSku}
-            </span>
-          </div>
-          <div style="font-size:11.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            ${m.generic_name ? `<span style="color:#334155; font-weight:600;">${m.generic_name}</span>` : ''}
-            ${m.manufacturer ? `<span>• ${m.manufacturer}</span>` : ''}
-            <span>• Stock: <strong>${m.stock_qty || 999}</strong></span>
-          </div>
+        <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1; overflow:hidden; white-space:nowrap;">
+          <span style="background:#059669; color:white; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; flex-shrink:0;">
+            💊 ${m.dosage_form || 'Tablet'}
+          </span>
+          <strong style="color:#0f172a; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${m.name}</strong>
+          ${m.strength ? `<span style="font-size:11.5px; color:#475569; font-weight:600; flex-shrink:0;">(${m.strength})</span>` : ''}
+          ${m.generic_name ? `<span style="color:#64748b; font-size:11.5px; flex-shrink:0;">[${m.generic_name}]</span>` : ''}
+          ${m.manufacturer ? `<span style="color:#64748b; font-size:11.5px; flex-shrink:0;">• ${m.manufacturer}</span>` : ''}
+          <span style="font-family:monospace; font-weight:700; font-size:11px; background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; border:1px solid #bae6fd; flex-shrink:0;">
+            SKU: ${medSku}
+          </span>
+          <span style="font-size:11.5px; color:#64748b; flex-shrink:0;">
+            Stock: <strong>${m.stock_qty || 999}</strong>
+          </span>
         </div>
 
-        <div style="display:flex; align-items:center; gap:14px; flex-shrink:0;">
-          <div style="text-align:right;">
-            <div style="font-size:14.5px; font-weight:800; color:#059669; font-family:var(--font-mono);">
+        <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
+          <div style="text-align:right; display:flex; align-items:baseline; gap:5px;">
+            <div style="font-size:14px; font-weight:800; color:#059669; font-family:var(--font-mono);">
               TK ${(parseFloat(m.unit_price) || 0).toFixed(2)}
             </div>
-            ${m.strip_price && parseFloat(m.strip_price) > 0 ? `<div style="font-size:10.5px; color:#64748b;">Strip: TK ${(parseFloat(m.strip_price)).toFixed(2)}</div>` : ''}
+            ${m.strip_price && parseFloat(m.strip_price) > 0 ? `<div style="font-size:10.5px; color:#64748b;">(Strip: TK ${parseFloat(m.strip_price).toFixed(2)})</div>` : ''}
           </div>
-          <span style="background:#059669; color:white; padding:5px 12px; border-radius:6px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center;">
+          <span style="background:#059669; color:white; padding:4px 10px; border-radius:6px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center;">
             + Add
           </span>
         </div>

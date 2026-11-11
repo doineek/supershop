@@ -153,7 +153,14 @@
               <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
                 {% if order.prescription_url %}
                 <div style="cursor: pointer; display: inline-block;" onclick="openImageZoom('{{ order.prescription_url }}')">
+                  {% if '.pdf' in order.prescription_url.lower() or 'application/pdf' in order.prescription_url %}
+                  <div style="width: 50px; height: 50px; border-radius: 8px; border: 1.5px solid #f87171; background: #fef2f2; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #dc2626; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <span style="font-size: 1.25rem;">📄</span>
+                    <span style="font-size: 0.62rem; font-weight: 800; line-height: 1;">PDF</span>
+                  </div>
+                  {% else %}
                   <img src="{{ order.prescription_url }}" alt="RX" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1.5px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                  {% endif %}
                   <div style="font-size: 0.72rem; color: #059669; font-weight: 700; margin-top: 2px;">🔍 View Full</div>
                 </div>
                 {% else %}
@@ -334,8 +341,8 @@
             <button type="button" id="adminBtnToggleOriginal" onclick="adminTogglePrescriptionView('original')" style="background: #e2e8f0; color: #334155; border: none; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
               🖼️ Original
             </button>
-            <button type="button" onclick="rotateImage()" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">🔄 Rotate</button>
-            <button type="button" onclick="openAdminCropModal()" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
+            <button type="button" id="adminBtnRotate" onclick="rotateImage()" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">🔄 Rotate</button>
+            <button type="button" id="adminBtnCrop" onclick="openAdminCropModal()" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
               📐 Crop & Filter
             </button>
             <a id="reviewRxDownloadLink" href="#" target="_blank" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-decoration: none; color: #0f172a;">🔍 Full View</a>
@@ -344,6 +351,7 @@
 
         <div style="flex: 1; min-height: 380px; max-height: 480px; overflow: auto; background: #020617; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative;">
           <img id="reviewRxImage" src="" alt="Prescription" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.3s ease;">
+          <iframe id="reviewRxPdf" src="" style="display: none; width: 100%; height: 100%; min-height: 420px; border: none; background: white; border-radius: 6px;"></iframe>
           <div id="noRxNotice" style="display: none; color: #94a3b8; font-size: 0.9rem;">No prescription photo uploaded (Customer selected medicines directly).</div>
         </div>
 
@@ -422,10 +430,22 @@
           <input type="text" id="billAdminNotesInput" placeholder="e.g. Take antacid before meals, complete antibiotic course..." style="width: 100%; padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem; box-sizing: border-box;">
         </div>
 
-        <!-- Confirm and Save Button -->
-        <button type="button" id="btnConfirmBillOrder" onclick="saveAndConfirmBill()" style="background: #059669; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 0.95rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px;">
-          <span>✅</span> <span>Confirm Bill & Send to Customer</span>
-        </button>
+        <!-- Action Buttons: Confirm Bill and Confirm & Print Invoice -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+          <button type="button" id="btnConfirmBillOrder" onclick="saveAndConfirmBill(false)" style="background: #059669; color: white; border: none; padding: 10px 12px; border-radius: 8px; font-size: 0.88rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s;">
+            <span>✅</span> <span>Confirm Bill</span>
+          </button>
+          <button type="button" id="btnConfirmAndPrintInvoice" onclick="saveAndConfirmBill(true)" style="background: #2563eb; color: white; border: none; padding: 10px 12px; border-radius: 8px; font-size: 0.88rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s;">
+            <span>🖨️</span> <span>Confirm & Print Invoice</span>
+          </button>
+        </div>
+
+        <!-- Direct Print Invoice Link if order already verified -->
+        <div id="directPrintInvoiceBox" style="display: none; margin-top: 4px; text-align: center;">
+          <a id="directPrintInvoiceLink" href="#" target="_blank" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #eff6ff; color: #1d4ed8; border: 1.5px solid #bfdbfe; padding: 8px 14px; border-radius: 8px; font-size: 0.84rem; font-weight: 800; text-decoration: none; width: 100%; box-sizing: border-box;">
+            <span>📄</span> <span>Open Existing Invoice (Ready to Print)</span>
+          </a>
+        </div>
 
       </div>
     </div>
@@ -937,6 +957,17 @@
       document.getElementById("billDeliveryChargeInput").value = o.delivery_charge || 50;
       document.getElementById("billAdminNotesInput").value = o.admin_notes || "";
 
+      // Direct print invoice link if order is confirmed/invoiced
+      const directBox = document.getElementById("directPrintInvoiceBox");
+      const directLink = document.getElementById("directPrintInvoiceLink");
+      if (o.invoice_url || o.online_order_id) {
+        const invUrl = o.invoice_url || `/online_orders/${o.online_order_id}/invoice`;
+        if (directLink) directLink.href = invUrl;
+        if (directBox) directBox.style.display = "block";
+      } else {
+        if (directBox) directBox.style.display = "none";
+      }
+
       adminUpdatePrescriptionDisplay();
 
       activeBillItems = (o.approved_items && o.approved_items.length > 0) ? o.approved_items : (o.requested_items || []);
@@ -957,10 +988,13 @@
     if (!currentOrderData) return;
     const o = currentOrderData;
     const rxImg = document.getElementById("reviewRxImage");
+    const rxPdf = document.getElementById("reviewRxPdf");
     const noRx = document.getElementById("noRxNotice");
     const downLink = document.getElementById("reviewRxDownloadLink");
     const btnEnh = document.getElementById("adminBtnToggleEnhanced");
     const btnOrig = document.getElementById("adminBtnToggleOriginal");
+    const btnRotate = document.getElementById("adminBtnRotate");
+    const btnCrop = document.getElementById("adminBtnCrop");
 
     const targetUrl = adminActivePrescriptionView === "original"
       ? (o.prescription_original_url || o.prescription_url)
@@ -975,16 +1009,47 @@
     }
 
     if (targetUrl) {
-      rxImg.src = targetUrl;
-      rxImg.style.transform = `rotate(${currentRotation}deg)`;
-      rxImg.style.display = "block";
-      noRx.style.display = "none";
-      downLink.href = targetUrl;
-      downLink.style.display = "inline-block";
+      const isPdf = targetUrl.toLowerCase().includes('.pdf') || targetUrl.startsWith('data:application/pdf');
+      if (isPdf) {
+        if (rxImg) rxImg.style.display = "none";
+        if (rxPdf) {
+          rxPdf.src = targetUrl;
+          rxPdf.style.display = "block";
+        }
+        if (btnRotate) btnRotate.style.display = "none";
+        if (btnCrop) btnCrop.style.display = "none";
+        if (downLink) {
+          downLink.innerText = "📄 Open PDF";
+          downLink.href = targetUrl;
+          downLink.style.display = "inline-block";
+        }
+      } else {
+        if (rxPdf) {
+          rxPdf.src = "";
+          rxPdf.style.display = "none";
+        }
+        if (rxImg) {
+          rxImg.src = targetUrl;
+          rxImg.style.transform = `rotate(${currentRotation}deg)`;
+          rxImg.style.display = "block";
+        }
+        if (btnRotate) btnRotate.style.display = "inline-block";
+        if (btnCrop) btnCrop.style.display = "inline-block";
+        if (downLink) {
+          downLink.innerText = "🔍 Full View";
+          downLink.href = targetUrl;
+          downLink.style.display = "inline-block";
+        }
+      }
+      if (noRx) noRx.style.display = "none";
     } else {
-      rxImg.style.display = "none";
-      noRx.style.display = "block";
-      downLink.style.display = "none";
+      if (rxImg) rxImg.style.display = "none";
+      if (rxPdf) {
+        rxPdf.src = "";
+        rxPdf.style.display = "none";
+      }
+      if (noRx) noRx.style.display = "block";
+      if (downLink) downLink.style.display = "none";
     }
   }
 
@@ -1749,7 +1814,7 @@
     document.getElementById("billGrandTotalTxt").innerText = `TK ${grandTotal.toFixed(2)}`;
   }
 
-  async function saveAndConfirmBill() {
+  async function saveAndConfirmBill(printInvoice = false) {
     if (!currentReviewOrderId) return;
     if (activeBillItems.length === 0) {
       alert("Please add at least one medicine to the bill.");
@@ -1759,9 +1824,10 @@
     const delCharge = parseFloat(document.getElementById("billDeliveryChargeInput").value) || 50;
     const notes = document.getElementById("billAdminNotesInput").value.trim();
 
-    const btn = document.getElementById("btnConfirmBillOrder");
-    btn.disabled = true;
-    btn.innerText = "Saving...";
+    const btnConfirm = document.getElementById("btnConfirmBillOrder");
+    const btnPrint = document.getElementById("btnConfirmAndPrintInvoice");
+    if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.innerText = "Saving..."; }
+    if (btnPrint) { btnPrint.disabled = true; btnPrint.innerText = "Generating..."; }
 
     try {
       const res = await fetch(`/api/admin/pharmacy/orders/${currentReviewOrderId}/generate-bill`, {
@@ -1776,6 +1842,9 @@
 
       const data = await res.json();
       if (data.success) {
+        if (printInvoice && data.invoice_url) {
+          window.open(data.invoice_url, '_blank');
+        }
         alert(data.message);
         location.reload();
       } else {
@@ -1784,8 +1853,14 @@
     } catch (err) {
       alert("Server connection error.");
     } finally {
-      btn.disabled = false;
-      btn.innerText = "✅ Confirm Bill & Send to Customer";
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = "<span>✅</span> <span>Confirm Bill</span>";
+      }
+      if (btnPrint) {
+        btnPrint.disabled = false;
+        btnPrint.innerHTML = "<span>🖨️</span> <span>Confirm & Print Invoice</span>";
+      }
     }
   }
 

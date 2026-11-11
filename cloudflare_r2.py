@@ -93,11 +93,13 @@ def upload_to_r2(data_bytes, filename, content_type="image/jpeg"):
         if resp.status_code in [200, 201]:
             if CF_R2_PUBLIC_DOMAIN:
                 public_url = f"{CF_R2_PUBLIC_DOMAIN}/{clean_filename}"
+                print(f"[cloudflare_r2] [OK] Uploaded {clean_filename} to R2: {public_url}")
+                return public_url, clean_filename
             else:
-                # Default Cloudflare R2 dev or proxy URL
-                public_url = f"https://{CF_ACCOUNT_ID}.r2.cloudflarestorage.com/{CF_R2_BUCKET}/{clean_filename}"
-            print(f"[cloudflare_r2] [OK] Uploaded {clean_filename} to R2: {public_url}")
-            return public_url, clean_filename
+                # Without a configured public domain, raw S3 endpoint is private and will 400/403 in browsers.
+                # Return None so caller falls back to Cloudinary CDN or local storage.
+                print(f"[cloudflare_r2] Stored in R2 bucket {CF_R2_BUCKET}, but no CF_R2_PUBLIC_DOMAIN set for browser viewing.")
+                return None, None
         else:
             print(f"[cloudflare_r2] Upload failed ({resp.status_code}): {resp.text[:200]}")
             return None, None
