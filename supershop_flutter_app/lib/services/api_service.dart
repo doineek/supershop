@@ -105,6 +105,8 @@ class ApiService {
     return _activeUrl.isNotEmpty ? _activeUrl : candidateUrls.first;
   }
 
+  static String get activeUrl => baseUrl;
+
   static Future<http.Response?> httpGet(String path, {Duration timeout = const Duration(seconds: 8)}) async {
     List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
     for (String serverUrl in urlsToTry) {

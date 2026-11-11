@@ -118,41 +118,28 @@
       </div>
     </div>
 
-    <!-- Mode Switcher Tabs (3 Modes: Prescription Only / Medicines Only / Both) -->
-    <div class="bg-white p-1 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-3 gap-1">
-      <button type="button" id="tabModeRxOnly" onclick="setOrderMode('prescription_only')" class="py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center bg-emerald-600 text-white shadow-xs flex flex-col sm:flex-row items-center justify-center gap-1">
-        <span>📸</span>
-        <span>শুধু প্রেসক্রিপশন</span>
-      </button>
-      <button type="button" id="tabModeBoth" onclick="setOrderMode('both')" class="py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1">
-        <span>🔄</span>
-        <span>উভয় একসাথে</span>
-      </button>
-      <button type="button" id="tabModeMedOnly" onclick="setOrderMode('medicines_only')" class="py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1">
-        <span>💊</span>
-        <span>ঔষধ সিলেক্ট</span>
-      </button>
-    </div>
-
-    <!-- Notice banner based on mode -->
-    <div id="modeNoticeBox" class="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-900">
-      <span class="text-base shrink-0">ℹ️</span>
-      <div id="modeNoticeText" class="leading-relaxed">
-        <strong>প্রেসক্রিপশন আপলোড সুবিধা:</strong> মোবাইল বা ল্যাপটপ থেকে প্রেসক্রিপশনের ছবি তুলুন। প্রয়োজনে ৪ কোণায় জুম করে সোজা করতে পারবেন এবং ক্যামস্ক্যানারের মত ঝকঝকে করতে পারবেন।
+    <!-- Unified Pharmacy Notice Banner -->
+    <div class="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-xs text-emerald-950 shadow-xs">
+      <span class="text-2xl shrink-0">💊</span>
+      <div class="leading-relaxed space-y-0.5">
+        <strong class="font-extrabold text-emerald-900 text-xs sm:text-sm block">এক ক্লিকেই প্রেসক্রিপশন ও ঔষধ অর্ডার করুন</strong>
+        <p class="text-slate-600 text-[11px] sm:text-xs">
+          আপনি চাইলে <b>শুধু প্রেসক্রিপশন আপলোড</b> করতে পারেন, অথবা <b>সরাসরি ঔষধ সিলেক্ট</b> করতে পারেন, কিংবা <b>উভয়ই একসাথে</b> করতে পারেন। আমাদের ফার্মাসিস্ট যাচাই করে দ্রুত আপনার ঠিকানায় ওষুধ পৌঁছে দেবেন।
+        </p>
       </div>
     </div>
 
     <form id="pharmacyOrderForm" onsubmit="submitPharmacyOrder(event)">
 
-      <!-- STEP 1: Prescription Upload Box (Hidden in medicines_only mode) -->
+      <!-- STEP 1: Prescription Upload Box -->
       <div id="stepUploadCard" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
             <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs flex items-center justify-center font-extrabold">১</span>
             <span>প্রেসক্রিপশনের ছবি বা ফাইল আপলোড</span>
           </h2>
-          <span class="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-            মোবাইল / ল্যাপটপ ক্যামেরা
+          <span class="text-[11px] text-slate-500 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+            ঐচ্ছিক (প্রেসক্রিপশন থাকলে)
           </span>
         </div>
 
@@ -165,23 +152,18 @@
         <!-- Drag & Drop / Upload Action Area -->
         <div id="dropzoneRx" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-5 text-center transition bg-slate-50/70 hover:bg-emerald-50/30">
           <div class="text-3xl mb-1.5">📷</div>
-          <p class="font-bold text-slate-800 text-sm">মোবাইল বা ল্যাপটপ থেকে প্রেসক্রিপশন আপলোড করুন</p>
+          <p class="font-bold text-slate-800 text-sm">প্রেসক্রিপশনের ছবি তুলুন অথবা আপলোড করুন</p>
           <p class="text-[11px] text-slate-500 mt-0.5">ছবি তোলার পর ক্রপ ও ক্যামস্ক্যানার ফিল্টার ব্যবহার করতে পারবেন</p>
           
-          <div class="mt-3.5 flex items-center justify-center gap-2 flex-wrap">
-            <!-- Mobile Camera Button -->
-            <button type="button" onclick="document.getElementById('rxCameraInput').click()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
-              <span>📱</span> <span>মোবাইল ক্যামেরা</span>
-            </button>
-            
-            <!-- Laptop / Webcam Capture Button -->
-            <button type="button" onclick="openLaptopWebcamModal()" class="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
-              <span>💻</span> <span>ল্যাপটপ ক্যামেরা</span>
+          <div class="mt-3.5 flex items-center justify-center gap-2.5 flex-wrap">
+            <!-- Unified Camera Button (Mobile or Laptop Camera) -->
+            <button type="button" onclick="openUnifiedCamera()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition flex items-center gap-2 cursor-pointer">
+              <span>📷</span> <span>ক্যামেরা</span>
             </button>
 
             <!-- File / Gallery Button -->
-            <button type="button" onclick="document.getElementById('rxFileInput').click()" class="px-3.5 py-1.5 bg-white border border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700 rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
-              <span>📁</span> <span>ফাইল বা গ্যালারি</span>
+            <button type="button" onclick="document.getElementById('rxFileInput').click()" class="px-4 py-2 bg-white border border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition flex items-center gap-2 cursor-pointer">
+              <span>📁</span> <span>গ্যালারি / ফাইল</span>
             </button>
           </div>
         </div>
@@ -997,6 +979,33 @@
     });
 
     // -------------------------------------------------------------
+    // UNIFIED CAMERA (SMART DETECTION: MOBILE NATIVE VS LAPTOP WEBCAM)
+    // -------------------------------------------------------------
+    function openUnifiedCamera() {
+      // Check if user is on a mobile device or touch screen tablet
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                       || (navigator.maxTouchPoints > 1 && window.innerWidth <= 820);
+
+      if (isMobile) {
+        // Mobile camera: trigger capture="environment" file input which directly opens native camera
+        const cameraInput = $("rxCameraInput");
+        if (cameraInput) {
+          cameraInput.click();
+          return;
+        }
+      }
+
+      // Laptop / PC: open live webcam modal with video stream
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+        openLaptopWebcamModal();
+      } else {
+        // Fallback: trigger camera input or file input
+        const fallbackInput = $("rxCameraInput") || $("rxFileInput");
+        if (fallbackInput) fallbackInput.click();
+      }
+    }
+
+    // -------------------------------------------------------------
     // WEBCAM (LAPTOP / PC) CAPTURE
     // -------------------------------------------------------------
     async function openLaptopWebcamModal() {
@@ -1775,32 +1784,7 @@
     // MEDICINE CATALOG & ORDER SUBMISSION
     // -------------------------------------------------------------
     function setOrderMode(mode) {
-      currentMode = mode;
-      const tabRx = $("tabModeRxOnly");
-      const tabBoth = $("tabModeBoth");
-      const tabMed = $("tabModeMedOnly");
-      
-      [tabRx, tabBoth, tabMed].forEach(t => {
-        t.className = "py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1";
-      });
-
-      const activeClasses = "py-2.5 px-1 rounded-xl font-bold text-[11px] sm:text-xs transition text-center bg-emerald-600 text-white shadow-xs flex flex-col sm:flex-row items-center justify-center gap-1";
-      const stepUploadCard = $("stepUploadCard");
-      const modeNoticeText = $("modeNoticeText");
-
-      if (mode === "prescription_only") {
-        tabRx.className = activeClasses;
-        stepUploadCard.classList.remove("hidden");
-        modeNoticeText.innerHTML = "<strong>শুধু প্রেসক্রিপশন আপলোড:</strong> প্রেসক্রিপশনের ছবি আপলোড করুন এবং কয়দিনের ওষুধ লাগবে নির্বাচন করুন। আমাদের ফার্মাসিস্ট দেখে সঠিক ওষুধ ও বিল প্রস্তুত করবেন।";
-      } else if (mode === "medicines_only") {
-        tabMed.className = activeClasses;
-        stepUploadCard.classList.add("hidden");
-        modeNoticeText.innerHTML = "<strong>ঔষধ নির্বাচন সেবা:</strong> তালিকা থেকে প্রয়োজনীয় ওষুধ (ট্যাবলেট, ক্যাপসুল, সিরাপ, ব্যান্ডেজ ইত্যাদি) সার্চ করে সিলেক্ট করুন ও পরিমাণ নির্ধারণ করুন।";
-      } else {
-        tabBoth.className = activeClasses;
-        stepUploadCard.classList.remove("hidden");
-        modeNoticeText.innerHTML = "<strong>উভয় একসাথে:</strong> প্রেসক্রিপশন আপলোড করুন এবং পাশাপাশি তালিকা থেকে প্রয়োজনীয় ওষুধ বা ফার্স্ট এইড আইটেম (স্যাভলন, গজ ইত্যাদি) সিলেক্ট করুন।";
-      }
+      currentMode = mode || "both";
     }
 
     function selectDuration(days, btn) {
@@ -2052,7 +2036,7 @@
       }
 
       if (!hasPrescription && !hasMedicines) {
-        alert("অনুগ্রহ করে প্রেসক্রিপশন আপলোড করুন অথবা ঔষধ নির্বাচন করুন।");
+        alert("অনুগ্রহ করে প্রেসক্রিপশন আপলোড করুন অথবা যেকোনো ঔষধ নির্বাচন করুন (বা উভয়ই একসাথে করতে পারেন)।");
         return;
       }
 
@@ -2065,13 +2049,23 @@
       localStorage.setItem("supershop_cust_name", custName);
       localStorage.setItem("supershop_cust_addr", deliveryAddr);
 
+      // Determine order type automatically from user selections
+      let computedOrderType = "both";
+      if (hasPrescription && !hasMedicines) {
+        computedOrderType = "prescription_only";
+      } else if (!hasPrescription && hasMedicines) {
+        computedOrderType = "medicines_only";
+      } else {
+        computedOrderType = "both";
+      }
+
       const payload = {
         customer_name: custName,
         customer_phone: custPhone,
         delivery_address: deliveryAddr,
         district: district,
         area: area,
-        order_type: currentMode,
+        order_type: computedOrderType,
         overall_duration_days: overallDuration,
         customer_notes: notes,
         prescription_base64: currentEnhancedDataUri || originalRawDataUri,

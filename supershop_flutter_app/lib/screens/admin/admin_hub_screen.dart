@@ -209,6 +209,13 @@ class _AdminHubScreenState extends State<AdminHubScreen> {
                   onTap: () => _launchAdminRoute('/reports'),
                 ),
                 _buildActionCard(
+                  title: "Pharmacy & Rx",
+                  subtitle: "Prescriptions & Meds",
+                  icon: Icons.local_pharmacy,
+                  color: const Color(0xFF059669),
+                  onTap: () => _launchAdminRoute('/admin/pharmacy'),
+                ),
+                _buildActionCard(
                   title: "Store Settings",
                   subtitle: "System & App Config",
                   icon: Icons.settings,

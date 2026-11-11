@@ -47,6 +47,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadAppVersion();
   }
 
+  Future<void> _openPharmacyPortal() async {
+    String baseUrl = ApiService.activeUrl.isNotEmpty ? ApiService.activeUrl : "https://doineek.onrender.com";
+    if (baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
+      baseUrl = "https://doineek.onrender.com";
+    }
+    String pharmacyUrl = "$baseUrl/pharmacy";
+    try {
+      final Uri uri = Uri.parse(pharmacyUrl);
+      final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("ফার্মেসী সেবা খোলা যায়নি: $e"),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
   void _loadProfileData() {
     _loadLocalProfileImmediately();
     _loadProfileDataAsync();
@@ -972,6 +996,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               MaterialPageRoute(builder: (_) => const MyOrdersScreen()),
                             );
                           },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.local_pharmacy, color: Color(0xFF0D9488)),
+                          title: const Text('ফার্মেসী ও প্রেসক্রিপশন সেবা', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('প্রেসক্রিপশন আপলোড ও অনলাইনে ঔষধ অর্ডার'),
+                          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                          onTap: _openPharmacyPortal,
                         ),
                         const Divider(height: 1),
                         ListTile(

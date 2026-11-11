@@ -422,6 +422,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openPharmacyPortal() async {
+    String baseUrl = ApiService.activeUrl.isNotEmpty ? ApiService.activeUrl : "https://doineek.onrender.com";
+    if (baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
+      baseUrl = "https://doineek.onrender.com";
+    }
+    String pharmacyUrl = "$baseUrl/pharmacy";
+    try {
+      final Uri uri = Uri.parse(pharmacyUrl);
+      final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("ফার্মেসী সেবা খোলা যায়নি: $e"),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
   List<Product> _filterProducts(List<Product> allProducts) {
     List<Product> list = allProducts;
     if (_searchQuery.trim().isNotEmpty) {
@@ -915,6 +939,87 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                         ),
 
+                        // Dedicated Pharmacy & Prescription Service Card
+                        Container(
+                          margin: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF047857), Color(0xFF0D9488)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))
+                            ],
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: _openPharmacyPortal,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Text(
+                                        "💊",
+                                        style: TextStyle(fontSize: 22),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: const [
+                                          Text(
+                                            "ফার্মেসী ও প্রেসক্রিপশন সেবা",
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13.5,
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            "ক্যামেরায় প্রেসক্রিপশন ছবি তুলুন বা সরাসরি ওষুধ অর্ডার করুন",
+                                            style: TextStyle(
+                                              color: Color(0xFFCCFBF1),
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Text(
+                                        "অর্ডার ➔",
+                                        style: TextStyle(
+                                          color: Color(0xFF047857),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
                         // Section Tabs: Trending, Flash Sale, Offers
                         Container(
                           color: isDark ? Colors.grey[900] : Colors.white,
@@ -926,6 +1031,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 _buildTabChip(loc.translate('all_products'), 'all'),
                                 const SizedBox(width: 8),
                                 _buildTabChip('🎁 Combo Packages', 'packages'),
+                                const SizedBox(width: 8),
+                                _buildTabChip('💊 ফার্মেসী ও প্রেসক্রিপশন', 'pharmacy'),
                                 const SizedBox(width: 8),
                                 _buildTabChip(loc.translate('trending'), 'trending'),
                                 const SizedBox(width: 8),
@@ -1977,6 +2084,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         fontWeight: FontWeight.bold,
       ),
       onSelected: (selected) {
+        if (key == 'pharmacy') {
+          _openPharmacyPortal();
+          return;
+        }
         if (selected) {
           setState(() {
             _selectedTab = key;
