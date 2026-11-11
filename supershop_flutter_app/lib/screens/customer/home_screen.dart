@@ -351,6 +351,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_userImageBase64.startsWith('http://') || _userImageBase64.startsWith('https://')) {
         return NetworkImage(_userImageBase64);
       }
+      if (_userImageBase64.startsWith('/')) {
+        String baseUrl = ApiService.activeUrl.isNotEmpty ? ApiService.activeUrl : "https://doineek.onrender.com";
+        if (baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
+          baseUrl = "https://doineek.onrender.com";
+        }
+        return NetworkImage('$baseUrl$_userImageBase64');
+      }
       try {
         String cleanB64 = _userImageBase64.contains(',')
             ? _userImageBase64.split(',').last

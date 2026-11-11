@@ -415,12 +415,14 @@ class ApiService {
     required String phone,
     required String password,
     bool isDeliveryMan = false,
+    bool isAdmin = false,
   }) async {
     try {
       final res = await httpPost('/api/auth/login', body: jsonEncode({
         'phone': phone,
         'password': password,
         'is_delivery_man': isDeliveryMan,
+        'is_admin': isAdmin,
       }));
       if (res != null) return jsonDecode(res.body);
     } catch (e) {

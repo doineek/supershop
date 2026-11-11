@@ -4722,6 +4722,10 @@
         currentCustomer = null;
         localStorage.removeItem('supershop_logged_customer');
         localStorage.removeItem('supershop_web_notifications');
+        localStorage.removeItem('supershop_rx_orders');
+        lastFetchedMyOrders = [];
+        const container = document.getElementById('myOrdersListContainer');
+        if (container) container.innerHTML = '<div style="padding:20px; text-align:center; color:#64748B;">Please log in to view your orders.</div>';
         webNotifications = [];
         webUnreadNotifCount = 0;
         renderWebNotifications();

@@ -1146,12 +1146,15 @@ def api_customer_update_profile():
     except Exception as e:
         print("[customer_update] Error syncing to cloud:", e)
 
-    u_res = dict(updated_cust) if updated_cust else {"phone": db_phone, "name": name, "profile_image": saved_img_url}
+    full_saved_img = request.host_url.rstrip("/") + saved_img_url if saved_img_url.startswith("/") else saved_img_url
+    u_res = dict(updated_cust) if updated_cust else {"phone": db_phone, "name": name, "profile_image": full_saved_img}
+    if u_res and u_res.get("profile_image") and u_res["profile_image"].startswith("/"):
+        u_res["profile_image"] = request.host_url.rstrip("/") + u_res["profile_image"]
     return jsonify({
         "success": True,
         "message": "Profile updated successfully!",
-        "profile_image": saved_img_url,
-        "avatar_url": saved_img_url,
+        "profile_image": full_saved_img,
+        "avatar_url": full_saved_img,
         "user": u_res
     })
 
@@ -1172,7 +1175,11 @@ def api_customer_profile():
         return jsonify({"success": False, "message": "Customer not found"}), 404
 
     u_dict = dict(user)
-    prof_img = (u_dict.get("profile_image") or u_dict.get("avatar_url") or u_dict.get("avatar_base64") or "").strip()
+    raw_img = (u_dict.get("profile_image") or u_dict.get("avatar_url") or u_dict.get("avatar_base64") or "").strip()
+    if raw_img and raw_img.startswith("/"):
+        prof_img = request.host_url.rstrip("/") + raw_img
+    else:
+        prof_img = raw_img
     conn.close()
 
     return jsonify({
@@ -9972,20 +9979,48 @@ def api_auth_login():
     phone = data.get("phone", "").strip()
     password = data.get("password", "").strip()
     is_delivery_man = data.get("is_delivery_man", False)
+    is_admin = data.get("is_admin", False)
 
     if not phone or not password:
         return jsonify({"success": False, "message": "Please enter your mobile number and password."}), 400
 
     phone_clean = normalize_phone(phone)
+    norm_u = phone_clean if phone_clean else phone
     conn = get_connection()
 
-    norm_u = phone_clean if phone_clean else phone
-    user_row = conn.execute("""
-        SELECT * FROM users 
-        WHERE (username = ? OR username = ?)
-    """, (phone, norm_u)).fetchone()
+    if is_admin:
+        user_row = conn.execute("""
+            SELECT * FROM users 
+            WHERE (username = ? OR username = ?)
+        """, (phone, norm_u)).fetchone()
+        conn.close()
+        if not user_row:
+            return jsonify({"success": False, "message": "Invalid admin/cashier credentials."}), 400
+        user = dict(user_row)
+        pass_ok = check_password_hash(user["password_hash"], password) if user.get("password_hash") else False
+        if not pass_ok and user.get("plain_password"):
+            pass_ok = (user["plain_password"] == password)
+        if not pass_ok:
+            return jsonify({"success": False, "message": "Invalid admin/cashier credentials."}), 400
+        session["user_id"] = user["id"]
+        session["username"] = user["username"]
+        session["role"] = user.get("role", "admin")
+        return jsonify({
+            "success": True,
+            "is_admin": True,
+            "user": {
+                "id": user["id"],
+                "name": user.get("full_name") or user["username"],
+                "phone": user["username"],
+                "role": user.get("role", "admin")
+            }
+        })
 
-    if is_delivery_man or (user_row and user_row["role"] == "delivery"):
+    if is_delivery_man:
+        user_row = conn.execute("""
+            SELECT * FROM users 
+            WHERE (username = ? OR username = ?) AND role = 'delivery'
+        """, (phone, norm_u)).fetchone()
         if not user_row:
             conn.close()
             return jsonify({"success": False, "message": "Invalid delivery rider username or password."}), 400
@@ -10019,27 +10054,13 @@ def api_auth_login():
             }
         })
 
+    # STRICT CUSTOMER LOGIN: Only authenticate customer_users table (do not allow admin/staff credentials)
     phone_to_check = phone_clean if phone_clean else phone
     if not (len(phone_to_check) == 11 and phone_to_check.startswith("01") and phone_to_check.isdigit()):
-        if user_row:
-            user = dict(user_row)
-            pass_ok = check_password_hash(user["password_hash"], password) if user.get("password_hash") else False
-            if not pass_ok and user.get("plain_password"):
-                pass_ok = (user["plain_password"] == password)
-            if pass_ok:
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user.get("role", "admin")
-                conn.close()
-                return jsonify({
-                    "success": True,
-                    "is_admin": True,
-                    "user": {"name": user.get("full_name") or user["username"], "phone": user["username"], "role": user["role"]}
-                })
         conn.close()
         return jsonify({
             "success": False,
-            "message": "Mobile number must start with '01' and be exactly 11 digits (e.g. 01712345678)"
+            "message": "মোবাইল নম্বর অবশ্যই '01' দিয়ে শুরু এবং ১১ ডিজিটের হতে হবে (যেমন 01712345678)।"
         }), 400
 
     is_blocked, block_msg = check_customer_block(conn, phone_to_check)
@@ -10051,35 +10072,25 @@ def api_auth_login():
     conn.close()
 
     if not cust:
-        if user_row:
-            user = dict(user_row)
-            pass_ok = check_password_hash(user["password_hash"], password) if user.get("password_hash") else False
-            if not pass_ok and user.get("plain_password"):
-                pass_ok = (user["plain_password"] == password)
-            if pass_ok:
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-                return jsonify({
-                    "success": True,
-                    "is_delivery_man": user["role"] == "delivery",
-                    "user": {"name": user.get("full_name") or user["username"], "phone": phone_to_check, "role": user["role"]}
-                })
-
         return jsonify({
             "success": False,
-            "message": "This mobile number is not registered. Please register an account first."
+            "message": "এই মোবাইল নম্বরটি নিবন্ধিত কাস্টমার হিসেবে পাওয়া যায়নি। অনুগ্রহ করে আগে একাউন্ট তৈরি করুন।"
         }), 400
 
     if not check_password_hash(cust["password_hash"], password):
         if not (cust.get("plain_password") and cust["plain_password"] == password):
-            return jsonify({"success": False, "message": "Incorrect password. Please try again."}), 400
+            return jsonify({"success": False, "message": "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে পুনরায় চেষ্টা করুন।"}), 400
 
     if cust["is_verified"] != 1:
-        return jsonify({"success": False, "message": "Account is not verified. Please verify via OTP."}), 400
+        return jsonify({"success": False, "message": "একাউন্টটি যাচাইকৃত নয়। অনুগ্রহ করে OTP দিয়ে যাচাই করুন।"}), 400
 
     c_dict = dict(cust)
-    prof_img = (c_dict.get("profile_image") or c_dict.get("avatar_url") or c_dict.get("avatar_base64") or "").strip()
+    raw_img = (c_dict.get("profile_image") or c_dict.get("avatar_url") or c_dict.get("avatar_base64") or "").strip()
+    if raw_img and raw_img.startswith("/"):
+        prof_img = request.host_url.rstrip("/") + raw_img
+    else:
+        prof_img = raw_img
+
     return jsonify({
         "success": True,
         "user": {

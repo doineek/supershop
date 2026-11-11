@@ -810,7 +810,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (u.isEmpty || p.isEmpty) return;
 
                       setDialogState(() => isLoggingIn = true);
-                      final res = await ApiService.login(phone: u, password: p, isDeliveryMan: false);
+                      final res = await ApiService.login(phone: u, password: p, isDeliveryMan: false, isAdmin: true);
                       setDialogState(() => isLoggingIn = false);
 
                       if (res['success'] == true) {

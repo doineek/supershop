@@ -27,6 +27,8 @@
       box-sizing: border-box !important;
       font-family: 'Hind Siliguri', sans-serif;
       -webkit-tap-highlight-color: transparent;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
     }
     *, *::before, *::after {
       box-sizing: border-box;
@@ -65,7 +67,7 @@
 
         <div id="headerUserPill" class="hidden relative">
           <button type="button" onclick="toggleCustomerMenu()" class="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-full flex items-center gap-1.5 transition shadow-xs">
-            <span id="headerUserAvatar" class="w-6 h-6 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">ক</span>
+            <span id="headerUserAvatar" class="w-6 h-6 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0 overflow-hidden">ক</span>
             <span id="headerUserName" class="text-xs font-bold text-slate-800 max-w-[85px] truncate">গ্রাহক</span>
             <span class="text-[10px] text-slate-400">▾</span>
           </button>
@@ -99,14 +101,14 @@
     </div>
   </header>
 
-  <!-- Live Status & Shop Timing Bar (Strictly responsive, prevents mobile desktop-zoom blowup) -->
-  <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white py-1.5 px-3 text-xs shadow-inner w-full overflow-hidden">
-    <div class="max-w-xl mx-auto flex items-center justify-between gap-2 w-full">
-      <div class="flex items-center gap-1.5 min-w-0 shrink">
+  <!-- Live Status & Shop Timing Bar (Strictly responsive, contained card to prevent mobile desktop-zoom blowup) -->
+  <div class="max-w-xl mx-auto px-4 pt-2.5">
+    <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white py-2 px-3.5 text-xs rounded-2xl shadow-sm flex items-center justify-between gap-2 w-full">
+      <div class="flex items-center gap-2 min-w-0 shrink">
         <span class="w-2.5 h-2.5 rounded-full bg-emerald-300 pulse-dot shadow-xs shrink-0"></span>
-        <span class="font-bold text-[10.5px] sm:text-xs truncate">ফার্মেসী খোলা আছে • দ্রুততম ডেলিভারি</span>
+        <span class="font-bold text-[11px] sm:text-xs truncate">ফার্মেসী খোলা আছে • দ্রুততম ডেলিভারি</span>
       </div>
-      <a href="tel:{{ settings.shop_phone or '+8801700000000' }}" class="text-[10.5px] sm:text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1 shrink-0 bg-white/15 px-2 py-0.5 rounded-full border border-white/20 whitespace-nowrap">
+      <a href="tel:{{ settings.shop_phone or '+8801700000000' }}" class="text-[11px] sm:text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1 shrink-0 bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-full border border-white/25 whitespace-nowrap transition">
         <span>📞</span> <span>হেল্পলাইন</span>
       </a>
     </div>
@@ -886,7 +888,14 @@
         if (headerUserName) headerUserName.textContent = cName;
         if (dropUserName) dropUserName.textContent = cName;
         if (dropUserPhone) dropUserPhone.textContent = currentCustomer.phone;
-        if (headerUserAvatar) headerUserAvatar.textContent = (cName[0] || "ক").toUpperCase();
+        const profPic = currentCustomer.profile_image || currentCustomer.avatar_url || "";
+        if (headerUserAvatar) {
+          if (profPic) {
+            headerUserAvatar.innerHTML = `<img src="${profPic}" class="w-full h-full object-cover rounded-full" alt="Avatar" onerror="this.onerror=null; this.parentElement.textContent='${(cName[0] || 'ক').toUpperCase()}';" />`;
+          } else {
+            headerUserAvatar.textContent = (cName[0] || "ক").toUpperCase();
+          }
+        }
 
         if (custLoginBanner) custLoginBanner.classList.remove("hidden");
         if (custNotLoginPrompt) custNotLoginPrompt.classList.add("hidden");
@@ -919,6 +928,14 @@
                 let changed = false;
                 if (u.name && u.name !== currentCustomer.name) { currentCustomer.name = u.name; if (nameInp) nameInp.value = u.name; changed = true; }
                 if (u.address && u.address !== currentCustomer.address) { currentCustomer.address = u.address; if (addrInp && !addrInp.value) addrInp.value = u.address; changed = true; }
+                const sImg = (u.profile_image || u.avatar_url || u.avatar_base64 || "").trim();
+                if (sImg && sImg !== currentCustomer.profile_image) {
+                  currentCustomer.profile_image = sImg;
+                  changed = true;
+                  if (headerUserAvatar) {
+                    headerUserAvatar.innerHTML = `<img src="${sImg}" class="w-full h-full object-cover rounded-full" alt="Avatar" onerror="this.onerror=null; this.parentElement.textContent='${(cName[0] || 'ক').toUpperCase()}';" />`;
+                  }
+                }
                 if (u.district && $("district") && !$("district").value) { $("district").value = u.district; onDistrictChange(u.district); }
                 if (u.area && $("area") && !$("area").value) { setTimeout(() => { if ($("area")) $("area").value = u.area; }, 100); }
                 if (changed) {
@@ -932,6 +949,11 @@
         if (headerUserPill) headerUserPill.classList.add("hidden");
         if (custLoginBanner) custLoginBanner.classList.add("hidden");
         if (custNotLoginPrompt) custNotLoginPrompt.classList.remove("hidden");
+        const b = $("recentOrdersBadge");
+        if (b) {
+          b.innerText = "০";
+          b.classList.add("hidden");
+        }
       }
     }
 
@@ -1085,12 +1107,14 @@
       if (confirm("আপনি কি আপনার কাস্টমার একাউন্ট থেকে লগআউট করতে চান?")) {
         currentCustomer = null;
         localStorage.removeItem("supershop_logged_customer");
+        localStorage.removeItem("supershop_rx_orders");
         refreshPharmacyCustomerState();
         $("customer_name").value = "";
         $("customer_phone").value = "";
         $("delivery_address").value = "";
         const drop = $("headerUserDropdown");
         if (drop) drop.classList.add("hidden");
+        loadRecentOrders();
       }
     }
 
@@ -2669,6 +2693,9 @@
 
     // Recent Orders in LocalStorage
     function saveOrderToLocalStorage(orderObj) {
+      if (currentCustomer && currentCustomer.phone) {
+        orderObj.phone = currentCustomer.phone;
+      }
       let orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
       orders.unshift(orderObj);
       if (orders.length > 20) orders = orders.slice(0, 20);
@@ -2694,9 +2721,27 @@
     }
 
     function loadRecentOrders() {
-      const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
       const badge = $("recentOrdersBadge");
       const list = $("recentOrdersList");
+      if (!badge || !list) return;
+
+      if (!currentCustomer || !currentCustomer.phone) {
+        badge.innerText = "০";
+        badge.classList.add("hidden");
+        list.innerHTML = `
+          <div class="p-4 text-center">
+            <span class="text-2xl block mb-1">🔒</span>
+            <p class="text-xs text-slate-600 font-bold mb-2">আপনার পূর্ববর্তী প্রেসক্রিপশন ও ঔষধ অর্ডার দেখতে লগইন করুন</p>
+            <button type="button" onclick="openCustomerAuthModal('login')" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition inline-flex items-center gap-1 cursor-pointer">
+              <span>👤</span> <span>লগইন করুন</span>
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      const allOrders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+      const orders = allOrders.filter(o => !o.phone || o.phone === currentCustomer.phone);
 
       if (orders.length > 0) {
         badge.innerText = orders.length;
@@ -2723,11 +2768,16 @@
         list.innerHTML = html;
       } else {
         badge.classList.add("hidden");
+        badge.innerText = "০";
         list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">এখনো কোনো অর্ডার দেওয়া হয়নি।</p>`;
       }
     }
 
     async function refreshRecentOrders() {
+      if (!currentCustomer || !currentCustomer.phone) {
+        loadRecentOrders();
+        return;
+      }
       const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
       if (orders.length === 0) return;
 
