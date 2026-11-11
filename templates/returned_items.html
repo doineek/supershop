@@ -18,12 +18,25 @@
 </div>
 
 <div class="card">
-  <div class="table-responsive">
+  <!-- Filter Tabs for All Items, Products and Medicines -->
+  <div style="display:flex; gap:10px; padding:16px 16px 0 16px; flex-wrap:wrap;">
+    <button type="button" class="ret-filter-btn" onclick="filterReturnedTable('all')" id="btnFilterAll" style="padding:8px 16px; border-radius:8px; border:1.5px solid #0f172a; background:#0f172a; color:white; font-weight:700; font-size:0.88rem; cursor:pointer; transition:all 0.2s;">
+      All Items ({{ items|length }})
+    </button>
+    <button type="button" class="ret-filter-btn" onclick="filterReturnedTable('product')" id="btnFilterProducts" style="padding:8px 16px; border-radius:8px; border:1.5px solid #cbd5e1; background:white; color:#334155; font-weight:700; font-size:0.88rem; cursor:pointer; transition:all 0.2s;">
+      🛒 Products (সুপারশপ)
+    </button>
+    <button type="button" class="ret-filter-btn" onclick="filterReturnedTable('medicine')" id="btnFilterMedicines" style="padding:8px 16px; border-radius:8px; border:1.5px solid #cbd5e1; background:white; color:#334155; font-weight:700; font-size:0.88rem; cursor:pointer; transition:all 0.2s;">
+      💊 Medicines (ফার্মেসী ঔষধ)
+    </button>
+  </div>
+
+  <div class="table-responsive" style="margin-top:12px;">
     <table>
       <thead>
         <tr style="background:#f8fafc;">
           <th>ID</th>
-          <th>Item Name</th>
+          <th>Item Type & Name</th>
           <th>Quantity</th>
           <th>Reason / Status</th>
           <th>Expiry Date</th>
@@ -36,9 +49,18 @@
       </thead>
       <tbody>
         {% for item in items %}
-        <tr>
+        <tr data-item-type="{{ item.item_type or 'product' }}">
           <td>#{{ item.id }}</td>
-          <td><strong>{{ item.item_name }}</strong></td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              {% if item.item_type == 'medicine' %}
+              <span class="badge" style="background:#059669; color:white; font-size:11px; padding:3px 7px; border-radius:4px; font-weight:700;">💊 ঔষধ</span>
+              {% else %}
+              <span class="badge" style="background:#0284c7; color:white; font-size:11px; padding:3px 7px; border-radius:4px; font-weight:700;">🛒 প্রোডাক্ট</span>
+              {% endif %}
+              <strong>{{ item.item_name }}</strong>
+            </div>
+          </td>
           <td><span class="badge" style="background:#ef4444; color:white; font-weight:bold;">{{ item.quantity }} units</span></td>
           <td>
             {% if 'Expired' in item.reason %}
@@ -206,6 +228,45 @@ function updateModalLedgerCalc(resetValue = true) {
 
 function closeLedgerModal() {
   document.getElementById('editLedgerModal').style.display = 'none';
+}
+
+function filterReturnedTable(type) {
+  const rows = document.querySelectorAll('tbody tr[data-item-type]');
+  rows.forEach(r => {
+    const itemType = r.getAttribute('data-item-type') || 'product';
+    if (type === 'all' || itemType === type) {
+      r.style.display = '';
+    } else {
+      r.style.display = 'none';
+    }
+  });
+
+  const btnAll = document.getElementById('btnFilterAll');
+  const btnProd = document.getElementById('btnFilterProducts');
+  const btnMed = document.getElementById('btnFilterMedicines');
+
+  // Reset styles
+  [btnAll, btnProd, btnMed].forEach(b => {
+    if (b) {
+      b.style.background = 'white';
+      b.style.color = '#334155';
+      b.style.borderColor = '#cbd5e1';
+    }
+  });
+
+  if (type === 'all' && btnAll) {
+    btnAll.style.background = '#0f172a';
+    btnAll.style.color = 'white';
+    btnAll.style.borderColor = '#0f172a';
+  } else if (type === 'product' && btnProd) {
+    btnProd.style.background = '#0284c7';
+    btnProd.style.color = 'white';
+    btnProd.style.borderColor = '#0284c7';
+  } else if (type === 'medicine' && btnMed) {
+    btnMed.style.background = '#059669';
+    btnMed.style.color = 'white';
+    btnMed.style.borderColor = '#059669';
+  }
 }
 </script>
 {% endblock %}

@@ -296,12 +296,13 @@
             <th style="padding: 12px 14px;">Sell Price (Unit)</th>
             <th style="padding: 12px 14px;">Strip Price</th>
             <th style="padding: 12px 14px;">Stock</th>
+            <th style="padding: 12px 14px;">Expiry Date</th>
             <th style="padding: 12px 14px; text-align: center;">Action</th>
           </tr>
         </thead>
         <tbody id="catalogTableBody">
           <tr>
-            <td colspan="9" style="text-align: center; padding: 30px; color: #64748b;">
+            <td colspan="10" style="text-align: center; padding: 30px; color: #64748b;">
               ⏳ Loading medicine catalog...
             </td>
           </tr>
@@ -613,6 +614,17 @@
         </div>
       </div>
 
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #b91c1c; margin-bottom: 4px;">📅 Expiry Date</label>
+          <input type="date" id="form_expiry_date" name="expiry_date" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #d97706; margin-bottom: 4px;">⚠️ Low Stock Alert (Qty)</label>
+          <input type="number" id="form_low_stock_threshold" name="low_stock_threshold" value="10" placeholder="10" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+      </div>
+
       <div style="display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 12px;">
         <div>
           <a id="btnModalPrintBarcode" href="#" target="_blank" style="display: none; padding: 8px 14px; background: #ecfdf5; color: #047857; border: 1.5px solid #a7f3d0; border-radius: 8px; font-weight: 700; font-size: 0.85rem; text-decoration: none; align-items: center; gap: 5px;">
@@ -860,6 +872,24 @@
         const mrpVal = parseFloat(m.mrp || m.unit_price || 0).toFixed(2);
         const discVal = parseFloat(m.discount_percent || 0).toFixed(1);
         const sellVal = parseFloat(m.unit_price || 0).toFixed(2);
+        const lowThresh = parseInt(m.low_stock_threshold != null ? m.low_stock_threshold : 10);
+        const stockQty = parseInt(m.stock_qty || 0);
+        const isLowStock = stockQty <= lowThresh;
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        let expBadge = '';
+        if (m.expiry_date) {
+          if (m.expiry_date <= todayStr) {
+            expBadge = `<div style="margin-top: 3px;"><span style="background: #fee2e2; color: #b91c1c; font-size: 0.72rem; font-weight: 800; padding: 1px 6px; border-radius: 4px;">🚨 Expired</span></div>`;
+          } else {
+            const expDate = new Date(m.expiry_date);
+            const diffDays = Math.ceil((expDate - new Date()) / (1000 * 60 * 60 * 24));
+            if (diffDays <= 30) {
+              expBadge = `<div style="margin-top: 3px;"><span style="background: #fef3c7; color: #b45309; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">⚠️ Exp in ${diffDays}d</span></div>`;
+            }
+          }
+        }
+
         html += `
           <tr id="medRow_${m.id}" style="border-bottom: 1px solid #f1f5f9; transition: background 0.3s;">
             <td style="padding: 12px 14px;">
@@ -908,11 +938,16 @@
               </div>
             </td>
             <td style="padding: 12px 14px;">
-              <input type="number" id="medStock_${m.id}" value="${m.stock_qty || 999}" style="width: 65px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 600; font-size: 0.88rem;">
+              <input type="number" id="medStock_${m.id}" value="${m.stock_qty || 0}" style="width: 65px; padding: 4px 6px; border: 1.5px solid ${isLowStock ? '#ef4444' : '#cbd5e1'}; border-radius: 6px; font-weight: 600; font-size: 0.88rem; background: ${isLowStock ? '#fef2f2' : 'white'};">
+              ${isLowStock ? `<div style="margin-top: 3px;"><span style="background: #fee2e2; color: #b91c1c; font-size: 0.70rem; font-weight: 700; padding: 1px 4px; border-radius: 3px;">⚠️ Low (≤${lowThresh})</span></div>` : ''}
+            </td>
+            <td style="padding: 12px 14px;">
+              <input type="date" id="medExpiry_${m.id}" value="${m.expiry_date || ''}" style="width: 125px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 0.80rem; color: #334155;">
+              ${expBadge}
             </td>
             <td style="padding: 12px 14px; text-align: center;">
               <div style="display: flex; gap: 6px; justify-content: center;">
-                <button type="button" onclick="saveQuickMedPrice(${m.id})" title="Save price, discount & stock" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
+                <button type="button" onclick="saveQuickMedPrice(${m.id})" title="Save price, discount, stock & expiry" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
                   💾 Save
                 </button>
                 <button type="button" onclick="openEditMedModal(${m.id})" title="Edit Medicine" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
@@ -928,7 +963,7 @@
       });
       tbody.innerHTML = html;
     } catch (e) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
     }
   }
 
@@ -1984,6 +2019,7 @@
     const unitPrice = parseFloat(document.getElementById(`medPrice_${medId}`)?.value) || 0;
     const stripPrice = parseFloat(document.getElementById(`medStripPrice_${medId}`)?.value) || 0;
     const stockQty = parseInt(document.getElementById(`medStock_${medId}`)?.value) || 0;
+    const expiryDate = (document.getElementById(`medExpiry_${medId}`)?.value || '').trim();
 
     const med = adminMedsCache.find(x => x.id === medId);
     if (!med) return;
@@ -2004,7 +2040,10 @@
           discount_percent: discount,
           unit_price: unitPrice,
           strip_price: stripPrice,
-          stock_qty: stockQty
+          stock_qty: stockQty,
+          expiry_date: expiryDate,
+          low_stock_threshold: med.low_stock_threshold != null ? med.low_stock_threshold : 10,
+          cost_price: med.cost_price || 0
         })
       });
 
@@ -2015,6 +2054,7 @@
         med.unit_price = unitPrice;
         med.strip_price = stripPrice;
         med.stock_qty = stockQty;
+        med.expiry_date = expiryDate;
         const row = document.getElementById(`medRow_${medId}`);
         if (row) {
           row.style.background = "#dcfce7";
@@ -2056,6 +2096,10 @@
     document.getElementById("form_mrp").value = "";
     document.getElementById("form_discount_percent").value = "0";
     document.getElementById("form_unit_price").value = "";
+    document.getElementById("form_strip_price").value = "";
+    document.getElementById("form_stock_qty").value = "999";
+    document.getElementById("form_expiry_date").value = "";
+    document.getElementById("form_low_stock_threshold").value = "10";
     const printBtn = document.getElementById("btnModalPrintBarcode");
     if (printBtn) printBtn.style.display = "none";
 
@@ -2111,6 +2155,8 @@
     document.getElementById("form_unit_price").value = med.unit_price;
     document.getElementById("form_strip_price").value = med.strip_price || 0;
     document.getElementById("form_stock_qty").value = med.stock_qty || 999;
+    document.getElementById("form_expiry_date").value = med.expiry_date || "";
+    document.getElementById("form_low_stock_threshold").value = med.low_stock_threshold != null ? med.low_stock_threshold : 10;
 
     // Show Print Barcode Button in Modal
     const printBtn = document.getElementById("btnModalPrintBarcode");

@@ -1259,33 +1259,89 @@ def ensure_returned_items_columns(conn):
             conn.execute("ALTER TABLE returned_items ADD COLUMN ledger_entry_id INTEGER DEFAULT NULL")
         if "ledger_amount" not in cols:
             conn.execute("ALTER TABLE returned_items ADD COLUMN ledger_amount REAL DEFAULT 0")
+        if "item_type" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN item_type TEXT DEFAULT 'product'")
+        if "medicine_id" not in cols:
+            conn.execute("ALTER TABLE returned_items ADD COLUMN medicine_id INTEGER DEFAULT NULL")
         conn.commit()
 
         # Backfill prices from products table where missing
         conn.execute("""
             UPDATE returned_items
             SET cost_price = COALESCE((SELECT cost_price FROM products WHERE products.id = returned_items.product_id), 0)
-            WHERE cost_price IS NULL OR cost_price = 0
+            WHERE (cost_price IS NULL OR cost_price = 0) AND item_type != 'medicine'
         """)
         conn.execute("""
             UPDATE returned_items
             SET sell_price = COALESCE((SELECT sell_price FROM products WHERE products.id = returned_items.product_id), 0)
-            WHERE sell_price IS NULL OR sell_price = 0
+            WHERE (sell_price IS NULL OR sell_price = 0) AND item_type != 'medicine'
         """)
         conn.commit()
     except Exception as e:
         print(f"[ensure_returned_items_columns] Error: {e}")
 
 
+def sync_expired_medicines(conn=None):
+    """
+    Auto-detects expired medicines (expiry_date <= today), logs them into returned_items
+    under item_type='medicine', sets active stock to 0 so it cannot be sold.
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    ensure_returned_items_columns(conn)
+    today_date = get_bd_now().strftime("%Y-%m-%d")
+    try:
+        expired_meds = conn.execute("""
+            SELECT * FROM pharmacy_medicines
+            WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0
+        """, (today_date,)).fetchall()
+
+        if expired_meds:
+            for em in expired_meds:
+                already = conn.execute(
+                    "SELECT id FROM returned_items WHERE medicine_id = ? AND reason LIKE '%Expired%'", (em["id"],)
+                ).fetchone()
+
+                cost_p = float(em["cost_price"] or em["unit_price"] or 0)
+                sell_p = float(em["unit_price"] or 0)
+                qty = int(em["stock_qty"] or 0)
+
+                med_name = f"💊 {em['name']} ({em['strength'] or ''}) - {em['dosage_form']}".strip()
+                if not already:
+                    conn.execute("""
+                        INSERT INTO returned_items (
+                            product_id, medicine_id, item_type, item_name, quantity,
+                            reason, expiry_date, date_returned, cost_price, sell_price,
+                            ledger_action, ledger_entry_id, ledger_amount
+                        ) VALUES (NULL, ?, 'medicine', ?, ?, ?, ?, ?, ?, ?, 'none', NULL, 0)
+                    """, (
+                        em["id"], med_name, qty,
+                        f"Medicine Date Expired ({em['expiry_date']})",
+                        em["expiry_date"],
+                        get_bd_now().strftime("%Y-%m-%d %H:%M:%S"),
+                        cost_p, sell_p
+                    ))
+                conn.execute("UPDATE pharmacy_medicines SET stock_qty = 0 WHERE id = ?", (em["id"],))
+            conn.commit()
+    except Exception as e:
+        print(f"[sync_expired_medicines] Error: {e}")
+    finally:
+        if close_conn:
+            conn.close()
+
+
 def sync_expired_products():
     """
-    Auto-detects expired products (expiry_date <= today), logs them into returned_items,
+    Auto-detects expired products and medicines (expiry_date <= today), logs them into returned_items,
     sets active stock to 0, optionally records Loss Expense if enabled, and pushes updates to Cloud Firestore.
     """
     today_date = get_bd_now().strftime("%Y-%m-%d")
     conn = get_connection()
     ensure_returned_items_columns(conn)
     try:
+        sync_expired_medicines(conn)
         # Check setting for auto-loss recording
         auto_loss_row = conn.execute("SELECT value FROM settings WHERE key = 'auto_record_expired_as_loss'").fetchone()
         auto_loss_enabled = bool(auto_loss_row and str(auto_loss_row["value"]).strip() in ("1", "true", "yes"))
@@ -2144,6 +2200,29 @@ def restock_from_returned(return_id):
         conn.close()
         flash("Returned record not found.", "error")
         return redirect(url_for("returned_items"))
+
+    # Direct restock handler for Pharmacy Medicines
+    if ret_item.get("item_type") == "medicine" or ret_item.get("medicine_id"):
+        med_id = ret_item.get("medicine_id")
+        med = None
+        if med_id:
+            med = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ?", (med_id,)).fetchone()
+        if not med:
+            clean_name = ret_item["item_name"].replace("💊", "").strip().split(" (")[0].strip()
+            med = conn.execute("SELECT * FROM pharmacy_medicines WHERE LOWER(name) = LOWER(?)", (clean_name,)).fetchone()
+
+        if med:
+            qty = ret_item["quantity"] or 1
+            conn.execute("UPDATE pharmacy_medicines SET stock_qty = stock_qty + ? WHERE id = ?", (qty, med["id"]))
+            conn.execute("DELETE FROM returned_items WHERE id = ?", (return_id,))
+            conn.commit()
+            conn.close()
+            flash(f"Medicine '{med['name']}' successfully restocked with {qty} unit(s) in Pharmacy Catalog!", "success")
+            return redirect(url_for("returned_items"))
+        else:
+            conn.close()
+            flash(f"Medicine record for '{ret_item['item_name']}' could not be located in catalog.", "warning")
+            return redirect(url_for("returned_items"))
 
     # Try to find original product by product_id or by name
     product = None
@@ -9096,6 +9175,7 @@ def api_portal_alerts():
             r_info = read_map.get(key)
             sd["notif_key"] = key
             sd["notif_type"] = "stock"
+            sd["is_medicine"] = False
             sd["is_read"] = bool(r_info and r_info.get("is_read") == 1)
             sd["seen_by"] = r_info.get("seen_by_username") if r_info else None
             sd["seen_role"] = r_info.get("seen_by_role") if r_info else None
@@ -9104,6 +9184,34 @@ def api_portal_alerts():
             sd["last_action_by"] = r_info.get("last_action_by") if r_info else None
             sd["last_action_at"] = r_info.get("last_action_at") if r_info else None
             stock_list.append(sd)
+
+        # 2b. Low Stock Medicines
+        low_stock_meds = conn.execute("""
+            SELECT id, name, strength, dosage_form, sku, stock_qty, low_stock_threshold
+            FROM pharmacy_medicines
+            WHERE is_active = 1
+              AND stock_qty <= low_stock_threshold
+              AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)
+            ORDER BY stock_qty ASC
+            LIMIT 15
+        """, (today_date,)).fetchall()
+
+        for sm in low_stock_meds:
+            smd = dict(sm)
+            key = f"med_stock_{sm['id']}"
+            r_info = read_map.get(key)
+            smd["notif_key"] = key
+            smd["notif_type"] = "stock"
+            smd["is_medicine"] = True
+            smd["name"] = f"💊 {sm['name']} ({sm['strength'] or ''}) - {sm['dosage_form']}"
+            smd["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            smd["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            smd["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            smd["seen_at"] = r_info.get("seen_at") if r_info else None
+            smd["last_action"] = r_info.get("last_action") if r_info else None
+            smd["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            smd["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            stock_list.append(smd)
 
         # 3. Returned Items
         returned_rows = conn.execute("""
@@ -9145,6 +9253,7 @@ def api_portal_alerts():
             r_info = read_map.get(key)
             ed["notif_key"] = key
             ed["notif_type"] = "expiring"
+            ed["is_medicine"] = False
             ed["is_read"] = bool(r_info and r_info.get("is_read") == 1)
             ed["seen_by"] = r_info.get("seen_by_username") if r_info else None
             ed["seen_role"] = r_info.get("seen_by_role") if r_info else None
@@ -9153,6 +9262,34 @@ def api_portal_alerts():
             ed["last_action_by"] = r_info.get("last_action_by") if r_info else None
             ed["last_action_at"] = r_info.get("last_action_at") if r_info else None
             expiring_list.append(ed)
+
+        # 4b. Medicines Expiring Soon (within 30 days)
+        in_30_days = (get_bd_now() + timedelta(days=30)).strftime("%Y-%m-%d")
+        expiring_med_rows = conn.execute("""
+            SELECT id, name, strength, dosage_form, sku, stock_qty, expiry_date
+            FROM pharmacy_medicines
+            WHERE is_active = 1
+              AND expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND expiry_date > ? AND stock_qty > 0
+            ORDER BY expiry_date ASC
+            LIMIT 15
+        """, (in_30_days, today_date)).fetchall()
+
+        for em in expiring_med_rows:
+            emd = dict(em)
+            key = f"med_expiring_{em['id']}"
+            r_info = read_map.get(key)
+            emd["notif_key"] = key
+            emd["notif_type"] = "expiring"
+            emd["is_medicine"] = True
+            emd["name"] = f"💊 {em['name']} ({em['strength'] or ''}) - {em['dosage_form']}"
+            emd["is_read"] = bool(r_info and r_info.get("is_read") == 1)
+            emd["seen_by"] = r_info.get("seen_by_username") if r_info else None
+            emd["seen_role"] = r_info.get("seen_by_role") if r_info else None
+            emd["seen_at"] = r_info.get("seen_at") if r_info else None
+            emd["last_action"] = r_info.get("last_action") if r_info else None
+            emd["last_action_by"] = r_info.get("last_action_by") if r_info else None
+            emd["last_action_at"] = r_info.get("last_action_at") if r_info else None
+            expiring_list.append(emd)
 
         all_items = orders_list + stock_list + returned_list + expiring_list
         total_count = len(all_items)
@@ -9286,6 +9423,11 @@ def api_portal_alerts_mark_all_read():
                 keys_to_mark.append((f"return_{r['id']}", "return", r["id"]))
             for e in conn.execute("SELECT id FROM products WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND stock_qty > 0", (in_7_days,)).fetchall():
                 keys_to_mark.append((f"expiring_{e['id']}", "expiring", e["id"]))
+            for ms in conn.execute("SELECT id FROM pharmacy_medicines WHERE stock_qty <= low_stock_threshold AND is_active = 1 AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)", (today_date,)).fetchall():
+                keys_to_mark.append((f"med_stock_{ms['id']}", "stock", ms["id"]))
+            in_30_days = (get_bd_now() + timedelta(days=30)).strftime("%Y-%m-%d")
+            for me in conn.execute("SELECT id FROM pharmacy_medicines WHERE is_active = 1 AND expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date <= ? AND expiry_date > ? AND stock_qty > 0", (in_30_days, today_date)).fetchall():
+                keys_to_mark.append((f"med_expiring_{me['id']}", "expiring", me["id"]))
 
         for k, t, i_id in keys_to_mark:
             conn.execute("""
@@ -11099,6 +11241,24 @@ def _init_pharmacy_db_schema():
         except Exception:
             pass
 
+        # Check and add expiry_date column
+        try:
+            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN expiry_date TEXT DEFAULT ''")
+        except Exception:
+            pass
+
+        # Check and add low_stock_threshold column
+        try:
+            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN low_stock_threshold INTEGER DEFAULT 10")
+        except Exception:
+            pass
+
+        # Check and add cost_price column
+        try:
+            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN cost_price REAL DEFAULT 0.0")
+        except Exception:
+            pass
+
         # Standardize Bengali dosage forms to English
         dosage_map = {
             'ট্যাবলেট': 'Tablet',
@@ -11138,6 +11298,36 @@ def pharmacy_home():
     """Customer-facing Pharmacy & Prescription Home (100% Bengali, QR-Print BD aesthetic)"""
     conn = get_connection()
     settings = get_all_settings(conn)
+
+    # Check for seamless auto-login from Mobile App
+    auth_phone = (request.args.get("auth_phone") or request.args.get("phone") or "").strip()
+    preloaded_customer = None
+    if auth_phone:
+        p_clean = normalize_phone(auth_phone)
+        p_chk = p_clean if p_clean else auth_phone
+        c_row = conn.execute("SELECT * FROM customer_users WHERE phone = ? OR phone = ?", (p_chk, auth_phone)).fetchone()
+        if c_row:
+            cd = dict(c_row)
+            raw_img = (cd.get("profile_image") or cd.get("avatar_url") or cd.get("avatar_base64") or "").strip()
+            prof_img = request.host_url.rstrip("/") + raw_img if raw_img.startswith("/") else raw_img
+            preloaded_customer = {
+                "phone": cd.get("phone", auth_phone),
+                "name": cd.get("name") or request.args.get("auth_name") or f"গ্রাহক {auth_phone[-4:]}",
+                "email": cd.get("email", ""),
+                "address": cd.get("address") or request.args.get("auth_address", ""),
+                "profile_image": prof_img,
+                "district": cd.get("district", ""),
+                "area": cd.get("area", "")
+            }
+        else:
+            preloaded_customer = {
+                "phone": auth_phone,
+                "name": request.args.get("auth_name") or f"গ্রাহক {auth_phone[-4:]}",
+                "address": request.args.get("auth_address", ""),
+                "profile_image": "",
+                "district": "",
+                "area": ""
+            }
     
     # Load categories / dosage forms for filter pills (English names)
     dosage_forms = [
@@ -11173,6 +11363,7 @@ def pharmacy_home():
         delivery_areas=delivery_areas,
         districts=districts,
         total_medicines=total_medicines,
+        preloaded_customer=preloaded_customer,
         active_tab="pharmacy"
     )
 
@@ -11825,7 +12016,7 @@ def api_admin_pharmacy_medicines_list():
     total = conn.execute(count_sql, params).fetchone()["total"]
 
     data_sql = f"""
-        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required, expiry_date, low_stock_threshold, cost_price
         FROM pharmacy_medicines
         WHERE {where_sql}
         ORDER BY name ASC
@@ -12152,6 +12343,17 @@ def api_admin_pharmacy_save_medicine():
     except Exception:
         stock_qty = 999
 
+    expiry_date = (data.get("expiry_date") or "").strip()
+    try:
+        low_stock_threshold = int(data.get("low_stock_threshold") or 10)
+    except Exception:
+        low_stock_threshold = 10
+
+    try:
+        cost_price = float(data.get("cost_price") or 0.0)
+    except Exception:
+        cost_price = 0.0
+
     is_rx = 1 if data.get("is_prescription_required") in [1, "1", True, "true"] else 0
     now_iso = get_bd_now_iso()
 
@@ -12177,9 +12379,10 @@ def api_admin_pharmacy_save_medicine():
                 name = ?, generic_name = ?, dosage_form = ?, strength = ?,
                 manufacturer = ?, sku = ?, unit_price = ?, mrp = ?, discount_percent = ?,
                 strip_price = ?, strip_size = ?, stock_qty = ?, is_prescription_required = ?,
+                expiry_date = ?, low_stock_threshold = ?, cost_price = ?,
                 description = ?, updated_at = ?
             WHERE id = ?
-        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
+        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, expiry_date, low_stock_threshold, cost_price, description, now_iso, med_id))
         msg = f"'{name}' (SKU: {sku}) details and price updated successfully."
     else:
         if not sku:
@@ -12198,9 +12401,10 @@ def api_admin_pharmacy_save_medicine():
             INSERT INTO pharmacy_medicines (
                 name, generic_name, dosage_form, strength, manufacturer, sku,
                 unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty,
-                is_prescription_required, image_url, description, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
-        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
+                is_prescription_required, expiry_date, low_stock_threshold, cost_price,
+                image_url, description, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
+        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, expiry_date, low_stock_threshold, cost_price, description, now_iso, now_iso))
         med_id = cur.lastrowid
         msg = f"Medicine '{name}' (SKU: {sku}) added to catalog successfully."
 

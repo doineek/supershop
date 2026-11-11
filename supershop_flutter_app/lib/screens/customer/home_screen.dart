@@ -441,11 +441,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _openPharmacyPortal() {
     setState(() {
-      _selectedTab = 'pharmacy';
+      _bottomNavIndex = 2;
     });
     if (_pharmacyMedicines.isEmpty) {
       _loadPharmacyMedicines();
     }
+    _openWebPrescriptionViewer();
   }
 
   Future<void> _loadPharmacyMedicines() async {
@@ -486,13 +487,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openWebPrescriptionViewer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String userPhone = prefs.getString('user_phone') ?? '';
+    final String userName = prefs.getString('user_name') ?? '';
+    final String userAddress = prefs.getString('user_address') ?? '';
+
     String baseUrl = ApiService.activeUrl.isNotEmpty ? ApiService.activeUrl : "https://doineek.onrender.com";
     if (baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
       baseUrl = "https://doineek.onrender.com";
     }
-    String pharmacyUrl = "$baseUrl/pharmacy";
+
+    final queryParams = <String, String>{};
+    if (userPhone.isNotEmpty) queryParams['auth_phone'] = userPhone;
+    if (userName.isNotEmpty) queryParams['auth_name'] = userName;
+    if (userAddress.isNotEmpty) queryParams['auth_address'] = userAddress;
+
+    final Uri uri = Uri.parse("$baseUrl/pharmacy").replace(
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+    );
     try {
-      final Uri uri = Uri.parse(pharmacyUrl);
       final bool launched = await launchUrl(uri, mode: LaunchMode.inAppWebView);
       if (!launched) {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
@@ -1459,7 +1472,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                              if (added) {
                                                                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
                                                                                setState(() {
-                                                                                 _bottomNavIndex = 2;
+                                                                                 _bottomNavIndex = 3;
                                                                                });
                                                                              } else {
                                                                                showQuantityLimitDialog(context, cartProv.lastError ?? "Cannot add to cart: item is out of stock.");
@@ -1492,8 +1505,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         );
                                       },
                                     ))
-                              : _selectedTab == 'pharmacy'
-                                  ? _buildPharmacyView(context, isDark, cartProv)
                               : _isLoadingProducts && _allProducts.isEmpty
                                   ? const Center(child: CircularProgressIndicator())
                                   : filteredProducts.isEmpty
@@ -1853,6 +1864,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ],
                             ),
                   _buildCategoryDirectoryView(),
+                  _buildPharmacyView(context, isDark, cartProv),
                   const CartScreen(),
                   const ProfileScreen(),
                 ],
@@ -1871,13 +1883,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
 
-      // 4-Tab Bottom Navigation Bar (Home, Category, Cart, Profile)
+      // 5-Tab Bottom Navigation Bar (Home, Category, Pharmacy/ফার্মেসী, Cart, Profile)
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _bottomNavIndex,
-        selectedItemColor: const Color(0xFF6B21A8),
+        selectedItemColor: const Color(0xFF047857),
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
+        selectedFontSize: 12,
+        unselectedFontSize: 11,
         onTap: (index) {
+          if (index == 2) {
+            _openWebPrescriptionViewer();
+          }
           setState(() {
             _bottomNavIndex = index;
           });
@@ -1887,10 +1904,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _selectedTab = 'all';
             });
           }
+          if (index == 2 && _pharmacyMedicines.isEmpty) {
+            _loadPharmacyMedicines();
+          }
         },
         items: [
           const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           const BottomNavigationBarItem(icon: Icon(Icons.category), label: "Category"),
+          BottomNavigationBarItem(
+            icon: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF059669), Color(0xFF10B981)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF059669).withOpacity(0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Center(
+                child: Text(
+                  "💊",
+                  style: TextStyle(fontSize: 20),
+                ),
+              ),
+            ),
+            activeIcon: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF047857), Color(0xFF059669)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF047857).withOpacity(0.55),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: Border.all(color: Colors.white, width: 2.5),
+              ),
+              child: const Center(
+                child: Text(
+                  "💊",
+                  style: TextStyle(fontSize: 22),
+                ),
+              ),
+            ),
+            label: "ফার্মেসী",
+          ),
           BottomNavigationBarItem(
             icon: Badge(
               label: Text('${cartProv.totalItemCount}'),
@@ -2152,12 +2227,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       onSelected: (selected) {
         if (selected) {
+          if (key == 'pharmacy') {
+            setState(() {
+              _bottomNavIndex = 2;
+            });
+            if (_pharmacyMedicines.isEmpty) {
+              _loadPharmacyMedicines();
+            }
+            _openWebPrescriptionViewer();
+            return;
+          }
           setState(() {
             _selectedTab = key;
           });
-          if (key == 'pharmacy' && _pharmacyMedicines.isEmpty) {
-            _loadPharmacyMedicines();
-          }
         }
       },
     );
@@ -2179,6 +2261,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return Column(
       children: [
+        // Dedicated Top Pharmacy Brand Bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF047857), Color(0xFF059669)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Text("💊", style: TextStyle(fontSize: 20)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      "ফার্মেসী ও প্রেসক্রিপশন সেবা",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                    SizedBox(height: 1),
+                    Text(
+                      "১০০% জেনুইন ওষুধ ও দ্রুততম হোম ডেলিভারি",
+                      style: TextStyle(color: Color(0xFFCCFBF1), fontSize: 10.5, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _openWebPrescriptionViewer,
+                icon: const Icon(Icons.camera_alt, size: 14, color: Color(0xFF047857)),
+                label: const Text(
+                  "প্রেসক্রিপশন",
+                  style: TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+            ],
+          ),
+        ),
+
         // Pharmacy In-App Search Bar & Filters
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

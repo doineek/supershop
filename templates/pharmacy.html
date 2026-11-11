@@ -868,6 +868,29 @@
       currentCustomer = JSON.parse(localStorage.getItem('supershop_logged_customer') || 'null');
     } catch (e) { currentCustomer = null; }
 
+    // Auto-login from Server preloaded session or URL query params (e.g. from Flutter mobile app)
+    const serverPreloadedCust = {{ preloaded_customer|tojson if preloaded_customer else 'null' }};
+    if (serverPreloadedCust && serverPreloadedCust.phone) {
+      currentCustomer = Object.assign({}, currentCustomer || {}, serverPreloadedCust);
+      try {
+        localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+      } catch (e) {}
+    } else {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlAuthPhone = (urlParams.get('auth_phone') || urlParams.get('phone') || '').trim();
+        if (urlAuthPhone && (!currentCustomer || currentCustomer.phone !== urlAuthPhone)) {
+          currentCustomer = {
+            phone: urlAuthPhone,
+            name: urlParams.get('auth_name') || ('গ্রাহক ' + urlAuthPhone.slice(-4)),
+            address: urlParams.get('auth_address') || '',
+            profile_image: urlParams.get('auth_avatar') || ''
+          };
+          localStorage.setItem('supershop_logged_customer', JSON.stringify(currentCustomer));
+        }
+      } catch (e) {}
+    }
+
     function refreshPharmacyCustomerState() {
       const headerBtnLogin = $("headerBtnLogin");
       const headerUserPill = $("headerUserPill");
