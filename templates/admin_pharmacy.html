@@ -993,6 +993,41 @@
     }
   }
 
+  let activeAdminPdfBlobUrl = null;
+
+  function dataUriToBlob(dataURI) {
+    try {
+      const splitIndex = dataURI.indexOf(',');
+      if (splitIndex === -1) return null;
+      const byteString = atob(dataURI.slice(splitIndex + 1));
+      const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeString });
+    } catch (e) {
+      console.error("Blob conversion error:", e);
+      return null;
+    }
+  }
+
+  function getSafeViewUrl(url) {
+    if (!url) return "";
+    if (url.startsWith("data:application/pdf")) {
+      const blob = dataUriToBlob(url);
+      if (blob) {
+        if (activeAdminPdfBlobUrl) {
+          try { URL.revokeObjectURL(activeAdminPdfBlobUrl); } catch(e){}
+        }
+        activeAdminPdfBlobUrl = URL.createObjectURL(blob);
+        return activeAdminPdfBlobUrl;
+      }
+    }
+    return url;
+  }
+
   function adminTogglePrescriptionView(mode) {
     adminActivePrescriptionView = mode;
     adminUpdatePrescriptionDisplay();
@@ -1026,15 +1061,16 @@
       const isPdf = targetUrl.toLowerCase().includes('.pdf') || targetUrl.startsWith('data:application/pdf');
       if (isPdf) {
         if (rxImg) rxImg.style.display = "none";
+        const displayPdfUrl = getSafeViewUrl(targetUrl);
         if (rxPdf) {
-          rxPdf.src = targetUrl;
+          rxPdf.src = displayPdfUrl;
           rxPdf.style.display = "block";
         }
         if (btnRotate) btnRotate.style.display = "none";
         if (btnCrop) btnCrop.style.display = "none";
         if (downLink) {
-          downLink.innerText = "📄 Open PDF";
-          downLink.href = targetUrl;
+          downLink.innerText = "📄 Open PDF in New Tab";
+          downLink.href = displayPdfUrl;
           downLink.style.display = "inline-block";
         }
       } else {
@@ -1070,6 +1106,10 @@
   function closeReviewModal() {
     document.getElementById("reviewModal").style.display = "none";
     currentReviewOrderId = null;
+    if (activeAdminPdfBlobUrl) {
+      try { URL.revokeObjectURL(activeAdminPdfBlobUrl); } catch(e){}
+      activeAdminPdfBlobUrl = null;
+    }
   }
 
   function rotateImage() {
@@ -1078,7 +1118,9 @@
   }
 
   function openImageZoom(url) {
-    window.open(url, '_blank');
+    if (!url) return;
+    const safeUrl = getSafeViewUrl(url);
+    window.open(safeUrl, '_blank');
   }
 
   // ==================== ADMIN 4-CORNER SMART CROP & LOUPE MAGNIFIER ====================

@@ -240,10 +240,45 @@
     let currentOrigRx = "";
     let currentEnhRx = "";
     let activeRxMode = "enhanced";
+    let activeTrackingPdfBlobUrl = null;
+
+    function dataUriToBlob(dataURI) {
+      try {
+        const splitIndex = dataURI.indexOf(',');
+        if (splitIndex === -1) return null;
+        const byteString = atob(dataURI.slice(splitIndex + 1));
+        const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        return new Blob([ab], { type: mimeString });
+      } catch (e) {
+        console.error("Blob error:", e);
+        return null;
+      }
+    }
+
+    function getSafeViewUrl(url) {
+      if (!url) return "";
+      if (url.startsWith("data:application/pdf")) {
+        const blob = dataUriToBlob(url);
+        if (blob) {
+          if (activeTrackingPdfBlobUrl) {
+            try { URL.revokeObjectURL(activeTrackingPdfBlobUrl); } catch(e){}
+          }
+          activeTrackingPdfBlobUrl = URL.createObjectURL(blob);
+          return activeTrackingPdfBlobUrl;
+        }
+      }
+      return url;
+    }
 
     function switchRxView(mode) {
       activeRxMode = mode;
-      const targetSrc = (mode === 'original' && currentOrigRx) ? currentOrigRx : (currentEnhRx || currentOrigRx);
+      const isOriginalMode = (mode === 'original' && currentOrigRx);
+      const targetSrc = isOriginalMode ? currentOrigRx : (currentEnhRx || currentOrigRx);
       if (!targetSrc) return;
 
       const imgEl = document.getElementById("dPrescriptionImg");
@@ -254,11 +289,21 @@
       const mBtnEnh = document.getElementById("modalBtnRxEnh");
       const mBtnOrig = document.getElementById("modalBtnRxOrig");
 
-      if (imgEl) imgEl.src = targetSrc;
-      if (modalImgEl) modalImgEl.src = targetSrc;
+      const isTargetPdf = targetSrc.toLowerCase().includes('.pdf') || targetSrc.startsWith('data:application/pdf');
+
+      if (isTargetPdf) {
+        // If enhanced image exists, show that in thumbnail for crisp preview
+        if (currentEnhRx && !currentEnhRx.startsWith('data:application/pdf') && !currentEnhRx.toLowerCase().includes('.pdf')) {
+          if (imgEl) imgEl.src = currentEnhRx;
+          if (modalImgEl) modalImgEl.src = currentEnhRx;
+        }
+      } else {
+        if (imgEl) imgEl.src = targetSrc;
+        if (modalImgEl) modalImgEl.src = targetSrc;
+      }
 
       if (mode === 'original') {
-        if (badgeEl) badgeEl.innerText = "🖼️ ক্যামেরা থেকে তোলা আসল ছবি";
+        if (badgeEl) badgeEl.innerText = isTargetPdf ? "📄 আসল PDF প্রেসক্রিপশন" : "🖼️ ক্যামেরা থেকে তোলা আসল ছবি";
         if (btnOrig) btnOrig.className = "px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs";
         if (btnEnh) btnEnh.className = "px-2 py-0.5 rounded-md font-bold text-slate-600 hover:text-slate-900 transition";
         if (mBtnOrig) mBtnOrig.className = "px-2 py-0.5 rounded-md font-bold bg-emerald-600 text-white transition shadow-xs";
@@ -403,11 +448,25 @@
     }
 
     function openRxFullView() {
-      const targetSrc = (activeRxMode === 'original' && currentOrigRx) ? currentOrigRx : (currentEnhRx || currentOrigRx);
+      const isOriginalMode = (activeRxMode === 'original' && currentOrigRx);
+      const targetSrc = isOriginalMode ? currentOrigRx : (currentEnhRx || currentOrigRx);
       if (targetSrc) {
-        document.getElementById("rxFullModalImg").src = targetSrc;
-        switchRxView(activeRxMode);
-        document.getElementById("rxFullModal").classList.remove("hidden");
+        const isPdf = targetSrc.toLowerCase().includes('.pdf') || targetSrc.startsWith('data:application/pdf');
+        if (isPdf && isOriginalMode) {
+          const safeUrl = getSafeViewUrl(targetSrc);
+          window.open(safeUrl, '_blank');
+          return;
+        }
+
+        const previewImg = (targetSrc.startsWith('data:image') || !isPdf) ? targetSrc : (currentEnhRx && currentEnhRx.startsWith('data:image') ? currentEnhRx : null);
+        if (previewImg) {
+          document.getElementById("rxFullModalImg").src = previewImg;
+          switchRxView(activeRxMode);
+          document.getElementById("rxFullModal").classList.remove("hidden");
+        } else if (isPdf) {
+          const safeUrl = getSafeViewUrl(targetSrc);
+          window.open(safeUrl, '_blank');
+        }
       }
     }
 

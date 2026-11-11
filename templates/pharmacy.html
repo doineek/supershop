@@ -11,6 +11,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
   
+  <!-- PDF.js Library for Universal Client-Side PDF Live Preview, Perspective Cropping & CamScanner Filtering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+  
   <style>
     body { font-family: 'Hind Siliguri', sans-serif; -webkit-tap-highlight-color: transparent; }
     .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
@@ -433,29 +441,41 @@
   </main>
 
 
-  <!-- ==================== MODAL A: LAPTOP / PC WEBCAM CAPTURE ==================== -->
+  <!-- ==================== MODAL A: UNIFIED CAMERA CAPTURE (FRONT & BACK CAMERA SWITCH) ==================== -->
   <div id="webcamModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-3">
     <div class="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200">
       <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
         <h3 class="font-bold text-xs sm:text-sm flex items-center gap-2">
-          <span>💻</span> <span>ল্যাপটপ / কম্পিউটার ক্যামেরা দিয়ে ছবি তুলুন</span>
+          <span>📷</span> <span>প্রেসক্রিপশনের ছবি তুলুন</span>
         </h3>
-        <button type="button" onclick="closeLaptopWebcamModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="flipCameraFacingMode()" id="btnFlipCamera" class="px-2.5 py-1 bg-white/15 hover:bg-white/25 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-white/20" title="সামনে ও পেছনের ক্যামেরা পরিবর্তন করুন">
+            <span>🔄</span> <span id="cameraFacingLabel">ক্যামেরা ফ্লিপ</span>
+          </button>
+          <button type="button" onclick="closeLaptopWebcamModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
       </div>
 
       <div class="p-3 space-y-3">
         <div class="relative bg-black rounded-2xl overflow-hidden aspect-4/3 flex items-center justify-center">
           <video id="webcamVideo" autoplay playsinline class="w-full h-full object-cover"></video>
-          <div id="webcamLoadingNotice" class="absolute text-xs text-white bg-black/60 px-3 py-1.5 rounded-lg">
-            ক্যামেরা চালু হচ্ছে...
+          <div id="webcamLoadingNotice" class="absolute text-xs text-white bg-black/70 px-3.5 py-2 rounded-xl flex items-center gap-2">
+            <span class="animate-spin text-sm">⏳</span> <span>ক্যামেরা চালু হচ্ছে...</span>
+          </div>
+          <!-- Current camera indicator badge -->
+          <div id="webcamFacingBadge" class="absolute top-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[10px] font-bold rounded-md backdrop-blur-xs border border-white/20">
+            📷 পেছনের ক্যামেরা
           </div>
         </div>
 
-        <div class="flex items-center justify-center gap-2 pt-1">
-          <button type="button" onclick="captureWebcamFrame()" class="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition flex items-center gap-2">
+        <div class="flex items-center justify-center gap-2 pt-1 flex-wrap">
+          <button type="button" onclick="captureWebcamFrame()" class="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md transition flex items-center gap-2 cursor-pointer">
             <span>📸</span> <span>ছবি তুলুন</span>
           </button>
-          <button type="button" onclick="closeLaptopWebcamModal()" class="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">
+          <button type="button" onclick="flipCameraFacingMode()" class="py-2.5 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200">
+            <span>🔄</span> <span>ক্যামেরা পরিবর্তন</span>
+          </button>
+          <button type="button" onclick="closeLaptopWebcamModal()" class="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">
             বাতিল
           </button>
         </div>
@@ -1133,57 +1153,70 @@
     });
 
     // -------------------------------------------------------------
-    // UNIFIED CAMERA (SMART DETECTION: MOBILE NATIVE VS LAPTOP WEBCAM)
+    // UNIFIED CAMERA WITH FRONT & BACK CAMERA TOGGLE
     // -------------------------------------------------------------
+    let currentCameraFacingMode = "environment"; // default to rear camera for scanning prescriptions
+
     function openUnifiedCamera() {
-      // Check if user is on a mobile device or touch screen tablet
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
-                       || (navigator.maxTouchPoints > 1 && window.innerWidth <= 820);
-
-      if (isMobile) {
-        // Mobile camera: trigger capture="environment" file input which directly opens native camera
-        const cameraInput = $("rxCameraInput");
-        if (cameraInput) {
-          cameraInput.click();
-          return;
-        }
-      }
-
-      // Laptop / PC: open live webcam modal with video stream
       if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-        openLaptopWebcamModal();
+        openLaptopWebcamModal(currentCameraFacingMode);
       } else {
-        // Fallback: trigger camera input or file input
         const fallbackInput = $("rxCameraInput") || $("rxFileInput");
         if (fallbackInput) fallbackInput.click();
       }
     }
 
-    // -------------------------------------------------------------
-    // WEBCAM (LAPTOP / PC) CAPTURE
-    // -------------------------------------------------------------
-    async function openLaptopWebcamModal() {
+    async function openLaptopWebcamModal(facing = "environment") {
       const modal = $("webcamModal");
       const video = $("webcamVideo");
       const notice = $("webcamLoadingNotice");
+      const badge = $("webcamFacingBadge");
 
       modal.classList.remove("hidden");
       notice.classList.remove("hidden");
-      notice.innerText = "ক্যামেরা চালু হচ্ছে...";
+      notice.innerHTML = `<span class="animate-spin text-sm">⏳</span> <span>${facing === 'environment' ? 'পেছনের' : 'সামনের'} ক্যামেরা চালু হচ্ছে...</span>`;
+      
+      currentCameraFacingMode = facing;
+      if (badge) {
+        badge.innerText = facing === 'environment' ? '📷 পেছনের ক্যামেরা (Rear)' : '🤳 সামনের ক্যামেরা (Front)';
+      }
+
+      // Stop any existing stream
+      if (webcamMediaStream) {
+        webcamMediaStream.getTracks().forEach(t => t.stop());
+        webcamMediaStream = null;
+      }
 
       try {
-        webcamMediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: "user" },
+        const constraints = {
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
           audio: false
-        });
+        };
+
+        try {
+          webcamMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (_exactErr) {
+          // If specific facingMode fails, try basic video
+          webcamMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
         video.srcObject = webcamMediaStream;
         video.onloadedmetadata = () => {
           notice.classList.add("hidden");
         };
       } catch (err) {
-        alert("ল্যাপটপের ক্যামেরা চালু করা সম্ভব হয়নি। অনুগ্রহ করে ক্যামেরার অনুমতি চেক করুন বা ফাইল আপলোড ব্যবহার করুন।");
+        alert("ক্যামেরা চালু করা সম্ভব হয়নি। ক্যামেরার অনুমতি (Permission) চেক করুন অথবা ফাইল আপলোড অপশনটি ব্যবহার করুন।");
         closeLaptopWebcamModal();
       }
+    }
+
+    function flipCameraFacingMode() {
+      const newFacing = currentCameraFacingMode === "environment" ? "user" : "environment";
+      openLaptopWebcamModal(newFacing);
     }
 
     function closeLaptopWebcamModal() {
@@ -1204,22 +1237,22 @@
       const ctx = canvas.getContext("2d");
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const capturedDataUri = canvas.toDataURL("image/jpeg", 0.92);
+      const capturedDataUri = canvas.toDataURL("image/jpeg", 0.95);
       closeLaptopWebcamModal();
 
       // Set as original photo and immediately open Smart Crop
-      loadNewPrescriptionImage(capturedDataUri, "webcam_prescription.jpg");
+      loadNewPrescriptionImage(capturedDataUri, "camera_prescription.jpg");
     }
 
     // -------------------------------------------------------------
-    // FILE / CAMERA INPUT HANDLER
+    // FILE / CAMERA INPUT HANDLER (IMAGES + REAL-TIME PDF RENDERING)
     // -------------------------------------------------------------
     function handleFileSelected(event) {
       const file = event.target.files[0];
       if (!file) return;
 
       const isImage = file.type.startsWith("image/");
-      const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
       if (!isImage && !isPdf) {
         alert("শুধুমাত্র ছবি (JPG, PNG, WebP) অথবা PDF ফাইল আপলোড করুন।");
@@ -1233,7 +1266,7 @@
         };
         reader.readAsDataURL(file);
       } else {
-        // PDF document upload (Read real base64 bytes + create local Blob URL for preview)
+        // Universal PDF document upload with instant client-side rendering
         try {
           if (selectedPdfBlobUrl) URL.revokeObjectURL(selectedPdfBlobUrl);
           selectedPdfBlobUrl = URL.createObjectURL(file);
@@ -1241,27 +1274,63 @@
           selectedPdfBlobUrl = "";
         }
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const pdfDataUri = e.target.result;
-          originalRawDataUri = pdfDataUri;
-          currentEnhancedDataUri = pdfDataUri;
-          $("prescription_base64").value = pdfDataUri;
-          $("prescription_original_base64").value = pdfDataUri;
+        const dropzone = $("dropzoneRx");
+        if (dropzone) {
+          dropzone.innerHTML = `
+            <div class="text-3xl mb-1.5 animate-bounce">📄</div>
+            <p class="font-bold text-slate-800 text-sm">PDF প্রেসক্রিপশন প্রসেসিং ও প্রিভিউ তৈরি হচ্ছে...</p>
+            <p class="text-[11px] text-emerald-600 mt-1">অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন</p>
+          `;
+        }
 
-          $("rxThumbImg").src = PDF_ICON_DATA;
-          $("rxFileName").innerText = file.name;
-          const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
-          $("rxFileSizeInfo").innerText = `PDF প্রেসক্রিপশন (${sizeMb} MB)`;
+        // 1. Read raw base64 dataURI to preserve the untouched original file
+        const dataUrlReader = new FileReader();
+        dataUrlReader.onload = function(e) {
+          const rawPdfDataUri = e.target.result;
+          originalRawDataUri = rawPdfDataUri;
+          $("prescription_original_base64").value = rawPdfDataUri;
 
-          // Hide image crop/filter tools for PDF
-          const editBtn = $("btnEditPrescription");
-          if (editBtn) editBtn.classList.add("hidden");
+          // 2. Render Page 1 to high-resolution Image using PDF.js
+          const arrayBufferReader = new FileReader();
+          arrayBufferReader.onload = function() {
+            const typedarray = new Uint8Array(this.result);
+            if (!window.pdfjsLib) {
+              // Fallback if PDF.js not loaded
+              loadNewPrescriptionImage(PDF_ICON_DATA, file.name);
+              return;
+            }
 
-          $("dropzoneRx").classList.add("hidden");
-          $("rxPreviewCard").classList.remove("hidden");
+            pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+              pdf.getPage(1).then(function(page) {
+                // High resolution scale for crisp prescription text
+                const viewport = page.getViewport({ scale: 2.0 });
+                const canvas = document.createElement("canvas");
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext("2d");
+
+                page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function() {
+                  const renderedJpg = canvas.toDataURL("image/jpeg", 0.95);
+                  loadNewPrescriptionImage(renderedJpg, file.name);
+
+                  // Keep original raw PDF DataURI for backend storage
+                  originalRawDataUri = rawPdfDataUri;
+                  $("prescription_original_base64").value = rawPdfDataUri;
+
+                  const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+                  $("rxFileSizeInfo").innerText = `PDF প্রেসক্রিপশন (${sizeMb} MB) • লাইভ প্রিভিউ সক্রিয়`;
+                });
+              });
+            }).catch(function(err) {
+              console.error("PDF.js render error:", err);
+              loadNewPrescriptionImage(PDF_ICON_DATA, file.name);
+              originalRawDataUri = rawPdfDataUri;
+              $("prescription_original_base64").value = rawPdfDataUri;
+            });
+          };
+          arrayBufferReader.readAsArrayBuffer(file);
         };
-        reader.readAsDataURL(file);
+        dataUrlReader.readAsDataURL(file);
       }
     }
 
@@ -1957,34 +2026,38 @@
       const src = activeViewMode === "original" ? originalRawDataUri : (currentEnhancedDataUri || originalRawDataUri);
       if (!src && !selectedPdfBlobUrl) return;
 
-      const isPdf = Boolean(selectedPdfBlobUrl) || (src && (src.startsWith("data:application/pdf") || src.includes(".pdf")));
+      const isPdf = Boolean(selectedPdfBlobUrl) || (originalRawDataUri && (originalRawDataUri.startsWith("data:application/pdf") || originalRawDataUri.includes(".pdf")));
       const imgEl = $("previewModalImg");
       const pdfBox = $("previewModalPdfBox");
       const pdfBtn = $("previewModalPdfBtn");
 
-      if (isPdf) {
-        if (imgEl) imgEl.classList.add("hidden");
-        if (pdfBox) {
-          pdfBox.classList.remove("hidden");
-          const targetUrl = selectedPdfBlobUrl || src;
-          if (pdfBtn) {
-            pdfBtn.href = targetUrl;
-            pdfBtn.onclick = function(e) {
-              if (selectedPdfBlobUrl) {
-                window.open(selectedPdfBlobUrl, "_blank");
-                e.preventDefault();
-              }
-            };
-          }
+      // Show rendered image preview
+      const previewImgSrc = (src && src.startsWith("data:image")) ? src : (currentEnhancedDataUri && currentEnhancedDataUri.startsWith("data:image") ? currentEnhancedDataUri : "");
+      
+      if (previewImgSrc && imgEl) {
+        imgEl.classList.remove("hidden");
+        imgEl.src = previewImgSrc;
+      } else if (!previewImgSrc && imgEl) {
+        imgEl.classList.add("hidden");
+      }
+
+      // If PDF file exists, also provide direct open/download button
+      if (isPdf && pdfBox) {
+        pdfBox.classList.remove("hidden");
+        const targetUrl = selectedPdfBlobUrl || src;
+        if (pdfBtn) {
+          pdfBtn.href = targetUrl;
+          pdfBtn.onclick = function(e) {
+            if (selectedPdfBlobUrl) {
+              window.open(selectedPdfBlobUrl, "_blank");
+              e.preventDefault();
+            }
+          };
         }
-        $("previewModalTitle").innerText = "প্রেসক্রিপশন (PDF ডকুমেন্ট)";
+        $("previewModalTitle").innerText = "প্রেসক্রিপশন লাইভ প্রিভিউ (PDF ডকুমেন্ট)";
       } else {
         if (pdfBox) pdfBox.classList.add("hidden");
-        if (imgEl) {
-          imgEl.classList.remove("hidden");
-          imgEl.src = src;
-        }
-        $("previewModalTitle").innerText = activeViewMode === "original" ? "প্রেসক্রিপশন (আসল ছবি)" : "প্রেসক্রিপশন (ক্যামস্ক্যানার এনহ্যান্সড)";
+        $("previewModalTitle").innerText = activeViewMode === "original" ? "প্রেসক্রিপশন (আসল ফাইল/ছবি)" : "প্রেসক্রিপশন (ক্যামস্ক্যানার এনহ্যান্সড)";
       }
       $("previewModal").classList.remove("hidden");
     }
