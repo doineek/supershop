@@ -2,7 +2,7 @@
 <html lang="bn">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>{{ settings.shop_name or 'DOINEEK' }} ফার্মেসী | প্রেসক্রিপশন ও ঔষধ হোম ডেলিভারি</title>
   
   <!-- Tailwind CSS & Bengali Google Font (Hind Siliguri) matching QR-Printing -->
@@ -20,7 +20,17 @@
   </script>
   
   <style>
-    body { font-family: 'Hind Siliguri', sans-serif; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      overflow-x: hidden !important;
+      max-width: 100vw !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      font-family: 'Hind Siliguri', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
     .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -89,15 +99,15 @@
     </div>
   </header>
 
-  <!-- Live Status & Shop Timing Bar -->
-  <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white py-1.5 px-4 text-xs shadow-inner">
-    <div class="max-w-xl mx-auto flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-300 pulse-dot shadow-xs"></span>
-        <span class="font-medium text-[11px] sm:text-xs">ফার্মেসী খোলা আছে • দ্রুততম সময়ে হোম ডেলিভারি</span>
+  <!-- Live Status & Shop Timing Bar (Strictly responsive, prevents mobile desktop-zoom blowup) -->
+  <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white py-1.5 px-3 text-xs shadow-inner w-full overflow-hidden">
+    <div class="max-w-xl mx-auto flex items-center justify-between gap-2 w-full">
+      <div class="flex items-center gap-1.5 min-w-0 shrink">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-300 pulse-dot shadow-xs shrink-0"></span>
+        <span class="font-bold text-[10.5px] sm:text-xs truncate">ফার্মেসী খোলা আছে • দ্রুততম ডেলিভারি</span>
       </div>
-      <a href="tel:{{ settings.shop_phone or '+8801700000000' }}" class="text-[11px] font-bold text-emerald-100 hover:text-white flex items-center gap-1">
-        <span>📞 হেল্পলাইন</span>
+      <a href="tel:{{ settings.shop_phone or '+8801700000000' }}" class="text-[10.5px] sm:text-xs font-bold text-emerald-100 hover:text-white flex items-center gap-1 shrink-0 bg-white/15 px-2 py-0.5 rounded-full border border-white/20 whitespace-nowrap">
+        <span>📞</span> <span>হেল্পলাইন</span>
       </a>
     </div>
   </div>
@@ -509,12 +519,15 @@
           💡 ছবির <b>৪টি কোণা, ৪টি ধার (Edges) বা মাঝখানে ধরে</b> পুরো বক্সটি ড্র্যাগ করে প্রেসক্রিপশনে মেলান (কোণায় <b>জুম লুপ</b> দেখাবে)।
         </p>
 
-        <!-- Ratio & Auto Corners -->
-        <div class="grid grid-cols-4 gap-1.5 text-center text-xs">
-          <button type="button" onclick="autoResetSmartCorners()" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg">🔄 রিসেট</button>
-          <button type="button" onclick="setSmartAspect('free')" id="ratioBtn_free" class="py-1.5 px-1 bg-emerald-600 text-white font-bold rounded-lg shadow-xs">ফ্রি সাইজ</button>
-          <button type="button" onclick="setSmartAspect('a4')" id="ratioBtn_a4" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg">A4 পেপার</button>
-          <button type="button" onclick="setSmartAspect('square')" id="ratioBtn_square" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg">১:১ স্কয়ার</button>
+        <!-- Ratio & Full Size / Auto Corners -->
+        <div class="grid grid-cols-5 gap-1 text-center text-[11px] sm:text-xs">
+          <button type="button" onclick="selectFullImageCorners()" id="btnCropFullSize" class="py-1.5 px-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-black rounded-lg shadow-2xs border border-emerald-300 transition" title="পুরো ছবি কোনো ক্রপ ছাড়া এক ক্লিকে সিলেক্ট করুন">
+            🖼️ ফুল সাইজ
+          </button>
+          <button type="button" onclick="autoResetSmartCorners()" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition">🔄 রিসেট</button>
+          <button type="button" onclick="setSmartAspect('free')" id="ratioBtn_free" class="py-1.5 px-1 bg-emerald-600 text-white font-bold rounded-lg shadow-xs transition">ফ্রি সাইজ</button>
+          <button type="button" onclick="setSmartAspect('a4')" id="ratioBtn_a4" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition">A4 পেপার</button>
+          <button type="button" onclick="setSmartAspect('square')" id="ratioBtn_square" class="py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition">১:১ স্কয়ার</button>
         </div>
 
         <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
@@ -829,13 +842,13 @@
     let selectedPdfBlobUrl = "";
     let activeViewMode = "enhanced"; // 'enhanced' or 'original'
 
-    // Smart Crop State
+    // Smart Crop State (Default: 100% Full Uncropped Image)
     let smartImg = new Image();
     let smartPts = [
-      { x: 0.05, y: 0.05 }, // top-left
-      { x: 0.95, y: 0.05 }, // top-right
-      { x: 0.95, y: 0.95 }, // bottom-right
-      { x: 0.05, y: 0.95 }  // bottom-left
+      { x: 0.0, y: 0.0 }, // top-left
+      { x: 1.0, y: 0.0 }, // top-right
+      { x: 1.0, y: 1.0 }, // bottom-right
+      { x: 0.0, y: 1.0 }  // bottom-left
     ];
     let activeDragIdx = -1;
     let smartGeom = { pad: 16, drawW: 300, drawH: 300 };
@@ -1373,14 +1386,19 @@
       $("cropModal").classList.add("hidden");
     }
 
-    function autoResetSmartCorners() {
+    function selectFullImageCorners() {
       smartPts = [
-        { x: 0.05, y: 0.05 },
-        { x: 0.95, y: 0.05 },
-        { x: 0.95, y: 0.95 },
-        { x: 0.05, y: 0.95 }
+        { x: 0.0, y: 0.0 }, // top-left (0% crop)
+        { x: 1.0, y: 0.0 }, // top-right
+        { x: 1.0, y: 1.0 }, // bottom-right
+        { x: 0.0, y: 1.0 }  // bottom-left
       ];
+      setSmartAspect('free');
       drawSmartCrop();
+    }
+
+    function autoResetSmartCorners() {
+      selectFullImageCorners();
     }
 
     function setSmartAspect(aspect) {

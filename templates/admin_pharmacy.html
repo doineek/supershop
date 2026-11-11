@@ -651,10 +651,15 @@
         💡 Drag the <b>4 corners, 4 edges, or center body</b> to adjust the crop box (zoom loupe appears on corners).
       </div>
 
-      <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid #e2e8f0;">
-        <button type="button" onclick="resetAdminCropCorners()" style="padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-          🔄 Reset
-        </button>
+      <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid #e2e8f0; flex-wrap: wrap;">
+        <div style="display: flex; gap: 6px;">
+          <button type="button" onclick="selectAdminFullSizeCrop()" style="padding: 6px 12px; background: #dcfce7; color: #166534; border: 1.5px solid #86efac; border-radius: 6px; font-size: 0.82rem; font-weight: 800; cursor: pointer;" title="Select 100% full uncropped image">
+            🖼️ Full Size
+          </button>
+          <button type="button" onclick="resetAdminCropCorners()" style="padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+            🔄 Reset
+          </button>
+        </div>
         <div style="display: flex; gap: 8px;">
           <button type="button" onclick="closeAdminCropModal()" style="padding: 6px 14px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
             Cancel
@@ -1126,10 +1131,10 @@
   // ==================== ADMIN 4-CORNER SMART CROP & LOUPE MAGNIFIER ====================
   let adminSmartImg = new Image();
   let adminSmartPts = [
-    { x: 0.05, y: 0.05 },
-    { x: 0.95, y: 0.05 },
-    { x: 0.95, y: 0.95 },
-    { x: 0.05, y: 0.95 }
+    { x: 0.0, y: 0.0 },
+    { x: 1.0, y: 0.0 },
+    { x: 1.0, y: 1.0 },
+    { x: 0.0, y: 1.0 }
   ];
   let adminActiveDragIdx = -1;
   let adminSmartGeom = { pad: 12, drawW: 0, drawH: 0 };
@@ -1171,13 +1176,18 @@
     document.getElementById("adminCropModal").style.display = "none";
   }
 
-  function resetAdminCropCorners() {
+  function selectAdminFullSizeCrop() {
     adminSmartPts = [
-      { x: 0.05, y: 0.05 },
-      { x: 0.95, y: 0.05 },
-      { x: 0.95, y: 0.95 },
-      { x: 0.05, y: 0.95 }
+      { x: 0.0, y: 0.0 },
+      { x: 1.0, y: 0.0 },
+      { x: 1.0, y: 1.0 },
+      { x: 0.0, y: 1.0 }
     ];
+    drawAdminCrop();
+  }
+
+  function resetAdminCropCorners() {
+    selectAdminFullSizeCrop();
   }
 
   function setupAdminCropCanvas() {

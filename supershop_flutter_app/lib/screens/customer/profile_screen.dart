@@ -55,7 +55,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String pharmacyUrl = "$baseUrl/pharmacy";
     try {
       final Uri uri = Uri.parse(pharmacyUrl);
-      final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final bool launched = await launchUrl(uri, mode: LaunchMode.inAppWebView);
       if (!launched) {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
       }

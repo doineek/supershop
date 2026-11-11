@@ -599,6 +599,28 @@ class ApiService {
     return [];
   }
 
+  static Future<List<dynamic>> fetchPharmacyMedicines({String query = '', String dosage = ''}) async {
+    try {
+      String url = '/api/pharmacy/medicines?';
+      if (query.trim().isNotEmpty) {
+        url += 'q=${Uri.encodeComponent(query.trim())}&';
+      }
+      if (dosage.trim().isNotEmpty && dosage.toLowerCase() != 'all') {
+        url += 'dosage=${Uri.encodeComponent(dosage.trim())}&';
+      }
+      final res = await httpGet(url, timeout: const Duration(seconds: 12));
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map && data['medicines'] is List) {
+          return data['medicines'] as List<dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching pharmacy medicines: $e");
+    }
+    return [];
+  }
+
   static Future<Map<String, dynamic>> sendResetOtp(List<String> categories) async {
     try {
       final res = await httpPost('/admin/system-reset/send-otp', body: jsonEncode({

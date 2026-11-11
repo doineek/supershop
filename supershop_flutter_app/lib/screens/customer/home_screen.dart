@@ -60,6 +60,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<dynamic> _packagesList = [];
   bool _isAdminMode = false;
 
+  // In-App Pharmacy State
+  List<dynamic> _pharmacyMedicines = [];
+  bool _isLoadingMedicines = false;
+  String _pharmacySearchQuery = "";
+  String _selectedDosage = "all";
+  Timer? _medSearchDebounce;
+  final TextEditingController _pharmacySearchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -266,6 +274,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _retryTimer?.cancel();
     _bannerTimer?.cancel();
+    _medSearchDebounce?.cancel();
+    _pharmacySearchController.dispose();
     _bannerController.dispose();
     super.dispose();
   }
@@ -422,7 +432,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openPharmacyPortal() async {
+  void _openPharmacyPortal() {
+    setState(() {
+      _selectedTab = 'pharmacy';
+    });
+    if (_pharmacyMedicines.isEmpty) {
+      _loadPharmacyMedicines();
+    }
+  }
+
+  Future<void> _loadPharmacyMedicines() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingMedicines = true;
+    });
+    try {
+      final meds = await ApiService.fetchPharmacyMedicines(
+        query: _pharmacySearchQuery,
+        dosage: _selectedDosage,
+      );
+      if (mounted) {
+        setState(() {
+          _pharmacyMedicines = meds;
+          _isLoadingMedicines = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMedicines = false;
+        });
+      }
+    }
+  }
+
+  void _onPharmacySearchChanged(String val) {
+    _medSearchDebounce?.cancel();
+    _medSearchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _pharmacySearchQuery = val;
+        });
+        _loadPharmacyMedicines();
+      }
+    });
+  }
+
+  Future<void> _openWebPrescriptionViewer() async {
     String baseUrl = ApiService.activeUrl.isNotEmpty ? ApiService.activeUrl : "https://doineek.onrender.com";
     if (baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
       baseUrl = "https://doineek.onrender.com";
@@ -430,7 +486,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String pharmacyUrl = "$baseUrl/pharmacy";
     try {
       final Uri uri = Uri.parse(pharmacyUrl);
-      final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final bool launched = await launchUrl(uri, mode: LaunchMode.inAppWebView);
       if (!launched) {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
       }
@@ -438,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("ফার্মেসী সেবা খোলা যায়নি: $e"),
+            content: Text("প্রেসক্রিপশন আপলোড পোর্টাল খোলা যায়নি: $e"),
             backgroundColor: Colors.red.shade700,
           ),
         );
@@ -1055,7 +1111,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 child: Text(
                                   _selectedTab == 'packages'
                                       ? 'Combo Packages (${_packagesList.length})'
-                                      : (_searchQuery.isNotEmpty ? 'Category: $_searchQuery (${sortedProducts.length})' : 'Products (${sortedProducts.length})'),
+                                      : _selectedTab == 'pharmacy'
+                                          ? 'Pharmacy & Medicines (${_pharmacyMedicines.length})'
+                                          : (_searchQuery.isNotEmpty ? 'Category: $_searchQuery (${sortedProducts.length})' : 'Products (${sortedProducts.length})'),
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                                 ),
@@ -1427,6 +1485,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         );
                                       },
                                     ))
+                              : _selectedTab == 'pharmacy'
+                                  ? _buildPharmacyView(context, isDark, cartProv)
                               : _isLoadingProducts && _allProducts.isEmpty
                                   ? const Center(child: CircularProgressIndicator())
                                   : filteredProducts.isEmpty
@@ -2084,16 +2144,470 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         fontWeight: FontWeight.bold,
       ),
       onSelected: (selected) {
-        if (key == 'pharmacy') {
-          _openPharmacyPortal();
-          return;
-        }
         if (selected) {
           setState(() {
             _selectedTab = key;
           });
+          if (key == 'pharmacy' && _pharmacyMedicines.isEmpty) {
+            _loadPharmacyMedicines();
+          }
         }
       },
+    );
+  }
+
+
+  Widget _buildPharmacyView(BuildContext context, bool isDark, CartProvider cartProv) {
+    final dosages = [
+      {'label': 'All Forms', 'val': 'all'},
+      {'label': '💊 Tablet', 'val': 'Tablet'},
+      {'label': '💊 Capsule', 'val': 'Capsule'},
+      {'label': '🍯 Syrup', 'val': 'Syrup'},
+      {'label': '🧪 Suspension', 'val': 'Suspension'},
+      {'label': '💉 Injection', 'val': 'Injection'},
+      {'label': '🩹 Bandage', 'val': 'Bandage/First Aid'},
+      {'label': '💧 Drops', 'val': 'Drops'},
+      {'label': '🧴 Ointment', 'val': 'Ointment/Cream'},
+    ];
+
+    return Column(
+      children: [
+        // Pharmacy In-App Search Bar & Filters
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          color: isDark ? Colors.grey[900] : Colors.white,
+          child: Column(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[800] : const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF10B981), width: 1.5),
+                ),
+                child: TextField(
+                  controller: _pharmacySearchController,
+                  onChanged: _onPharmacySearchChanged,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: "ঔষধের নাম বা উপকরণ খুঁজুন (যেমন: Napa, Seclo)...",
+                    hintStyle: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                    prefixIcon: const Icon(Icons.search, color: Color(0xFF047857), size: 20),
+                    suffixIcon: _pharmacySearchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _pharmacySearchController.clear();
+                              _onPharmacySearchChanged("");
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: dosages.map((d) {
+                    final isSel = _selectedDosage.toLowerCase() == d['val']!.toLowerCase();
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(d['label']!, style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                        )),
+                        selected: isSel,
+                        selectedColor: const Color(0xFF047857),
+                        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() {
+                              _selectedDosage = d['val']!;
+                            });
+                            _loadPharmacyMedicines();
+                          }
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Prescription Order Quick Banner
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF064E3B) : const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFA7F3D0)),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: _openWebPrescriptionViewer,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    const Text("📸", style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "প্রেসক্রিপশন ছবি বা ফাইল আপলোড করতে চান?",
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                          ),
+                          Text(
+                            "ক্যামেরা দিয়ে ছবি তুলে সরাসরি প্রেসক্রিপশন জমা দিতে এখানে ট্যাপ করুন",
+                            style: TextStyle(fontSize: 10, color: Colors.teal[800]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF047857)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Medicines Count & Status
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          color: isDark ? Colors.grey[850] : Colors.grey[100],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Medicines Available (${_pharmacyMedicines.length})",
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+              ),
+              if (_isLoadingMedicines)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+        ),
+
+        // Medicines List
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadPharmacyMedicines,
+            child: _isLoadingMedicines && _pharmacyMedicines.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : _pharmacyMedicines.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 80),
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text("💊", style: TextStyle(fontSize: 48)),
+                                SizedBox(height: 10),
+                                Text(
+                                  "কোনো ওষুধ পাওয়া যায়নি। অনুগ্রহ করে অন্য নাম লিখে খুঁজুন।",
+                                  style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(10),
+                        itemCount: _pharmacyMedicines.length,
+                        itemBuilder: (context, index) {
+                          final med = _pharmacyMedicines[index] as Map<String, dynamic>;
+                          final id = int.tryParse(med['id']?.toString() ?? '0') ?? 0;
+                          final name = med['name']?.toString() ?? 'Medicine';
+                          final strength = med['strength']?.toString() ?? '';
+                          final generic = med['generic_name']?.toString() ?? '';
+                          final dosage = med['dosage_form']?.toString() ?? 'Medicine';
+                          final manufacturer = med['manufacturer']?.toString() ?? '';
+                          final sku = med['sku']?.toString() ?? 'MED-$id';
+                          final mrp = double.tryParse(med['mrp']?.toString() ?? '0') ?? 0.0;
+                          final unitPrice = double.tryParse(med['sell_price']?.toString() ?? med['unit_price']?.toString() ?? '0') ?? mrp;
+                          final disc = double.tryParse(med['discount_percent']?.toString() ?? '0') ?? 0.0;
+                          final stripPrice = double.tryParse(med['strip_price']?.toString() ?? '0') ?? 0.0;
+                          final stripSize = med['strip_size']?.toString() ?? '';
+                          final stock = int.tryParse(med['stock_qty']?.toString() ?? '999') ?? 999;
+                          final isOutOfStock = stock <= 0;
+
+                          final fullName = strength.isNotEmpty ? '$name $strength' : name;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDark ? Colors.grey[700]! : Colors.grey[200]!,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFECFDF5),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                                        ),
+                                        child: const Center(
+                                          child: Text("💊", style: TextStyle(fontSize: 20)),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              fullName,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 14.5,
+                                              ),
+                                            ),
+                                            if (generic.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                generic,
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  fontStyle: FontStyle.italic,
+                                                  color: isDark ? Colors.teal[300] : const Color(0xFF047857),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              "$dosage • $manufacturer",
+                                              style: TextStyle(
+                                                fontSize: 10.5,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            "৳ ${unitPrice.toStringAsFixed(2)}",
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 15,
+                                              color: Color(0xFF047857),
+                                            ),
+                                          ),
+                                          if (mrp > unitPrice)
+                                            Text(
+                                              "MRP ৳ ${mrp.toStringAsFixed(2)}",
+                                              style: TextStyle(
+                                                fontSize: 10.5,
+                                                decoration: TextDecoration.lineThrough,
+                                                color: Colors.grey[500],
+                                              ),
+                                            ),
+                                          if (disc > 0)
+                                            Container(
+                                              margin: const EdgeInsets.only(top: 2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red[50],
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.red[200]!),
+                                              ),
+                                              child: Text(
+                                                "${disc.toStringAsFixed(0)}% OFF",
+                                                style: const TextStyle(fontSize: 9.5, color: Colors.red, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+
+                                  if (stripPrice > 0 && stripSize.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Colors.grey[800] : Colors.grey[50],
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        "📦 Strip: ৳ ${stripPrice.toStringAsFixed(2)} ($stripSize)",
+                                        style: TextStyle(fontSize: 10.5, color: Colors.grey[700], fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+
+                                  const Divider(height: 16),
+
+                                  Row(
+                                    children: [
+                                      if (isOutOfStock)
+                                        Expanded(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red.shade50,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.red.shade200),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                "Out of Stock",
+                                                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      else ...[
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 36,
+                                            child: ElevatedButton.icon(
+                                              onPressed: () {
+                                                Product medProduct = Product(
+                                                  id: -100000 - id.abs(),
+                                                  sku: sku,
+                                                  name: "💊 $fullName",
+                                                  brand: manufacturer,
+                                                  unit: dosage,
+                                                  categoryName: "ফার্মেসী ও ঔষধ",
+                                                  subCategoryName: generic,
+                                                  subSubCategoryName: dosage,
+                                                  mrp: mrp > 0 ? mrp : unitPrice,
+                                                  sellPrice: unitPrice,
+                                                  stockQty: stock,
+                                                  description: "$generic • $dosage • $manufacturer",
+                                                );
+
+                                                bool added = cartProv.addToCart(medProduct);
+                                                if (added) {
+                                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      duration: const Duration(milliseconds: 1500),
+                                                      content: Text("💊 '$fullName' কার্টে যোগ করা হয়েছে!"),
+                                                      backgroundColor: const Color(0xFF047857),
+                                                      behavior: SnackBarBehavior.floating,
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                    ),
+                                                  );
+                                                } else {
+                                                  showQuantityLimitDialog(context, cartProv.lastError ?? "কার্টে যোগ করা যায়নি।");
+                                                }
+                                              },
+                                              icon: const Icon(Icons.add_shopping_cart, size: 15, color: Colors.white),
+                                              label: const Text(
+                                                "কার্টে যোগ করুন",
+                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF047857),
+                                                elevation: 0,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 36,
+                                            child: ElevatedButton.icon(
+                                              onPressed: () {
+                                                Product medProduct = Product(
+                                                  id: -100000 - id.abs(),
+                                                  sku: sku,
+                                                  name: "💊 $fullName",
+                                                  brand: manufacturer,
+                                                  unit: dosage,
+                                                  categoryName: "ফার্মেসী ও ঔষধ",
+                                                  subCategoryName: generic,
+                                                  subSubCategoryName: dosage,
+                                                  mrp: mrp > 0 ? mrp : unitPrice,
+                                                  sellPrice: unitPrice,
+                                                  stockQty: stock,
+                                                  description: "$generic • $dosage • $manufacturer",
+                                                );
+
+                                                bool added = cartProv.addToCart(medProduct);
+                                                if (added) {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(builder: (_) => const CartScreen()),
+                                                  );
+                                                } else {
+                                                  showQuantityLimitDialog(context, cartProv.lastError ?? "কার্টে যোগ করা যায়নি।");
+                                                }
+                                              },
+                                              icon: const Icon(Icons.bolt, size: 15, color: Colors.white),
+                                              label: const Text(
+                                                "অর্ডার করুন",
+                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF6B21A8),
+                                                elevation: 0,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ),
+      ],
     );
   }
 }
