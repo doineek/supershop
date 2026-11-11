@@ -203,6 +203,12 @@
       </div>
 
       <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <select id="catalogManufacturerFilter" onchange="loadAdminMedsTable(1)" style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; background: white; max-width: 190px;">
+          <option value="all">সব কোম্পানি</option>
+          {% for mfg in manufacturers %}
+          <option value="{{ mfg }}">{{ mfg }}</option>
+          {% endfor %}
+        </select>
         <select id="catalogDosageFilter" onchange="loadAdminMedsTable(1)" style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; background: white;">
           <option value="all">সব ধরণ</option>
           <option value="ট্যাবলেট">ট্যাবলেট</option>
@@ -213,7 +219,7 @@
           <option value="মলম/ক্রিম">মলম/ক্রিম</option>
           <option value="সাসপেনশন">সাসপেনশন</option>
         </select>
-        <input type="text" id="catalogSearchInput" oninput="debounceAdminMedSearch()" placeholder="ওষুধের নাম বা কোম্পানি..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 240px;">
+        <input type="text" id="catalogSearchInput" oninput="debounceAdminMedSearch()" placeholder="নাম, জেনেরিক, কোম্পানি বা বারকোড..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 230px;">
         <button type="button" onclick="openAddMedicineModal()" style="background: #059669; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 0.88rem;">
           + নতুন ওষুধ যোগ করুন
         </button>
@@ -438,9 +444,9 @@
 </div>
 
 
-<!-- ==================== MODAL 3: ADD / EDIT MEDICINE (PRICE UPDATER) ==================== -->
+<!-- ==================== MODAL 3: ADD / EDIT MEDICINE (PRICE & SKU UPDATER) ==================== -->
 <div id="medModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
-  <div style="background: white; border-radius: 14px; max-width: 500px; width: 100%; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
+  <div style="background: white; border-radius: 14px; max-width: 520px; width: 100%; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;">
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 16px;">
       <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;" id="medModalTitle">নতুন ওষুধ যোগ করুন</h3>
       <button type="button" onclick="closeMedModal()" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b;">&times;</button>
@@ -452,6 +458,20 @@
       <div>
         <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">ওষুধের নাম (ট্রেড নাম) *</label>
         <input type="text" id="form_name" name="name" required placeholder="যেমন: Napa Extra, Seclo 20mg, Savlon Liquid" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+      </div>
+
+      <!-- BARCODE / SKU FIELD -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-weight: 700; font-size: 0.85rem; color: #334155;">বারকোড / SKU নম্বর (প্যাকেটের বারকোড বা নিজস্ব কোড) *</label>
+          <button type="button" onclick="generateAutoSku()" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.76rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer;">
+            🎲 অটো কোড তৈরি
+          </button>
+        </div>
+        <input type="text" id="form_sku" name="sku" placeholder="ম্যানুয়াল বারকোড/SKU দিন (যেমন: 1001 বা 8941234567890)" style="width: 100%; padding: 8px 12px; border: 1.5px solid #0284c7; border-radius: 8px; font-size: 0.92rem; font-family: monospace; font-weight: 700; color: #0f172a; box-sizing: border-box; background: #f0f9ff;">
+        <p style="margin: 3px 0 0 0; font-size: 0.74rem; color: #64748b;">
+          💡 প্যাকেটের পিছনে যে বারকোড থাকবে তা এখানে ম্যানুয়ালি বসিয়ে দিন, কাউন্টারে বা সার্চে স্ক্যান করলেই সরাসরি এই ওষুধটি চলে আসবে।
+        </p>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -480,8 +500,16 @@
           <input type="text" id="form_generic_name" name="generic_name" placeholder="যেমন: Paracetamol, Omeprazole" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">কোম্পানি / প্রস্তুতকারক</label>
-          <input type="text" id="form_manufacturer" name="manufacturer" placeholder="যেমন: Square, Beximco, Incepta" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">কোম্পানি / প্রস্তুতকারক *</label>
+          <select id="form_manufacturer_select" onchange="toggleCustomMfgInput()" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box; background: white;">
+            <option value="">-- কোম্পানি নির্বাচন করুন --</option>
+            {% for mfg in manufacturers %}
+            <option value="{{ mfg }}">{{ mfg }}</option>
+            {% endfor %}
+            <option value="__custom__">➕ নতুন কোম্পানির নাম লিখুন...</option>
+          </select>
+          <input type="text" id="form_manufacturer_custom" placeholder="নতুন কোম্পানির নাম লিখুন..." style="display: none; width: 100%; margin-top: 6px; padding: 7px 10px; border: 1.5px solid #059669; border-radius: 8px; font-size: 0.85rem; box-sizing: border-box;">
+          <input type="hidden" id="form_manufacturer" name="manufacturer">
         </div>
       </div>
 
@@ -500,9 +528,16 @@
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
-        <button type="button" onclick="closeMedModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">বাতিল</button>
-        <button type="submit" style="padding: 8px 20px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">সংরক্ষণ করুন</button>
+      <div style="display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 12px;">
+        <div>
+          <a id="btnModalPrintBarcode" href="#" target="_blank" style="display: none; padding: 8px 14px; background: #ecfdf5; color: #047857; border: 1.5px solid #a7f3d0; border-radius: 8px; font-weight: 700; font-size: 0.85rem; text-decoration: none; align-items: center; gap: 5px;">
+            🏷️ বারকোড স্টিকার প্রিন্ট
+          </a>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" onclick="closeMedModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">বাতিল</button>
+          <button type="submit" style="padding: 8px 20px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">সংরক্ষণ করুন</button>
+        </div>
       </div>
     </form>
   </div>
@@ -627,13 +662,14 @@
     adminMedsCurrentPage = page;
     const q = (document.getElementById("catalogSearchInput")?.value || "").trim();
     const dosage = document.getElementById("catalogDosageFilter")?.value || "all";
+    const mfg = document.getElementById("catalogManufacturerFilter")?.value || "all";
     const tbody = document.getElementById("catalogTableBody");
     if (tbody) {
       tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 25px; color: #64748b;">⏳ অনুসন্ধান করা হচ্ছে...</td></tr>`;
     }
 
     try {
-      const res = await fetch(`/api/admin/pharmacy/medicines/list?page=${page}&q=${encodeURIComponent(q)}&dosage=${encodeURIComponent(dosage)}&per_page=30`);
+      const res = await fetch(`/api/admin/pharmacy/medicines/list?page=${page}&q=${encodeURIComponent(q)}&dosage=${encodeURIComponent(dosage)}&mfg=${encodeURIComponent(mfg)}&per_page=30`);
       const d = await res.json();
       if (!d.success) {
         if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">লোড করতে সমস্যা হয়েছে</td></tr>`;
@@ -662,11 +698,20 @@
 
       let html = "";
       adminMedsCache.forEach(m => {
+        const medSku = m.sku || ('MED-' + String(m.id).padStart(5, '0'));
         html += `
           <tr id="medRow_${m.id}" style="border-bottom: 1px solid #f1f5f9; transition: background 0.3s;">
             <td style="padding: 12px 14px;">
               <strong style="color: #0f172a; font-size: 0.95rem;">${escapeHtml(m.name)}</strong>
               <div style="font-size: 0.78rem; color: #64748b;">${escapeHtml(m.generic_name || '')}</div>
+              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                <span style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 0.74rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #bae6fd;">
+                  🔖 ${escapeHtml(medSku)}
+                </span>
+                <a href="/admin/pharmacy/medicines/${m.id}/labels?qty=10" target="_blank" title="১০টি বারকোড স্টিকার প্রিন্ট করুন" style="color: #047857; text-decoration: none; font-size: 0.74rem; font-weight: 700; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
+                  🖨️ প্রিন্ট
+                </a>
+              </div>
             </td>
             <td style="padding: 12px 14px;">
               <span style="background: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 700;">
@@ -697,9 +742,12 @@
                 <button type="button" onclick="saveQuickMedPrice(${m.id})" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
                   💾 সেভ
                 </button>
-                <button type="button" onclick="openEditMedModal(${m.id})" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
+                <button type="button" onclick="openEditMedModal(${m.id})" title="সম্পাদনা করুন" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
                   ✏️
                 </button>
+                <a href="/admin/pharmacy/medicines/${m.id}/labels?qty=10" target="_blank" title="বারকোড স্টিকার প্রিন্ট করুন" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; text-decoration: none; display: inline-flex; align-items: center;">
+                  🏷️
+                </a>
               </div>
             </td>
           </tr>
@@ -1698,9 +1746,34 @@
     }
   }
 
+  function toggleCustomMfgInput() {
+    const sel = document.getElementById("form_manufacturer_select");
+    const customInp = document.getElementById("form_manufacturer_custom");
+    if (!sel || !customInp) return;
+    if (sel.value === "__custom__") {
+      customInp.style.display = "block";
+      customInp.focus();
+    } else {
+      customInp.style.display = "none";
+    }
+  }
+
+  function generateAutoSku() {
+    const rand = Math.floor(10000 + Math.random() * 90000);
+    const skuInp = document.getElementById("form_sku");
+    if (skuInp) skuInp.value = `MED-${rand}`;
+  }
+
   function openAddMedicineModal() {
     document.getElementById("medForm").reset();
     document.getElementById("med_id").value = "";
+    document.getElementById("form_sku").value = "";
+    document.getElementById("form_manufacturer_select").value = "";
+    document.getElementById("form_manufacturer_custom").style.display = "none";
+    document.getElementById("form_manufacturer_custom").value = "";
+    const printBtn = document.getElementById("btnModalPrintBarcode");
+    if (printBtn) printBtn.style.display = "none";
+
     document.getElementById("medModalTitle").innerText = "নতুন ওষুধ যোগ করুন";
     document.getElementById("medModal").style.display = "flex";
   }
@@ -1714,12 +1787,50 @@
     document.getElementById("form_generic_name").value = med.generic_name || "";
     document.getElementById("form_dosage_form").value = med.dosage_form;
     document.getElementById("form_strength").value = med.strength || "";
-    document.getElementById("form_manufacturer").value = med.manufacturer || "";
+
+    // Set SKU
+    const medSku = med.sku || ('MED-' + String(med.id).padStart(5, '0'));
+    document.getElementById("form_sku").value = medSku;
+
+    // Set Manufacturer
+    const mfgVal = (med.manufacturer || "").trim();
+    const sel = document.getElementById("form_manufacturer_select");
+    const customInp = document.getElementById("form_manufacturer_custom");
+    let matched = false;
+    if (sel) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value && sel.options[i].value.toLowerCase() === mfgVal.toLowerCase()) {
+          sel.selectedIndex = i;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && mfgVal) {
+        sel.value = "__custom__";
+        if (customInp) {
+          customInp.style.display = "block";
+          customInp.value = mfgVal;
+        }
+      } else {
+        if (customInp) {
+          customInp.style.display = "none";
+          customInp.value = "";
+        }
+      }
+    }
+
     document.getElementById("form_unit_price").value = med.unit_price;
     document.getElementById("form_strip_price").value = med.strip_price || 0;
     document.getElementById("form_stock_qty").value = med.stock_qty || 999;
 
-    document.getElementById("medModalTitle").innerText = "ওষুধের তথ্য ও মূল্য পরিবর্তন";
+    // Show Print Barcode Button in Modal
+    const printBtn = document.getElementById("btnModalPrintBarcode");
+    if (printBtn) {
+      printBtn.href = `/admin/pharmacy/medicines/${med.id}/labels?qty=10`;
+      printBtn.style.display = "inline-flex";
+    }
+
+    document.getElementById("medModalTitle").innerText = "ওষুধের তথ্য, বারকোড ও মূল্য পরিবর্তন";
     document.getElementById("medModal").style.display = "flex";
   }
 
@@ -1730,8 +1841,20 @@
   async function submitMedForm(event) {
     event.preventDefault();
     const f = document.getElementById("medForm");
+
+    // Resolve manufacturer from dropdown or custom input
+    const selMfg = document.getElementById("form_manufacturer_select")?.value || "";
+    let finalMfg = selMfg;
+    if (selMfg === "__custom__") {
+      finalMfg = (document.getElementById("form_manufacturer_custom")?.value || "").trim();
+    }
+    const mfgHidden = document.getElementById("form_manufacturer");
+    if (mfgHidden) mfgHidden.value = finalMfg;
+
     const formData = new FormData(f);
     const data = Object.fromEntries(formData.entries());
+    data.manufacturer = finalMfg;
+    data.sku = (document.getElementById("form_sku")?.value || "").trim();
 
     try {
       const res = await fetch("/api/admin/pharmacy/medicines/save", {

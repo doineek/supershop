@@ -352,6 +352,7 @@ def init_db():
         dosage_form TEXT NOT NULL,
         strength TEXT NOT NULL DEFAULT '',
         manufacturer TEXT NOT NULL DEFAULT '',
+        sku TEXT NOT NULL DEFAULT '',
         unit_price REAL NOT NULL DEFAULT 0.0,
         strip_price REAL NOT NULL DEFAULT 0.0,
         strip_size INTEGER NOT NULL DEFAULT 10,
@@ -626,6 +627,13 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_orders_num ON pharmacy_orders(order_number)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_name ON pharmacy_medicines(name)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_dosage ON pharmacy_medicines(dosage_form)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_sku ON pharmacy_medicines(sku)")
+
+        cur.execute("PRAGMA table_info(pharmacy_medicines)")
+        med_col_names = [r["name"] for r in cur.fetchall()]
+        if "sku" not in med_col_names:
+            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN sku TEXT DEFAULT ''")
+            cur.execute("UPDATE pharmacy_medicines SET sku = printf('MED-%05d', id) WHERE sku IS NULL OR sku = ''")
         
         cur.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines")
         if cur.fetchone()["c"] == 0:

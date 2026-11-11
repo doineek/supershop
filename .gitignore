@@ -11,7 +11,7 @@ __pycache__/
 *.jks
 *.keystore
 key.properties
-static/apk/doineek_*.apk
-static/apk/supershop_v*.apk
+static/apk/*.apk
 static/uploads/prescriptions/
+scratch/
 

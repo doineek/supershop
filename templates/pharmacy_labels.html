@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>বারকোড লেবেল - {{ med.name }} ({{ sku }})</title>
+<style>
+  :root {
+    --tag-ink: #111827;
+    --tag-line: #cbd5e1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #f1f5f9;
+    font-family: 'Noto Sans Bengali', Arial, Helvetica, sans-serif;
+    color: var(--tag-ink);
+  }
+
+  .toolbar {
+    padding: 14px 20px;
+    background: #ffffff;
+    border-bottom: 1.5px solid var(--tag-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .toolbar h1 {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+  }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .toolbar button, .toolbar a {
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid #0f172a;
+    background: #0f172a;
+    color: #ffffff;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .toolbar button.btn-print {
+    background: #059669;
+    border-color: #059669;
+  }
+  .toolbar a.secondary {
+    background: #ffffff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+  }
+  .qty-input-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .qty-input-group input {
+    width: 65px;
+    padding: 6px 8px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .printer-note {
+    padding: 10px 20px;
+    margin: 0;
+    font-size: 12px;
+    color: #78350f;
+    background: #fef3c7;
+    border-bottom: 1px solid #fde68a;
+    font-weight: 600;
+  }
+
+  .sheet {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 20px;
+    justify-content: center;
+  }
+
+  /* Exactly 1.5 inch wide by 1 inch tall thermal tag */
+  .tag {
+    width: 1.5in;
+    height: 1in;
+    background: #ffffff;
+    border: 1px dashed var(--tag-line);
+    padding: 2px 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    overflow: hidden;
+    box-sizing: border-box;
+    position: relative;
+    page-break-inside: avoid;
+  }
+
+  .tag .brand {
+    font-size: 6.2px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    line-height: 1.1;
+    text-align: center;
+    color: #0f172a;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tag .pname {
+    font-size: 6.8px;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.15;
+    width: 100%;
+    margin-top: 1px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    max-height: 16px;
+    color: #000;
+  }
+
+  .tag .sub-desc {
+    font-size: 5.2px;
+    color: #334155;
+    text-align: center;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+  }
+
+  /* Barcode svg fills box horizontally */
+  .tag .barcode-block {
+    width: 95%;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 1px 0;
+  }
+  .tag .barcode-block svg {
+    width: 100%;
+    height: 100%;
+    max-height: 20px;
+    display: block;
+  }
+
+  .tag .code-row {
+    font-size: 5.2px;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: 800;
+    color: #0f172a;
+    display: flex;
+    justify-content: space-between;
+    width: 95%;
+    line-height: 1;
+    letter-spacing: .03em;
+  }
+
+  .tag .price-row {
+    font-size: 6px;
+    font-weight: 800;
+    color: #000;
+    text-align: center;
+    width: 100%;
+    line-height: 1.1;
+    border-top: 0.5px solid #e2e8f0;
+    padding-top: 1px;
+    margin-top: 1px;
+  }
+
+  @media print {
+    body {
+      background: #fff;
+    }
+    .toolbar, .printer-note {
+      display: none !important;
+    }
+    .sheet {
+      padding: 0 !important;
+      gap: 0 !important;
+      display: block !important;
+    }
+    .tag {
+      border: none !important;
+      width: 1.5in !important;
+      height: 1in !important;
+      margin: 0 !important;
+      padding: 2px 4px !important;
+      page-break-after: always;
+      page-break-inside: avoid;
+    }
+    .tag:last-child {
+      page-break-after: auto;
+    }
+    @page {
+      size: 1.5in 1in;
+      margin: 0;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="toolbar-left">
+    <h1>🏷️ {{ med.name }} {% if med.strength %}({{ med.strength }}){% endif %}</h1>
+    <span style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">
+      SKU: {{ sku }}
+    </span>
+  </div>
+
+  <div class="toolbar-actions">
+    <div class="qty-input-group">
+      <label for="labelQtyInput">স্টিকার সংখ্যা:</label>
+      <input type="number" id="labelQtyInput" min="1" max="500" value="{{ qty }}">
+      <button type="button" onclick="changeQuantity()" style="background: #475569; border-color: #475569; padding: 6px 10px;">আপডেট</button>
+    </div>
+
+    <button type="button" class="btn-print" onclick="window.print()">🖨️ প্রিন্ট করুন ({{ qty }} টি)</button>
+    <a class="secondary" href="/admin/pharmacy-orders#medicines">← ফার্মেসী প্যানেলে ফিরুন</a>
+  </div>
+</div>
+
+<p class="printer-note">
+  💡 <strong>থার্মাল প্রিন্টার সেটিংস টিপ:</strong> ব্রাউজারের প্রিন্ট উইন্ডোতে <em>More settings</em> এ গিয়ে <strong>Paper size → 1.5 x 1 in (বা 38mm x 25mm)</strong>, <strong>Margins → None</strong> এবং <strong>Headers and Footers → OFF</strong> করে প্রিন্ট করুন।
+</p>
+
+<div class="sheet">
+  {% for i in range(qty) %}
+  <div class="tag">
+    <div class="brand">{{ shop.shop_name if (shop is defined and shop.shop_name) else 'সুপারশপ ফার্মেসী' }}</div>
+    <div class="pname">{{ med.name }}</div>
+    <div class="sub-desc">{{ med.dosage_form or '' }}{% if med.strength %} • {{ med.strength }}{% endif %}{% if med.manufacturer %} | {{ med.manufacturer }}{% endif %}</div>
+    
+    <div class="barcode-block">
+      {{ barcode_svg|safe }}
+    </div>
+
+    <div class="code-row">
+      <span>{{ sku }}</span>
+      <span>Rx</span>
+    </div>
+
+    <div class="price-row">
+      MRP: ৳{{ "%.2f"|format(med.unit_price or 0.0) }}
+      {% if med.strip_price and med.strip_price > 0 %}
+        | পাতা: ৳{{ "%.2f"|format(med.strip_price) }}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+  function changeQuantity() {
+    const val = parseInt(document.getElementById("labelQtyInput").value) || 10;
+    const url = new URL(window.location.href);
+    url.searchParams.set("qty", Math.max(1, Math.min(val, 500)));
+    url.searchParams.delete("autoprint");
+    window.location.href = url.toString();
+  }
+
+  {% if autoprint %}
+  window.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => {
+      window.print();
+    }, 400);
+  });
+  {% endif %}
+</script>
+
+</body>
+</html>

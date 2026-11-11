@@ -3511,16 +3511,19 @@ def pos_lookup():
 
     # 3. If not in regular products, check if it's a pharmacy medicine
     if not product:
-        med_id = None
-        if code.lower().startswith("med_") or code.lower().startswith("med-"):
+        # Match by exact Barcode / SKU first! (e.g. Scanned Barcode from packet)
+        med_match = conn.execute(
+            "SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND (sku = ? OR UPPER(sku) = UPPER(?))",
+            (code, code)
+        ).fetchone()
+
+        if not med_match and (code.lower().startswith("med_") or code.lower().startswith("med-")):
             try:
                 med_id = int(re.sub(r"\D", "", code))
+                med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ? AND is_active = 1", (med_id,)).fetchone()
             except Exception:
-                med_id = None
+                med_match = None
 
-        med_match = None
-        if med_id:
-            med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ? AND is_active = 1", (med_id,)).fetchone()
         if not med_match:
             med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND (LOWER(name) = LOWER(?) OR LOWER(name) LIKE ?) ORDER BY name ASC LIMIT 1", (code, f"{code}%")).fetchone()
 
@@ -3531,7 +3534,7 @@ def pos_lookup():
                 "medicine_id": med_match["id"],
                 "is_medicine": True,
                 "name": f"💊 {med_match['name']}" + (f" ({med_match['strength']})" if med_match["strength"] else f" ({med_match['dosage_form']})"),
-                "sku": f"MED-{med_match['id']}",
+                "sku": med_match["sku"] or f"MED-{med_match['id']:05d}",
                 "price": float(med_match["unit_price"] or 0),
                 "mrp": float(med_match["unit_price"] or 0),
                 "vat_pct": 0,
@@ -3633,13 +3636,13 @@ def api_pos_search():
             "offer_title": r["offer_title"] or ""
         })
 
-    # 2. Search pharmacy medicines (by Name or Generic)
+    # 2. Search pharmacy medicines (by Name or Generic or Barcode / SKU)
     med_rows = conn.execute("""
-        SELECT id, name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, stock_qty
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, stock_qty
         FROM pharmacy_medicines
-        WHERE is_active = 1 AND (LOWER(name) LIKE ? OR LOWER(generic_name) LIKE ?)
+        WHERE is_active = 1 AND (LOWER(name) LIKE ? OR LOWER(generic_name) LIKE ? OR LOWER(sku) LIKE ?)
         ORDER BY name ASC LIMIT 10
-    """, (f"%{q.lower()}%", f"%{q.lower()}%")).fetchall()
+    """, (f"%{q.lower()}%", f"%{q.lower()}%", f"%{q.lower()}%")).fetchall()
     for r in med_rows:
         results.append({
             "type": "medicine",
@@ -3648,7 +3651,7 @@ def api_pos_search():
             "is_medicine": True,
             "name": f"💊 {r['name']}" + (f" ({r['strength']})" if r["strength"] else f" ({r['dosage_form']})"),
             "raw_name": r["name"],
-            "sku": f"MED-{r['id']}",
+            "sku": r["sku"] or f"MED-{r['id']:05d}",
             "price": float(r["unit_price"] or 0),
             "mrp": float(r["unit_price"] or 0),
             "vat_pct": 0,
@@ -11054,7 +11057,7 @@ def api_pharmacy_medicines():
     dosage = (request.args.get("dosage") or request.args.get("cat") or "").strip()
     
     conn = get_connection()
-    query = "SELECT id, name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_prescription_required FROM pharmacy_medicines WHERE is_active = 1"
+    query = "SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_prescription_required FROM pharmacy_medicines WHERE is_active = 1"
     params = []
 
     if dosage and dosage != "all":
@@ -11062,9 +11065,9 @@ def api_pharmacy_medicines():
         params.append(dosage)
 
     if q:
-        query += " AND (name LIKE ? OR generic_name LIKE ? OR strength LIKE ?)"
+        query += " AND (name LIKE ? OR generic_name LIKE ? OR strength LIKE ? OR sku LIKE ?)"
         q_wild = f"%{q}%"
-        params.extend([q_wild, q_wild, q_wild])
+        params.extend([q_wild, q_wild, q_wild, q_wild])
 
     query += " ORDER BY name ASC LIMIT 50"
     rows = conn.execute(query, params).fetchall()
@@ -11412,6 +11415,10 @@ def admin_pharmacy_orders():
     med_count_row = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()
     total_medicines = med_count_row["c"] if med_count_row else 0
 
+    # Distinct manufacturers for company dropdown
+    mfg_rows = conn.execute("SELECT DISTINCT manufacturer FROM pharmacy_medicines WHERE manufacturer != '' AND manufacturer IS NOT NULL ORDER BY manufacturer ASC").fetchall()
+    manufacturers = [r["manufacturer"] for r in mfg_rows]
+
     settings = get_all_settings(conn)
     conn.close()
 
@@ -11420,6 +11427,7 @@ def admin_pharmacy_orders():
         orders=orders,
         riders=riders,
         total_medicines=total_medicines,
+        manufacturers=manufacturers,
         settings=settings,
         active_status=status_filter,
         search_query=search_q
@@ -11457,6 +11465,7 @@ def api_admin_pharmacy_medicines_list():
     """Fast server-side paginated & searchable medicine catalog for admin"""
     q = (request.args.get("q") or "").strip()
     dosage = (request.args.get("dosage") or "").strip()
+    mfg = (request.args.get("mfg") or "").strip()
     page = max(1, int(request.args.get("page") or 1))
     per_page = min(100, max(10, int(request.args.get("per_page") or 30)))
     offset = (page - 1) * per_page
@@ -11469,17 +11478,21 @@ def api_admin_pharmacy_medicines_list():
         where_clauses.append("dosage_form = ?")
         params.append(dosage)
 
+    if mfg and mfg != "all":
+        where_clauses.append("manufacturer = ?")
+        params.append(mfg)
+
     if q:
-        where_clauses.append("(name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ?)")
+        where_clauses.append("(name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ? OR sku LIKE ?)")
         q_wild = f"%{q}%"
-        params.extend([q_wild, q_wild, q_wild])
+        params.extend([q_wild, q_wild, q_wild, q_wild])
 
     where_sql = " AND ".join(where_clauses)
     count_sql = f"SELECT COUNT(*) AS total FROM pharmacy_medicines WHERE {where_sql}"
     total = conn.execute(count_sql, params).fetchone()["total"]
 
     data_sql = f"""
-        SELECT id, name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_prescription_required
+        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_prescription_required
         FROM pharmacy_medicines
         WHERE {where_sql}
         ORDER BY name ASC
@@ -11717,6 +11730,7 @@ def api_admin_pharmacy_save_medicine():
     """
     Adds or updates a medicine in the database.
     Allows real-time price updates (Rule 5: 'খেয়াল রাখতে হবে যেন নতুন দাম ও প্রোডাক্ট আপডেট থাকে')
+    and custom barcode / SKU configuration.
     """
     data = request.get_json(silent=True) or request.form or {}
     med_id = data.get("id")
@@ -11725,6 +11739,7 @@ def api_admin_pharmacy_save_medicine():
     dosage_form = (data.get("dosage_form") or "ট্যাবলেট").strip()
     strength = (data.get("strength") or "").strip()
     manufacturer = (data.get("manufacturer") or "").strip()
+    sku = (data.get("sku") or "").strip()
     description = (data.get("description") or "").strip()
     
     try:
@@ -11757,27 +11772,85 @@ def api_admin_pharmacy_save_medicine():
     cur = conn.cursor()
 
     if med_id:
+        if not sku:
+            sku = f"MED-{int(med_id):05d}"
+        
+        # Check SKU uniqueness
+        cur.execute("SELECT id, name FROM pharmacy_medicines WHERE sku = ? AND id != ?", (sku, med_id))
+        dup = cur.fetchone()
+        if dup:
+            conn.close()
+            return jsonify({"success": False, "message": f"বারকোড/SKU '{sku}' ইতোমধ্যে '{dup['name']}' ঔষধে ব্যবহৃত হচ্ছে।"}), 400
+
         cur.execute("""
             UPDATE pharmacy_medicines SET
                 name = ?, generic_name = ?, dosage_form = ?, strength = ?,
-                manufacturer = ?, unit_price = ?, strip_price = ?, strip_size = ?,
+                manufacturer = ?, sku = ?, unit_price = ?, strip_price = ?, strip_size = ?,
                 stock_qty = ?, is_prescription_required = ?, description = ?, updated_at = ?
             WHERE id = ?
-        """, (name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
-        msg = f"'{name}' এর তথ্য ও মূল্য সফলভাবে আপডেট করা হয়েছে।"
+        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
+        msg = f"'{name}' এর তথ্য, বারকোড/SKU ({sku}) ও মূল্য সফলভাবে আপডেট করা হয়েছে।"
     else:
+        if not sku:
+            cur.execute("SELECT MAX(id) FROM pharmacy_medicines")
+            row = cur.fetchone()
+            next_id = (row[0] or 0) + 1 if row else 1
+            sku = f"MED-{next_id:05d}"
+        else:
+            cur.execute("SELECT id, name FROM pharmacy_medicines WHERE sku = ?", (sku,))
+            dup = cur.fetchone()
+            if dup:
+                conn.close()
+                return jsonify({"success": False, "message": f"বারকোড/SKU '{sku}' ইতোমধ্যে '{dup['name']}' ঔষধে ব্যবহৃত হচ্ছে।"}), 400
+
         cur.execute("""
             INSERT INTO pharmacy_medicines (
-                name, generic_name, dosage_form, strength, manufacturer,
+                name, generic_name, dosage_form, strength, manufacturer, sku,
                 unit_price, strip_price, strip_size, stock_qty, is_prescription_required,
                 image_url, description, is_active, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
-        """, (name, generic_name, dosage_form, strength, manufacturer, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
-        msg = f"নতুন ঔষধ '{name}' সফলভাবে ক্যাটালগে যুক্ত করা হয়েছে।"
+        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
+        med_id = cur.lastrowid
+        msg = f"নতুন ঔষধ '{name}' (বারকোড/SKU: {sku}) সফলভাবে ক্যাটালগে যুক্ত করা হয়েছে।"
 
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": msg})
+    return jsonify({"success": True, "message": msg, "sku": sku, "med_id": med_id})
+
+
+@app.route("/admin/pharmacy/medicines/<int:med_id>/labels")
+@login_required
+def admin_pharmacy_medicine_labels(med_id):
+    """
+    Renders 1.5in x 1in thermal barcode sticker labels for pharmacy medicines.
+    Uses Code128 scannable SVG barcode of the medicine's SKU.
+    """
+    conn = get_connection()
+    med = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ?", (med_id,)).fetchone()
+    conn.close()
+
+    if not med:
+        flash("ঔষধ পাওয়া যায়নি।", "error")
+        return redirect(url_for("admin_pharmacy_orders"))
+
+    sku = (med["sku"] or f"MED-{med['id']:05d}").strip()
+    try:
+        qty = int(request.args.get("qty", 10))
+    except Exception:
+        qty = 10
+    qty = max(1, min(qty, 500))
+
+    autoprint = request.args.get("autoprint", "0") == "1"
+    barcode_svg = generate_barcode_svg(sku)
+
+    return render_template(
+        "pharmacy_labels.html",
+        med=med,
+        sku=sku,
+        barcode_svg=barcode_svg,
+        qty=qty,
+        autoprint=autoprint
+    )
 
 
 @app.route("/api/admin/pharmacy/orders/<int:order_id>/update-prescription", methods=["POST"])
