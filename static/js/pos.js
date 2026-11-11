@@ -64,7 +64,7 @@ function switchPosCatalog(tab) {
   if (medList) medList.style.display = "none";
 
   if (tab === "packages") {
-    if (pkgList) pkgList.style.display = "grid";
+    if (pkgList) pkgList.style.display = "flex";
     if (tabPkgBtn) { tabPkgBtn.style.background = "#ea580c"; tabPkgBtn.style.color = "#ffffff"; tabPkgBtn.style.borderColor = "#ea580c"; }
   } else if (tab === "medicines") {
     if (medList) medList.style.display = "flex";
@@ -73,7 +73,7 @@ function switchPosCatalog(tab) {
       loadPosMedicines("");
     }
   } else {
-    if (prodList) prodList.style.display = "grid";
+    if (prodList) prodList.style.display = "flex";
     if (tabProdBtn) { tabProdBtn.style.background = "#0284c7"; tabProdBtn.style.color = "#ffffff"; tabProdBtn.style.borderColor = "#0284c7"; }
   }
 }
@@ -82,7 +82,7 @@ window.switchPosCatalog = switchPosCatalog;
 async function loadPosMedicines(q = "") {
   const grid = document.getElementById("posMedGrid");
   if (!grid) return;
-  grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:15px; color:#64748b; font-size:12px;">ঔষধ লোড হচ্ছে...</div>`;
+  grid.innerHTML = `<div style="text-align:center; padding:15px; color:#64748b; font-size:12px;">Loading medicines...</div>`;
   try {
     const res = await fetch("/api/pharmacy/medicines?q=" + encodeURIComponent(q));
     const data = await res.json();
@@ -90,7 +90,7 @@ async function loadPosMedicines(q = "") {
     posMedsLoaded = true;
 
     if (list.length === 0) {
-      grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:20px; color:#94a3b8; font-size:12px;">কোনো ওষুধ পাওয়া যায়নি।</div>`;
+      grid.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8; font-size:12px;">No medicines found.</div>`;
       return;
     }
 
@@ -98,27 +98,45 @@ async function loadPosMedicines(q = "") {
     list.forEach(m => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "pos-product pos-medicine-btn";
-      btn.style.border = "1.5px solid #a7f3d0";
-      btn.style.background = "#ffffff";
-      btn.style.textAlign = "left";
-      btn.style.padding = "8px";
-      btn.style.borderRadius = "8px";
-      btn.style.cursor = "pointer";
+      btn.className = "pos-product pos-medicine-btn pos-row-item";
+      const medSku = m.sku || ('MED-' + m.id);
+
       btn.innerHTML = `
-        <span style="background:#059669; color:white; font-size:9px; font-weight:bold; padding:2px 5px; border-radius:4px; display:inline-block; margin-bottom:3px;">
-          💊 ${m.dosage_form || 'ট্যাবলেট'}
-        </span>
-        <div style="font-weight:700; font-size:12px; color:#0f172a; line-height:1.2;">${m.name}</div>
-        <div style="font-size:10px; color:#64748b;">${m.strength || m.generic_name || ''}</div>
-        <div style="color:#059669; font-weight:800; font-size:13px; margin-top:3px;">TK ${(parseFloat(m.unit_price) || 0).toFixed(2)}</div>
-        <div style="font-size:10px; color:#64748b;">Stock: ${m.stock_qty || 999}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="background:#059669; color:white; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">
+              💊 ${m.dosage_form || 'Medicine'}
+            </span>
+            <strong style="color:#0f172a; font-size:13.5px;">${m.name}</strong>
+            ${m.strength ? `<span style="font-size:12px; color:#475569; font-weight:600;">(${m.strength})</span>` : ''}
+            <span style="font-family:monospace; font-weight:700; font-size:11px; background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; border:1px solid #bae6fd;">
+              SKU: ${medSku}
+            </span>
+          </div>
+          <div style="font-size:11.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            ${m.generic_name ? `<span style="color:#334155; font-weight:600;">${m.generic_name}</span>` : ''}
+            ${m.manufacturer ? `<span>• ${m.manufacturer}</span>` : ''}
+            <span>• Stock: <strong>${m.stock_qty || 999}</strong></span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; flex-shrink:0;">
+          <div style="text-align:right;">
+            <div style="font-size:14.5px; font-weight:800; color:#059669; font-family:var(--font-mono);">
+              TK ${(parseFloat(m.unit_price) || 0).toFixed(2)}
+            </div>
+            ${m.strip_price && parseFloat(m.strip_price) > 0 ? `<div style="font-size:10.5px; color:#64748b;">Strip: TK ${(parseFloat(m.strip_price)).toFixed(2)}</div>` : ''}
+          </div>
+          <span style="background:#059669; color:white; padding:5px 12px; border-radius:6px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center;">
+            + Add
+          </span>
+        </div>
       `;
       btn.addEventListener("click", () => addToCart({
         id: "med_" + m.id,
         medicine_id: m.id,
-        name: `💊 ${m.name}` + (m.strength ? ` (${m.strength})` : ` (${m.dosage_form || 'ঔষধ'})`),
-        sku: `MED-${m.id}`,
+        name: `💊 ${m.name}` + (m.strength ? ` (${m.strength})` : ` (${m.dosage_form || 'Medicine'})`),
+        sku: medSku,
         price: parseFloat(m.unit_price) || 0,
         mrp: parseFloat(m.unit_price) || 0,
         vat_pct: 0,
@@ -129,7 +147,7 @@ async function loadPosMedicines(q = "") {
       grid.appendChild(btn);
     });
   } catch (err) {
-    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:15px; color:#ef4444; font-size:12px;">সার্ভার সংযোগ সমস্যা।</div>`;
+    grid.innerHTML = `<div style="text-align:center; padding:15px; color:#ef4444; font-size:12px;">Server connection issue.</div>`;
   }
 }
 window.loadPosMedicines = loadPosMedicines;

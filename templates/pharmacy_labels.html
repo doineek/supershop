@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>বারকোড লেবেল - {{ med.name }} ({{ sku }})</title>
+<title>Barcode Labels - {{ med.name }} ({{ sku }})</title>
 <style>
   :root {
     --tag-ink: #111827;
@@ -242,24 +242,24 @@
 
   <div class="toolbar-actions">
     <div class="qty-input-group">
-      <label for="labelQtyInput">স্টিকার সংখ্যা:</label>
+      <label for="labelQtyInput">Stickers Qty:</label>
       <input type="number" id="labelQtyInput" min="1" max="500" value="{{ qty }}">
-      <button type="button" onclick="changeQuantity()" style="background: #475569; border-color: #475569; padding: 6px 10px;">আপডেট</button>
+      <button type="button" onclick="changeQuantity()" style="background: #475569; border-color: #475569; padding: 6px 10px;">Update</button>
     </div>
 
-    <button type="button" class="btn-print" onclick="window.print()">🖨️ প্রিন্ট করুন ({{ qty }} টি)</button>
-    <a class="secondary" href="/admin/pharmacy-orders#medicines">← ফার্মেসী প্যানেলে ফিরুন</a>
+    <button type="button" class="btn-print" onclick="window.print()">🖨️ Print Labels ({{ qty }})</button>
+    <a class="secondary" href="/admin/pharmacy-orders#medicines">← Back to Pharmacy Panel</a>
   </div>
 </div>
 
 <p class="printer-note">
-  💡 <strong>থার্মাল প্রিন্টার সেটিংস টিপ:</strong> ব্রাউজারের প্রিন্ট উইন্ডোতে <em>More settings</em> এ গিয়ে <strong>Paper size → 1.5 x 1 in (বা 38mm x 25mm)</strong>, <strong>Margins → None</strong> এবং <strong>Headers and Footers → OFF</strong> করে প্রিন্ট করুন।
+  💡 <strong>Thermal Printer Settings:</strong> In the print dialog, select <strong>Paper size → 1.5 x 1 in (or 38mm x 25mm)</strong>, <strong>Margins → None</strong>, and <strong>Headers and Footers → OFF</strong>.
 </p>
 
 <div class="sheet">
   {% for i in range(qty) %}
   <div class="tag">
-    <div class="brand">{{ shop.shop_name if (shop is defined and shop.shop_name) else 'সুপারশপ ফার্মেসী' }}</div>
+    <div class="brand">{{ shop.shop_name if (shop is defined and shop.shop_name) else 'SUPER SHOP PHARMACY' }}</div>
     <div class="pname">{{ med.name }}</div>
     <div class="sub-desc">{{ med.dosage_form or '' }}{% if med.strength %} • {{ med.strength }}{% endif %}{% if med.manufacturer %} | {{ med.manufacturer }}{% endif %}</div>
     
@@ -273,9 +273,9 @@
     </div>
 
     <div class="price-row">
-      MRP: ৳{{ "%.2f"|format(med.unit_price or 0.0) }}
+      MRP: TK {{ "%.2f"|format(med.unit_price or 0.0) }}
       {% if med.strip_price and med.strip_price > 0 %}
-        | পাতা: ৳{{ "%.2f"|format(med.strip_price) }}
+        | Strip: TK {{ "%.2f"|format(med.strip_price) }}
       {% endif %}
     </div>
   </div>

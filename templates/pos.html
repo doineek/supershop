@@ -36,6 +36,47 @@
       </table>
     </div>
 
+    <style>
+      .pos-row-item {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        padding: 9px 14px !important;
+        background: #ffffff !important;
+        border: 1.5px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+        cursor: pointer !important;
+        text-align: left !important;
+        transition: all 0.15s ease !important;
+        box-sizing: border-box !important;
+        min-height: unset !important;
+        margin-bottom: 0 !important;
+      }
+      .pos-row-item:hover {
+        border-color: #0284c7 !important;
+        background: #f8fafc !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.06) !important;
+      }
+      .pos-row-item.pos-package-btn {
+        border-color: #fed7aa !important;
+        background: #fffaf5 !important;
+      }
+      .pos-row-item.pos-package-btn:hover {
+        border-color: #ea580c !important;
+        background: #fff7ed !important;
+      }
+      .pos-row-item.pos-medicine-btn {
+        border-color: #a7f3d0 !important;
+        background: #ffffff !important;
+      }
+      .pos-row-item.pos-medicine-btn:hover {
+        border-color: #059669 !important;
+        background: #f0fdf4 !important;
+      }
+    </style>
+
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
         <button type="button" id="posTabProducts" onclick="switchPosCatalog('products')" style="padding:6px 14px; border-radius:6px; border:1px solid #0284c7; background:#0284c7; color:#fff; font-weight:700; font-size:13px; cursor:pointer;">
@@ -45,63 +86,109 @@
           🎁 Combo Packages ({{ packages|length }})
         </button>
         <button type="button" id="posTabMedicines" onclick="switchPosCatalog('medicines')" style="padding:6px 14px; border-radius:6px; border:1px solid #059669; background:#ecfdf5; color:#047857; font-weight:700; font-size:13px; cursor:pointer;">
-          💊 Pharmacy / ঔষধ ({{ total_medicines }})
+          💊 Pharmacy / Medicines ({{ total_medicines }})
         </button>
       </div>
     </div>
 
-    <!-- Regular Products Grid -->
-    <div class="pos-product-list" id="productList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; max-height:340px; overflow-y:auto;">
+    <!-- Regular Products List (Row View) -->
+    <div class="pos-product-list" id="productList" style="display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto; padding-right:4px;">
       {% for p in products %}
-      <button class="pos-product"
+      <button class="pos-product pos-row-item"
               data-id="{{ p.id }}" data-name="{{ p.name }}" data-sku="{{ p.sku }}"
               data-price="{{ p.sell_price }}" data-mrp="{{ p.mrp }}" data-vat="{{ p.vat_pct }}"
               data-stock="{{ p.stock_qty }}" data-search="{{ (p.name ~ ' ' ~ p.sku)|lower }}"
               data-offer-type="{{ p.offer_type }}" data-offer-value="{{ p.offer_value }}" data-offer-title="{{ p.offer_title }}">
-        {% set off_badge = p.offer_title or (p.offer_value ~ ' OFF' if p.offer_value else '') %}
-        {% if off_badge %}
-        <span style="background: #2563eb; color: white; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">
-          🏷️ {{ off_badge }}
-        </span>
-        {% endif %}
-        <div class="pname" style="font-weight:600; font-size:13px;">{{ p.name }}</div>
-        <div class="pprice" style="color:var(--green); font-weight:700;">TK {{ "%.2f"|format(p.sell_price) }}</div>
-        <div class="pstock" style="font-size:11px; color:#666;">Stock: {{ p.stock_qty }}</div>
+        
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <strong style="color:#0f172a; font-size:13.5px;">{{ p.name }}</strong>
+            {% set off_badge = p.offer_title or (p.offer_value ~ ' OFF' if p.offer_value else '') %}
+            {% if off_badge %}
+            <span style="background:#2563eb; color:white; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">
+              🏷️ {{ off_badge }}
+            </span>
+            {% endif %}
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; font-size:11.5px; color:#64748b; margin-top:3px; flex-wrap:wrap;">
+            <span style="font-family:monospace; font-weight:700; background:#f1f5f9; padding:1px 6px; border-radius:4px; border:1px solid #cbd5e1; color:#334155;">
+              SKU: {{ p.sku }}
+            </span>
+            <span>Stock: <strong style="color:{{ '#16a34a' if p.stock_qty > 5 else '#dc2626' }};">{{ p.stock_qty }}</strong></span>
+            {% if p.vat_pct %}<span style="color:#854d0e;">VAT: {{ p.vat_pct }}%</span>{% endif %}
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; flex-shrink:0;">
+          <div style="text-align:right;">
+            <div style="font-size:14.5px; font-weight:800; color:#059669; font-family:var(--font-mono);">
+              TK {{ "%.2f"|format(p.sell_price) }}
+            </div>
+            {% if p.mrp and p.mrp > p.sell_price %}
+            <div style="font-size:11px; text-decoration:line-through; color:#94a3b8;">
+              TK {{ "%.2f"|format(p.mrp) }}
+            </div>
+            {% endif %}
+          </div>
+          <span style="background:#0284c7; color:white; padding:5px 12px; border-radius:6px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center;">
+            + Add
+          </span>
+        </div>
       </button>
       {% endfor %}
     </div>
 
-    <!-- Combo Packages Grid -->
-    <div class="pos-package-list" id="packageList" style="display:none; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; max-height:340px; overflow-y:auto;">
+    <!-- Combo Packages List (Row View) -->
+    <div class="pos-package-list" id="packageList" style="display:none; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto; padding-right:4px;">
       {% for pkg in packages %}
-      <button class="pos-product pos-package-btn"
+      <button class="pos-product pos-package-btn pos-row-item"
               data-id="pkg_{{ pkg.id }}" data-pkg-id="{{ pkg.id }}" data-is-pkg="true" data-name="📦 {{ pkg.name }}" data-sku="COMBO"
               data-price="{{ pkg.package_price }}" data-mrp="{{ pkg.package_price }}" data-vat="0"
-              data-stock="{{ pkg.combo_stock }}" data-search="{{ (pkg.name ~ ' combo package bundle')|lower }}"
-              style="border:1.5px solid #fed7aa; background:linear-gradient(180deg, #fffaf5 0%, #ffffff 100%); text-align:left; padding:10px; border-radius:8px; cursor:pointer; position:relative;">
-        <span style="background: #ea580c; color: white; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">
-          🎁 COMBO DEAL
-        </span>
-        <div class="pname" style="font-weight:700; font-size:13px; color:#9a3412;">{{ pkg.name }}</div>
-        <div style="font-size:11px; color:#64748b; margin:3px 0; line-height:1.3;">
-          {% for item in pkg.included_items %}
-            • {{ item.product_name }} (×{{ item.quantity }})<br>
-          {% endfor %}
+              data-stock="{{ pkg.combo_stock }}" data-search="{{ (pkg.name ~ ' combo package bundle')|lower }}">
+        
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="background:#ea580c; color:white; font-size:10px; font-weight:800; padding:2px 6px; border-radius:4px;">
+              🎁 COMBO DEAL
+            </span>
+            <strong style="color:#9a3412; font-size:13.5px;">{{ pkg.name }}</strong>
+          </div>
+          <div style="font-size:11.5px; color:#475569; margin-top:4px; display:flex; flex-wrap:wrap; gap:4px;">
+            <span style="color:#64748b;">Included:</span>
+            {% for item in pkg.included_items %}
+              <span style="background:#ffedd5; border:1px solid #fed7aa; padding:1px 6px; border-radius:4px; font-size:11px; color:#7c2d12;">
+                {{ item.product_name }} (×{{ item.quantity }})
+              </span>
+            {% endfor %}
+          </div>
+          <div style="font-size:11px; color:#64748b; margin-top:3px;">
+            Available: <strong style="color:#ea580c;">{{ pkg.combo_stock }} bundles</strong>
+          </div>
         </div>
-        <div class="pprice" style="color:#16a34a; font-weight:800; font-size:14px; margin-top:4px;">TK {{ "%.2f"|format(pkg.package_price) }}</div>
-        <div class="pstock" style="font-size:11px; color:#64748b;">Avail: {{ pkg.combo_stock }} bundles</div>
+
+        <div style="display:flex; align-items:center; gap:14px; flex-shrink:0;">
+          <div style="text-align:right;">
+            <div style="font-size:15px; font-weight:800; color:#16a34a; font-family:var(--font-mono);">
+              TK {{ "%.2f"|format(pkg.package_price) }}
+            </div>
+            <div style="font-size:10px; color:#ea580c; font-weight:700;">COMBO PRICE</div>
+          </div>
+          <span style="background:#ea580c; color:white; padding:5px 12px; border-radius:6px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center;">
+            + Add
+          </span>
+        </div>
       </button>
       {% endfor %}
     </div>
 
-    <!-- Pharmacy Medicines Grid -->
-    <div class="pos-medicine-list" id="medicineList" style="display:none; flex-direction:column; gap:10px; max-height:340px;">
+    <!-- Pharmacy Medicines List (Row View) -->
+    <div class="pos-medicine-list" id="medicineList" style="display:none; flex-direction:column; gap:10px; max-height:360px;">
       <div style="display:flex; gap:8px;">
-        <input type="text" id="posMedSearchInput" oninput="onPosMedSearchInput()" placeholder="ঔষধের নাম বা ধরণ দিয়ে খুঁজুন (যেমন Napa, Seclo)..." style="flex:1; padding:8px 12px; border:1.5px solid #059669; border-radius:6px; font-size:13px; outline:none;">
+        <input type="text" id="posMedSearchInput" oninput="onPosMedSearchInput()" placeholder="Search medicines by name, generic, company or SKU..." style="flex:1; padding:8px 12px; border:1.5px solid #059669; border-radius:6px; font-size:13px; outline:none;">
       </div>
-      <div id="posMedGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; overflow-y:auto; max-height:290px;">
-        <div style="grid-column:1/-1; text-align:center; padding:20px; color:#64748b; font-size:13px;">
-          ঔষধ লোড হচ্ছে...
+      <div id="posMedGrid" style="display:flex; flex-direction:column; gap:8px; overflow-y:auto; max-height:310px; padding-right:4px;">
+        <div style="text-align:center; padding:20px; color:#64748b; font-size:13px;">
+          Loading medicines...
         </div>
       </div>
     </div>

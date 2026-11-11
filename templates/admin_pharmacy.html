@@ -1,27 +1,27 @@
 {% extends "base.html" %}
-{% block title %}ফার্মেসী ও প্রেসক্রিপশন অর্ডার ম্যানেজমেন্ট - {{ settings.shop_name or 'DOINEEK' }}{% endblock %}
+{% block title %}Pharmacy & Prescription Management - {{ settings.shop_name or 'DOINEEK' }}{% endblock %}
 
 {% block content %}
-<div style="font-family: 'Hind Siliguri', sans-serif;">
+<div style="font-family: inherit;">
 
   <!-- Header Section -->
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
     <div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 1.8rem;">💊</span>
-        <h1 style="margin: 0; font-size: 1.7rem; font-weight: 800; color: #0f172a;">ফার্মেসী ও প্রেসক্রিপশন অর্ডার</h1>
+        <h1 style="margin: 0; font-size: 1.7rem; font-weight: 800; color: #0f172a;">Pharmacy & Prescription Management</h1>
       </div>
       <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.92rem;">
-        প্রেসক্রিপশন পর্যালোচনা, বিল জেনারেট, রাইডার অ্যাসাইন ও ঔষধ ক্যাটালগ ব্যবস্থাপনা
+        Review uploaded customer prescriptions, generate bills, assign riders, and manage medicine inventory
       </p>
     </div>
 
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       <a href="/pharmacy" target="_blank" style="background: #059669; color: white; padding: 10px 16px; border-radius: 8px; font-weight: 700; text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
-        <span>🌐</span> <span>কাস্টমার ফার্মেসী পেজ</span>
+        <span>🌐</span> <span>Customer Pharmacy Page</span>
       </a>
       <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
-        <span>🔄</span> <span>রিফ্রেশ</span>
+        <span>🔄</span> <span>Refresh</span>
       </button>
     </div>
   </div>
@@ -29,10 +29,10 @@
   <!-- Top Navigation Tabs (Orders vs Medicines Catalog) -->
   <div style="display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
     <button id="tabBtnOrders" onclick="switchAdminTab('orders')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #059669; border-bottom: 3px solid #059669; margin-bottom: -2px;">
-      📋 প্রেসক্রিপশন অর্ডারসমূহ (<span id="totalOrdersCount">{{ orders|length }}</span>)
+      📋 Prescription Orders (<span id="totalOrdersCount">{{ orders|length }}</span>)
     </button>
     <button id="tabBtnMedicines" onclick="switchAdminTab('medicines')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #64748b;">
-      💊 ঔষধ তালিকা ও মূল্য আপডেট (<span id="totalMedsCount">{{ total_medicines }}</span>)
+      💊 Medicine Catalog & Pricing (<span id="totalMedsCount">{{ total_medicines }}</span>)
     </button>
   </div>
 
@@ -45,29 +45,29 @@
       <!-- Filter Status Pills -->
       <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
         <a href="/admin/pharmacy-orders" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#059669; color:white;' if not active_status else 'background:#f1f5f9; color:#475569;' }}">
-          সব অর্ডার
+          All Orders
         </a>
         <a href="/admin/pharmacy-orders?status=reviewing" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#ea580c; color:white;' if active_status == 'reviewing' else 'background:#fff7ed; color:#c2410c;' }}">
-          ⏳ যাচাই বাকি
+          ⏳ Reviewing
         </a>
         <a href="/admin/pharmacy-orders?status=confirmed" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#8b5cf6; color:white;' if active_status == 'confirmed' else 'background:#f5f3ff; color:#6d28d9;' }}">
-          ✅ অনুমোদিত
+          ✅ Confirmed
         </a>
         <a href="/admin/pharmacy-orders?status=packed" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#f59e0b; color:white;' if active_status == 'packed' else 'background:#fffbeb; color:#b45309;' }}">
-          📦 প্যাকড
+          📦 Packed
         </a>
         <a href="/admin/pharmacy-orders?status=on_the_way" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#06b6d4; color:white;' if active_status == 'on_the_way' else 'background:#ecfeff; color:#0e7490;' }}">
-          🛵 ডেলিভারির পথে
+          🛵 On The Way
         </a>
         <a href="/admin/pharmacy-orders?status=delivered" style="padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 700; text-decoration: none; {{ 'background:#10b981; color:white;' if active_status == 'delivered' else 'background:#ecfdf5; color:#047857;' }}">
-          🎉 ডেলিভার্ড
+          🎉 Delivered
         </a>
       </div>
 
       <!-- Live Search Box -->
       <form method="GET" action="/admin/pharmacy-orders" style="display: flex; gap: 8px; align-items: center; min-width: 280px;">
-        <input type="text" name="q" value="{{ search_query }}" placeholder="অর্ডার নং বা মোবাইল দিয়ে খুঁজুন..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 100%;">
-        <button type="submit" style="background: #334155; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; cursor: pointer;">খুঁজুন</button>
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Search by order # or phone..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 100%;">
+        <button type="submit" style="background: #334155; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; cursor: pointer;">Search</button>
       </form>
     </div>
 
@@ -76,13 +76,13 @@
       <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.92rem;">
         <thead>
           <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800;">
-            <th style="padding: 12px 16px;">অর্ডার নং ও সময়</th>
-            <th style="padding: 12px 16px;">গ্রাহক ও ঠিকানা</th>
-            <th style="padding: 12px 16px; text-align: center;">প্রেসক্রিপশন</th>
-            <th style="padding: 12px 16px;">মেয়াদ ও ওষুধের চাহিদা</th>
-            <th style="padding: 12px 16px;">মোট বিল</th>
-            <th style="padding: 12px 16px;">বর্তমান স্ট্যাটাস</th>
-            <th style="padding: 12px 16px; text-align: center;">অ্যাকশন</th>
+            <th style="padding: 12px 16px;">Order # & Time</th>
+            <th style="padding: 12px 16px;">Customer & Address</th>
+            <th style="padding: 12px 16px; text-align: center;">Prescription</th>
+            <th style="padding: 12px 16px;">Duration & Notes</th>
+            <th style="padding: 12px 16px;">Total Bill</th>
+            <th style="padding: 12px 16px;">Current Status</th>
+            <th style="padding: 12px 16px; text-align: center;">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -91,7 +91,7 @@
             {% set st = order.order_status %}
             {% set st_bg = '#ffedd5' if st == 'reviewing' else ('#f5f3ff' if st == 'confirmed' else ('#fef3c7' if st == 'packed' else ('#cffafe' if st == 'on_the_way' else ('#d1fae5' if st == 'delivered' else '#fee2e2')))) %}
             {% set st_color = '#c2410c' if st == 'reviewing' else ('#6d28d9' if st == 'confirmed' else ('#b45309' if st == 'packed' else ('#0e7490' if st == 'on_the_way' else ('#047857' if st == 'delivered' else '#b91c1c')))) %}
-            {% set st_text = 'যাচাই বাকি' if st == 'reviewing' else ('অনুমোদিত' if st == 'confirmed' else ('প্যাকড' if st == 'packed' else ('অন দ্য ওয়ে' if st == 'on_the_way' else ('ডেলিভার্ড' if st == 'delivered' else 'বাতিল')))) %}
+            {% set st_text = 'Reviewing' if st == 'reviewing' else ('Confirmed' if st == 'confirmed' else ('Packed' if st == 'packed' else ('On The Way' if st == 'on_the_way' else ('Delivered' if st == 'delivered' else 'Cancelled')))) %}
 
             <tr style="border-bottom: 1px solid #e2e8f0; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
               <td style="padding: 14px 16px; vertical-align: top;">
@@ -99,7 +99,7 @@
                 <div style="font-size: 0.78rem; color: #64748b; margin-top: 3px;">{{ order.created_at[:16].replace('T', ' ') }}</div>
                 <div style="margin-top: 4px;">
                   <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3;">
-                    {{ '📸 শুধু প্রেসক্রিপশন' if order.order_type == 'prescription_only' else ('💊 শুধু ওষুধ' if order.order_type == 'medicines_only' else '🔄 উভয় একসাথে') }}
+                    {{ '📸 Prescription Only' if order.order_type == 'prescription_only' else ('💊 Medicine Only' if order.order_type == 'medicines_only' else '🔄 Both Combined') }}
                   </span>
                 </div>
               </td>
@@ -121,16 +121,16 @@
                 {% if order.prescription_url %}
                 <div style="cursor: pointer; display: inline-block;" onclick="openImageZoom('{{ order.prescription_url }}')">
                   <img src="{{ order.prescription_url }}" alt="RX" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1.5px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                  <div style="font-size: 0.72rem; color: #059669; font-weight: 700; margin-top: 2px;">🔍 বড় দেখুন</div>
+                  <div style="font-size: 0.72rem; color: #059669; font-weight: 700; margin-top: 2px;">🔍 View Full</div>
                 </div>
                 {% else %}
-                <span style="color: #94a3b8; font-size: 0.8rem;">(নেই)</span>
+                <span style="color: #94a3b8; font-size: 0.8rem;">(None)</span>
                 {% endif %}
               </td>
 
               <td style="padding: 14px 16px; vertical-align: top;">
                 <div style="font-weight: 700; color: #059669; font-size: 0.85rem;">
-                  ⏱️ মেয়াদ: {{ order.overall_duration_days }} দিনের ওষুধ
+                  ⏱️ {{ order.overall_duration_days }} Days Supply
                 </div>
                 {% if order.customer_notes %}
                 <div style="font-size: 0.8rem; color: #334155; background: #f8fafc; border: 1px dashed #cbd5e1; padding: 4px 8px; border-radius: 6px; margin-top: 4px;">
@@ -141,9 +141,9 @@
 
               <td style="padding: 14px 16px; vertical-align: top;">
                 <div style="font-weight: 800; font-size: 1rem; color: #0f172a;">
-                  ৳{{ "%.2f"|format(order.total_amount) }}
+                  TK {{ "%.2f"|format(order.total_amount) }}
                 </div>
-                <div style="font-size: 0.75rem; color: #64748b;">(ডেলিভারি: ৳{{ "%.2f"|format(order.delivery_charge) }})</div>
+                <div style="font-size: 0.75rem; color: #64748b;">(Delivery: TK {{ "%.2f"|format(order.delivery_charge) }})</div>
               </td>
 
               <td style="padding: 14px 16px; vertical-align: top;">
@@ -163,16 +163,16 @@
               <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
                 <div style="display: flex; flex-direction: column; gap: 6px; align-items: center;">
                   <button type="button" onclick="openReviewModal({{ order.id }})" style="background: #059669; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.82rem; cursor: pointer; width: 100%;">
-                    🔍 রিভিউ ও বিল
+                    🔍 Review & Bill
                   </button>
 
                   <button type="button" onclick="openStatusModal({{ order.id }}, '{{ order.order_number }}', '{{ order.order_status }}')" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; width: 100%;">
-                    ⚙️ স্ট্যাটাস পরিবর্তন
+                    ⚙️ Change Status
                   </button>
 
                   {% if order.online_order_id %}
                   <a href="/online_orders/{{ order.online_order_id }}/invoice" target="_blank" style="background: #2563eb; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; text-decoration: none; display: block; width: 100%; box-sizing: border-box;">
-                    🖨️ ইনভয়েস
+                    🖨️ Invoice
                   </a>
                   {% endif %}
                 </div>
@@ -182,7 +182,7 @@
           {% else %}
             <tr>
               <td colspan="7" style="padding: 30px; text-align: center; color: #94a3b8;">
-                কোনো প্রেসক্রিপশন বা ফার্মেসী অর্ডার পাওয়া যায়নি।
+                No prescription or pharmacy orders found.
               </td>
             </tr>
           {% endif %}
@@ -198,30 +198,30 @@
 
     <div style="background: white; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <h2 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;">ঔষধ ক্যাটালগ ও মূল্য তালিকা</h2>
-        <p style="margin: 3px 0 0 0; color: #64748b; font-size: 0.85rem;">নতুন ওষুধ যুক্ত করুন বা সরাসরি মূল্য ও স্টক আপডেট করুন</p>
+        <h2 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;">Medicine Catalog & Price Manager</h2>
+        <p style="margin: 3px 0 0 0; color: #64748b; font-size: 0.85rem;">Add new medicines or update barcodes, prices and stock in real-time</p>
       </div>
 
       <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
         <select id="catalogManufacturerFilter" onchange="loadAdminMedsTable(1)" style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; background: white; max-width: 190px;">
-          <option value="all">সব কোম্পানি</option>
+          <option value="all">All Manufacturers</option>
           {% for mfg in manufacturers %}
           <option value="{{ mfg }}">{{ mfg }}</option>
           {% endfor %}
         </select>
         <select id="catalogDosageFilter" onchange="loadAdminMedsTable(1)" style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; background: white;">
-          <option value="all">সব ধরণ</option>
-          <option value="ট্যাবলেট">ট্যাবলেট</option>
-          <option value="ক্যাপসুল">ক্যাপসুল</option>
-          <option value="সিরাপ">সিরাপ</option>
-          <option value="ইনজেকশন">ইনজেকশন</option>
-          <option value="ড্রপ">ড্রপ</option>
-          <option value="মলম/ক্রিম">মলম/ক্রিম</option>
-          <option value="সাসপেনশন">সাসপেনশন</option>
+          <option value="all">All Forms</option>
+          <option value="ট্যাবলেট">Tablet</option>
+          <option value="ক্যাপসুল">Capsule</option>
+          <option value="সিরাপ">Syrup</option>
+          <option value="ইনজেকশন">Injection</option>
+          <option value="ড্রপ">Drop</option>
+          <option value="মলম/ক্রিম">Cream / Ointment</option>
+          <option value="সাসপেনশন">Suspension</option>
         </select>
-        <input type="text" id="catalogSearchInput" oninput="debounceAdminMedSearch()" placeholder="নাম, জেনেরিক, কোম্পানি বা বারকোড..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 230px;">
+        <input type="text" id="catalogSearchInput" oninput="debounceAdminMedSearch()" placeholder="Search name, generic, company or barcode..." style="padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; width: 250px;">
         <button type="button" onclick="openAddMedicineModal()" style="background: #059669; color: white; border: none; padding: 9px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 0.88rem;">
-          + নতুন ওষুধ যোগ করুন
+          + Add New Medicine
         </button>
       </div>
     </div>
@@ -231,19 +231,19 @@
       <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;" id="catalogTable">
         <thead>
           <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 800;">
-            <th style="padding: 12px 14px;">ওষুধের নাম ও জেনেরিক</th>
-            <th style="padding: 12px 14px;">ধরণ ও স্ট্রেন্থ</th>
-            <th style="padding: 12px 14px;">কোম্পানি / প্রস্তুতকারক</th>
-            <th style="padding: 12px 14px;">খুচরা মূল্য (পিস/বোতল)</th>
-            <th style="padding: 12px 14px;">পাতা মূল্য (Strip)</th>
-            <th style="padding: 12px 14px;">স্টক</th>
-            <th style="padding: 12px 14px; text-align: center;">অ্যাকশন</th>
+            <th style="padding: 12px 14px;">Medicine & Generic</th>
+            <th style="padding: 12px 14px;">Form & Strength</th>
+            <th style="padding: 12px 14px;">Manufacturer</th>
+            <th style="padding: 12px 14px;">Retail Price (Unit)</th>
+            <th style="padding: 12px 14px;">Strip Price</th>
+            <th style="padding: 12px 14px;">Stock</th>
+            <th style="padding: 12px 14px; text-align: center;">Action</th>
           </tr>
         </thead>
         <tbody id="catalogTableBody">
           <tr>
             <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
-              ⏳ ঔষধ তালিকা লোড হচ্ছে...
+              ⏳ Loading medicine catalog...
             </td>
           </tr>
         </tbody>
@@ -252,13 +252,13 @@
 
     <!-- Pagination Toolbar -->
     <div id="catalogPagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 10px 16px; background: white; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 0.88rem;">
-      <div id="catalogPageInfo" style="color: #475569; font-weight: 600;">পৃষ্ঠা ১ (মোট {{ total_medicines }} টি ওষুধ)</div>
+      <div id="catalogPageInfo" style="color: #475569; font-weight: 600;">Page 1 (Total {{ total_medicines }} medicines)</div>
       <div style="display: flex; gap: 8px;">
         <button type="button" id="btnPrevMedPage" onclick="changeAdminMedPage(-1)" style="padding: 6px 14px; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 6px; font-weight: 700; cursor: pointer;">
-          ⬅️ পূর্ববর্তী
+          ⬅️ Previous
         </button>
         <button type="button" id="btnNextMedPage" onclick="changeAdminMedPage(1)" style="padding: 6px 14px; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 6px; font-weight: 700; cursor: pointer;">
-          পরবর্তী ➡️
+          Next ➡️
         </button>
       </div>
     </div>
@@ -275,8 +275,8 @@
     <!-- Modal Header -->
     <div style="background: #059669; color: white; padding: 16px 20px; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800;">প্রেসক্রিপশন পর্যালোচনা ও বিল জেনারেট</h3>
-        <p id="reviewOrderNumSubtitle" style="margin: 2px 0 0 0; font-size: 0.85rem; color: #d1fae5; font-family: monospace;">অর্ডার নং: RX-...</p>
+        <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800;">Review Prescription & Generate Bill</h3>
+        <p id="reviewOrderNumSubtitle" style="margin: 2px 0 0 0; font-size: 0.85rem; color: #d1fae5; font-family: monospace;">Order #: RX-...</p>
       </div>
       <button type="button" onclick="closeReviewModal()" style="background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.5rem; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;">&times;</button>
     </div>
@@ -287,32 +287,32 @@
       <!-- Left Column: Prescription Viewer with Original vs CamScanner Toggle & Admin Cropper -->
       <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
-          <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #0f172a;">📄 প্রেসক্রিপশন কপি</h4>
+          <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #0f172a;">📄 Prescription Photo</h4>
           
           <div style="display: flex; gap: 4px; align-items: center;">
             <button type="button" id="adminBtnToggleEnhanced" onclick="adminTogglePrescriptionView('enhanced')" style="background: #059669; color: white; border: none; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
-              ✨ এনহ্যান্সড
+              ✨ Enhanced
             </button>
             <button type="button" id="adminBtnToggleOriginal" onclick="adminTogglePrescriptionView('original')" style="background: #e2e8f0; color: #334155; border: none; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
-              🖼️ আসল ছবি
+              🖼️ Original
             </button>
-            <button type="button" onclick="rotateImage()" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">🔄 রোটেট</button>
+            <button type="button" onclick="rotateImage()" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">🔄 Rotate</button>
             <button type="button" onclick="openAdminCropModal()" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
-              📐 ক্রপ ও ফিল্টার
+              📐 Crop & Filter
             </button>
-            <a id="reviewRxDownloadLink" href="#" target="_blank" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-decoration: none; color: #0f172a;">🔍 ফুল ভিউ</a>
+            <a id="reviewRxDownloadLink" href="#" target="_blank" style="background: white; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-decoration: none; color: #0f172a;">🔍 Full View</a>
           </div>
         </div>
 
         <div style="flex: 1; min-height: 380px; max-height: 480px; overflow: auto; background: #020617; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative;">
           <img id="reviewRxImage" src="" alt="Prescription" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.3s ease;">
-          <div id="noRxNotice" style="display: none; color: #94a3b8; font-size: 0.9rem;">কোনো প্রেসক্রিপশন ছবি আপলোড করা হয়নি। (শুধুমাত্র ওষুধ সিলেক্ট করা হয়েছে)</div>
+          <div id="noRxNotice" style="display: none; color: #94a3b8; font-size: 0.9rem;">No prescription photo uploaded (Customer selected medicines directly).</div>
         </div>
 
         <!-- Customer Note & Duration Info Box -->
         <div style="margin-top: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px; font-size: 0.85rem;">
-          <div style="font-weight: 800; color: #92400e;" id="reviewCustDuration">⏱️ গ্রাহকের চাওয়া: ৭ দিনের ওষুধ</div>
-          <div style="color: #78350f; margin-top: 4px;" id="reviewCustNotes">💬 নোট: -</div>
+          <div style="font-weight: 800; color: #92400e;" id="reviewCustDuration">⏱️ Customer Requirement: 7 Days Supply</div>
+          <div style="color: #78350f; margin-top: 4px;" id="reviewCustNotes">💬 Note: -</div>
         </div>
       </div>
 
@@ -322,20 +322,20 @@
         <!-- Customer Info Summary -->
         <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <div style="font-weight: 800; color: #0f172a;" id="reviewCustName">নাম: -</div>
-            <div style="color: #2563eb; font-weight: 600;" id="reviewCustPhone">মোবাইল: -</div>
+            <div style="font-weight: 800; color: #0f172a;" id="reviewCustName">Name: -</div>
+            <div style="color: #2563eb; font-weight: 600;" id="reviewCustPhone">Mobile: -</div>
           </div>
           <div style="text-align: right; color: #475569;" id="reviewCustAddr">
-            ঠিকানা: -
+            Address: -
           </div>
         </div>
 
         <!-- Medicine Search to Add to Bill -->
         <div style="position: relative;">
           <label style="display: block; font-weight: 800; font-size: 0.85rem; color: #0f172a; margin-bottom: 4px;">
-            + প্রেসক্রিপশন দেখে ওষুধ সার্চ করে বিলে যোগ করুন:
+            + Search & Add Medicines to Bill:
           </label>
-          <input type="text" id="billMedSearchInput" oninput="searchMedicinesForBill()" placeholder="ঔষধের নাম টাইপ করুন (যেমন: Napa, Seclo, Tofen)..." style="width: 100%; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          <input type="text" id="billMedSearchInput" oninput="searchMedicinesForBill()" placeholder="Type medicine trade name, generic or SKU (e.g. Napa, Seclo)..." style="width: 100%; padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
           
           <div id="billMedDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1.5px solid #cbd5e1; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); margin-top: 2px;"></div>
         </div>
@@ -345,16 +345,16 @@
           <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
             <thead>
               <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #475569; font-weight: 800;">
-                <th style="padding: 8px 10px; text-align: left;">ওষুধের বিবরণ</th>
-                <th style="padding: 8px 10px; text-align: center; width: 80px;">পরিমাণ</th>
-                <th style="padding: 8px 10px; text-align: right; width: 85px;">একক মূল্য</th>
-                <th style="padding: 8px 10px; text-align: right; width: 85px;">মোট (৳)</th>
+                <th style="padding: 8px 10px; text-align: left;">Medicine Description</th>
+                <th style="padding: 8px 10px; text-align: center; width: 80px;">Qty</th>
+                <th style="padding: 8px 10px; text-align: right; width: 85px;">Unit Price</th>
+                <th style="padding: 8px 10px; text-align: right; width: 85px;">Total (TK)</th>
                 <th style="padding: 8px 6px; text-align: center; width: 36px;"></th>
               </tr>
             </thead>
             <tbody id="billItemsTableBody">
               <tr>
-                <td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">কোনো ওষুধ এখনো যোগ করা হয়নি।</td>
+                <td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">No medicines added yet. Search above to add items.</td>
               </tr>
             </tbody>
           </table>
@@ -363,30 +363,30 @@
         <!-- Bill Calculations & Delivery Fee -->
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; space-y: 8px;">
           <div style="display: flex; justify-content: space-between; font-size: 0.88rem; color: #475569; margin-bottom: 6px;">
-            <span>ওষুধের সাব-টোটাল:</span>
-            <span style="font-weight: 800; color: #0f172a;" id="billSubtotalTxt">৳০.০০</span>
+            <span>Medicines Subtotal:</span>
+            <span style="font-weight: 800; color: #0f172a;" id="billSubtotalTxt">TK 0.00</span>
           </div>
 
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; color: #475569; margin-bottom: 6px;">
-            <span>ডেলিভারি চার্জ (৳):</span>
+            <span>Delivery Fee (TK):</span>
             <input type="number" id="billDeliveryChargeInput" oninput="recalcBillTotals()" value="50" style="width: 70px; padding: 3px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700;">
           </div>
 
           <div style="display: flex; justify-content: space-between; font-size: 1.05rem; font-weight: 900; color: #059669; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
-            <span>সর্বমোট বিল (ক্যাশ অন ডেলিভারি):</span>
-            <span id="billGrandTotalTxt">৳৫০.০০</span>
+            <span>Grand Total (Cash on Delivery):</span>
+            <span id="billGrandTotalTxt">TK 50.00</span>
           </div>
         </div>
 
         <!-- Pharmacist Advice / Notes -->
         <div>
-          <label style="display: block; font-weight: 800; font-size: 0.82rem; color: #475569; margin-bottom: 4px;">ফার্মাসিস্ট পরামর্শ / নির্দেশনা (গ্রাহক দেখতে পারবেন):</label>
-          <input type="text" id="billAdminNotesInput" placeholder="যেমন: গ্যাস্ট্রিকের ওষুধ সকালে খালি পেটে খাবেন..." style="width: 100%; padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem; box-sizing: border-box;">
+          <label style="display: block; font-weight: 800; font-size: 0.82rem; color: #475569; margin-bottom: 4px;">Pharmacist Advice / Instructions (Visible to Customer):</label>
+          <input type="text" id="billAdminNotesInput" placeholder="e.g. Take antacid before meals, complete antibiotic course..." style="width: 100%; padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem; box-sizing: border-box;">
         </div>
 
         <!-- Confirm and Save Button -->
         <button type="button" id="btnConfirmBillOrder" onclick="saveAndConfirmBill()" style="background: #059669; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 0.95rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px;">
-          <span>✅</span> <span>বিল নিশ্চিত ও অর্ডার কনফার্ম করুন</span>
+          <span>✅</span> <span>Confirm Bill & Send to Customer</span>
         </button>
 
       </div>
@@ -400,31 +400,31 @@
 <div id="statusModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: white; border-radius: 14px; max-width: 450px; width: 100%; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 16px;">
-      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">অর্ডার স্ট্যাটাস ও রাইডার আপডেট</h3>
+      <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">Update Order Status & Rider</h3>
       <button type="button" onclick="closeStatusModal()" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b;">&times;</button>
     </div>
 
     <input type="hidden" id="statusOrderId">
     <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 12px;">
-      অর্ডার নম্বর: <strong style="font-family: monospace; color: #0f172a;" id="statusOrderNumberTxt">RX-...</strong>
+      Order Number: <strong style="font-family: monospace; color: #0f172a;" id="statusOrderNumberTxt">RX-...</strong>
     </div>
 
     <div style="margin-bottom: 14px;">
-      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">নতুন স্ট্যাটাস নির্বাচন করুন:</label>
+      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">Select New Status:</label>
       <select id="statusSelect" onchange="onStatusSelectChange()" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; font-weight: 600;">
-        <option value="reviewing">⏳ যাচাই বাকি (Reviewing)</option>
-        <option value="confirmed">✅ অনুমোদিত (Confirmed)</option>
-        <option value="packed">📦 প্যাকড সম্পন্ন (Packed)</option>
-        <option value="on_the_way">🛵 ডেলিভারির পথে (On The Way)</option>
-        <option value="delivered">🎉 ডেলিভার্ড সম্পন্ন (Delivered)</option>
-        <option value="cancelled">❌ বাতিল (Cancelled)</option>
+        <option value="reviewing">⏳ Reviewing</option>
+        <option value="confirmed">✅ Confirmed</option>
+        <option value="packed">📦 Packed</option>
+        <option value="on_the_way">🛵 On The Way</option>
+        <option value="delivered">🎉 Delivered</option>
+        <option value="cancelled">❌ Cancelled</option>
       </select>
     </div>
 
     <div id="riderSelectBox" style="margin-bottom: 14px;">
-      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">ডেলিভারি রাইডার নির্বাচন করুন:</label>
+      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">Assign Delivery Rider:</label>
       <select id="riderSelect" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;">
-        <option value="">-- রাইডার নির্বাচন করুন --</option>
+        <option value="">-- Select Rider --</option>
         {% for rider in riders %}
         <option value="{{ rider.id }}">{{ rider.full_name or rider.username }} ({{ rider.username }})</option>
         {% endfor %}
@@ -432,13 +432,13 @@
     </div>
 
     <div id="otpInputBox" style="margin-bottom: 14px; display: none;">
-      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">গ্রাহকের ৪ ডিজিট ডেলিভারি OTP কোড:</label>
-      <input type="text" id="statusOtpInput" maxlength="4" placeholder="গ্রাহকের ওটিপি কোড লিখুন" style="width: 100%; padding: 9px 12px; border: 2px solid #f59e0b; border-radius: 8px; font-size: 1rem; font-family: monospace; text-align: center; letter-spacing: 4px;">
+      <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">Customer 4-digit Delivery OTP:</label>
+      <input type="text" id="statusOtpInput" maxlength="4" placeholder="Enter customer OTP" style="width: 100%; padding: 9px 12px; border: 2px solid #f59e0b; border-radius: 8px; font-size: 1rem; font-family: monospace; text-align: center; letter-spacing: 4px;">
     </div>
 
     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-      <button type="button" onclick="closeStatusModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">বাতিল</button>
-      <button type="button" onclick="saveStatusUpdate()" style="padding: 8px 18px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">আপডেট করুন</button>
+      <button type="button" onclick="closeStatusModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">Cancel</button>
+      <button type="button" onclick="saveStatusUpdate()" style="padding: 8px 18px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">Update Status</button>
     </div>
   </div>
 </div>
@@ -448,7 +448,7 @@
 <div id="medModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: white; border-radius: 14px; max-width: 520px; width: 100%; padding: 22px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;">
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 16px;">
-      <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;" id="medModalTitle">নতুন ওষুধ যোগ করুন</h3>
+      <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #0f172a;" id="medModalTitle">Add New Medicine</h3>
       <button type="button" onclick="closeMedModal()" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #64748b;">&times;</button>
     </div>
 
@@ -456,74 +456,74 @@
       <input type="hidden" id="med_id" name="id">
 
       <div>
-        <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">ওষুধের নাম (ট্রেড নাম) *</label>
-        <input type="text" id="form_name" name="name" required placeholder="যেমন: Napa Extra, Seclo 20mg, Savlon Liquid" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Medicine Name (Trade Name) *</label>
+        <input type="text" id="form_name" name="name" required placeholder="e.g. Napa Extra, Seclo 20mg, Savlon Liquid" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
       </div>
 
       <!-- BARCODE / SKU FIELD -->
       <div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <label style="font-weight: 700; font-size: 0.85rem; color: #334155;">বারকোড / SKU নম্বর (প্যাকেটের বারকোড বা নিজস্ব কোড) *</label>
+          <label style="font-weight: 700; font-size: 0.85rem; color: #334155;">Barcode / SKU (Packet Barcode or Custom Code) *</label>
           <button type="button" onclick="generateAutoSku()" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.76rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; cursor: pointer;">
-            🎲 অটো কোড তৈরি
+            🎲 Generate Auto SKU
           </button>
         </div>
-        <input type="text" id="form_sku" name="sku" placeholder="ম্যানুয়াল বারকোড/SKU দিন (যেমন: 1001 বা 8941234567890)" style="width: 100%; padding: 8px 12px; border: 1.5px solid #0284c7; border-radius: 8px; font-size: 0.92rem; font-family: monospace; font-weight: 700; color: #0f172a; box-sizing: border-box; background: #f0f9ff;">
+        <input type="text" id="form_sku" name="sku" placeholder="Enter manual barcode/SKU (e.g. 1001 or 8941234567890)" style="width: 100%; padding: 8px 12px; border: 1.5px solid #0284c7; border-radius: 8px; font-size: 0.92rem; font-family: monospace; font-weight: 700; color: #0f172a; box-sizing: border-box; background: #f0f9ff;">
         <p style="margin: 3px 0 0 0; font-size: 0.74rem; color: #64748b;">
-          💡 প্যাকেটের পিছনে যে বারকোড থাকবে তা এখানে ম্যানুয়ালি বসিয়ে দিন, কাউন্টারে বা সার্চে স্ক্যান করলেই সরাসরি এই ওষুধটি চলে আসবে।
+          💡 Enter the barcode from the back of the packet. Scanning it at POS checkout will instantly add this medicine to the cart.
         </p>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">ওষুধের ধরণ *</label>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Dosage Form *</label>
           <select id="form_dosage_form" name="dosage_form" required style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
-            <option value="ট্যাবলেট">ট্যাবলেট (Tablet)</option>
-            <option value="ক্যাপসুল">ক্যাপসুল (Capsule)</option>
-            <option value="সিরাপ">সিরাপ (Syrup)</option>
-            <option value="ইনজেকশন">ইনজেকশন (Injection)</option>
-            <option value="ব্যান্ডেজ/ফার্স্ট এইড">গজ পট্টি ও ব্যান্ডেজ</option>
-            <option value="ড্রপ">ড্রপ (Eye/Ear Drop)</option>
-            <option value="মলম/ক্রিম">মলম ও ক্রিম (Cream/Ointment)</option>
-            <option value="সাসপেনশন">সাসপেনশন (Suspension)</option>
+            <option value="ট্যাবলেট">Tablet</option>
+            <option value="ক্যাপসুল">Capsule</option>
+            <option value="সিরাপ">Syrup</option>
+            <option value="ইনজেকশন">Injection</option>
+            <option value="ব্যান্ডেজ/ফার্স্ট এইড">Bandage / First Aid</option>
+            <option value="ড্রপ">Drop (Eye/Ear Drop)</option>
+            <option value="মলম/ক্রিম">Cream / Ointment</option>
+            <option value="সাসপেনশন">Suspension</option>
           </select>
         </div>
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">স্ট্রেন্থ / পাওয়ার</label>
-          <input type="text" id="form_strength" name="strength" placeholder="যেমন: 500mg, 20mg, 100ml" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Strength / Power</label>
+          <input type="text" id="form_strength" name="strength" placeholder="e.g. 500mg, 20mg, 100ml" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">জেনেরিক নাম</label>
-          <input type="text" id="form_generic_name" name="generic_name" placeholder="যেমন: Paracetamol, Omeprazole" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Generic Name</label>
+          <input type="text" id="form_generic_name" name="generic_name" placeholder="e.g. Paracetamol, Omeprazole" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">কোম্পানি / প্রস্তুতকারক *</label>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Manufacturer / Company *</label>
           <select id="form_manufacturer_select" onchange="toggleCustomMfgInput()" style="width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box; background: white;">
-            <option value="">-- কোম্পানি নির্বাচন করুন --</option>
+            <option value="">-- Select Manufacturer --</option>
             {% for mfg in manufacturers %}
             <option value="{{ mfg }}">{{ mfg }}</option>
             {% endfor %}
-            <option value="__custom__">➕ নতুন কোম্পানির নাম লিখুন...</option>
+            <option value="__custom__">➕ Enter New Manufacturer...</option>
           </select>
-          <input type="text" id="form_manufacturer_custom" placeholder="নতুন কোম্পানির নাম লিখুন..." style="display: none; width: 100%; margin-top: 6px; padding: 7px 10px; border: 1.5px solid #059669; border-radius: 8px; font-size: 0.85rem; box-sizing: border-box;">
+          <input type="text" id="form_manufacturer_custom" placeholder="Type new company name..." style="display: none; width: 100%; margin-top: 6px; padding: 7px 10px; border: 1.5px solid #059669; border-radius: 8px; font-size: 0.85rem; box-sizing: border-box;">
           <input type="hidden" id="form_manufacturer" name="manufacturer">
         </div>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">খুচরা মূল্য (৳) *</label>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Retail Price (TK) *</label>
           <input type="number" step="0.10" id="form_unit_price" name="unit_price" required placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">পাতা মূল্য (৳)</label>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Strip Price (TK)</label>
           <input type="number" step="0.50" id="form_strip_price" name="strip_price" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">মজুদ স্টক</label>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Stock Qty</label>
           <input type="number" id="form_stock_qty" name="stock_qty" value="999" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
         </div>
       </div>
@@ -531,12 +531,12 @@
       <div style="display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 12px;">
         <div>
           <a id="btnModalPrintBarcode" href="#" target="_blank" style="display: none; padding: 8px 14px; background: #ecfdf5; color: #047857; border: 1.5px solid #a7f3d0; border-radius: 8px; font-weight: 700; font-size: 0.85rem; text-decoration: none; align-items: center; gap: 5px;">
-            🏷️ বারকোড স্টিকার প্রিন্ট
+            🏷️ Print Barcode Stickers
           </a>
         </div>
         <div style="display: flex; gap: 10px;">
-          <button type="button" onclick="closeMedModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">বাতিল</button>
-          <button type="submit" style="padding: 8px 20px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">সংরক্ষণ করুন</button>
+          <button type="button" onclick="closeMedModal()" style="padding: 8px 16px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 700; cursor: pointer;">Cancel</button>
+          <button type="submit" style="padding: 8px 20px; background: #059669; color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer;">Save Medicine</button>
         </div>
       </div>
     </form>
@@ -550,7 +550,7 @@
     
     <div style="background: #0f172a; color: white; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
       <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-        <span>📐</span> <span>প্রেসক্রিপশন স্মার্ট ক্রপ ও ক্যামস্ক্যানার ফিল্টার</span>
+        <span>📐</span> <span>Smart Crop & CamScanner Filter</span>
       </h3>
       <button type="button" onclick="closeAdminCropModal()" style="background: none; border: none; color: #94a3b8; font-size: 1.6rem; cursor: pointer; line-height: 1;">&times;</button>
     </div>
@@ -563,19 +563,19 @@
       </div>
 
       <div style="font-size: 0.8rem; background: #ecfdf5; color: #065f46; padding: 8px 12px; border-radius: 8px; border: 1px solid #a7f3d0; text-align: center;">
-        💡 প্রেসক্রিপশনের <b>৪টি কোণা, ৪টি ধার (Edges) বা মাঝখানে ধরে</b> পুরো বক্সটি ড্র্যাগ করে সিলেক্ট করুন (কোণায় <b>জুম লুপ</b> দেখাবে)।
+        💡 Drag the <b>4 corners, 4 edges, or center body</b> to adjust the crop box (zoom loupe appears on corners).
       </div>
 
       <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid #e2e8f0;">
         <button type="button" onclick="resetAdminCropCorners()" style="padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-          🔄 রিসেট
+          🔄 Reset
         </button>
         <div style="display: flex; gap: 8px;">
           <button type="button" onclick="closeAdminCropModal()" style="padding: 6px 14px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-            বাতিল
+            Cancel
           </button>
           <button type="button" onclick="applyAdminPerspectiveWarp()" style="padding: 7px 18px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-            <span>✨</span> <span>সোজা ও ক্রপ করুন</span>
+            <span>✨</span> <span>Straighten & Crop</span>
           </button>
         </div>
       </div>
@@ -589,25 +589,25 @@
 
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center;">
         <button type="button" id="adminFx_magic_color" onclick="applyAdminFilter('magic_color')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; border: 2px solid #059669; background: #ecfdf5; color: #047857; cursor: pointer;">
-          ✨ ম্যাজিক কালার
+          ✨ Magic Color
         </button>
         <button type="button" id="adminFx_hd_clear" onclick="applyAdminFilter('hd_clear')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
-          🖋️ শার্প ক্লিয়ার
+          🖋️ Sharp Clear
         </button>
         <button type="button" id="adminFx_bw_doc" onclick="applyAdminFilter('bw_doc')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
-          📄 সাদাকালো
+          📄 B&W Doc
         </button>
         <button type="button" id="adminFx_none" onclick="applyAdminFilter('none')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
-          🖼️ আসল ক্রপ
+          🖼️ Original Crop
         </button>
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid #e2e8f0;">
         <button type="button" onclick="backToAdminCorners()" style="padding: 6px 14px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-          ◀ কোণা পরিবর্তন
+          ◀ Adjust Corners
         </button>
         <button type="button" id="btnAdminSaveEnhancedRx" onclick="saveAdminEnhancedPrescription()" style="padding: 7px 20px; background: #059669; color: white; border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-          <span>💾</span> <span>আপডেট সংরক্ষণ করুন</span>
+          <span>💾</span> <span>Save Enhanced Image</span>
         </button>
       </div>
     </div>
@@ -665,14 +665,14 @@
     const mfg = document.getElementById("catalogManufacturerFilter")?.value || "all";
     const tbody = document.getElementById("catalogTableBody");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 25px; color: #64748b;">⏳ অনুসন্ধান করা হচ্ছে...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 25px; color: #64748b;">⏳ Searching medicines...</td></tr>`;
     }
 
     try {
       const res = await fetch(`/api/admin/pharmacy/medicines/list?page=${page}&q=${encodeURIComponent(q)}&dosage=${encodeURIComponent(dosage)}&mfg=${encodeURIComponent(mfg)}&per_page=30`);
       const d = await res.json();
       if (!d.success) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">লোড করতে সমস্যা হয়েছে</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
         return;
       }
 
@@ -684,7 +684,7 @@
       const totalCountEl = document.getElementById("totalMedsCount");
       if (totalCountEl) totalCountEl.innerText = d.total;
       const pageInfoEl = document.getElementById("catalogPageInfo");
-      if (pageInfoEl) pageInfoEl.innerText = `পৃষ্ঠা ${d.page} / ${d.total_pages} (মোট ${d.total.toLocaleString()} টি ওষুধ)`;
+      if (pageInfoEl) pageInfoEl.innerText = `Page ${d.page} of ${d.total_pages} (Total ${d.total.toLocaleString()} medicines)`;
 
       const btnPrev = document.getElementById("btnPrevMedPage");
       const btnNext = document.getElementById("btnNextMedPage");
@@ -692,7 +692,7 @@
       if (btnNext) btnNext.disabled = d.page >= d.total_pages;
 
       if (adminMedsCache.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">কোনো ঔষধ পাওয়া যায়নি।</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">No medicines found.</td></tr>`;
         return;
       }
 
@@ -708,14 +708,14 @@
                 <span style="background: #e0f2fe; color: #0369a1; font-family: monospace; font-size: 0.74rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #bae6fd;">
                   🔖 ${escapeHtml(medSku)}
                 </span>
-                <a href="/admin/pharmacy/medicines/${m.id}/labels?qty=10" target="_blank" title="১০টি বারকোড স্টিকার প্রিন্ট করুন" style="color: #047857; text-decoration: none; font-size: 0.74rem; font-weight: 700; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
-                  🖨️ প্রিন্ট
+                <a href="/admin/pharmacy/medicines/${m.id}/labels?qty=10" target="_blank" title="Print 10 Barcode Stickers" style="color: #047857; text-decoration: none; font-size: 0.74rem; font-weight: 700; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;">
+                  🖨️ Print
                 </a>
               </div>
             </td>
             <td style="padding: 12px 14px;">
               <span style="background: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 700;">
-                ${escapeHtml(m.dosage_form || 'ট্যাবলেট')}
+                ${escapeHtml(m.dosage_form || 'Tablet')}
               </span>
               ${m.strength ? `<span style="font-size: 0.78rem; color: #475569; margin-left: 4px;">${escapeHtml(m.strength)}</span>` : ''}
             </td>
@@ -724,13 +724,13 @@
             </td>
             <td style="padding: 12px 14px;">
               <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="font-weight: 700; color: #64748b;">৳</span>
+                <span style="font-weight: 700; color: #64748b;">TK</span>
                 <input type="number" step="0.10" id="medPrice_${m.id}" value="${parseFloat(m.unit_price || 0).toFixed(2)}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #059669; font-size: 0.9rem;">
               </div>
             </td>
             <td style="padding: 12px 14px;">
               <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="font-weight: 700; color: #64748b;">৳</span>
+                <span style="font-weight: 700; color: #64748b;">TK</span>
                 <input type="number" step="0.50" id="medStripPrice_${m.id}" value="${parseFloat(m.strip_price || 0).toFixed(2)}" style="width: 80px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.9rem;">
               </div>
             </td>
@@ -739,13 +739,13 @@
             </td>
             <td style="padding: 12px 14px; text-align: center;">
               <div style="display: flex; gap: 6px; justify-content: center;">
-                <button type="button" onclick="saveQuickMedPrice(${m.id})" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
-                  💾 সেভ
+                <button type="button" onclick="saveQuickMedPrice(${m.id})" title="Save price & stock" style="background: #059669; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
+                  💾 Save
                 </button>
-                <button type="button" onclick="openEditMedModal(${m.id})" title="সম্পাদনা করুন" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
+                <button type="button" onclick="openEditMedModal(${m.id})" title="Edit Medicine" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">
                   ✏️
                 </button>
-                <a href="/admin/pharmacy/medicines/${m.id}/labels?qty=10" target="_blank" title="বারকোড স্টিকার প্রিন্ট করুন" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; text-decoration: none; display: inline-flex; align-items: center;">
+                <a href="/admin/pharmacy/medicines/${m.id}/labels?qty=10" target="_blank" title="Print Barcode Stickers" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; padding: 5px 8px; border-radius: 6px; font-size: 0.78rem; text-decoration: none; display: inline-flex; align-items: center;">
                   🏷️
                 </a>
               </div>
@@ -755,7 +755,7 @@
       });
       tbody.innerHTML = html;
     } catch (e) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">লোড করতে ব্যর্থ হয়েছে</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 20px;">Failed to load medicines.</td></tr>`;
     }
   }
 
@@ -787,19 +787,19 @@
       const res = await fetch(`/api/admin/pharmacy/orders/${orderId}/review`);
       const data = await res.json();
       if (!data.success) {
-        alert("অর্ডার তথ্য লোড করতে সমস্যা হয়েছে।");
+        alert("Failed to load order details.");
         return;
       }
 
       const o = data.order;
       currentOrderData = o;
 
-      document.getElementById("reviewOrderNumSubtitle").innerText = `অর্ডার নং: ${o.order_number} (${o.created_at.substring(0, 16).replace('T', ' ')})`;
-      document.getElementById("reviewCustName").innerText = `নাম: ${o.customer_name}`;
-      document.getElementById("reviewCustPhone").innerText = `মোবাইল: ${o.customer_phone}`;
-      document.getElementById("reviewCustAddr").innerHTML = `ঠিকানা: ${o.delivery_address}<br><small style="color:#64748b;">${o.area}, ${o.district}</small>`;
-      document.getElementById("reviewCustDuration").innerText = `⏱️ গ্রাহকের চাওয়া: ${o.overall_duration_days || '৭'} দিনের ওষুধ`;
-      document.getElementById("reviewCustNotes").innerText = `💬 নোট: ${o.customer_notes || '(কোনো অতিরিক্ত নোট নেই)'}`;
+      document.getElementById("reviewOrderNumSubtitle").innerText = `Order #: ${o.order_number} (${o.created_at.substring(0, 16).replace('T', ' ')})`;
+      document.getElementById("reviewCustName").innerText = `Name: ${o.customer_name}`;
+      document.getElementById("reviewCustPhone").innerText = `Mobile: ${o.customer_phone}`;
+      document.getElementById("reviewCustAddr").innerHTML = `Address: ${o.delivery_address}<br><small style="color:#64748b;">${o.area}, ${o.district}</small>`;
+      document.getElementById("reviewCustDuration").innerText = `⏱️ Customer Requirement: ${o.overall_duration_days || '7'} Days Supply`;
+      document.getElementById("reviewCustNotes").innerText = `💬 Notes: ${o.customer_notes || '(No customer notes)'}`;
       document.getElementById("billDeliveryChargeInput").value = o.delivery_charge || 50;
       document.getElementById("billAdminNotesInput").value = o.admin_notes || "";
 
@@ -810,7 +810,7 @@
 
       document.getElementById("reviewModal").style.display = "flex";
     } catch (err) {
-      alert("তথ্য লোড করা সম্ভব হয়নি।");
+      alert("Could not load order information.");
     }
   }
 
@@ -883,7 +883,7 @@
 
   function openAdminCropModal() {
     if (!currentOrderData || (!currentOrderData.prescription_original_url && !currentOrderData.prescription_url)) {
-      alert("ক্রপ করার মতো কোনো প্রেসক্রিপশন ছবি নেই।");
+      alert("No prescription photo available to crop.");
       return;
     }
     const srcUrl = currentOrderData.prescription_original_url || currentOrderData.prescription_url;
@@ -1008,7 +1008,7 @@
     ctx.fill("evenodd");
     ctx.restore();
 
-    // Rectangle Border (Emerald Green, or pink if body/edge dragged)
+    // Rectangle Border
     ctx.save();
     ctx.strokeStyle = (adminDragMode && (adminDragMode.type === 'body' || adminDragMode.type === 'edge')) ? "#f43f5e" : "#10b981";
     ctx.lineWidth = 2.5;
@@ -1455,7 +1455,7 @@
 
     const btn = document.getElementById("btnAdminSaveEnhancedRx");
     btn.disabled = true;
-    btn.innerText = "সংরক্ষণ হচ্ছে...";
+    btn.innerText = "Saving...";
 
     try {
       const res = await fetch(`/api/admin/pharmacy/orders/${currentReviewOrderId}/update-prescription`, {
@@ -1465,20 +1465,20 @@
       });
       const data = await res.json();
       if (data.success) {
-        alert(data.message);
+        alert(data.message || "Prescription updated successfully.");
         currentOrderData.prescription_enhanced_url = data.new_url;
         currentOrderData.prescription_url = data.new_url;
         adminActivePrescriptionView = "enhanced";
         adminUpdatePrescriptionDisplay();
         closeAdminCropModal();
       } else {
-        alert("ত্রুটি: " + data.message);
+        alert("Error: " + data.message);
       }
     } catch (err) {
-      alert("সার্ভার সমস্যা হয়েছে।");
+      alert("Server connection error.");
     } finally {
       btn.disabled = false;
-      btn.innerText = "💾 আপডেট সংরক্ষণ করুন";
+      btn.innerText = "💾 Save Enhanced Image";
     }
   }
 
@@ -1500,7 +1500,7 @@
         const matches = data.medicines || [];
 
         if (matches.length === 0) {
-          dropdown.innerHTML = `<div style="padding: 10px; text-align: center; color: #94a3b8; font-size: 0.8rem;">কোনো ওষুধ পাওয়া যায়নি।</div>`;
+          dropdown.innerHTML = `<div style="padding: 10px; text-align: center; color: #94a3b8; font-size: 0.8rem;">No medicines found.</div>`;
           dropdown.style.display = "block";
           return;
         }
@@ -1513,10 +1513,10 @@
             <div onclick="addMedToActiveBill(${m.id})" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
               <div>
                 <strong style="color: #0f172a; font-size: 0.85rem;">${escapeHtml(m.name)}</strong>
-                <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">${escapeHtml(m.dosage_form || 'ট্যাবলেট')}</span>
+                <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">${escapeHtml(m.dosage_form || 'Tablet')}</span>
                 <div style="font-size: 0.75rem; color: #64748b;">${escapeHtml(m.generic_name || '')} (${escapeHtml(m.strength || '')})</div>
               </div>
-              <div style="font-weight: 800; color: #059669; font-size: 0.85rem;">৳${parseFloat(m.unit_price).toFixed(2)}</div>
+              <div style="font-weight: 800; color: #059669; font-size: 0.85rem;">TK ${parseFloat(m.unit_price).toFixed(2)}</div>
             </div>
           `;
         });
@@ -1571,7 +1571,7 @@
   function renderBillTable() {
     const tbody = document.getElementById("billItemsTableBody");
     if (!activeBillItems || activeBillItems.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">কোনো ওষুধ এখনো যোগ করা হয়নি। উপরের বক্সে নাম লিখে সার্চ করে যোগ করুন।</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">No medicines added yet. Type name above to search and add.</td></tr>`;
       recalcBillTotals();
       return;
     }
@@ -1592,7 +1592,7 @@
             <input type="number" step="0.10" value="${it.unit_price}" onchange="onBillPriceChange(${idx}, this.value)" style="width: 65px; padding: 4px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: right; font-weight: 700;">
           </td>
           <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #059669;">
-            ৳${parseFloat(it.total_price).toFixed(2)}
+            TK ${parseFloat(it.total_price).toFixed(2)}
           </td>
           <td style="padding: 8px 6px; text-align: center;">
             <button type="button" onclick="removeBillItem(${idx})" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1rem; font-weight: bold;">✕</button>
@@ -1611,14 +1611,14 @@
     const delCharge = parseFloat(document.getElementById("billDeliveryChargeInput").value) || 0;
     const grandTotal = subtotal + delCharge;
 
-    document.getElementById("billSubtotalTxt").innerText = `৳${subtotal.toFixed(2)}`;
-    document.getElementById("billGrandTotalTxt").innerText = `৳${grandTotal.toFixed(2)}`;
+    document.getElementById("billSubtotalTxt").innerText = `TK ${subtotal.toFixed(2)}`;
+    document.getElementById("billGrandTotalTxt").innerText = `TK ${grandTotal.toFixed(2)}`;
   }
 
   async function saveAndConfirmBill() {
     if (!currentReviewOrderId) return;
     if (activeBillItems.length === 0) {
-      alert("অনুগ্রহ করে বিলে অন্তত একটি ওষুধ যোগ করুন।");
+      alert("Please add at least one medicine to the bill.");
       return;
     }
 
@@ -1627,7 +1627,7 @@
 
     const btn = document.getElementById("btnConfirmBillOrder");
     btn.disabled = true;
-    btn.innerText = "সংরক্ষণ হচ্ছে...";
+    btn.innerText = "Saving...";
 
     try {
       const res = await fetch(`/api/admin/pharmacy/orders/${currentReviewOrderId}/generate-bill`, {
@@ -1645,13 +1645,13 @@
         alert(data.message);
         location.reload();
       } else {
-        alert("ত্রুটি: " + data.message);
+        alert("Error: " + data.message);
       }
     } catch (err) {
-      alert("সার্ভার সমস্যা হয়েছে।");
+      alert("Server connection error.");
     } finally {
       btn.disabled = false;
-      btn.innerText = "✅ বিল নিশ্চিত ও অর্ডার কনফার্ম করুন";
+      btn.innerText = "✅ Confirm Bill & Send to Customer";
     }
   }
 
@@ -1696,10 +1696,10 @@
         alert(d.message);
         location.reload();
       } else {
-        alert("ত্রুটি: " + d.message);
+        alert("Error: " + d.message);
       }
     } catch (e) {
-      alert("স্ট্যাটাস আপডেট ব্যর্থ হয়েছে।");
+      alert("Failed to update status.");
     }
   }
 
@@ -1722,6 +1722,7 @@
           dosage_form: med.dosage_form,
           strength: med.strength,
           manufacturer: med.manufacturer,
+          sku: med.sku || "",
           unit_price: unitPrice,
           strip_price: stripPrice,
           stock_qty: stockQty
@@ -1739,10 +1740,10 @@
           setTimeout(() => row.style.background = "white", 1200);
         }
       } else {
-        alert("আপডেট ব্যর্থ: " + d.message);
+        alert("Update failed: " + d.message);
       }
     } catch (e) {
-      alert("সার্ভার সংযোগ সমস্যা।");
+      alert("Server connection issue.");
     }
   }
 
@@ -1774,7 +1775,7 @@
     const printBtn = document.getElementById("btnModalPrintBarcode");
     if (printBtn) printBtn.style.display = "none";
 
-    document.getElementById("medModalTitle").innerText = "নতুন ওষুধ যোগ করুন";
+    document.getElementById("medModalTitle").innerText = "Add New Medicine";
     document.getElementById("medModal").style.display = "flex";
   }
 
@@ -1830,7 +1831,7 @@
       printBtn.style.display = "inline-flex";
     }
 
-    document.getElementById("medModalTitle").innerText = "ওষুধের তথ্য, বারকোড ও মূল্য পরিবর্তন";
+    document.getElementById("medModalTitle").innerText = "Edit Medicine Information & Pricing";
     document.getElementById("medModal").style.display = "flex";
   }
 
@@ -1868,10 +1869,10 @@
         closeMedModal();
         loadAdminMedsTable(adminMedsCurrentPage);
       } else {
-        alert("ত্রুটি: " + resData.message);
+        alert("Error: " + resData.message);
       }
     } catch (e) {
-      alert("সংরক্ষণ সম্ভব হয়নি।");
+      alert("Failed to save medicine.");
     }
   }
 </script>

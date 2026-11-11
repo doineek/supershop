@@ -11617,7 +11617,7 @@ def api_admin_pharmacy_generate_bill(order_id):
 
     return jsonify({
         "success": True,
-        "message": f"অর্ডার #{order['order_number']} এর বিল সফলভাবে নিশ্চিত করা হয়েছে (মোট বিল: ৳{grand_total})। গ্রাহক নোটিফিকেশন দেখতে পারবেন।"
+        "message": f"Order #{order['order_number']} bill confirmed successfully (Total: TK {grand_total:.2f})."
     })
 
 
@@ -11721,7 +11721,7 @@ def api_admin_pharmacy_update_status(order_id):
     conn.commit()
     conn.close()
 
-    return jsonify({"success": True, "message": f"অর্ডার স্ট্যাটাস সফলভাবে '{new_status}' করা হয়েছে।"})
+    return jsonify({"success": True, "message": f"Order status updated to '{new_status}' successfully."})
 
 
 @app.route("/api/admin/pharmacy/medicines/save", methods=["POST"])
@@ -11766,7 +11766,7 @@ def api_admin_pharmacy_save_medicine():
     now_iso = get_bd_now_iso()
 
     if not name:
-        return jsonify({"success": False, "message": "ঔষধের নাম প্রদান করা আবশ্যক।"}), 400
+        return jsonify({"success": False, "message": "Medicine name is required."}), 400
 
     conn = get_connection()
     cur = conn.cursor()
@@ -11780,7 +11780,7 @@ def api_admin_pharmacy_save_medicine():
         dup = cur.fetchone()
         if dup:
             conn.close()
-            return jsonify({"success": False, "message": f"বারকোড/SKU '{sku}' ইতোমধ্যে '{dup['name']}' ঔষধে ব্যবহৃত হচ্ছে।"}), 400
+            return jsonify({"success": False, "message": f"Barcode/SKU '{sku}' is already assigned to '{dup['name']}'."}), 400
 
         cur.execute("""
             UPDATE pharmacy_medicines SET
@@ -11789,7 +11789,7 @@ def api_admin_pharmacy_save_medicine():
                 stock_qty = ?, is_prescription_required = ?, description = ?, updated_at = ?
             WHERE id = ?
         """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, med_id))
-        msg = f"'{name}' এর তথ্য, বারকোড/SKU ({sku}) ও মূল্য সফলভাবে আপডেট করা হয়েছে।"
+        msg = f"'{name}' (SKU: {sku}) details and price updated successfully."
     else:
         if not sku:
             cur.execute("SELECT MAX(id) FROM pharmacy_medicines")
@@ -11801,7 +11801,7 @@ def api_admin_pharmacy_save_medicine():
             dup = cur.fetchone()
             if dup:
                 conn.close()
-                return jsonify({"success": False, "message": f"বারকোড/SKU '{sku}' ইতোমধ্যে '{dup['name']}' ঔষধে ব্যবহৃত হচ্ছে।"}), 400
+                return jsonify({"success": False, "message": f"Barcode/SKU '{sku}' is already assigned to '{dup['name']}'."}), 400
 
         cur.execute("""
             INSERT INTO pharmacy_medicines (
@@ -11811,7 +11811,7 @@ def api_admin_pharmacy_save_medicine():
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
         """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, strip_size, stock_qty, is_rx, description, now_iso, now_iso))
         med_id = cur.lastrowid
-        msg = f"নতুন ঔষধ '{name}' (বারকোড/SKU: {sku}) সফলভাবে ক্যাটালগে যুক্ত করা হয়েছে।"
+        msg = f"Medicine '{name}' (SKU: {sku}) added to catalog successfully."
 
     conn.commit()
     conn.close()
@@ -11881,7 +11881,7 @@ def api_admin_pharmacy_update_prescription(order_id):
     return jsonify({
         "success": True,
         "new_url": new_url,
-        "message": "প্রেসক্রিপশন সফলভাবে ক্রপ ও এনহ্যান্স করে আপডেট করা হয়েছে।"
+        "message": "Prescription successfully cropped, enhanced and updated."
     })
 
 
