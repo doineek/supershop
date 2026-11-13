@@ -744,11 +744,14 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
+    switch (status.trim().toLowerCase()) {
       case 'new':
       case 'pending':
+      case 'pending_confirmation':
+      case 'reviewing':
         return Colors.blue;
       case 'verified':
+      case 'confirmed':
         return Colors.purple;
       case 'packed':
         return Colors.orange;
@@ -756,26 +759,35 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
         return Colors.cyan;
       case 'delivered':
         return Colors.green;
-      default:
+      case 'cancelled':
         return Colors.red;
+      default:
+        return Colors.blueGrey;
     }
   }
 
   String _getStatusText(String status) {
-    switch (status) {
+    switch (status.trim().toLowerCase()) {
       case 'new':
       case 'pending':
+      case 'pending_confirmation':
         return 'Pending';
+      case 'reviewing':
+        return 'Reviewing';
       case 'verified':
-        return 'Verified';
+      case 'confirmed':
+        return 'Confirmed';
       case 'packed':
         return 'Packed';
       case 'on_the_way':
         return 'On the way';
       case 'delivered':
         return 'Delivered';
-      default:
+      case 'cancelled':
         return 'Cancelled';
+      default:
+        final clean = status.trim();
+        return clean.isEmpty ? 'Pending' : clean;
     }
   }
 
@@ -826,8 +838,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
   Widget _buildDeliveryTimeline(OnlineOrder order) {
     List<OrderTimelineStep> steps = order.timeline;
     if (steps.isEmpty) {
-      final st = order.orderStatus.toLowerCase();
-      final isVerified = ['verified', 'packed', 'on_the_way', 'delivered'].contains(st);
+      final st = order.orderStatus.trim().toLowerCase();
+      final isVerified = ['verified', 'confirmed', 'packed', 'on_the_way', 'delivered'].contains(st);
       final isPacked = ['packed', 'on_the_way', 'delivered'].contains(st);
       final isOtw = ['on_the_way', 'delivered'].contains(st);
       final isDelivered = (st == 'delivered');
@@ -840,8 +852,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
         ];
       } else {
         steps = [
-          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, timeBd: order.createdAtBd, done: true, active: st == 'new' || st == 'pending'),
-          OrderTimelineStep(stage: 'verified', title: 'Confirmed', time: order.confirmedAt, done: isVerified, active: st == 'verified'),
+          OrderTimelineStep(stage: 'placed', title: 'Placed', time: order.createdAt, timeBd: order.createdAtBd, done: true, active: ['new', 'pending', 'pending_confirmation', 'reviewing'].contains(st)),
+          OrderTimelineStep(stage: 'verified', title: 'Confirmed', time: order.confirmedAt, done: isVerified, active: (st == 'verified' || st == 'confirmed')),
           OrderTimelineStep(stage: 'packed', title: 'Packed', time: order.packedAt, done: isPacked, active: st == 'packed'),
           OrderTimelineStep(stage: 'on_the_way', title: 'On Way', time: order.onTheWayAt, done: isOtw, active: st == 'on_the_way'),
           OrderTimelineStep(stage: 'delivered', title: 'Delivered', time: order.deliveredAt, done: isDelivered, active: st == 'delivered'),

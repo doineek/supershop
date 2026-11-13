@@ -250,9 +250,9 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
     try {
       final XFile? file = await _picker.pickImage(
         source: source,
-        maxWidth: 1800,
-        maxHeight: 1800,
-        imageQuality: 90,
+        maxWidth: 2200,
+        maxHeight: 2200,
+        imageQuality: 92,
       );
       if (file == null) return;
       final Uint8List origBytes = await file.readAsBytes();
@@ -1733,7 +1733,9 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
   final TextEditingController _phoneSearchCtrl = TextEditingController();
   List<dynamic> _orders = [];
   bool _loading = true;
+  bool _isRefreshing = false;
   final Set<String> _expandedOrders = {};
+  Timer? _livePollTimer;
 
   @override
   void initState() {
@@ -1742,28 +1744,75 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
     if (widget.initialOrderNum.isNotEmpty) {
       _expandedOrders.add(widget.initialOrderNum);
     }
-    _fetchOrders();
+    _loadCachedThenFetch();
+    _livePollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) _fetchOrders(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _livePollTimer?.cancel();
     _phoneSearchCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchOrders() async {
-    setState(() => _loading = true);
+  String _cacheKeyForPhone(String phone) =>
+      'cached_pharmacy_orders_${phone.replaceAll(RegExp(r'\D'), '')}';
+
+  Future<void> _loadCachedThenFetch() async {
     final phone = _phoneSearchCtrl.text.trim();
-    final list = phone.isNotEmpty ? await ApiService.fetchMyPharmacyOrders(phone) : <dynamic>[];
-    if (mounted) {
-      setState(() {
-        _orders = list;
-        _loading = false;
-        if (_expandedOrders.isEmpty && list.isNotEmpty) {
-          final firstNum = (list.first as Map)['order_number']?.toString() ?? '';
-          if (firstNum.isNotEmpty) _expandedOrders.add(firstNum);
+    if (phone.isNotEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedRaw = prefs.getString(_cacheKeyForPhone(phone));
+        if (cachedRaw != null && cachedRaw.isNotEmpty && mounted) {
+          final decoded = jsonDecode(cachedRaw);
+          if (decoded is List && decoded.isNotEmpty) {
+            setState(() {
+              _orders = decoded;
+              _loading = false;
+              if (_expandedOrders.isEmpty) {
+                final firstNum = (decoded.first as Map)['order_number']?.toString() ?? '';
+                if (firstNum.isNotEmpty) _expandedOrders.add(firstNum);
+              }
+            });
+          }
         }
-      });
+      } catch (_) {}
+    }
+    await _fetchOrders(silent: _orders.isNotEmpty);
+  }
+
+  Future<void> _fetchOrders({bool silent = false}) async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    try {
+      if (!silent && _orders.isEmpty && mounted) {
+        setState(() => _loading = true);
+      }
+      final phone = _phoneSearchCtrl.text.trim();
+      final list = phone.isNotEmpty ? await ApiService.fetchMyPharmacyOrders(phone) : <dynamic>[];
+      if (phone.isNotEmpty && list.isNotEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_cacheKeyForPhone(phone), jsonEncode(list));
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() {
+          if (list.isNotEmpty || !silent) {
+            _orders = list;
+          }
+          _loading = false;
+          if (_expandedOrders.isEmpty && _orders.isNotEmpty) {
+            final firstNum = (_orders.first as Map)['order_number']?.toString() ?? '';
+            if (firstNum.isNotEmpty) _expandedOrders.add(firstNum);
+          }
+        });
+      }
+    } finally {
+      _isRefreshing = false;
     }
   }
 

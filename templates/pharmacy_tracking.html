@@ -323,6 +323,13 @@
       if (inputVal) {
         fetchAndDisplayOrder(inputVal);
       }
+      setInterval(() => {
+        const curNum = (document.getElementById("dOrderNumber")?.innerText || "").trim();
+        if (curNum && curNum !== "RX-" && !document.getElementById("orderDetailsCard")?.classList.contains("hidden")) {
+          fetchAndDisplayOrder(curNum, true);
+        }
+        loadSavedLocalOrders();
+      }, 6000);
     });
 
     function searchOrder(event) {
@@ -335,20 +342,22 @@
       fetchAndDisplayOrder(val);
     }
 
-    async function fetchAndDisplayOrder(orderNum) {
+    async function fetchAndDisplayOrder(orderNum, silent = false) {
       try {
         const res = await fetch("/api/pharmacy/order-status/" + encodeURIComponent(orderNum));
         const data = await res.json();
         if (!data.success) {
-          alert("অর্ডারটি খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক অর্ডার নম্বর দিন।");
+          if (!silent) alert("অর্ডারটি খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক অর্ডার নম্বর দিন।");
           return;
         }
 
         renderOrderData(data);
-        document.getElementById("orderDetailsCard").classList.remove("hidden");
-        document.getElementById("orderDetailsCard").scrollIntoView({ behavior: 'smooth' });
+        if (!silent) {
+          document.getElementById("orderDetailsCard").classList.remove("hidden");
+          document.getElementById("orderDetailsCard").scrollIntoView({ behavior: 'smooth' });
+        }
       } catch (e) {
-        alert("সার্ভার সংযোগ সমস্যা।");
+        if (!silent) alert("সার্ভার সংযোগ সমস্যা।");
       }
     }
 
@@ -475,8 +484,38 @@
       document.getElementById("rxFullModal").classList.add("hidden");
     }
 
-    function loadSavedLocalOrders() {
-      const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+    const TRACK_STATUS_BN_MAP = {
+      reviewing: "যাচাই চলছে",
+      confirmed: "কনফার্মড ও বিল প্রস্তুত",
+      verified: "কনফার্মড ও বিল প্রস্তুত",
+      packed: "প্যাকিং সম্পন্ন",
+      on_the_way: "ডেলিভারির পথে",
+      delivered: "ডেলিভারি সম্পন্ন",
+      cancelled: "বাতিল"
+    };
+
+    async function loadSavedLocalOrders() {
+      let orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
+      try {
+        const custRaw = localStorage.getItem("supershop_logged_customer");
+        const cust = custRaw ? JSON.parse(custRaw) : null;
+        if (cust && cust.phone) {
+          const res = await fetch("/api/pharmacy/my-orders?phone=" + encodeURIComponent(cust.phone));
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.orders)) {
+            orders = data.orders.map(o => ({
+              order_number: o.order_number,
+              phone: o.customer_phone || cust.phone,
+              status: o.order_status,
+              status_bn: TRACK_STATUS_BN_MAP[o.order_status] || 'যাচাই চলছে',
+              duration: (o.overall_duration_days && parseInt(o.overall_duration_days, 10) > 0) ? `${o.overall_duration_days} দিন` : 'প্রেসক্রিপশন',
+              delivery_otp: o.delivery_otp || '----',
+              total_amount: o.total_amount || 0
+            }));
+          }
+        }
+      } catch (e) {}
+
       const list = document.getElementById("localOrdersList");
       if (orders.length > 0) {
         let html = "";
@@ -489,7 +528,7 @@
                 <div class="text-[10px] text-slate-500 mt-0.5">${o.duration || 'প্রেসক্রিপশন'} • OTP: <strong class="text-amber-800 font-mono">${o.delivery_otp || '----'}</strong></div>
               </div>
               <div class="text-right shrink-0">
-                <span class="text-xs font-black text-emerald-700">৳${o.total_amount || '0'}</span>
+                <span class="text-xs font-black text-emerald-700">৳${Number(o.total_amount || 0).toFixed(0)}</span>
                 <span class="block text-[10px] text-emerald-600 font-bold">বিস্তারিত ➔</span>
               </div>
             </div>

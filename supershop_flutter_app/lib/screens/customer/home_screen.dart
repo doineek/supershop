@@ -1999,55 +1999,115 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     );
                   }
                 },
-                children: subs.map<Widget>((sub) {
-                  final List subsubs = sub["sub_sub_categories"] ?? [];
-                  final String subIcon = sub["icon"] ?? "";
-                  final int subProdCount = sub["product_count"] ?? 0;
-
-                  if (subsubs.isNotEmpty) {
-                    return ExpansionTile(
-                      tilePadding: const EdgeInsets.only(left: 36, right: 16),
-                      leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.folder_open),
+                children: [
+                  if (subs.isNotEmpty && catProdCount > 0)
+                    ListTile(
+                      contentPadding: const EdgeInsets.only(left: 36, right: 16),
+                      leading: const Icon(Icons.apps_rounded, size: 18, color: Color(0xFF6B21A8)),
                       title: Text(
-                        sub["name"] ?? "",
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                        "সব প্রোডাক্ট (${cat["name"] ?? ""})",
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF6B21A8)),
                       ),
                       subtitle: Text(
-                        "${subsubs.length} Sub-Categories, $subProdCount Products",
+                        "$catProdCount Products",
                         style: const TextStyle(fontSize: 11, color: Colors.grey),
                       ),
-                      children: subsubs.map<Widget>((ss) {
-                        final String ssIcon = ss["icon"] ?? "";
-                        final int ssProdCount = ss["product_count"] ?? 0;
-                        final String ssFormattedCount = ssProdCount.toString().padLeft(2, '0');
-
-                        return ListTile(
-                          contentPadding: const EdgeInsets.only(left: 64, right: 16),
-                          leading: _buildIconWidget(ssIcon, size: 16.0, defaultIcon: Icons.subdirectory_arrow_right),
-                          title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                          subtitle: Text("$ssFormattedCount Products", style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
-                          onTap: () {
-                            Navigator.of(context, rootNavigator: true).push(
-                              MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: ss["name"] ?? "")),
-                            );
-                          },
+                      trailing: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF6B21A8)),
+                      onTap: () {
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: cat["name"] ?? "")),
                         );
-                      }).toList(),
-                    );
-                  }
+                      },
+                    ),
+                  ...subs.map<Widget>((sub) {
+                    final List subsubs = sub["sub_sub_categories"] ?? [];
+                    final String subIcon = sub["icon"] ?? "";
+                    final int subProdCount = sub["product_count"] ?? 0;
+                    final int subDirectCount = sub["direct_product_count"] ?? 0;
 
-                  return ListTile(
-                    contentPadding: const EdgeInsets.only(left: 44, right: 16),
-                    leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.subdirectory_arrow_right),
-                    title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    subtitle: Text("$subProdCount Products", style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    onTap: () {
-                      Navigator.of(context, rootNavigator: true).push(
-                        MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "")),
+                    if (subsubs.isNotEmpty) {
+                      return ExpansionTile(
+                        tilePadding: const EdgeInsets.only(left: 36, right: 16),
+                        leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.folder_open),
+                        title: Text(
+                          sub["name"] ?? "",
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                        ),
+                        subtitle: Text(
+                          "${subsubs.length} Sub-Categories, $subProdCount Products",
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                        children: [
+                          if (subProdCount > 0)
+                            ListTile(
+                              contentPadding: const EdgeInsets.only(left: 64, right: 16),
+                              leading: const Icon(Icons.grid_view_rounded, size: 16, color: Color(0xFF6B21A8)),
+                              title: Text(
+                                "সব প্রোডাক্ট (${sub["name"] ?? ""})",
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF6B21A8)),
+                              ),
+                              subtitle: Text(
+                                "${subProdCount.toString().padLeft(2, '0')} Products",
+                                style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                              ),
+                              onTap: () {
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "")),
+                                );
+                              },
+                            ),
+                          if (subDirectCount > 0)
+                            ListTile(
+                              contentPadding: const EdgeInsets.only(left: 64, right: 16),
+                              leading: const Icon(Icons.inventory_2_outlined, size: 16, color: Color(0xFF0F766E)),
+                              title: Text(
+                                "সরাসরি প্রোডাক্ট (${sub["name"] ?? ""})",
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F766E)),
+                              ),
+                              subtitle: Text(
+                                "${subDirectCount.toString().padLeft(2, '0')} Products",
+                                style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                              ),
+                              onTap: () {
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "", directOnly: true)),
+                                );
+                              },
+                            ),
+                          ...subsubs.map<Widget>((ss) {
+                            final String ssIcon = ss["icon"] ?? "";
+                            final int ssProdCount = ss["product_count"] ?? 0;
+                            final String ssFormattedCount = ssProdCount.toString().padLeft(2, '0');
+
+                            return ListTile(
+                              contentPadding: const EdgeInsets.only(left: 64, right: 16),
+                              leading: _buildIconWidget(ssIcon, size: 16.0, defaultIcon: Icons.subdirectory_arrow_right),
+                              title: Text(ss["name"] ?? "", style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                              subtitle: Text("$ssFormattedCount Products", style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
+                              onTap: () {
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: ss["name"] ?? "")),
+                                );
+                              },
+                            );
+                          }),
+                        ],
                       );
-                    },
-                  );
-                }).toList(),
+                    }
+
+                    return ListTile(
+                      contentPadding: const EdgeInsets.only(left: 44, right: 16),
+                      leading: _buildIconWidget(subIcon, size: 18.0, defaultIcon: Icons.subdirectory_arrow_right),
+                      title: Text(sub["name"] ?? "", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: Text("$subProdCount Products", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      onTap: () {
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "")),
+                        );
+                      },
+                    );
+                  }),
+                ],
               ),
             );
           },
@@ -2119,7 +2179,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 // Dedicated Category Products Screen (No Bottom Navigation Bar)
 class CategoryProductsScreen extends StatefulWidget {
   final String categoryName;
-  const CategoryProductsScreen({Key? key, required this.categoryName}) : super(key: key);
+  final bool directOnly;
+  const CategoryProductsScreen({Key? key, required this.categoryName, this.directOnly = false}) : super(key: key);
 
   @override
   State<CategoryProductsScreen> createState() => _CategoryProductsScreenState();
@@ -2140,6 +2201,11 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     String q = widget.categoryName.trim().toLowerCase();
     if (q == 'uncategorized') {
       list = list.where((p) => p.categoryId == null || p.categoryId == 0 || p.categoryName.trim().isEmpty || p.categoryName.trim().toLowerCase() == 'uncategorized').toList();
+    } else if (widget.directOnly) {
+      list = list.where((p) =>
+        p.subCategoryName.trim().toLowerCase() == q &&
+        p.subSubCategoryName.trim().isEmpty
+      ).toList();
     } else {
       list = list.where((p) =>
         p.categoryName.trim().toLowerCase() == q ||

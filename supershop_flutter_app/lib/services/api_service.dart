@@ -877,7 +877,7 @@ class ApiService {
               headers: {'Content-Type': 'application/json'},
               body: payload,
             )
-            .timeout(const Duration(seconds: 25));
+            .timeout(const Duration(seconds: 40));
 
         final bodyTrim = res.body.trim();
         if (bodyTrim.startsWith('{')) {

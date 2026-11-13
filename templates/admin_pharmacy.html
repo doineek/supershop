@@ -559,7 +559,38 @@
           </div>
         </div>
 
-        <div style="flex: 1; min-height: 380px; max-height: 480px; overflow: auto; background: #020617; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative;">
+        <!-- Inline Contrast / Sharpness / Brightness Controls for Pharmacist Reading -->
+        <svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden;" aria-hidden="true">
+          <defs>
+            <filter id="adminLiveSharpFilter">
+              <feConvolveMatrix id="adminLiveSharpMatrix" order="3" kernelMatrix="0 0 0 0 1 0 0 0 0" preserveAlpha="true"/>
+            </filter>
+          </defs>
+        </svg>
+        <div id="adminRxClarityBar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; font-size: 0.74rem;">
+          <label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#334155;">
+            <span>Contrast:</span>
+            <input type="range" id="adminInlineContrast" min="60" max="240" value="100" oninput="applyAdminInlineClarity()" style="width:68px;accent-color:#059669;">
+            <span id="adminInlineContrastVal" style="min-width:30px;color:#047857;font-weight:800;">100%</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#334155;">
+            <span>Sharpness:</span>
+            <input type="range" id="adminInlineSharpness" min="0" max="100" value="0" oninput="applyAdminInlineClarity()" style="width:68px;accent-color:#0284c7;">
+            <span id="adminInlineSharpVal" style="min-width:26px;color:#0369a1;font-weight:800;">0%</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-weight:700;color:#334155;">
+            <span>Bright:</span>
+            <input type="range" id="adminInlineBrightness" min="70" max="150" value="100" oninput="applyAdminInlineClarity()" style="width:56px;accent-color:#d97706;">
+            <span id="adminInlineBrightVal" style="min-width:30px;color:#b45309;font-weight:800;">100%</span>
+          </label>
+          <div style="display:flex;gap:4px;margin-left:auto;">
+            <button type="button" onclick="presetAdminInlineClarity(135, 65, 105)" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;padding:2px 7px;border-radius:5px;font-size:0.7rem;font-weight:800;cursor:pointer;">✨ Auto</button>
+            <button type="button" onclick="presetAdminInlineClarity(160, 100, 105)" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 7px;border-radius:5px;font-size:0.7rem;font-weight:800;cursor:pointer;">🖋️ Sharp</button>
+            <button type="button" onclick="presetAdminInlineClarity(100, 0, 100)" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:2px 7px;border-radius:5px;font-size:0.7rem;font-weight:700;cursor:pointer;">🔄</button>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-height: 360px; max-height: 460px; overflow: auto; background: #020617; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative;">
           <img id="reviewRxImage" src="" alt="Prescription" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.3s ease;">
           <iframe id="reviewRxPdf" src="" style="display: none; width: 100%; height: 100%; min-height: 420px; border: none; background: white; border-radius: 6px;"></iframe>
           <div id="noRxNotice" style="display: none; color: #94a3b8; font-size: 0.9rem;">No prescription photo uploaded (Customer selected medicines directly).</div>
@@ -847,15 +878,23 @@
       <button type="button" onclick="closeAdminCropModal()" style="background: none; border: none; color: #94a3b8; font-size: 1.6rem; cursor: pointer; line-height: 1;">&times;</button>
     </div>
 
-    <!-- STAGE 1: Corner Crop & Loupe -->
+    <!-- STAGE 1: Corner Crop & Free Drag + Loupe -->
     <div id="adminCropStage1" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
-      <div style="position: relative; background: #020617; border-radius: 12px; overflow: hidden; height: 360px; display: flex; align-items: center; justify-content: center;" id="adminCropCanvasBox">
+      <div style="display: flex; gap: 6px; justify-content: center;">
+        <button type="button" id="adminModePerspectiveBtn" onclick="setAdminCropMode('perspective')" style="flex:1;padding:6px 10px;border-radius:8px;font-size:0.8rem;font-weight:800;border:2px solid #059669;background:#ecfdf5;color:#047857;cursor:pointer;">
+          📐 4-Corner Tilt Crop
+        </button>
+        <button type="button" id="adminModeFreeBtn" onclick="setAdminCropMode('free')" style="flex:1;padding:6px 10px;border-radius:8px;font-size:0.8rem;font-weight:700;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;cursor:pointer;">
+          ⬜ Free Area Drag Crop
+        </button>
+      </div>
+      <div style="position: relative; background: #020617; border-radius: 12px; overflow: hidden; height: 350px; display: flex; align-items: center; justify-content: center;" id="adminCropCanvasBox">
         <canvas id="adminCropCanvas" style="cursor: crosshair; touch-action: none; max-width: 100%; max-height: 100%;"></canvas>
         <canvas id="adminLoupeCanvas" width="104" height="104" style="display: none; position: absolute; top: 10px; left: 10px; border-radius: 50%; border: 2.5px solid #10b981; pointer-events: none; z-index: 20; background: #020617; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);"></canvas>
       </div>
 
-      <div style="font-size: 0.8rem; background: #ecfdf5; color: #065f46; padding: 8px 12px; border-radius: 8px; border: 1px solid #a7f3d0; text-align: center;">
-        💡 Drag the <b>4 corners, 4 edges, or center body</b> to adjust the crop box (zoom loupe appears on corners).
+      <div id="adminCropModeHint" style="font-size: 0.78rem; background: #ecfdf5; color: #065f46; padding: 7px 12px; border-radius: 8px; border: 1px solid #a7f3d0; text-align: center;">
+        💡 Drag any <b>4 corners</b> onto tilted document corners — perspective auto-straightens cleanly!
       </div>
 
       <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid #e2e8f0; flex-wrap: wrap;">
@@ -878,9 +917,9 @@
       </div>
     </div>
 
-    <!-- STAGE 2: Filter Selector & Save -->
+    <!-- STAGE 2: Filter + Contrast & Sharpness Sliders + Save -->
     <div id="adminCropStage2" style="display: none; padding: 16px; flex-direction: column; gap: 10px;">
-      <div style="position: relative; background: #020617; border-radius: 12px; overflow: hidden; height: 350px; display: flex; align-items: center; justify-content: center; padding: 6px;">
+      <div style="position: relative; background: #020617; border-radius: 12px; overflow: hidden; height: 330px; display: flex; align-items: center; justify-content: center; padding: 6px;">
         <canvas id="adminFilterCanvas" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px;"></canvas>
       </div>
 
@@ -897,6 +936,21 @@
         <button type="button" id="adminFx_none" onclick="applyAdminFilter('none')" style="padding: 7px 4px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">
           🖼️ Original Crop
         </button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 0.75rem;">
+        <label style="display:flex;flex-direction:column;gap:3px;font-weight:700;color:#334155;">
+          <span>Contrast (<span id="adminStage2ContrastVal">100%</span>)</span>
+          <input type="range" id="adminStage2Contrast" min="60" max="220" value="100" oninput="applyAdminFilter(adminCurrentFx)" style="width:100%;accent-color:#059669;">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-weight:700;color:#334155;">
+          <span>Sharpness (<span id="adminStage2SharpVal">35%</span>)</span>
+          <input type="range" id="adminStage2Sharpness" min="0" max="100" value="35" oninput="applyAdminFilter(adminCurrentFx)" style="width:100%;accent-color:#0284c7;">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-weight:700;color:#334155;">
+          <span>Brightness (<span id="adminStage2BrightVal">100%</span>)</span>
+          <input type="range" id="adminStage2Brightness" min="70" max="150" value="100" oninput="applyAdminFilter(adminCurrentFx)" style="width:100%;accent-color:#d97706;">
+        </label>
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid #e2e8f0;">
@@ -1190,6 +1244,7 @@
     currentReviewOrderId = orderId;
     currentRotation = 0;
     adminActivePrescriptionView = "enhanced";
+    presetAdminInlineClarity(100, 0, 100);
     
     try {
       const res = await fetch(`/api/admin/pharmacy/orders/${orderId}/review`);
@@ -1300,10 +1355,12 @@
       btnEnh.style.background = "#e2e8f0"; btnEnh.style.color = "#334155";
     }
 
+    const clarityBar = document.getElementById("adminRxClarityBar");
     if (targetUrl) {
       const isPdf = targetUrl.toLowerCase().includes('.pdf') || targetUrl.startsWith('data:application/pdf');
       if (isPdf) {
         if (rxImg) rxImg.style.display = "none";
+        if (clarityBar) clarityBar.style.display = "none";
         const displayPdfUrl = getSafeViewUrl(targetUrl);
         if (rxPdf) {
           rxPdf.src = displayPdfUrl;
@@ -1321,10 +1378,12 @@
           rxPdf.src = "";
           rxPdf.style.display = "none";
         }
+        if (clarityBar) clarityBar.style.display = "flex";
         if (rxImg) {
           rxImg.src = targetUrl;
           rxImg.style.transform = `rotate(${currentRotation}deg)`;
           rxImg.style.display = "block";
+          applyAdminInlineClarity();
         }
         if (btnRotate) btnRotate.style.display = "inline-block";
         if (btnCrop) btnCrop.style.display = "inline-block";
@@ -1337,6 +1396,7 @@
       if (noRx) noRx.style.display = "none";
     } else {
       if (rxImg) rxImg.style.display = "none";
+      if (clarityBar) clarityBar.style.display = "none";
       if (rxPdf) {
         rxPdf.src = "";
         rxPdf.style.display = "none";
@@ -1344,6 +1404,48 @@
       if (noRx) noRx.style.display = "block";
       if (downLink) downLink.style.display = "none";
     }
+  }
+
+  function applyAdminInlineClarity() {
+    const rxImg = document.getElementById("reviewRxImage");
+    const cEl = document.getElementById("adminInlineContrast");
+    const sEl = document.getElementById("adminInlineSharpness");
+    const bEl = document.getElementById("adminInlineBrightness");
+    if (!cEl || !sEl || !bEl) return;
+    const c = parseInt(cEl.value, 10) || 100;
+    const s = parseInt(sEl.value, 10) || 0;
+    const b = parseInt(bEl.value, 10) || 100;
+    const cv = document.getElementById("adminInlineContrastVal");
+    const sv = document.getElementById("adminInlineSharpVal");
+    const bv = document.getElementById("adminInlineBrightVal");
+    if (cv) cv.innerText = c + "%";
+    if (sv) sv.innerText = s + "%";
+    if (bv) bv.innerText = b + "%";
+
+    const mat = document.getElementById("adminLiveSharpMatrix");
+    if (mat) {
+      const k = (s / 100) * 1.4;
+      const ctr = 1 + 4 * k;
+      const side = -k;
+      mat.setAttribute("kernelMatrix", `0 ${side.toFixed(3)} 0 ${side.toFixed(3)} ${ctr.toFixed(3)} ${side.toFixed(3)} 0 ${side.toFixed(3)} 0`);
+    }
+    if (rxImg) {
+      const parts = [];
+      if (c !== 100) parts.push(`contrast(${c}%)`);
+      if (b !== 100) parts.push(`brightness(${b}%)`);
+      if (s > 0) parts.push(`url(#adminLiveSharpFilter)`);
+      rxImg.style.filter = parts.join(" ");
+    }
+  }
+
+  function presetAdminInlineClarity(c, s, b) {
+    const cEl = document.getElementById("adminInlineContrast");
+    const sEl = document.getElementById("adminInlineSharpness");
+    const bEl = document.getElementById("adminInlineBrightness");
+    if (cEl) cEl.value = c;
+    if (sEl) sEl.value = s;
+    if (bEl) bEl.value = b;
+    applyAdminInlineClarity();
   }
 
   function closeReviewModal() {
@@ -1368,6 +1470,7 @@
 
   // ==================== ADMIN 4-CORNER SMART CROP & LOUPE MAGNIFIER ====================
   let adminSmartImg = new Image();
+  let adminCropMode = "perspective"; // "perspective" | "free"
   let adminSmartPts = [
     { x: 0.0, y: 0.0 },
     { x: 1.0, y: 0.0 },
@@ -1378,6 +1481,23 @@
   let adminSmartGeom = { pad: 12, drawW: 0, drawH: 0 };
   let adminBaseWarpedCanvas = null;
   let adminCurrentFx = "magic_color";
+
+  function setAdminCropMode(mode) {
+    adminCropMode = mode;
+    const pBtn = document.getElementById("adminModePerspectiveBtn");
+    const fBtn = document.getElementById("adminModeFreeBtn");
+    const hint = document.getElementById("adminCropModeHint");
+    if (mode === "free") {
+      if (fBtn) { fBtn.style.border = "2px solid #059669"; fBtn.style.background = "#ecfdf5"; fBtn.style.color = "#047857"; fBtn.style.fontWeight = "800"; }
+      if (pBtn) { pBtn.style.border = "1px solid #cbd5e1"; pBtn.style.background = "#f8fafc"; pBtn.style.color = "#334155"; pBtn.style.fontWeight = "700"; }
+      if (hint) hint.innerHTML = "💡 <b>Click & drag anywhere</b> on the photo to crop a free rectangle, or drag corners/edges to resize.";
+    } else {
+      if (pBtn) { pBtn.style.border = "2px solid #059669"; pBtn.style.background = "#ecfdf5"; pBtn.style.color = "#047857"; pBtn.style.fontWeight = "800"; }
+      if (fBtn) { fBtn.style.border = "1px solid #cbd5e1"; fBtn.style.background = "#f8fafc"; fBtn.style.color = "#334155"; fBtn.style.fontWeight = "700"; }
+      if (hint) hint.innerHTML = "💡 Drag any <b>4 corners</b> onto tilted document corners — perspective auto-straightens cleanly!";
+    }
+    drawAdminCrop();
+  }
 
   function openAdminCropModal() {
     if (!currentOrderData || (!currentOrderData.prescription_original_url && !currentOrderData.prescription_url)) {
@@ -1686,7 +1806,19 @@
         return;
       }
 
-      // 4. Clicked outside, drag nearest edge
+      // 4. In Free Crop mode (or far outside in free area), allow drawing a brand new free rectangle anywhere
+      if (adminCropMode === 'free') {
+        if (e.cancelable) e.preventDefault();
+        const nx = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
+        const ny = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+        adminDragMode = { type: 'draw', startNormX: nx, startNormY: ny };
+        adminDragStart = pos;
+        adminDragInitPts = adminSmartPts.map(p => ({ ...p }));
+        drawAdminCrop();
+        return;
+      }
+
+      // 5. Clicked outside in 4-corner mode, drag nearest edge
       let closestEdge = 0;
       let minDist = 99999;
       edges.forEach((edge, i) => {
@@ -1731,7 +1863,26 @@
         const nx = Math.max(0.0, Math.min(1.0, init[idx].x + deltaNormX));
         const ny = Math.max(0.0, Math.min(1.0, init[idx].y + deltaNormY));
         adminSmartPts[idx] = { x: nx, y: ny };
+        if (adminCropMode === 'free') {
+          if (idx === 0) { adminSmartPts[1].y = ny; adminSmartPts[3].x = nx; }
+          else if (idx === 1) { adminSmartPts[0].y = ny; adminSmartPts[2].x = nx; }
+          else if (idx === 2) { adminSmartPts[3].y = ny; adminSmartPts[1].x = nx; }
+          else if (idx === 3) { adminSmartPts[2].y = ny; adminSmartPts[0].x = nx; }
+        }
         updateAdminLoupe(adminSmartPts[idx]);
+      } else if (adminDragMode.type === 'draw') {
+        const curX = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
+        const curY = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+        const minX = Math.min(adminDragMode.startNormX, curX);
+        const maxX = Math.max(minX + 0.03, Math.max(adminDragMode.startNormX, curX));
+        const minY = Math.min(adminDragMode.startNormY, curY);
+        const maxY = Math.max(minY + 0.03, Math.max(adminDragMode.startNormY, curY));
+        adminSmartPts = [
+          { x: minX, y: minY },
+          { x: Math.min(1.0, maxX), y: minY },
+          { x: Math.min(1.0, maxX), y: Math.min(1.0, maxY) },
+          { x: minX, y: Math.min(1.0, maxY) }
+        ];
       } else if (adminDragMode.type === 'edge') {
         const edge = adminDragMode.edge;
         if (edge === 0) { // Top
@@ -1825,20 +1976,35 @@
     return h;
   }
 
+  function sortAdminQuadClockwise(pts) {
+    if (!pts || pts.length !== 4) return pts;
+    const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
+    const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+    const sorted = [...pts].sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+    let tlIdx = 0;
+    let bestScore = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const score = sorted[i].x + sorted[i].y;
+      if (score < bestScore) { bestScore = score; tlIdx = i; }
+    }
+    return [sorted[tlIdx], sorted[(tlIdx + 1) % 4], sorted[(tlIdx + 2) % 4], sorted[(tlIdx + 3) % 4]];
+  }
+
   function warpAdminPerspective(imgEl, pts) {
     const sw = imgEl.naturalWidth || imgEl.width;
     const sh = imgEl.naturalHeight || imgEl.height;
-    const p = pts.map(pt => [pt.x * sw, pt.y * sh]);
+    const ordered = sortAdminQuadClockwise(pts);
+    const p = ordered.map(pt => [pt.x * sw, pt.y * sh]);
 
     const wTop = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]);
     const wBot = Math.hypot(p[2][0] - p[3][0], p[2][1] - p[3][1]);
     const hLeft = Math.hypot(p[3][0] - p[0][0], p[3][1] - p[0][1]);
     const hRight = Math.hypot(p[2][0] - p[1][0], p[2][1] - p[1][1]);
 
-    let outW = Math.max(120, Math.round((wTop + wBot) * 0.5));
-    let outH = Math.max(120, Math.round((hLeft + hRight) * 0.5));
+    let outW = Math.max(120, Math.round(Math.max(wTop, wBot)));
+    let outH = Math.max(120, Math.round(Math.max(hLeft, hRight)));
 
-    const maxDim = 1200;
+    const maxDim = 2200;
     if (Math.max(outW, outH) > maxDim) {
       const sc = maxDim / Math.max(outW, outH);
       outW = Math.round(outW * sc);
@@ -1875,10 +2041,19 @@
         if (u < 0) u = 0; else if (u > maxX) u = maxX;
         if (v < 0) v = 0; else if (v > maxY) v = maxY;
         const x0 = u | 0, y0 = v | 0;
-        const sIdx = (y0 * sw + x0) << 2;
-        dstData[idx] = srcData[sIdx];
-        dstData[idx + 1] = srcData[sIdx + 1];
-        dstData[idx + 2] = srcData[sIdx + 2];
+        const x1 = x0 < maxX ? x0 + 1 : maxX;
+        const y1 = y0 < maxY ? y0 + 1 : maxY;
+        const fx = u - x0, fy = v - y0;
+        const w00 = (1 - fx) * (1 - fy);
+        const w10 = fx * (1 - fy);
+        const w01 = (1 - fx) * fy;
+        const w11 = fx * fy;
+        const row0 = y0 * sw, row1 = y1 * sw;
+        const i00 = (row0 + x0) << 2, i10 = (row0 + x1) << 2;
+        const i01 = (row1 + x0) << 2, i11 = (row1 + x1) << 2;
+        dstData[idx]     = (srcData[i00] * w00 + srcData[i10] * w10 + srcData[i01] * w01 + srcData[i11] * w11 + 0.5) | 0;
+        dstData[idx + 1] = (srcData[i00 + 1] * w00 + srcData[i10 + 1] * w10 + srcData[i01 + 1] * w01 + srcData[i11 + 1] * w11 + 0.5) | 0;
+        dstData[idx + 2] = (srcData[i00 + 2] * w00 + srcData[i10 + 2] * w10 + srcData[i01 + 2] * w01 + srcData[i11 + 2] * w11 + 0.5) | 0;
         dstData[idx + 3] = 255;
         idx += 4;
       }
@@ -1892,6 +2067,12 @@
     adminBaseWarpedCanvas = warpAdminPerspective(adminSmartImg, adminSmartPts);
     document.getElementById("adminCropStage1").style.display = "none";
     document.getElementById("adminCropStage2").style.display = "flex";
+    const cSlider = document.getElementById("adminStage2Contrast");
+    const sSlider = document.getElementById("adminStage2Sharpness");
+    const bSlider = document.getElementById("adminStage2Brightness");
+    if (cSlider) cSlider.value = "100";
+    if (sSlider) sSlider.value = "35";
+    if (bSlider) bSlider.value = "100";
     applyAdminFilter(adminCurrentFx);
   }
 
@@ -1922,14 +2103,30 @@
 
     if (!adminBaseWarpedCanvas) return;
     const filterCvs = document.getElementById("adminFilterCanvas");
-    filterCvs.width = adminBaseWarpedCanvas.width;
-    filterCvs.height = adminBaseWarpedCanvas.height;
+    const cw = adminBaseWarpedCanvas.width;
+    const ch = adminBaseWarpedCanvas.height;
+    filterCvs.width = cw;
+    filterCvs.height = ch;
     const ctx = filterCvs.getContext("2d");
     ctx.drawImage(adminBaseWarpedCanvas, 0, 0);
 
-    if (fx !== "none") {
-      const imgData = ctx.getImageData(0, 0, filterCvs.width, filterCvs.height);
-      const d = imgData.data;
+    const cSlider = document.getElementById("adminStage2Contrast");
+    const sSlider = document.getElementById("adminStage2Sharpness");
+    const bSlider = document.getElementById("adminStage2Brightness");
+    const userContrast = (parseInt(cSlider ? cSlider.value : "100", 10) || 100) / 100.0;
+    const userSharp = (parseInt(sSlider ? sSlider.value : "0", 10) || 0) / 100.0;
+    const userBright = ((parseInt(bSlider ? bSlider.value : "100", 10) || 100) - 100) * 1.25;
+    const cvTxt = document.getElementById("adminStage2ContrastVal");
+    const svTxt = document.getElementById("adminStage2SharpVal");
+    const bvTxt = document.getElementById("adminStage2BrightVal");
+    if (cvTxt) cvTxt.innerText = Math.round(userContrast * 100) + "%";
+    if (svTxt) svTxt.innerText = Math.round(userSharp * 100) + "%";
+    if (bvTxt) bvTxt.innerText = (parseInt(bSlider ? bSlider.value : "100", 10) || 100) + "%";
+
+    const imgData = ctx.getImageData(0, 0, cw, ch);
+    const d = imgData.data;
+
+    if (fx !== "none" || userContrast !== 1.0 || userBright !== 0) {
       for (let i = 0; i < d.length; i += 4) {
         let r = d[i], g = d[i + 1], b = d[i + 2];
         if (fx === "magic_color") {
@@ -1945,16 +2142,40 @@
           const v = lum > 140 ? 255 : (lum < 75 ? 0 : Math.round((lum - 75) * 3.92));
           r = g = b = v;
         }
+        if (userContrast !== 1.0 || userBright !== 0) {
+          r = Math.max(0, Math.min(255, (r - 128) * userContrast + 128 + userBright));
+          g = Math.max(0, Math.min(255, (g - 128) * userContrast + 128 + userBright));
+          b = Math.max(0, Math.min(255, (b - 128) * userContrast + 128 + userBright));
+        }
         d[i] = r; d[i + 1] = g; d[i + 2] = b;
       }
-      ctx.putImageData(imgData, 0, 0);
     }
+
+    // 3x3 Unsharp Mask Sharpness Convolution
+    if (userSharp > 0.01 && cw > 2 && ch > 2) {
+      const amt = userSharp * 1.5;
+      const srcCopy = new Uint8ClampedArray(d);
+      const rowStride = cw * 4;
+      for (let y = 1; y < ch - 1; y++) {
+        let p = y * rowStride + 4;
+        for (let x = 1; x < cw - 1; x++) {
+          for (let c = 0; c < 3; c++) {
+            const center = srcCopy[p + c];
+            const blur4 = (srcCopy[p - 4 + c] + srcCopy[p + 4 + c] + srcCopy[p - rowStride + c] + srcCopy[p + rowStride + c]) * 0.25;
+            const sharpened = center + amt * (center - blur4);
+            d[p + c] = sharpened < 0 ? 0 : (sharpened > 255 ? 255 : sharpened | 0);
+          }
+          p += 4;
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
   }
 
   async function saveAdminEnhancedPrescription() {
     if (!currentReviewOrderId || !adminBaseWarpedCanvas) return;
     const filterCvs = document.getElementById("adminFilterCanvas");
-    const dataUrl = filterCvs.toDataURL("image/jpeg", 0.90);
+    const dataUrl = filterCvs.toDataURL("image/jpeg", 0.92);
 
     const btn = document.getElementById("btnAdminSaveEnhancedRx");
     btn.disabled = true;
@@ -2149,7 +2370,7 @@
         if (printInvoice && data.invoice_url) {
           window.open(data.invoice_url, '_blank');
         }
-        alert(data.message);
+        closeReviewModal();
         location.reload();
       } else {
         alert("Error: " + data.message);

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class PrescriptionEditResult {
@@ -19,9 +19,150 @@ class PrescriptionEditResult {
   });
 }
 
-/// Interactive pure-Flutter Prescription Crop, Rotate & CamScan Enhancer dialog.
-/// Adds zero native binary overhead while giving full crop handles, 90° rotation,
-/// full-size reset, and CamScan visual document enhancement filters.
+class _PerspectiveWarpTask {
+  final Uint8List srcRgba;
+  final int srcW;
+  final int srcH;
+  final List<double> cornerPts; // [x0,y0, x1,y1, x2,y2, x3,y3] in src px
+  final int dstW;
+  final int dstH;
+
+  const _PerspectiveWarpTask({
+    required this.srcRgba,
+    required this.srcW,
+    required this.srcH,
+    required this.cornerPts,
+    required this.dstW,
+    required this.dstH,
+  });
+}
+
+List<double> _solveHomography8x8(List<double> cornerPts, int dstW, int dstH) {
+  final src = <List<double>>[
+    [cornerPts[0], cornerPts[1]],
+    [cornerPts[2], cornerPts[3]],
+    [cornerPts[4], cornerPts[5]],
+    [cornerPts[6], cornerPts[7]],
+  ];
+  final dst = <List<double>>[
+    [0.0, 0.0],
+    [dstW.toDouble(), 0.0],
+    [dstW.toDouble(), dstH.toDouble()],
+    [0.0, dstH.toDouble()],
+  ];
+
+  final A = <List<double>>[];
+  final B = <double>[];
+  for (int i = 0; i < 4; i++) {
+    final double sx = src[i][0];
+    final double sy = src[i][1];
+    final double dx = dst[i][0];
+    final double dy = dst[i][1];
+    A.add([dx, dy, 1.0, 0.0, 0.0, 0.0, -dx * sx, -dy * sx]);
+    B.add(sx);
+    A.add([0.0, 0.0, 0.0, dx, dy, 1.0, -dx * sy, -dy * sy]);
+    B.add(sy);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    int maxRow = i;
+    for (int r = i + 1; r < 8; r++) {
+      if (A[r][i].abs() > A[maxRow][i].abs()) maxRow = r;
+    }
+    final tmpA = A[i];
+    A[i] = A[maxRow];
+    A[maxRow] = tmpA;
+    final tmpB = B[i];
+    B[i] = B[maxRow];
+    B[maxRow] = tmpB;
+
+    for (int r = i + 1; r < 8; r++) {
+      final double denom = A[i][i].abs() < 1e-12 ? 1e-12 : A[i][i];
+      final double c = A[r][i] / denom;
+      for (int j = i; j < 8; j++) {
+        A[r][j] -= c * A[i][j];
+      }
+      B[r] -= c * B[i];
+    }
+  }
+
+  final h = List<double>.filled(8, 0.0);
+  for (int i = 7; i >= 0; i--) {
+    double s = B[i];
+    for (int j = i + 1; j < 8; j++) {
+      s -= A[i][j] * h[j];
+    }
+    final double denom = A[i][i].abs() < 1e-12 ? 1e-12 : A[i][i];
+    h[i] = s / denom;
+  }
+  return h;
+}
+
+Uint8List _warpPerspectiveIsolate(_PerspectiveWarpTask task) {
+  final int sw = task.srcW;
+  final int sh = task.srcH;
+  final int dw = task.dstW;
+  final int dh = task.dstH;
+  final src = task.srcRgba;
+  final dst = Uint8List(dw * dh * 4);
+
+  final h = _solveHomography8x8(task.cornerPts, dw, dh);
+  final double h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3];
+  final double h4 = h[4], h5 = h[5], h6 = h[6], h7 = h[7];
+
+  final int maxX = sw - 1;
+  final int maxY = sh - 1;
+  int idx = 0;
+
+  for (int y = 0; y < dh; y++) {
+    final double hy1 = h1 * y + h2;
+    final double hy4 = h4 * y + h5;
+    final double hy7 = h7 * y + 1.0;
+    for (int x = 0; x < dw; x++) {
+      final double w = 1.0 / (h6 * x + hy7);
+      double u = (h0 * x + hy1) * w;
+      double v = (h3 * x + hy4) * w;
+      if (u < 0.0) {
+        u = 0.0;
+      } else if (u > maxX) {
+        u = maxX.toDouble();
+      }
+      if (v < 0.0) {
+        v = 0.0;
+      } else if (v > maxY) {
+        v = maxY.toDouble();
+      }
+
+      final int x0 = u.floor();
+      final int y0 = v.floor();
+      final int x1 = x0 < maxX ? x0 + 1 : maxX;
+      final int y1 = y0 < maxY ? y0 + 1 : maxY;
+      final double fx = u - x0;
+      final double fy = v - y0;
+      final double w00 = (1.0 - fx) * (1.0 - fy);
+      final double w10 = fx * (1.0 - fy);
+      final double w01 = (1.0 - fx) * fy;
+      final double w11 = fx * fy;
+
+      final int row0 = y0 * sw;
+      final int row1 = y1 * sw;
+      final int i00 = (row0 + x0) << 2;
+      final int i10 = (row0 + x1) << 2;
+      final int i01 = (row1 + x0) << 2;
+      final int i11 = (row1 + x1) << 2;
+
+      dst[idx] = (src[i00] * w00 + src[i10] * w10 + src[i01] * w01 + src[i11] * w11 + 0.5).toInt().clamp(0, 255);
+      dst[idx + 1] = (src[i00 + 1] * w00 + src[i10 + 1] * w10 + src[i01 + 1] * w01 + src[i11 + 1] * w11 + 0.5).toInt().clamp(0, 255);
+      dst[idx + 2] = (src[i00 + 2] * w00 + src[i10 + 2] * w10 + src[i01 + 2] * w01 + src[i11 + 2] * w11 + 0.5).toInt().clamp(0, 255);
+      dst[idx + 3] = 255;
+      idx += 4;
+    }
+  }
+  return dst;
+}
+
+/// Interactive pure-Flutter Prescription 4-Corner Perspective Rectifier, Free Crop,
+/// 90° Rotation & CamScan Enhancer dialog.
 class PrescriptionCropScanDialog extends StatefulWidget {
   final Uint8List imageBytes;
 
@@ -52,15 +193,23 @@ class _PrescriptionCropScanDialogState
   ui.Image? _decodedImage;
   bool _isSaving = false;
 
-  // Normalized crop rectangle in rotated display space (0..1)
-  double _left = 0.0;
-  double _top = 0.0;
-  double _right = 1.0;
-  double _bottom = 1.0;
+  // 'perspective' = 4-corner free tilt warp | 'free' = free rectangular draw/resize
+  String _cropMode = 'perspective';
+
+  // Normalized corner points in rotated display space (0..1): TL, TR, BR, BL
+  List<Offset> _corners = const [
+    Offset(0.0, 0.0),
+    Offset(1.0, 0.0),
+    Offset(1.0, 1.0),
+    Offset(0.0, 1.0),
+  ];
+
   int _quarterTurns = 0;
   String _selectedFilter = 'magic_color';
+  Offset? _freeDrawAnchor;
+  int? _activeCornerIdx;
 
-  static const double _minCropSpan = 0.12;
+  static const double _minCropSpan = 0.08;
 
   @override
   void initState() {
@@ -80,7 +229,6 @@ class _PrescriptionCropScanDialogState
   List<double>? _colorMatrixFor(String fx) {
     switch (fx) {
       case 'magic_color':
-        // CamScan Magic Color: crisp contrast boost + brightened paper background
         const double c = 1.38;
         const double t = -32.0;
         return <double>[
@@ -90,7 +238,6 @@ class _PrescriptionCropScanDialogState
           0, 0, 0, 1, 0,
         ];
       case 'bw_scan':
-        // High-contrast B&W document scan matrix
         const double c = 1.65;
         const double t = -68.0;
         const double r = 0.299 * c;
@@ -103,7 +250,6 @@ class _PrescriptionCropScanDialogState
           0, 0, 0, 1, 0,
         ];
       case 'bright':
-        // Soft brightness + clarity boost for low-light photos
         const double c = 1.15;
         const double t = 18.0;
         return <double>[
@@ -119,31 +265,113 @@ class _PrescriptionCropScanDialogState
 
   void _resetFullSize() {
     setState(() {
-      _left = 0.0;
-      _top = 0.0;
-      _right = 1.0;
-      _bottom = 1.0;
+      _corners = const [
+        Offset(0.0, 0.0),
+        Offset(1.0, 0.0),
+        Offset(1.0, 1.0),
+        Offset(0.0, 1.0),
+      ];
     });
   }
 
   void _rotate90() {
     setState(() {
       _quarterTurns = (_quarterTurns + 1) % 4;
-      _left = 0.0;
-      _top = 0.0;
-      _right = 1.0;
-      _bottom = 1.0;
+      _corners = const [
+        Offset(0.0, 0.0),
+        Offset(1.0, 0.0),
+        Offset(1.0, 1.0),
+        Offset(0.0, 1.0),
+      ];
     });
   }
 
-  bool get _hasCrop =>
-      _left > 0.01 || _top > 0.01 || _right < 0.99 || _bottom < 0.99;
+  void _setCropMode(String mode) {
+    setState(() {
+      _cropMode = mode;
+      if (mode == 'free') {
+        final s = _sortQuadClockwise(_corners);
+        final minX = s.map((p) => p.dx).reduce(math.min).clamp(0.0, 1.0 - _minCropSpan);
+        final maxX = s.map((p) => p.dx).reduce(math.max).clamp(minX + _minCropSpan, 1.0);
+        final minY = s.map((p) => p.dy).reduce(math.min).clamp(0.0, 1.0 - _minCropSpan);
+        final maxY = s.map((p) => p.dy).reduce(math.max).clamp(minY + _minCropSpan, 1.0);
+        _corners = [
+          Offset(minX, minY),
+          Offset(maxX, minY),
+          Offset(maxX, maxY),
+          Offset(minX, maxY),
+        ];
+      }
+    });
+  }
+
+  bool get _hasCrop {
+    const eps = 0.012;
+    return (_corners[0] - const Offset(0, 0)).distance > eps ||
+        (_corners[1] - const Offset(1, 0)).distance > eps ||
+        (_corners[2] - const Offset(1, 1)).distance > eps ||
+        (_corners[3] - const Offset(0, 1)).distance > eps;
+  }
+
+  List<Offset> _sortQuadClockwise(List<Offset> pts) {
+    if (pts.length != 4) return pts;
+    double cx = 0, cy = 0;
+    for (final p in pts) {
+      cx += p.dx;
+      cy += p.dy;
+    }
+    cx /= 4.0;
+    cy /= 4.0;
+    final sorted = List<Offset>.from(pts)
+      ..sort((a, b) => math.atan2(a.dy - cy, a.dx - cx).compareTo(math.atan2(b.dy - cy, b.dx - cx)));
+    int tlIdx = 0;
+    double best = double.infinity;
+    for (int i = 0; i < 4; i++) {
+      final score = sorted[i].dx + sorted[i].dy;
+      if (score < best) {
+        best = score;
+        tlIdx = i;
+      }
+    }
+    return [
+      sorted[tlIdx],
+      sorted[(tlIdx + 1) % 4],
+      sorted[(tlIdx + 2) % 4],
+      sorted[(tlIdx + 3) % 4],
+    ];
+  }
+
+  bool _isAxisAlignedRect(List<Offset> c) {
+    const tol = 0.008;
+    return (c[0].dy - c[1].dy).abs() < tol &&
+        (c[3].dy - c[2].dy).abs() < tol &&
+        (c[0].dx - c[3].dx).abs() < tol &&
+        (c[1].dx - c[2].dx).abs() < tol;
+  }
+
+  bool _pointInPoly(Offset p, List<Offset> poly) {
+    bool inside = false;
+    for (int i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      final xi = poly[i].dx, yi = poly[i].dy;
+      final xj = poly[j].dx, yj = poly[j].dy;
+      final denom = (yj - yi).abs() < 1e-9 ? 1e-9 : (yj - yi);
+      final intersect = ((yi > p.dy) != (yj > p.dy)) &&
+          (p.dx < (xj - xi) * (p.dy - yi) / denom + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  Future<ui.Image> _decodeRgbaImage(Uint8List rgba, int w, int h) {
+    final c = Completer<ui.Image>();
+    ui.decodeImageFromPixels(rgba, w, h, ui.PixelFormat.rgba8888, c.complete);
+    return c.future;
+  }
 
   Future<void> _applyAndReturn() async {
     final src = _decodedImage;
     if (src == null || _isSaving) return;
 
-    // If uncropped, unrotated, and original filter is chosen, return raw bytes directly
     if (!_hasCrop && _quarterTurns == 0 && _selectedFilter == 'original') {
       final b64 = "data:image/jpeg;base64,${base64Encode(widget.imageBytes)}";
       Navigator.pop(
@@ -164,64 +392,112 @@ class _PrescriptionCropScanDialogState
       final double rotW = (isOddTurn ? src.height : src.width).toDouble();
       final double rotH = (isOddTurn ? src.width : src.height).toDouble();
 
-      // 1. Render rotated base image into rotated coordinates if rotated, otherwise use src directly
       ui.Image rotatedImg = src;
       if (_quarterTurns != 0) {
         final rotRecorder = ui.PictureRecorder();
-        final rotCanvas = Canvas(
-          rotRecorder,
-          Rect.fromLTWH(0, 0, rotW, rotH),
-        );
+        final rotCanvas = Canvas(rotRecorder, Rect.fromLTWH(0, 0, rotW, rotH));
         rotCanvas.translate(rotW / 2, rotH / 2);
         rotCanvas.rotate(_quarterTurns * math.pi / 2);
         rotCanvas.translate(-src.width / 2, -src.height / 2);
-        rotCanvas.drawImage(src, Offset.zero, Paint());
-        rotatedImg = await rotRecorder
-            .endRecording()
-            .toImage(rotW.round(), rotH.round());
+        rotCanvas.drawImage(src, Offset.zero, Paint()..filterQuality = FilterQuality.high);
+        rotatedImg = await rotRecorder.endRecording().toImage(rotW.round(), rotH.round());
       }
 
-      // 2. Crop & apply CamScan ColorFilter into final bounded canvas (max 1400px longest side)
-      final double srcLeft = (_left * rotW).clamp(0.0, rotW - 10);
-      final double srcTop = (_top * rotH).clamp(0.0, rotH - 10);
-      final double srcRight = (_right * rotW).clamp(srcLeft + 10, rotW);
-      final double srcBottom = (_bottom * rotH).clamp(srcTop + 10, rotH);
-      final double cropW = srcRight - srcLeft;
-      final double cropH = srcBottom - srcTop;
+      final ordered = _sortQuadClockwise(_corners);
+      final bool straightRect = _isAxisAlignedRect(ordered);
+      const double maxOutDim = 2000.0;
 
-      const double maxOutDim = 1400.0;
-      double outW = cropW;
-      double outH = cropH;
-      if (outW > maxOutDim || outH > maxOutDim) {
-        final double scale = maxOutDim / math.max(outW, outH);
-        outW = (outW * scale).roundToDouble();
-        outH = (outH * scale).roundToDouble();
+      late ui.Image baseOutImage;
+
+      if (straightRect) {
+        final double srcL = (ordered[0].dx * rotW).clamp(0.0, rotW - 10);
+        final double srcT = (ordered[0].dy * rotH).clamp(0.0, rotH - 10);
+        final double srcR = (ordered[2].dx * rotW).clamp(srcL + 10, rotW);
+        final double srcB = (ordered[2].dy * rotH).clamp(srcT + 10, rotH);
+        double outW = srcR - srcL;
+        double outH = srcB - srcT;
+        if (outW > maxOutDim || outH > maxOutDim) {
+          final double sc = maxOutDim / math.max(outW, outH);
+          outW = (outW * sc).roundToDouble();
+          outH = (outH * sc).roundToDouble();
+        }
+        final int finalW = math.max(16, outW.round());
+        final int finalH = math.max(16, outH.round());
+
+        final rec = ui.PictureRecorder();
+        final cvs = Canvas(rec, Rect.fromLTWH(0, 0, finalW.toDouble(), finalH.toDouble()));
+        final paint = Paint()..filterQuality = FilterQuality.high;
+        final matrix = _colorMatrixFor(_selectedFilter);
+        if (matrix != null) {
+          paint.colorFilter = ColorFilter.matrix(matrix);
+        }
+        cvs.drawImageRect(
+          rotatedImg,
+          Rect.fromLTWH(srcL, srcT, srcR - srcL, srcB - srcT),
+          Rect.fromLTWH(0, 0, finalW.toDouble(), finalH.toDouble()),
+          paint,
+        );
+        baseOutImage = await rec.endRecording().toImage(finalW, finalH);
+      } else {
+        // 4-Corner Perspective Homography Rectification via Isolate bilinear sampling
+        final rgbaData = await rotatedImg.toByteData(format: ui.ImageByteFormat.rawRgba);
+        if (rgbaData == null) {
+          throw Exception('RGBA read failed');
+        }
+        final List<double> pxPts = [
+          ordered[0].dx * rotW, ordered[0].dy * rotH,
+          ordered[1].dx * rotW, ordered[1].dy * rotH,
+          ordered[2].dx * rotW, ordered[2].dy * rotH,
+          ordered[3].dx * rotW, ordered[3].dy * rotH,
+        ];
+        final double wTop = math.sqrt(math.pow(pxPts[2] - pxPts[0], 2) + math.pow(pxPts[3] - pxPts[1], 2));
+        final double wBot = math.sqrt(math.pow(pxPts[4] - pxPts[6], 2) + math.pow(pxPts[5] - pxPts[7], 2));
+        final double hLeft = math.sqrt(math.pow(pxPts[6] - pxPts[0], 2) + math.pow(pxPts[7] - pxPts[1], 2));
+        final double hRight = math.sqrt(math.pow(pxPts[4] - pxPts[2], 2) + math.pow(pxPts[5] - pxPts[3], 2));
+
+        double outW = math.max(120.0, math.max(wTop, wBot));
+        double outH = math.max(120.0, math.max(hLeft, hRight));
+        if (outW > maxOutDim || outH > maxOutDim) {
+          final double sc = maxOutDim / math.max(outW, outH);
+          outW = (outW * sc).roundToDouble();
+          outH = (outH * sc).roundToDouble();
+        }
+        final int finalW = math.max(16, outW.round());
+        final int finalH = math.max(16, outH.round());
+
+        final warpedRgba = await compute(
+          _warpPerspectiveIsolate,
+          _PerspectiveWarpTask(
+            srcRgba: rgbaData.buffer.asUint8List(),
+            srcW: rotW.round(),
+            srcH: rotH.round(),
+            cornerPts: pxPts,
+            dstW: finalW,
+            dstH: finalH,
+          ),
+        );
+        final warpedImg = await _decodeRgbaImage(warpedRgba, finalW, finalH);
+        final matrix = _colorMatrixFor(_selectedFilter);
+        if (matrix != null) {
+          final rec = ui.PictureRecorder();
+          final cvs = Canvas(rec, Rect.fromLTWH(0, 0, finalW.toDouble(), finalH.toDouble()));
+          cvs.drawImage(
+            warpedImg,
+            Offset.zero,
+            Paint()
+              ..filterQuality = FilterQuality.high
+              ..colorFilter = ColorFilter.matrix(matrix),
+          );
+          baseOutImage = await rec.endRecording().toImage(finalW, finalH);
+          warpedImg.dispose();
+        } else {
+          baseOutImage = warpedImg;
+        }
       }
-      final int finalW = math.max(16, outW.round());
-      final int finalH = math.max(16, outH.round());
 
-      final outRecorder = ui.PictureRecorder();
-      final outCanvas = Canvas(
-        outRecorder,
-        Rect.fromLTWH(0, 0, finalW.toDouble(), finalH.toDouble()),
-      );
-      final paint = Paint()..filterQuality = FilterQuality.high;
-      final matrix = _colorMatrixFor(_selectedFilter);
-      if (matrix != null) {
-        paint.colorFilter = ColorFilter.matrix(matrix);
-      }
-
-      outCanvas.drawImageRect(
-        rotatedImg,
-        Rect.fromLTWH(srcLeft, srcTop, cropW, cropH),
-        Rect.fromLTWH(0, 0, finalW.toDouble(), finalH.toDouble()),
-        paint,
-      );
-
-      final outImage = await outRecorder.endRecording().toImage(finalW, finalH);
-      final byteData = await outImage.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await baseOutImage.toByteData(format: ui.ImageByteFormat.png);
       if (rotatedImg != src) rotatedImg.dispose();
-      outImage.dispose();
+      baseOutImage.dispose();
 
       if (byteData == null) {
         if (mounted) setState(() => _isSaving = false);
@@ -261,7 +537,7 @@ class _PrescriptionCropScanDialogState
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         title: const Text(
-          "✂️ প্রেসক্রিপশন ক্রপ ও CamScan",
+          "✂️ ৪-কোনা ক্রপ ও CamScan",
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
         actions: [
@@ -282,21 +558,86 @@ class _PrescriptionCropScanDialogState
       ),
       body: Column(
         children: [
-          // Top hint bar
+          // Mode Selector: 4-Corner Tilt Crop vs Free Draw Crop
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             color: const Color(0xFF1E293B),
-            child: Text(
-              _hasCrop
-                  ? "সবুজ কোণাগুলো টেনে প্রেসক্রিপশনের অংশ ঠিক করুন • নিচ থেকে CamScan ফিল্টার বেছে নিন"
-                  : "সম্পূর্ণ ছবি সিলেক্ট আছে • চাইলে কোণা টেনে ক্রপ বা CamScan ফিল্টার দিন",
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _setCropMode('perspective'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _cropMode == 'perspective'
+                                ? const Color(0xFF059669)
+                                : const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _cropMode == 'perspective'
+                                  ? const Color(0xFF34D399)
+                                  : const Color(0xFF334155),
+                            ),
+                          ),
+                          child: Text(
+                            "📐 ৪-কোনা ক্রপ (আঁকাবাঁকা)",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _cropMode == 'perspective' ? Colors.white : const Color(0xFFCBD5E1),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _setCropMode('free'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _cropMode == 'free'
+                                ? const Color(0xFF059669)
+                                : const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _cropMode == 'free'
+                                  ? const Color(0xFF34D399)
+                                  : const Color(0xFF334155),
+                            ),
+                          ),
+                          child: Text(
+                            "⬜ ফ্রি ক্রপ (টেনে মাপ)",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _cropMode == 'free' ? Colors.white : const Color(0xFFCBD5E1),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _cropMode == 'perspective'
+                      ? "যেকোনো বাঁকা প্রেসক্রিপশনের ৪ কোণা ধরে কোণায় বসান — অটো সোজা হয়ে যাবে"
+                      : "ছবির যেকোনো অংশে আঙুল টেনে আপনার খুশিমতো মাপে ক্রপ করুন",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5),
+                ),
+              ],
             ),
           ),
 
-          // Interactive Image + Crop Handle Area
+          // Interactive Image + 4-Corner / Free Crop Area
           Expanded(
             child: _decodedImage == null
                 ? const Center(
@@ -319,12 +660,9 @@ class _PrescriptionCropScanDialogState
                           dispW = dispH * imgAspect;
                         }
 
-                        final Rect cropPx = Rect.fromLTRB(
-                          _left * dispW,
-                          _top * dispH,
-                          _right * dispW,
-                          _bottom * dispH,
-                        );
+                        final cPx = _corners
+                            .map((c) => Offset(c.dx * dispW, c.dy * dispH))
+                            .toList();
 
                         return Center(
                           child: SizedBox(
@@ -352,78 +690,107 @@ class _PrescriptionCropScanDialogState
                                   ),
                                 ),
 
-                                // Dark mask + crisp emerald crop frame + grid lines
+                                // Dark mask + crisp emerald quad frame + bilinear 3x3 guide lines
                                 Positioned.fill(
                                   child: IgnorePointer(
                                     child: CustomPaint(
-                                      painter: _CropOverlayPainter(cropPx),
+                                      painter: _QuadOverlayPainter(cPx),
                                     ),
                                   ),
                                 ),
 
-                                // Drag inside crop box to move crop window
-                                Positioned.fromRect(
-                                  rect: cropPx,
+                                // Surface drag: draw new box in free mode OR move quad body
+                                Positioned.fill(
                                   child: GestureDetector(
+                                    behavior: HitTestBehavior.translucent,
+                                    onPanStart: (d) {
+                                      final nx = (d.localPosition.dx / dispW).clamp(0.0, 1.0);
+                                      final ny = (d.localPosition.dy / dispH).clamp(0.0, 1.0);
+                                      final pt = Offset(nx, ny);
+                                      if (_cropMode == 'free' &&
+                                          (!_hasCrop || !_pointInPoly(pt, _corners))) {
+                                        _freeDrawAnchor = pt;
+                                      } else {
+                                        _freeDrawAnchor = null;
+                                      }
+                                    },
                                     onPanUpdate: (d) {
+                                      if (_cropMode == 'free' && _freeDrawAnchor != null) {
+                                        final curX = (d.localPosition.dx / dispW).clamp(0.0, 1.0);
+                                        final curY = (d.localPosition.dy / dispH).clamp(0.0, 1.0);
+                                        final minX = math.min(_freeDrawAnchor!.dx, curX);
+                                        final maxX = math.max(minX + _minCropSpan, math.max(_freeDrawAnchor!.dx, curX)).clamp(0.0, 1.0);
+                                        final minY = math.min(_freeDrawAnchor!.dy, curY);
+                                        final maxY = math.max(minY + _minCropSpan, math.max(_freeDrawAnchor!.dy, curY)).clamp(0.0, 1.0);
+                                        setState(() {
+                                          _corners = [
+                                            Offset(minX, minY),
+                                            Offset(maxX, minY),
+                                            Offset(maxX, maxY),
+                                            Offset(minX, maxY),
+                                          ];
+                                        });
+                                        return;
+                                      }
+
                                       final dx = d.delta.dx / dispW;
                                       final dy = d.delta.dy / dispH;
-                                      final spanX = _right - _left;
-                                      final spanY = _bottom - _top;
+                                      final minX = _corners.map((p) => p.dx).reduce(math.min);
+                                      final maxX = _corners.map((p) => p.dx).reduce(math.max);
+                                      final minY = _corners.map((p) => p.dy).reduce(math.min);
+                                      final maxY = _corners.map((p) => p.dy).reduce(math.max);
+                                      final clampedDx = dx.clamp(-minX, 1.0 - maxX);
+                                      final clampedDy = dy.clamp(-minY, 1.0 - maxY);
                                       setState(() {
-                                        final newL = (_left + dx).clamp(0.0, 1.0 - spanX);
-                                        final newT = (_top + dy).clamp(0.0, 1.0 - spanY);
-                                        _left = newL;
-                                        _right = newL + spanX;
-                                        _top = newT;
-                                        _bottom = newT + spanY;
+                                        _corners = _corners
+                                            .map((p) => Offset(
+                                                  (p.dx + clampedDx).clamp(0.0, 1.0),
+                                                  (p.dy + clampedDy).clamp(0.0, 1.0),
+                                                ))
+                                            .toList();
                                       });
                                     },
-                                    child: Container(color: Colors.transparent),
+                                    onPanEnd: (_) => _freeDrawAnchor = null,
                                   ),
                                 ),
 
-                                // 4 Corner Drag Handles
-                                _buildCornerHandle(
-                                  x: cropPx.left,
-                                  y: cropPx.top,
-                                  onDrag: (dx, dy) {
-                                    setState(() {
-                                      _left = (_left + dx / dispW).clamp(0.0, _right - _minCropSpan);
-                                      _top = (_top + dy / dispH).clamp(0.0, _bottom - _minCropSpan);
-                                    });
-                                  },
-                                ),
-                                _buildCornerHandle(
-                                  x: cropPx.right,
-                                  y: cropPx.top,
-                                  onDrag: (dx, dy) {
-                                    setState(() {
-                                      _right = (_right + dx / dispW).clamp(_left + _minCropSpan, 1.0);
-                                      _top = (_top + dy / dispH).clamp(0.0, _bottom - _minCropSpan);
-                                    });
-                                  },
-                                ),
-                                _buildCornerHandle(
-                                  x: cropPx.left,
-                                  y: cropPx.bottom,
-                                  onDrag: (dx, dy) {
-                                    setState(() {
-                                      _left = (_left + dx / dispW).clamp(0.0, _right - _minCropSpan);
-                                      _bottom = (_bottom + dy / dispH).clamp(_top + _minCropSpan, 1.0);
-                                    });
-                                  },
-                                ),
-                                _buildCornerHandle(
-                                  x: cropPx.right,
-                                  y: cropPx.bottom,
-                                  onDrag: (dx, dy) {
-                                    setState(() {
-                                      _right = (_right + dx / dispW).clamp(_left + _minCropSpan, 1.0);
-                                      _bottom = (_bottom + dy / dispH).clamp(_top + _minCropSpan, 1.0);
-                                    });
-                                  },
-                                ),
+                                // 4 Independent Corner Drag Handles
+                                for (int idx = 0; idx < 4; idx++)
+                                  _buildCornerHandle(
+                                    x: cPx[idx].dx,
+                                    y: cPx[idx].dy,
+                                    isActive: _activeCornerIdx == idx,
+                                    onStart: () => setState(() => _activeCornerIdx = idx),
+                                    onEnd: () => setState(() => _activeCornerIdx = null),
+                                    onDrag: (dx, dy) {
+                                      setState(() {
+                                        final updated = List<Offset>.from(_corners);
+                                        final nx = (updated[idx].dx + dx / dispW).clamp(0.0, 1.0);
+                                        final ny = (updated[idx].dy + dy / dispH).clamp(0.0, 1.0);
+                                        if (_cropMode == 'free') {
+                                          // Keep rectangular when dragging corners in Free Crop mode
+                                          updated[idx] = Offset(nx, ny);
+                                          if (idx == 0) {
+                                            updated[1] = Offset(updated[1].dx, ny);
+                                            updated[3] = Offset(nx, updated[3].dy);
+                                          } else if (idx == 1) {
+                                            updated[0] = Offset(updated[0].dx, ny);
+                                            updated[2] = Offset(nx, updated[2].dy);
+                                          } else if (idx == 2) {
+                                            updated[3] = Offset(updated[3].dx, ny);
+                                            updated[1] = Offset(nx, updated[1].dy);
+                                          } else if (idx == 3) {
+                                            updated[2] = Offset(updated[2].dx, ny);
+                                            updated[0] = Offset(nx, updated[0].dy);
+                                          }
+                                        } else {
+                                          // 4-Corner free perspective corner placement
+                                          updated[idx] = Offset(nx, ny);
+                                        }
+                                        _corners = updated;
+                                      });
+                                    },
+                                  ),
                               ],
                             ),
                           ),
@@ -487,8 +854,8 @@ class _PrescriptionCropScanDialogState
                                 )
                               : const Icon(Icons.check_circle, size: 18),
                           label: Text(
-                            _isSaving ? "প্রসেস হচ্ছে..." : "✓ ক্রপ ও স্ক্যান সেভ করুন",
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                            _isSaving ? "প্রসেস হচ্ছে..." : "✓ ক্রপ ও সোজা করে সেভ করুন",
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF059669),
@@ -531,9 +898,12 @@ class _PrescriptionCropScanDialogState
   Widget _buildCornerHandle({
     required double x,
     required double y,
+    required bool isActive,
+    required VoidCallback onStart,
+    required VoidCallback onEnd,
     required void Function(double dx, double dy) onDrag,
   }) {
-    const double hitSize = 34.0;
+    const double hitSize = 38.0;
     return Positioned(
       left: x - hitSize / 2,
       top: y - hitSize / 2,
@@ -541,16 +911,20 @@ class _PrescriptionCropScanDialogState
       height: hitSize,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        onPanStart: (_) => onStart(),
+        onPanEnd: (_) => onEnd(),
+        onPanCancel: onEnd,
         onPanUpdate: (d) => onDrag(d.delta.dx, d.delta.dy),
         child: Center(
-          child: Container(
-            width: 18,
-            height: 18,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 80),
+            width: isActive ? 24 : 20,
+            height: isActive ? 24 : 20,
             decoration: BoxDecoration(
-              color: const Color(0xFF10B981),
+              color: isActive ? const Color(0xFF34D399) : const Color(0xFF10B981),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 2.5),
-              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)],
             ),
           ),
         ),
@@ -559,39 +933,41 @@ class _PrescriptionCropScanDialogState
   }
 }
 
-class _CropOverlayPainter extends CustomPainter {
-  final Rect cropRect;
-  _CropOverlayPainter(this.cropRect);
+class _QuadOverlayPainter extends CustomPainter {
+  final List<Offset> pts;
+  _QuadOverlayPainter(this.pts);
+
+  Offset _lerp(Offset a, Offset b, double t) =>
+      Offset(a.dx + (b.dx - a.dx) * t, a.dy + (b.dy - a.dy) * t);
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (pts.length != 4) return;
     final outer = Path()..addRect(Offset.zero & size);
-    final inner = Path()..addRect(cropRect);
+    final inner = Path()..addPolygon(pts, true);
     final mask = Path.combine(PathOperation.difference, outer, inner);
-    canvas.drawPath(mask, Paint()..color = Colors.black.withValues(alpha: 0.52));
+    canvas.drawPath(mask, Paint()..color = Colors.black.withValues(alpha: 0.54));
 
-    // Crop border
-    canvas.drawRect(
-      cropRect,
+    // Quad outline
+    canvas.drawPath(
+      inner,
       Paint()
         ..color = const Color(0xFF10B981)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0,
+        ..strokeWidth = 2.2,
     );
 
-    // Subtle 3x3 guide grid
+    // Subtle 3x3 perspective grid lines inside the quadrilateral
     final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.32)
-      ..strokeWidth = 0.8;
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..strokeWidth = 0.9;
     for (int i = 1; i <= 2; i++) {
-      final dx = cropRect.left + cropRect.width * i / 3;
-      final dy = cropRect.top + cropRect.height * i / 3;
-      canvas.drawLine(Offset(dx, cropRect.top), Offset(dx, cropRect.bottom), gridPaint);
-      canvas.drawLine(Offset(cropRect.left, dy), Offset(cropRect.right, dy), gridPaint);
+      final double t = i / 3.0;
+      canvas.drawLine(_lerp(pts[0], pts[1], t), _lerp(pts[3], pts[2], t), gridPaint);
+      canvas.drawLine(_lerp(pts[0], pts[3], t), _lerp(pts[1], pts[2], t), gridPaint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) =>
-      oldDelegate.cropRect != cropRect;
+  bool shouldRepaint(covariant _QuadOverlayPainter oldDelegate) => true;
 }

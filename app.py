@@ -750,7 +750,9 @@ def get_categories_tree_data(conn):
     subsubs = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
 
     cat_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL GROUP BY category_id").fetchall())
+    cat_direct_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL AND (sub_category_id IS NULL OR sub_category_id = 0) GROUP BY category_id").fetchall())
     sub_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL GROUP BY sub_category_id").fetchall())
+    sub_direct_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL AND (sub_sub_category_id IS NULL OR sub_sub_category_id = 0) GROUP BY sub_category_id").fetchall())
     subsub_counts = dict(conn.execute("SELECT sub_sub_category_id, COUNT(*) FROM products WHERE sub_sub_category_id IS NOT NULL GROUP BY sub_sub_category_id").fetchall())
     uncategorized_count = conn.execute("SELECT COUNT(*) FROM products WHERE category_id IS NULL OR category_id NOT IN (SELECT id FROM categories)").fetchone()[0]
     
@@ -768,9 +770,11 @@ def get_categories_tree_data(conn):
                         ss_dict["product_count"] = subsub_counts.get(ss["id"], 0)
                         s_subsubs.append(ss_dict)
                 s_dict["product_count"] = sub_counts.get(s["id"], 0)
+                s_dict["direct_product_count"] = sub_direct_counts.get(s["id"], 0)
                 s_dict["sub_sub_categories"] = s_subsubs
                 c_subs.append(s_dict)
         c_dict["product_count"] = cat_counts.get(c["id"], 0)
+        c_dict["direct_product_count"] = cat_direct_counts.get(c["id"], 0)
         c_dict["sub_categories"] = c_subs
         cat_list.append(c_dict)
 
@@ -780,6 +784,7 @@ def get_categories_tree_data(conn):
             "name": "Uncategorized",
             "icon": "📦",
             "product_count": uncategorized_count,
+            "direct_product_count": uncategorized_count,
             "sub_categories": []
         })
     return cat_list
@@ -7680,6 +7685,184 @@ def assign_online_order_rider(order_id):
     return redirect(url_for("online_orders"))
 
 
+_OL_TO_PHARM_STATUS = {
+    "new": "reviewing",
+    "pending": "reviewing",
+    "pending_confirmation": "reviewing",
+    "reviewing": "reviewing",
+    "verified": "confirmed",
+    "confirmed": "confirmed",
+    "packed": "packed",
+    "on_the_way": "on_the_way",
+    "delivered": "delivered",
+    "cancelled": "cancelled",
+}
+
+_PHARM_TO_OL_STATUS = {
+    "reviewing": "pending_confirmation",
+    "new": "new",
+    "pending": "pending",
+    "pending_confirmation": "pending_confirmation",
+    "confirmed": "verified",
+    "verified": "verified",
+    "packed": "packed",
+    "on_the_way": "on_the_way",
+    "delivered": "delivered",
+    "cancelled": "cancelled",
+}
+
+
+def _sync_pharmacy_from_online_order(conn, ol_order, new_ol_status, now_iso,
+                                     payment_status=None, rider_id=None,
+                                     rider_name=None, rider_phone=None, rider_fee=None):
+    """Mirror status, timestamps, payment, and rider fields from an online_orders row into pharmacy_orders."""
+    if not ol_order:
+        return None
+    ol_id = ol_order["id"]
+    ord_num = ol_order["order_number"] or ""
+    pharm = conn.execute(
+        "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+        (ol_id, ord_num),
+    ).fetchone()
+    if not pharm:
+        return None
+
+    target_pharm_st = _OL_TO_PHARM_STATUS.get((new_ol_status or "").strip().lower(), new_ol_status)
+    ts_col_map = {
+        "confirmed": "confirmed_at",
+        "packed": "packed_at",
+        "on_the_way": "on_the_way_at",
+        "delivered": "delivered_at",
+        "cancelled": "cancelled_at",
+    }
+    ts_col = ts_col_map.get(target_pharm_st, "")
+
+    sets = ["order_status = ?", "online_order_id = ?", "updated_at = ?"]
+    params = [target_pharm_st, ol_id, now_iso]
+    if ts_col:
+        sets.append(f"{ts_col} = CASE WHEN COALESCE({ts_col}, '') = '' THEN ? ELSE {ts_col} END")
+        params.append(now_iso)
+    if payment_status:
+        sets.append("payment_status = ?")
+        params.append(payment_status)
+    if rider_id is not None and int(rider_id or 0) > 0:
+        sets.append("assigned_rider_id = ?")
+        params.append(int(rider_id))
+    if rider_name is not None:
+        sets.append("assigned_rider_name = ?")
+        params.append(rider_name)
+    if rider_phone is not None:
+        sets.append("assigned_rider_phone = ?")
+        params.append(rider_phone)
+    if rider_fee is not None:
+        sets.append("rider_fee = CASE WHEN COALESCE(rider_fee, 0) <= 0 THEN ? ELSE rider_fee END")
+        params.append(float(rider_fee))
+    params.append(pharm["id"])
+    conn.execute(f"UPDATE pharmacy_orders SET {', '.join(sets)} WHERE id = ?", params)
+    return pharm["id"]
+
+
+def _ensure_online_order_for_pharmacy(conn, pharm_order_id, approved_items=None, now_iso=None):
+    """Ensure a pharmacy_orders row is linked to an online_orders row and mirrors status/timestamps/items."""
+    pharm = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (pharm_order_id,)).fetchone()
+    if not pharm:
+        return None
+    now_iso = now_iso or get_bd_now_iso()
+    ol = None
+    if pharm["online_order_id"]:
+        ol = conn.execute("SELECT * FROM online_orders WHERE id = ?", (pharm["online_order_id"],)).fetchone()
+    if not ol and pharm["order_number"]:
+        ol = conn.execute("SELECT * FROM online_orders WHERE order_number = ? LIMIT 1", (pharm["order_number"],)).fetchone()
+
+    target_ol_st = _PHARM_TO_OL_STATUS.get((pharm["order_status"] or "").strip().lower(), pharm["order_status"] or "pending_confirmation")
+    if not ol:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO online_orders (
+                order_number, customer_name, customer_phone, customer_email,
+                country, district, area, address_details, payment_method,
+                payment_status, subtotal, delivery_charge, total_amount,
+                order_status, delivery_otp, assigned_rider_id, assigned_rider_name,
+                assigned_rider_phone, rider_fee, created_at, updated_at,
+                confirmed_at, packed_at, on_the_way_at, delivered_at, cancelled_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            pharm["order_number"], pharm["customer_name"] or "", pharm["customer_phone"] or "", pharm["customer_email"] or "",
+            pharm["country"] or "Bangladesh", pharm["district"] or "Tangail", pharm["area"] or "Tangail Sadar",
+            pharm["delivery_address"] or "", pharm["payment_method"] or "cod",
+            pharm["payment_status"] or "pending", float(pharm["subtotal"] or 0.0),
+            float(pharm["delivery_charge"] or 50.0), float(pharm["total_amount"] or 0.0),
+            target_ol_st, pharm["delivery_otp"] or "",
+            int(pharm["assigned_rider_id"] or 0), pharm["assigned_rider_name"] or "",
+            pharm["assigned_rider_phone"] or "", float(pharm["rider_fee"] or 0.0),
+            pharm["created_at"] or now_iso, now_iso,
+            pharm["confirmed_at"] or (now_iso if target_ol_st == "verified" else ""),
+            pharm["packed_at"] or (now_iso if target_ol_st == "packed" else ""),
+            pharm["on_the_way_at"] or (now_iso if target_ol_st == "on_the_way" else ""),
+            pharm["delivered_at"] or (now_iso if target_ol_st == "delivered" else ""),
+            pharm["cancelled_at"] or (now_iso if target_ol_st == "cancelled" else ""),
+        ))
+        ol_id = cur.lastrowid
+        conn.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE id = ?", (ol_id, pharm_order_id))
+    else:
+        ol_id = ol["id"]
+        if pharm["online_order_id"] != ol_id:
+            conn.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE id = ?", (ol_id, pharm_order_id))
+        conn.execute("""
+            UPDATE online_orders SET
+                order_status = ?,
+                subtotal = ?,
+                delivery_charge = ?,
+                total_amount = ?,
+                payment_status = COALESCE(NULLIF(?, ''), payment_status),
+                assigned_rider_id = CASE WHEN COALESCE(?, 0) > 0 THEN ? ELSE assigned_rider_id END,
+                assigned_rider_name = COALESCE(?, assigned_rider_name),
+                assigned_rider_phone = COALESCE(?, assigned_rider_phone),
+                confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
+                packed_at = COALESCE(NULLIF(?, ''), packed_at),
+                on_the_way_at = COALESCE(NULLIF(?, ''), on_the_way_at),
+                delivered_at = COALESCE(NULLIF(?, ''), delivered_at),
+                cancelled_at = COALESCE(NULLIF(?, ''), cancelled_at),
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            target_ol_st,
+            float(pharm["subtotal"] or 0.0),
+            float(pharm["delivery_charge"] or 50.0),
+            float(pharm["total_amount"] or 0.0),
+            pharm["payment_status"] or "",
+            pharm["assigned_rider_id"], pharm["assigned_rider_id"],
+            pharm["assigned_rider_name"], pharm["assigned_rider_phone"],
+            pharm["confirmed_at"] or "", pharm["packed_at"] or "",
+            pharm["on_the_way_at"] or "", pharm["delivered_at"] or "",
+            pharm["cancelled_at"] or "", now_iso, ol_id,
+        ))
+
+    if approved_items is not None:
+        _fp = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+        _valid_pid = _fp["id"] if _fp else 1
+        conn.execute("DELETE FROM online_order_items WHERE order_id = ?", (ol_id,))
+        if approved_items:
+            for itm in approved_items:
+                conn.execute("""
+                    INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    ol_id, _valid_pid,
+                    f"💊 {itm['name']} ({itm.get('strength', '')})",
+                    float(itm.get("unit_price") or 0.0),
+                    float(itm.get("unit_price") or 0.0),
+                    int(itm.get("quantity") or 1),
+                    float(itm.get("total_price") or 0.0),
+                ))
+        else:
+            conn.execute("""
+                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
+                VALUES (?, ?, ?, 0, 0, 1, 0)
+            """, (ol_id, _valid_pid, "💊 প্রেসক্রিপশন অর্ডার"))
+    return ol_id
+
+
 @app.route("/api/rider/accept-order", methods=["POST"])
 def api_rider_accept_order():
     data = request.json or {}
@@ -7702,16 +7885,23 @@ def api_rider_accept_order():
     if rider_user and not rider_name and rider_user["full_name"]:
         rider_name = rider_user["full_name"]
 
+    final_rider_name = rider_name if rider_name else rider_phone
     conn.execute(
         "UPDATE online_orders SET order_status = 'verified', assigned_rider_id = CASE WHEN ? > 0 THEN ? ELSE assigned_rider_id END, assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
-        (rider_id, rider_id, rider_name if rider_name else rider_phone, rider_phone, now_iso, now_iso, order_id)
+        (rider_id, rider_id, final_rider_name, rider_phone, now_iso, now_iso, order_id)
     )
     deduct_online_order_stock(conn, order)
+    pharm_id = _sync_pharmacy_from_online_order(
+        conn, order, "verified", now_iso,
+        rider_id=rider_id, rider_name=final_rider_name, rider_phone=rider_phone,
+    )
     notify_order_status_change(order, 'verified', conn=conn)
     conn.commit()
     conn.close()
 
     remote_control.push_online_order_to_cloud(order_id)
+    if pharm_id:
+        remote_control.push_pharmacy_order_to_cloud(pharm_id)
     return jsonify({
         "success": True,
         "message": f"Order #{order['order_number']} accepted successfully! Customer has been notified."
@@ -7740,12 +7930,14 @@ def api_rider_update_order_status():
             return jsonify({"success": False, "message": "Invalid OTP code. Please enter the correct 4-digit OTP from customer app."}), 400
 
     now_iso = get_bd_now_iso()
+    pharm_id = None
     if status == "delivered":
         r_fee = get_rider_delivery_fee_setting(conn)
         conn.execute(
             "UPDATE online_orders SET order_status = ?, payment_status = CASE WHEN payment_status = 'pending' THEN 'paid' ELSE payment_status END, rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
             (status, r_fee, now_iso, now_iso, order_id)
         )
+        pharm_id = _sync_pharmacy_from_online_order(conn, order, status, now_iso, payment_status="paid", rider_fee=r_fee)
         notify_order_status_change(order, status, conn=conn)
         conn.commit()
     elif status in ["verified", "packed", "on_the_way", "cancelled"]:
@@ -7756,11 +7948,14 @@ def api_rider_update_order_status():
         )
         if status == "verified" and order["is_stock_deducted"] == 0:
             deduct_online_order_stock(conn, order)
+        pharm_id = _sync_pharmacy_from_online_order(conn, order, status, now_iso)
         notify_order_status_change(order, status, conn=conn)
         conn.commit()
 
     conn.close()
     remote_control.push_online_order_to_cloud(order_id)
+    if pharm_id:
+        remote_control.push_pharmacy_order_to_cloud(pharm_id)
     return jsonify({
         "success": True,
         "message": f"Order #{order['order_number']} status updated to '{status.upper()}' successfully!"
@@ -8041,9 +8236,17 @@ def update_online_order_status(order_id):
     elif new_status == "cancelled":
         restore_online_order_stock(conn, order)
 
+    pharm_id = _sync_pharmacy_from_online_order(
+        conn, order, new_status, now_iso,
+        payment_status="paid" if new_status == "delivered" else None,
+        rider_fee=r_fee if new_status == "delivered" else None,
+    )
     notify_order_status_change(order, new_status, conn=conn)
     conn.commit()
     conn.close()
+    remote_control.push_online_order_to_cloud(order_id)
+    if pharm_id:
+        remote_control.push_pharmacy_order_to_cloud(pharm_id)
     if order["customer_phone"]:
         remote_control.push_customer_user_to_cloud(order["customer_phone"])
     ord_num = order["order_number"] if (order and "order_number" in order.keys() and order["order_number"]) else order_id
@@ -8217,10 +8420,15 @@ def verify_online_order_otp(order_id):
             "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
             (r_fee, now_iso, now_iso, order_id)
         )
+        pharm_id = _sync_pharmacy_from_online_order(
+            conn, order, 'delivered', now_iso, payment_status='paid', rider_fee=r_fee
+        )
         notify_order_status_change(order, 'delivered', conn=conn)
         conn.commit()
         conn.close()
         remote_control.push_online_order_to_cloud(order_id)
+        if pharm_id:
+            remote_control.push_pharmacy_order_to_cloud(pharm_id)
         ord_num = order["order_number"] if (order and "order_number" in order.keys() and order["order_number"]) else order_id
         flash(f"OTP Verified! Order #{ord_num} marked as DELIVERED.", "success")
     else:
@@ -9601,6 +9809,113 @@ def _enrich_cart_items(conn, raw_items):
     return enriched
 
 
+def _build_order_timeline(curr_status, created_dt="", confirmed_dt="", packed_dt="", on_the_way_dt="", delivered_dt="", cancelled_dt="", updated_at=""):
+    """Build unified 5-stage + optional cancelled delivery timeline in BD time (GMT+6)."""
+    norm_status = _PHARM_TO_OL_STATUS.get((curr_status or "").strip().lower(), (curr_status or "new").strip().lower())
+    if norm_status in ("verified", "packed", "on_the_way", "delivered") and not confirmed_dt:
+        confirmed_dt = updated_at or created_dt
+    if norm_status in ("packed", "on_the_way", "delivered") and not packed_dt:
+        packed_dt = confirmed_dt or updated_at or created_dt
+    if norm_status in ("on_the_way", "delivered") and not on_the_way_dt:
+        on_the_way_dt = packed_dt or confirmed_dt or created_dt
+    if norm_status == "delivered" and not delivered_dt:
+        delivered_dt = updated_at or created_dt
+    if norm_status == "cancelled" and not cancelled_dt:
+        cancelled_dt = updated_at or created_dt
+
+    created_iso, created_bd = format_bd_timeline_time(created_dt)
+    confirmed_iso, confirmed_bd = format_bd_timeline_time(confirmed_dt)
+    packed_iso, packed_bd = format_bd_timeline_time(packed_dt)
+    on_the_way_iso, on_the_way_bd = format_bd_timeline_time(on_the_way_dt)
+    delivered_iso, delivered_bd = format_bd_timeline_time(delivered_dt)
+    cancelled_iso, cancelled_bd = format_bd_timeline_time(cancelled_dt)
+
+    timeline = [
+        {
+            "stage": "placed",
+            "key": "placed",
+            "title": "Order Placed",
+            "time": created_iso,
+            "time_bd": created_bd,
+            "time_formatted": created_bd,
+            "done": True,
+            "is_done": True,
+            "active": (norm_status in ("new", "pending", "pending_confirmation")),
+            "is_current": (norm_status in ("new", "pending", "pending_confirmation")),
+        },
+        {
+            "stage": "verified",
+            "key": "verified",
+            "title": "Order Confirmed",
+            "time": confirmed_iso if confirmed_dt else "",
+            "time_bd": confirmed_bd if confirmed_dt else "",
+            "time_formatted": confirmed_bd if confirmed_dt else "",
+            "done": bool(confirmed_dt) or norm_status in ("verified", "packed", "on_the_way", "delivered"),
+            "is_done": bool(confirmed_dt) or norm_status in ("verified", "packed", "on_the_way", "delivered"),
+            "active": (norm_status == "verified"),
+            "is_current": (norm_status == "verified"),
+        },
+        {
+            "stage": "packed",
+            "key": "packed",
+            "title": "Packed & Ready",
+            "time": packed_iso if packed_dt else "",
+            "time_bd": packed_bd if packed_dt else "",
+            "time_formatted": packed_bd if packed_dt else "",
+            "done": bool(packed_dt) or norm_status in ("packed", "on_the_way", "delivered"),
+            "is_done": bool(packed_dt) or norm_status in ("packed", "on_the_way", "delivered"),
+            "active": (norm_status == "packed"),
+            "is_current": (norm_status == "packed"),
+        },
+        {
+            "stage": "on_the_way",
+            "key": "on_the_way",
+            "title": "On The Way",
+            "time": on_the_way_iso if on_the_way_dt else "",
+            "time_bd": on_the_way_bd if on_the_way_dt else "",
+            "time_formatted": on_the_way_bd if on_the_way_dt else "",
+            "done": bool(on_the_way_dt) or norm_status in ("on_the_way", "delivered"),
+            "is_done": bool(on_the_way_dt) or norm_status in ("on_the_way", "delivered"),
+            "active": (norm_status == "on_the_way"),
+            "is_current": (norm_status == "on_the_way"),
+        },
+        {
+            "stage": "delivered",
+            "key": "delivered",
+            "title": "Delivered",
+            "time": delivered_iso if delivered_dt else "",
+            "time_bd": delivered_bd if delivered_dt else "",
+            "time_formatted": delivered_bd if delivered_dt else "",
+            "done": bool(delivered_dt) or (norm_status == "delivered"),
+            "is_done": bool(delivered_dt) or (norm_status == "delivered"),
+            "active": (norm_status == "delivered"),
+            "is_current": (norm_status == "delivered"),
+        },
+    ]
+    if norm_status == "cancelled":
+        timeline.append({
+            "stage": "cancelled",
+            "key": "cancelled",
+            "title": "Order Cancelled",
+            "time": cancelled_iso,
+            "time_bd": cancelled_bd,
+            "time_formatted": cancelled_bd,
+            "done": True,
+            "is_done": True,
+            "active": True,
+            "is_current": True,
+        })
+    return norm_status, timeline, {
+        "created_at": created_iso,
+        "created_at_bd": created_bd,
+        "confirmed_at": confirmed_iso,
+        "packed_at": packed_iso,
+        "on_the_way_at": on_the_way_iso,
+        "delivered_at": delivered_iso,
+        "cancelled_at": cancelled_iso,
+    }
+
+
 @app.route("/api/orders/my-orders", methods=["GET"])
 def api_my_orders():
     phone = request.args.get("phone", "").strip()
@@ -9621,8 +9936,28 @@ def api_my_orders():
         tuple(variants) + (norm_main,)
     ).fetchall()
 
+    base_host = request.host_url.rstrip("/")
+
+    def _abs_url(u):
+        s = (u or "").strip()
+        if s.startswith("/static/"):
+            return base_host + s
+        return s
+
+    _STAGE_RANK = {
+        "new": 0, "pending": 0, "pending_confirmation": 0, "reviewing": 0,
+        "verified": 1, "confirmed": 1,
+        "packed": 2,
+        "on_the_way": 3,
+        "delivered": 4,
+        "cancelled": 5,
+    }
+
     result = []
+    seen_order_numbers = set()
     for ord_row in orders:
+        if ord_row["order_number"]:
+            seen_order_numbers.add(ord_row["order_number"])
         items = conn.execute("""
             SELECT oi.*, p.image_url, p.unit, p.sku, p.brand, p.description, p.sell_price as prod_sell_price
             FROM online_order_items oi
@@ -9631,14 +9966,6 @@ def api_my_orders():
         """, (ord_row["id"],)).fetchall()
 
         processed_items = []
-        base_host = request.host_url.rstrip("/")
-
-        def _abs_url(u):
-            s = (u or "").strip()
-            if s.startswith("/static/"):
-                return base_host + s
-            return s
-
         pharm_row = conn.execute(
             "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
             (ord_row["id"], ord_row["order_number"]),
@@ -9709,6 +10036,15 @@ def api_my_orders():
 
         o_dict = dict(ord_row)
         o_dict["items"] = processed_items
+        created_dt = o_dict.get("created_at") or ""
+        confirmed_dt = o_dict.get("confirmed_at") or ""
+        packed_dt = o_dict.get("packed_at") or ""
+        on_the_way_dt = o_dict.get("on_the_way_at") or ""
+        delivered_dt = o_dict.get("delivered_at") or ""
+        cancelled_dt = o_dict.get("cancelled_at") or ""
+        raw_ol_status = _PHARM_TO_OL_STATUS.get((o_dict.get("order_status") or "new").strip().lower(), o_dict.get("order_status") or "new")
+        curr_status = raw_ol_status
+
         if pharm_row:
             o_dict["is_pharmacy_order"] = True
             o_dict["pharmacy_order_id"] = pharm_row["id"]
@@ -9718,123 +10054,135 @@ def api_my_orders():
             o_dict["prescription_enhanced_url"] = _abs_url(pharm_row["prescription_enhanced_url"] or pharm_row["prescription_url"] or "")
             o_dict["overall_duration_days"] = int(pharm_row["overall_duration_days"] or 0)
             o_dict["customer_notes"] = pharm_row["customer_notes"] or ""
+            # Reconcile if pharmacy_orders was updated independently (e.g. online_order_id == 0 on Firestore sync)
+            pharm_mapped_ol = _PHARM_TO_OL_STATUS.get((pharm_row["order_status"] or "").strip().lower(), "")
+            if pharm_mapped_ol:
+                if pharm_mapped_ol == "cancelled" or _STAGE_RANK.get(pharm_mapped_ol, 0) > _STAGE_RANK.get(curr_status, 0):
+                    curr_status = pharm_mapped_ol
+            confirmed_dt = confirmed_dt or (pharm_row["confirmed_at"] or "")
+            packed_dt = packed_dt or (pharm_row["packed_at"] or "")
+            on_the_way_dt = on_the_way_dt or (pharm_row["on_the_way_at"] or "")
+            delivered_dt = delivered_dt or (pharm_row["delivered_at"] or "")
+            cancelled_dt = cancelled_dt or (pharm_row["cancelled_at"] or "")
+            if float(pharm_row["total_amount"] or 0) > 0 and float(o_dict.get("total_amount") or 0) == 0:
+                o_dict["subtotal"] = float(pharm_row["subtotal"] or 0.0)
+                o_dict["delivery_charge"] = float(pharm_row["delivery_charge"] or 0.0)
+                o_dict["total_amount"] = float(pharm_row["total_amount"] or 0.0)
+            if not o_dict.get("assigned_rider_name") and pharm_row["assigned_rider_name"]:
+                o_dict["assigned_rider_name"] = pharm_row["assigned_rider_name"]
+                o_dict["assigned_rider_phone"] = pharm_row["assigned_rider_phone"]
+            if (not processed_items or (len(processed_items) == 1 and float(processed_items[0].get("total_price") or 0) == 0)) and pharm_items:
+                o_dict["items"] = [
+                    {
+                        "product_name": f"💊 {pm.get('name', 'Medicine')}",
+                        "quantity": int(pm.get("quantity") or 1),
+                        "unit_price": float(pm.get("unit_price") or 0.0),
+                        "total_price": float(pm.get("total_price") or 0.0),
+                        "is_medicine": True,
+                        "medicine_id": int(pm.get("medicine_id") or 0),
+                        "generic_name": pm.get("generic_name") or "",
+                        "strength": pm.get("strength") or "",
+                        "dosage_form": pm.get("dosage_form") or "",
+                    }
+                    for pm in pharm_items if isinstance(pm, dict)
+                ] or processed_items
         elif (o_dict.get("order_number") or "").startswith("RX-"):
             o_dict["is_pharmacy_order"] = True
 
-        # Build delivery timeline with real timing
-        created_dt = o_dict.get("created_at") or ""
-        confirmed_dt = o_dict.get("confirmed_at") or ""
-        packed_dt = o_dict.get("packed_at") or ""
-        on_the_way_dt = o_dict.get("on_the_way_at") or ""
-        delivered_dt = o_dict.get("delivered_at") or ""
-        cancelled_dt = o_dict.get("cancelled_at") or ""
-        curr_status = o_dict.get("order_status") or "new"
-
-        # Fallback for historical orders created before timestamp migration
-        if curr_status in ("verified", "packed", "on_the_way", "delivered") and not confirmed_dt:
-            confirmed_dt = created_dt
-        if curr_status in ("packed", "on_the_way", "delivered") and not packed_dt:
-            packed_dt = confirmed_dt or created_dt
-        if curr_status in ("on_the_way", "delivered") and not on_the_way_dt:
-            on_the_way_dt = packed_dt or created_dt
-        if curr_status == "delivered" and not delivered_dt:
-            delivered_dt = o_dict.get("updated_at") or created_dt
-        if curr_status == "cancelled" and not cancelled_dt:
-            cancelled_dt = o_dict.get("updated_at") or created_dt
-
-        # Convert all to Bangladesh Time (GMT+6)
-        created_iso, created_bd = format_bd_timeline_time(created_dt)
-        confirmed_iso, confirmed_bd = format_bd_timeline_time(confirmed_dt)
-        packed_iso, packed_bd = format_bd_timeline_time(packed_dt)
-        on_the_way_iso, on_the_way_bd = format_bd_timeline_time(on_the_way_dt)
-        delivered_iso, delivered_bd = format_bd_timeline_time(delivered_dt)
-        cancelled_iso, cancelled_bd = format_bd_timeline_time(cancelled_dt)
-
-        timeline = [
-            {
-                "stage": "placed",
-                "key": "placed",
-                "title": "Order Placed",
-                "time": created_iso,
-                "time_bd": created_bd,
-                "time_formatted": created_bd,
-                "done": True,
-                "is_done": True,
-                "active": (curr_status in ("new", "pending", "pending_confirmation")),
-                "is_current": (curr_status in ("new", "pending", "pending_confirmation"))
-            },
-            {
-                "stage": "verified",
-                "key": "verified",
-                "title": "Order Confirmed",
-                "time": confirmed_iso if confirmed_dt else "",
-                "time_bd": confirmed_bd if confirmed_dt else "",
-                "time_formatted": confirmed_bd if confirmed_dt else "",
-                "done": bool(confirmed_dt) or curr_status in ("verified", "packed", "on_the_way", "delivered"),
-                "is_done": bool(confirmed_dt) or curr_status in ("verified", "packed", "on_the_way", "delivered"),
-                "active": (curr_status == "verified"),
-                "is_current": (curr_status == "verified")
-            },
-            {
-                "stage": "packed",
-                "key": "packed",
-                "title": "Packed & Ready",
-                "time": packed_iso if packed_dt else "",
-                "time_bd": packed_bd if packed_dt else "",
-                "time_formatted": packed_bd if packed_dt else "",
-                "done": bool(packed_dt) or curr_status in ("packed", "on_the_way", "delivered"),
-                "is_done": bool(packed_dt) or curr_status in ("packed", "on_the_way", "delivered"),
-                "active": (curr_status == "packed"),
-                "is_current": (curr_status == "packed")
-            },
-            {
-                "stage": "on_the_way",
-                "key": "on_the_way",
-                "title": "On The Way",
-                "time": on_the_way_iso if on_the_way_dt else "",
-                "time_bd": on_the_way_bd if on_the_way_dt else "",
-                "time_formatted": on_the_way_bd if on_the_way_dt else "",
-                "done": bool(on_the_way_dt) or curr_status in ("on_the_way", "delivered"),
-                "is_done": bool(on_the_way_dt) or curr_status in ("on_the_way", "delivered"),
-                "active": (curr_status == "on_the_way"),
-                "is_current": (curr_status == "on_the_way")
-            },
-            {
-                "stage": "delivered",
-                "key": "delivered",
-                "title": "Delivered",
-                "time": delivered_iso if delivered_dt else "",
-                "time_bd": delivered_bd if delivered_dt else "",
-                "time_formatted": delivered_bd if delivered_dt else "",
-                "done": bool(delivered_dt) or (curr_status == "delivered"),
-                "is_done": bool(delivered_dt) or (curr_status == "delivered"),
-                "active": (curr_status == "delivered"),
-                "is_current": (curr_status == "delivered")
-            }
-        ]
-        if curr_status == "cancelled":
-            timeline.append({
-                "stage": "cancelled",
-                "key": "cancelled",
-                "title": "Order Cancelled",
-                "time": cancelled_iso,
-                "time_bd": cancelled_bd,
-                "time_formatted": cancelled_bd,
-                "done": True,
-                "is_done": True,
-                "active": True,
-                "is_current": True
-            })
-
+        norm_status, timeline, ts_map = _build_order_timeline(
+            curr_status,
+            created_dt=created_dt,
+            confirmed_dt=confirmed_dt,
+            packed_dt=packed_dt,
+            on_the_way_dt=on_the_way_dt,
+            delivered_dt=delivered_dt,
+            cancelled_dt=cancelled_dt,
+            updated_at=o_dict.get("updated_at") or (pharm_row["updated_at"] if pharm_row else ""),
+        )
+        o_dict["order_status"] = norm_status
         o_dict["timeline"] = timeline
-        o_dict["created_at"] = created_iso
-        o_dict["created_at_bd"] = created_bd
-        o_dict["confirmed_at"] = confirmed_iso
-        o_dict["packed_at"] = packed_iso
-        o_dict["on_the_way_at"] = on_the_way_iso
-        o_dict["delivered_at"] = delivered_iso
-        o_dict["cancelled_at"] = cancelled_iso
+        o_dict.update(ts_map)
         result.append(o_dict)
+
+    # Include any pharmacy_orders for this customer that do not yet exist in online_orders
+    pharm_orphans = conn.execute(
+        f"""
+        SELECT * FROM pharmacy_orders
+        WHERE customer_phone IN ({placeholders})
+           OR REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+88', '') = ?
+        ORDER BY id DESC
+        """,
+        tuple(variants) + (norm_main,),
+    ).fetchall()
+    for pr in pharm_orphans:
+        if pr["order_number"] and pr["order_number"] in seen_order_numbers:
+            continue
+        try:
+            p_items_raw = json.loads(pr["approved_items_json"] or "[]") or json.loads(pr["requested_items_json"] or "[]")
+        except Exception:
+            p_items_raw = []
+        mapped_items = [
+            {
+                "product_name": f"💊 {pm.get('name', 'Medicine')}",
+                "quantity": int(pm.get("quantity") or 1),
+                "unit_price": float(pm.get("unit_price") or 0.0),
+                "total_price": float(pm.get("total_price") or 0.0),
+                "is_medicine": True,
+                "medicine_id": int(pm.get("medicine_id") or 0),
+                "generic_name": pm.get("generic_name") or "",
+                "strength": pm.get("strength") or "",
+                "dosage_form": pm.get("dosage_form") or "",
+            }
+            for pm in p_items_raw if isinstance(pm, dict)
+        ] or [{
+            "product_name": "💊 প্রেসক্রিপশন অর্ডার",
+            "quantity": 1,
+            "unit_price": 0.0,
+            "total_price": 0.0,
+            "is_medicine": True,
+        }]
+        ol_st = _PHARM_TO_OL_STATUS.get((pr["order_status"] or "reviewing").strip().lower(), "pending_confirmation")
+        norm_status, timeline, ts_map = _build_order_timeline(
+            ol_st,
+            created_dt=pr["created_at"] or "",
+            confirmed_dt=pr["confirmed_at"] or "",
+            packed_dt=pr["packed_at"] or "",
+            on_the_way_dt=pr["on_the_way_at"] or "",
+            delivered_dt=pr["delivered_at"] or "",
+            cancelled_dt=pr["cancelled_at"] or "",
+            updated_at=pr["updated_at"] or "",
+        )
+        synth = {
+            "id": pr["online_order_id"] or pr["id"],
+            "order_number": pr["order_number"],
+            "customer_name": pr["customer_name"] or "",
+            "customer_phone": pr["customer_phone"] or "",
+            "customer_email": pr["customer_email"] or "",
+            "district": pr["district"] or "",
+            "area": pr["area"] or "",
+            "address_details": pr["delivery_address"] or "",
+            "payment_method": pr["payment_method"] or "cod",
+            "payment_status": pr["payment_status"] or "pending",
+            "subtotal": float(pr["subtotal"] or 0.0),
+            "delivery_charge": float(pr["delivery_charge"] or 50.0),
+            "total_amount": float(pr["total_amount"] or 0.0),
+            "order_status": norm_status,
+            "delivery_otp": pr["delivery_otp"] or "",
+            "assigned_rider_name": pr["assigned_rider_name"] or "",
+            "assigned_rider_phone": pr["assigned_rider_phone"] or "",
+            "items": mapped_items,
+            "is_pharmacy_order": True,
+            "pharmacy_order_id": pr["id"],
+            "pharmacy_order_type": pr["order_type"] or "",
+            "prescription_url": _abs_url(pr["prescription_url"] or ""),
+            "prescription_original_url": _abs_url(pr["prescription_original_url"] or pr["prescription_url"] or ""),
+            "prescription_enhanced_url": _abs_url(pr["prescription_enhanced_url"] or pr["prescription_url"] or ""),
+            "overall_duration_days": int(pr["overall_duration_days"] or 0),
+            "customer_notes": pr["customer_notes"] or "",
+            "timeline": timeline,
+        }
+        synth.update(ts_map)
+        result.append(synth)
 
     conn.close()
     return jsonify(result)
@@ -9945,10 +10293,13 @@ def api_cancel_order():
         "UPDATE online_orders SET order_status = 'cancelled', cancelled_at = CASE WHEN cancelled_at = '' THEN ? ELSE cancelled_at END, updated_at = ? WHERE id = ?",
         (now_iso, now_iso, order["id"])
     )
+    pharm_id = _sync_pharmacy_from_online_order(conn, order, 'cancelled', now_iso)
     notify_order_status_change(order, 'cancelled', conn=conn)
     conn.commit()
     conn.close()
     remote_control.push_online_order_to_cloud(order["id"])
+    if pharm_id:
+        remote_control.push_pharmacy_order_to_cloud(pharm_id)
 
     return jsonify({"success": True, "message": "Order has been cancelled successfully."})
 
@@ -11336,6 +11687,50 @@ import base64
 import random
 import json
 
+def _optimize_prescription_image_bytes(raw_bytes, ext=".jpg", content_type="image/jpeg"):
+    """Preserve high crisp resolution (<=2200px) with EXIF orientation fix and compact JPEG encoding for huge PNG/camera blobs."""
+    if not raw_bytes or ext == ".pdf":
+        return raw_bytes, ext, content_type
+    try:
+        from PIL import Image, ImageOps
+        buf_in = io.BytesIO(raw_bytes) if "io" in globals() else None
+        if buf_in is None:
+            import io as _io
+            buf_in = _io.BytesIO(raw_bytes)
+        with Image.open(buf_in) as im:
+            exif_obj = im.getexif() if hasattr(im, "getexif") else None
+            orientation = exif_obj.get(274, 1) if exif_obj else 1
+            needs_transpose = orientation not in (1, None)
+            w, h = im.size
+            max_dim = 2200
+            needs_resize = max(w, h) > max_dim
+            is_bloated = len(raw_bytes) > 750_000 or (ext == ".png" and len(raw_bytes) > 400_000)
+            if not (needs_transpose or needs_resize or is_bloated):
+                return raw_bytes, ext, content_type
+            worked = ImageOps.exif_transpose(im) if needs_transpose else im
+            if worked.mode in ("RGBA", "LA", "P"):
+                bg = Image.new("RGB", worked.size, (255, 255, 255))
+                if worked.mode == "P":
+                    worked = worked.convert("RGBA")
+                mask = worked.split()[-1] if worked.mode in ("RGBA", "LA") else None
+                bg.paste(worked, mask=mask)
+                worked = bg
+            elif worked.mode != "RGB":
+                worked = worked.convert("RGB")
+            if needs_resize:
+                resampling = getattr(Image, "Resampling", Image).LANCZOS
+                worked.thumbnail((max_dim, max_dim), resampling)
+            import io as _io
+            out_buf = _io.BytesIO()
+            worked.save(out_buf, format="JPEG", quality=92, optimize=True)
+            opt_bytes = out_buf.getvalue()
+            if opt_bytes and (len(opt_bytes) < len(raw_bytes) or needs_transpose or needs_resize):
+                return opt_bytes, ".jpg", "image/jpeg"
+    except Exception as _opt_err:
+        print(f"[pharmacy] image optimize notice: {_opt_err}")
+    return raw_bytes, ext, content_type
+
+
 def _save_base64_image(data_uri, prefix="rx"):
     """Helper to decode base64 data URI (image or PDF) and upload to Cloudinary CDN or save locally."""
     if not data_uri or not (data_uri.startswith("data:image") or data_uri.startswith("data:application/pdf") or data_uri.startswith("data:application/octet-stream") or data_uri.startswith("data:binary")):
@@ -11354,6 +11749,7 @@ def _save_base64_image(data_uri, prefix="rx"):
             ext = ".png"
             content_type = "image/png"
         img_bytes = base64.b64decode(encoded)
+        img_bytes, ext, content_type = _optimize_prescription_image_bytes(img_bytes, ext=ext, content_type=content_type)
         unique_name = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
 
         # 1. Try Cloudinary upload first (Permanent CDN with public browser URL)
@@ -11398,8 +11794,10 @@ def _handle_prescription_upload():
         filename = secure_filename(file.filename)
         ext = os.path.splitext(filename)[1].lower()
         if ext in [".jpg", ".jpeg", ".png", ".webp", ".pdf"]:
-            unique_name = f"rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
             file_bytes = file.read()
+            ctype = "application/pdf" if ext == ".pdf" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
+            file_bytes, ext, ctype = _optimize_prescription_image_bytes(file_bytes, ext=ext, content_type=ctype)
+            unique_name = f"rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{ext}"
 
             # 1. Cloudinary upload first
             cloud_url = None
@@ -11414,7 +11812,7 @@ def _handle_prescription_upload():
             # 2. Try Cloudflare R2
             try:
                 from cloudflare_r2 import upload_to_r2
-                r2_url, _ = upload_to_r2(file_bytes, unique_name, content_type="application/pdf" if ext == ".pdf" else "image/jpeg")
+                r2_url, _ = upload_to_r2(file_bytes, unique_name, content_type=ctype)
                 if r2_url:
                     return r2_url, filename
             except Exception as e:
@@ -11921,17 +12319,36 @@ def pharmacy_place_order():
         except Exception:
             raw_items = []
 
-    # Handle prescription file upload / base64 (enhanced & original)
+    # Handle prescription file upload / base64 (enhanced & original concurrently when both sent)
     prescription_url = (data.get("prescription_url") or "").strip()
     prescription_filename = ""
-    if not prescription_url:
-        prescription_url, prescription_filename = _handle_prescription_upload()
-
-    # Original uncropped/unenhanced photo if sent separately
-    orig_base64 = data.get("prescription_original_base64")
     prescription_original_url = ""
-    if orig_base64 and (orig_base64.startswith("data:image") or orig_base64.startswith("data:application/pdf")):
-        prescription_original_url, _ = _save_base64_image(orig_base64, prefix="rx_orig")
+    orig_base64 = data.get("prescription_original_base64")
+    has_orig_b64 = bool(orig_base64 and (orig_base64.startswith("data:image") or orig_base64.startswith("data:application/pdf")))
+
+    has_multipart = bool(request.files.get("prescription_file") or request.files.get("file"))
+    enh_base64 = request.form.get("prescription_base64") or (data.get("prescription_base64") if isinstance(data, dict) else None)
+    has_enh_b64 = bool(not prescription_url and not has_multipart and enh_base64 and (enh_base64.startswith("data:image") or enh_base64.startswith("data:application/pdf") or enh_base64.startswith("data:application/octet-stream") or enh_base64.startswith("data:binary")))
+
+    if not prescription_url and has_enh_b64 and has_orig_b64:
+        if orig_base64 == enh_base64:
+            prescription_url, prescription_filename = _save_base64_image(enh_base64, prefix="rx_upload")
+            prescription_original_url = prescription_url
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                fut_enh = pool.submit(_save_base64_image, enh_base64, "rx_upload")
+                fut_orig = pool.submit(_save_base64_image, orig_base64, "rx_orig")
+                prescription_url, prescription_filename = fut_enh.result()
+                prescription_original_url, _ = fut_orig.result()
+    else:
+        if not prescription_url:
+            prescription_url, prescription_filename = _handle_prescription_upload()
+        if has_orig_b64:
+            if enh_base64 and orig_base64 == enh_base64 and prescription_url:
+                prescription_original_url = prescription_url
+            else:
+                prescription_original_url, _ = _save_base64_image(orig_base64, prefix="rx_orig")
     if not prescription_original_url:
         prescription_original_url = prescription_url
     prescription_enhanced_url = prescription_url
@@ -12048,6 +12465,7 @@ def pharmacy_place_order():
     pharm_order_id = cur.lastrowid
 
     # 2. Insert into online_orders for Rider & POS integration
+    online_order_id = None
     try:
         cur.execute("""
             INSERT INTO online_orders (
@@ -12080,14 +12498,6 @@ def pharmacy_place_order():
                 INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
                 VALUES (?, ?, ?, 0, 0, 1, 0)
             """, (online_order_id, _valid_pid, f"💊 প্রেসক্রিপশন অর্ডার - {note_summary}"))
-            
-        # Cloud push to Firebase Firestore for cross-server & redeploy persistence
-        try:
-            remote_control.push_pharmacy_order_to_cloud(pharm_order_id)
-            if online_order_id:
-                remote_control.push_online_order_to_cloud(online_order_id)
-        except Exception:
-            pass
     except Exception as e:
         print(f"[pharmacy] Online order sync notice: {e}")
 
@@ -12096,6 +12506,8 @@ def pharmacy_place_order():
 
     try:
         remote_control.push_pharmacy_order_to_cloud(pharm_order_id)
+        if online_order_id:
+            remote_control.push_online_order_to_cloud(online_order_id)
     except Exception:
         pass
 
@@ -12127,7 +12539,6 @@ def api_pharmacy_my_orders():
             ORDER BY id DESC LIMIT 50""",
         tuple(candidates) + (norm_main,),
     ).fetchall()
-    conn.close()
 
     base_host = request.host_url.rstrip("/")
 
@@ -12137,9 +12548,36 @@ def api_pharmacy_my_orders():
             return base_host + s
         return s
 
+    _STAGE_RANK = {
+        "reviewing": 0, "new": 0, "pending": 0, "pending_confirmation": 0,
+        "confirmed": 1, "verified": 1,
+        "packed": 2, "on_the_way": 3, "delivered": 4, "cancelled": 5,
+    }
+
     orders_out = []
+    seen_nums = set()
     for r in rows:
         d = dict(r)
+        if d.get("order_number"):
+            seen_nums.add(d["order_number"])
+        ol_row = conn.execute(
+            "SELECT * FROM online_orders WHERE id = ? OR order_number = ? LIMIT 1",
+            (d.get("online_order_id") or 0, d.get("order_number") or ""),
+        ).fetchone()
+        if ol_row:
+            ol_mapped = _OL_TO_PHARM_STATUS.get((ol_row["order_status"] or "").strip().lower(), "")
+            curr_ph = (d.get("order_status") or "reviewing").strip().lower()
+            if ol_mapped and (ol_mapped == "cancelled" or _STAGE_RANK.get(ol_mapped, 0) > _STAGE_RANK.get(curr_ph, 0)):
+                d["order_status"] = ol_mapped
+            for col in ("confirmed_at", "packed_at", "on_the_way_at", "delivered_at", "cancelled_at"):
+                if not d.get(col) and ol_row[col]:
+                    d[col] = ol_row[col]
+            if not d.get("assigned_rider_name") and ol_row["assigned_rider_name"]:
+                d["assigned_rider_name"] = ol_row["assigned_rider_name"]
+                d["assigned_rider_phone"] = ol_row["assigned_rider_phone"]
+            if ol_row["payment_status"] == "paid":
+                d["payment_status"] = "paid"
+
         try:
             d["requested_items"] = json.loads(d.get("requested_items_json") or "[]")
         except Exception:
@@ -12154,6 +12592,47 @@ def api_pharmacy_my_orders():
         d["prescription_original_url"] = _abs_url(d.get("prescription_original_url") or d.get("prescription_url"))
         d["prescription_enhanced_url"] = _abs_url(d.get("prescription_enhanced_url") or d.get("prescription_url"))
         orders_out.append(d)
+
+    # Also include any RX- online_orders that do not yet have a local pharmacy_orders row
+    rx_ol_rows = conn.execute(
+        f"""SELECT * FROM online_orders
+            WHERE order_number LIKE 'RX-%'
+              AND (customer_phone IN ({placeholders})
+                   OR REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+88', '') = ?)
+            ORDER BY id DESC LIMIT 30""",
+        tuple(candidates) + (norm_main,),
+    ).fetchall()
+    for olr in rx_ol_rows:
+        if olr["order_number"] in seen_nums:
+            continue
+        orders_out.append({
+            "id": olr["id"],
+            "online_order_id": olr["id"],
+            "order_number": olr["order_number"],
+            "customer_name": olr["customer_name"] or "",
+            "customer_phone": olr["customer_phone"] or "",
+            "delivery_address": olr["address_details"] or "",
+            "subtotal": float(olr["subtotal"] or 0.0),
+            "delivery_charge": float(olr["delivery_charge"] or 50.0),
+            "total_amount": float(olr["total_amount"] or 0.0),
+            "order_status": _OL_TO_PHARM_STATUS.get((olr["order_status"] or "").strip().lower(), "reviewing"),
+            "delivery_otp": olr["delivery_otp"] or "",
+            "payment_status": olr["payment_status"] or "pending",
+            "assigned_rider_name": olr["assigned_rider_name"] or "",
+            "assigned_rider_phone": olr["assigned_rider_phone"] or "",
+            "created_at": olr["created_at"] or "",
+            "confirmed_at": olr["confirmed_at"] or "",
+            "packed_at": olr["packed_at"] or "",
+            "on_the_way_at": olr["on_the_way_at"] or "",
+            "delivered_at": olr["delivered_at"] or "",
+            "cancelled_at": olr["cancelled_at"] or "",
+            "requested_items": [],
+            "approved_items": [],
+            "prescription_url": "",
+            "prescription_original_url": "",
+            "prescription_enhanced_url": "",
+        })
+    conn.close()
 
     return jsonify({"success": True, "orders": orders_out})
 
@@ -12540,42 +13019,29 @@ def api_admin_pharmacy_generate_bill(order_id):
         admin_notes, now_iso, now_iso, order_id
     ))
 
-    # 2. Synchronize with online_orders & online_order_items
+    # 2. Synchronize with online_orders & online_order_items (creating/linking online_order even if online_order_id == 0)
+    ol_id = _ensure_online_order_for_pharmacy(conn, order_id, approved_items=processed_items, now_iso=now_iso)
     order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
-    if order and order["online_order_id"]:
-        ol_id = order["online_order_id"]
-        cur.execute("""
-            UPDATE online_orders SET
-                subtotal = ?,
-                delivery_charge = ?,
-                total_amount = ?,
-                order_status = 'verified',
-                confirmed_at = ?,
-                updated_at = ?
-            WHERE id = ?
-        """, (subtotal, delivery_charge, grand_total, now_iso, now_iso, ol_id))
-
-        # Re-populate online_order_items
-        _fp = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
-        _valid_pid = _fp["id"] if _fp else 1
-        cur.execute("DELETE FROM online_order_items WHERE order_id = ?", (ol_id,))
-        for itm in processed_items:
-            cur.execute("""
-                INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (ol_id, _valid_pid, f"💊 {itm['name']} ({itm.get('strength', '')})", itm['unit_price'], itm['unit_price'], itm['quantity'], itm['total_price']))
-
-        try:
-            remote_control.push_pharmacy_order_to_cloud(order_id)
-            if ol_id:
-                remote_control.push_online_order_to_cloud(ol_id)
-        except Exception:
-            pass
+    if ol_id and order and order["order_number"]:
+        stale_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (f"INV-ONLINE-{order['order_number']}",)).fetchone()
+        if stale_sale:
+            conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (stale_sale["id"],))
+            conn.execute("DELETE FROM sales WHERE id = ?", (stale_sale["id"],))
+    if ol_id:
+        ol_row = conn.execute("SELECT * FROM online_orders WHERE id = ?", (ol_id,)).fetchone()
+        if ol_row:
+            notify_order_status_change(ol_row, "verified", conn=conn)
 
     conn.commit()
     conn.close()
 
-    ol_id = order["online_order_id"] if order else None
+    try:
+        remote_control.push_pharmacy_order_to_cloud(order_id)
+        if ol_id:
+            remote_control.push_online_order_to_cloud(ol_id)
+    except Exception:
+        pass
+
     invoice_url = f"/online_orders/{ol_id}/invoice" if ol_id else None
 
     return jsonify({
@@ -12627,16 +13093,18 @@ def api_admin_pharmacy_update_status(order_id):
 
     cur = conn.cursor()
     
-    # Update pharmacy_orders
+    # Update pharmacy_orders (with confirmed_at as well when marking confirmed)
     time_col = ""
-    if new_status == "packed":
-        time_col = ", packed_at = ?"
+    if new_status == "confirmed":
+        time_col = ", confirmed_at = CASE WHEN COALESCE(confirmed_at, '') = '' THEN ? ELSE confirmed_at END"
+    elif new_status == "packed":
+        time_col = ", packed_at = CASE WHEN COALESCE(packed_at, '') = '' THEN ? ELSE packed_at END"
     elif new_status == "on_the_way":
-        time_col = ", on_the_way_at = ?"
+        time_col = ", on_the_way_at = CASE WHEN COALESCE(on_the_way_at, '') = '' THEN ? ELSE on_the_way_at END"
     elif new_status == "delivered":
-        time_col = ", delivered_at = ?"
+        time_col = ", delivered_at = CASE WHEN COALESCE(delivered_at, '') = '' THEN ? ELSE delivered_at END, payment_status = 'paid'"
     elif new_status == "cancelled":
-        time_col = ", cancelled_at = ?"
+        time_col = ", cancelled_at = CASE WHEN COALESCE(cancelled_at, '') = '' THEN ? ELSE cancelled_at END"
 
     query = f"""
         UPDATE pharmacy_orders SET
@@ -12655,41 +13123,21 @@ def api_admin_pharmacy_update_status(order_id):
 
     cur.execute(query, params)
 
-    # Sync with online_orders
-    if order["online_order_id"]:
-        ol_id = order["online_order_id"]
-        ol_st_map = {
-            "reviewing": "new",
-            "confirmed": "verified",
-            "packed": "packed",
-            "on_the_way": "on_the_way",
-            "delivered": "delivered",
-            "cancelled": "cancelled"
-        }
-        target_ol_st = ol_st_map.get(new_status, new_status)
-        cur.execute("""
-            UPDATE online_orders SET
-                order_status = ?,
-                assigned_rider_id = COALESCE(?, assigned_rider_id),
-                assigned_rider_name = ?,
-                assigned_rider_phone = ?,
-                payment_status = CASE WHEN ? = 'delivered' THEN 'paid' ELSE payment_status END,
-                updated_at = ?
-            WHERE id = ?
-        """, (target_ol_st, rider_id, rider_name, rider_phone, new_status, now_iso, ol_id))
-
-        try:
-            remote_control.push_pharmacy_order_to_cloud(order_id)
-            if ol_id:
-                remote_control.push_online_order_to_cloud(ol_id)
-        except Exception:
-            pass
+    # Sync cleanly with online_orders (resolving by online_order_id or order_number, or creating if missing)
+    ol_id = _ensure_online_order_for_pharmacy(conn, order_id, now_iso=now_iso)
+    if ol_id:
+        ol_row = conn.execute("SELECT * FROM online_orders WHERE id = ?", (ol_id,)).fetchone()
+        if ol_row:
+            target_ol_st = _PHARM_TO_OL_STATUS.get(new_status, new_status)
+            notify_order_status_change(ol_row, target_ol_st, conn=conn)
 
     conn.commit()
     conn.close()
 
     try:
         remote_control.push_pharmacy_order_to_cloud(order_id)
+        if ol_id:
+            remote_control.push_online_order_to_cloud(ol_id)
     except Exception:
         pass
 

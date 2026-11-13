@@ -1000,8 +1000,9 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                                 payment_method, payment_status, subtotal, delivery_charge, total_amount,
                                 order_status, delivery_otp, is_stock_deducted,
                                 assigned_rider_id, assigned_rider_name, assigned_rider_phone,
+                                confirmed_at, packed_at, on_the_way_at, delivered_at, cancelled_at,
                                 created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_number,
                             c_name, c_phone,
@@ -1018,6 +1019,11 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             int(data.get("assigned_rider_id") or 0),
                             data.get("assigned_rider_name", ""),
                             data.get("assigned_rider_phone", ""),
+                            data.get("confirmed_at", ""),
+                            data.get("packed_at", ""),
+                            data.get("on_the_way_at", ""),
+                            data.get("delivered_at", ""),
+                            data.get("cancelled_at", ""),
                             data.get("created_at", datetime.now().isoformat()),
                             data.get("updated_at", datetime.now().isoformat())
                         ))
@@ -1089,6 +1095,9 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                         conn.execute("""
                             UPDATE online_orders SET
                                 order_status = ?, payment_status = ?,
+                                subtotal = CASE WHEN ? > 0 THEN ? ELSE subtotal END,
+                                delivery_charge = CASE WHEN ? > 0 THEN ? ELSE delivery_charge END,
+                                total_amount = CASE WHEN ? > 0 THEN ? ELSE total_amount END,
                                 assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?,
                                 confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
                                 packed_at = COALESCE(NULLIF(?, ''), packed_at),
@@ -1100,6 +1109,9 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                         """, (
                             data.get("order_status", "new"),
                             data.get("payment_status", "pending"),
+                            float(data.get("subtotal") or 0.0), float(data.get("subtotal") or 0.0),
+                            float(data.get("delivery_charge") or 0.0), float(data.get("delivery_charge") or 0.0),
+                            float(data.get("total_amount") or 0.0), float(data.get("total_amount") or 0.0),
                             int(data.get("assigned_rider_id") or 0),
                             data.get("assigned_rider_name", ""),
                             data.get("assigned_rider_phone", ""),
@@ -1111,6 +1123,33 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             datetime.now().isoformat(),
                             order_number
                         ))
+                    if str(order_number).startswith("RX-"):
+                        ol_row = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
+                        if ol_row:
+                            _ol_st = (data.get("order_status") or "new").strip().lower()
+                            _ph_st = {
+                                "new": "reviewing", "pending": "reviewing", "pending_confirmation": "reviewing",
+                                "verified": "confirmed", "packed": "packed", "on_the_way": "on_the_way",
+                                "delivered": "delivered", "cancelled": "cancelled",
+                            }.get(_ol_st, _ol_st)
+                            conn.execute("""
+                                UPDATE pharmacy_orders SET
+                                    online_order_id = ?,
+                                    order_status = ?,
+                                    payment_status = COALESCE(NULLIF(?, ''), payment_status),
+                                    confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
+                                    packed_at = COALESCE(NULLIF(?, ''), packed_at),
+                                    on_the_way_at = COALESCE(NULLIF(?, ''), on_the_way_at),
+                                    delivered_at = COALESCE(NULLIF(?, ''), delivered_at),
+                                    cancelled_at = COALESCE(NULLIF(?, ''), cancelled_at),
+                                    updated_at = ?
+                                WHERE order_number = ?
+                            """, (
+                                ol_row["id"], _ph_st, data.get("payment_status", ""),
+                                data.get("confirmed_at", ""), data.get("packed_at", ""),
+                                data.get("on_the_way_at", ""), data.get("delivered_at", ""),
+                                data.get("cancelled_at", ""), datetime.now().isoformat(), order_number
+                            ))
                 elif change.type.name == "REMOVED":
                     ord_row = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_number,)).fetchone()
                     if ord_row:
@@ -1238,6 +1277,47 @@ def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
                             data.get("on_the_way_at", ""),
                             data.get("delivered_at", ""),
                             data.get("cancelled_at", "")
+                        ))
+                    ol_match = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_num,)).fetchone()
+                    if ol_match:
+                        conn.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE order_number = ?", (ol_match["id"], order_num))
+                        _ph_st = (data.get("order_status") or "reviewing").strip().lower()
+                        _ol_st = {
+                            "reviewing": "pending_confirmation", "confirmed": "verified",
+                            "packed": "packed", "on_the_way": "on_the_way",
+                            "delivered": "delivered", "cancelled": "cancelled",
+                        }.get(_ph_st, _ph_st)
+                        conn.execute("""
+                            UPDATE online_orders SET
+                                order_status = ?,
+                                subtotal = CASE WHEN ? > 0 THEN ? ELSE subtotal END,
+                                delivery_charge = CASE WHEN ? > 0 THEN ? ELSE delivery_charge END,
+                                total_amount = CASE WHEN ? > 0 THEN ? ELSE total_amount END,
+                                assigned_rider_id = COALESCE(?, assigned_rider_id),
+                                assigned_rider_name = COALESCE(?, assigned_rider_name),
+                                assigned_rider_phone = COALESCE(?, assigned_rider_phone),
+                                confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
+                                packed_at = COALESCE(NULLIF(?, ''), packed_at),
+                                on_the_way_at = COALESCE(NULLIF(?, ''), on_the_way_at),
+                                delivered_at = COALESCE(NULLIF(?, ''), delivered_at),
+                                cancelled_at = COALESCE(NULLIF(?, ''), cancelled_at),
+                                updated_at = ?
+                            WHERE id = ?
+                        """, (
+                            _ol_st,
+                            float(data.get("subtotal") or 0.0), float(data.get("subtotal") or 0.0),
+                            float(data.get("delivery_charge") or 0.0), float(data.get("delivery_charge") or 0.0),
+                            float(data.get("total_amount") or 0.0), float(data.get("total_amount") or 0.0),
+                            data.get("assigned_rider_id"),
+                            data.get("assigned_rider_name"),
+                            data.get("assigned_rider_phone"),
+                            data.get("confirmed_at", ""),
+                            data.get("packed_at", ""),
+                            data.get("on_the_way_at", ""),
+                            data.get("delivered_at", ""),
+                            data.get("cancelled_at", ""),
+                            datetime.now().isoformat(),
+                            ol_match["id"]
                         ))
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM pharmacy_orders WHERE order_number = ?", (order_num,))
@@ -2231,6 +2311,11 @@ def pull_all_from_cloud(blocking=False):
                                     admin_notes = ?,
                                     prescription_url = COALESCE(NULLIF(?, ''), prescription_url),
                                     prescription_enhanced_url = COALESCE(NULLIF(?, ''), prescription_enhanced_url),
+                                    confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
+                                    packed_at = COALESCE(NULLIF(?, ''), packed_at),
+                                    on_the_way_at = COALESCE(NULLIF(?, ''), on_the_way_at),
+                                    delivered_at = COALESCE(NULLIF(?, ''), delivered_at),
+                                    cancelled_at = COALESCE(NULLIF(?, ''), cancelled_at),
                                     updated_at = ?
                                 WHERE order_number = ?
                             """, (
@@ -2246,9 +2331,17 @@ def pull_all_from_cloud(blocking=False):
                                 data.get("admin_notes", ""),
                                 data.get("prescription_url", ""),
                                 data.get("prescription_enhanced_url", ""),
+                                data.get("confirmed_at", ""),
+                                data.get("packed_at", ""),
+                                data.get("on_the_way_at", ""),
+                                data.get("delivered_at", ""),
+                                data.get("cancelled_at", ""),
                                 data.get("updated_at", datetime.now().isoformat()),
                                 order_num
                             ))
+                        ol_match = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (order_num,)).fetchone()
+                        if ol_match:
+                            conn.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE order_number = ?", (ol_match["id"], order_num))
 
                     # 9. Pull Delivery Areas
                     for a in (area_data.get("areas") or []):

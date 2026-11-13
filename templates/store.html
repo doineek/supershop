@@ -2433,6 +2433,12 @@
         <!-- Level 2: Sub-categories -->
         <div class="subcat-tree-body" id="body-cat-{{ cat.id }}">
           {% if cat.sub_categories %}
+            {% if cat.product_count %}
+            <div class="subsubcat-row" onclick="filterBySpecificCategory('{{ cat.name }}')" style="background:#f5f3ff; border-radius:8px; margin-bottom:8px; padding:8px 10px;">
+              <span style="font-weight:800; color:var(--primary);">🛍️ All in {{ cat.name }}</span>
+              <span style="color:var(--primary); font-size:0.78rem; font-weight:800;">{{ cat.product_count }} Products ➔</span>
+            </div>
+            {% endif %}
             {% for sub in cat.sub_categories %}
             <div class="subcat-item-box">
               <div class="subcat-header" onclick="toggleSubTree('sub-{{ sub.id }}')">
@@ -2451,6 +2457,18 @@
               <!-- Level 3: Sub-sub-categories -->
               <div class="subsubcat-list" id="body-sub-{{ sub.id }}">
                 {% if sub.sub_sub_categories %}
+                  {% if sub.product_count %}
+                  <div class="subsubcat-row" onclick="filterBySpecificSubCategory('{{ sub.name }}')" style="background:#f8fafc; font-weight:700; border-radius:8px; margin-bottom:4px;">
+                    <span>🛍️ All in {{ sub.name }}</span>
+                    <span style="color:var(--primary); font-size:0.75rem; font-weight:800;">{{ sub.product_count }} Products ➔</span>
+                  </div>
+                  {% endif %}
+                  {% if (sub.direct_product_count or 0) > 0 %}
+                  <div class="subsubcat-row" onclick="filterBySpecificSubCategoryDirect('{{ sub.name }}')" style="border-radius:8px; margin-bottom:4px;">
+                    <span>📦 সরাসরি আইটেম ({{ sub.name }})</span>
+                    <span style="color:var(--primary); font-size:0.75rem; font-weight:700;">{{ sub.direct_product_count }} Products ➔</span>
+                  </div>
+                  {% endif %}
                   {% for ss in sub.sub_sub_categories %}
                   <div class="subsubcat-row" onclick="filterBySpecificSubSubCategory('{{ ss.name }}')">
                     <span>{{ ss.icon or '📄' }} {{ ss.name }}</span>
@@ -2458,7 +2476,7 @@
                   </div>
                   {% endfor %}
                 {% else %}
-                  <div style="padding:6px 0; font-size:0.8rem; color:var(--text-muted);">No sub-subcategories. <a href="javascript:void(0)" onclick="filterBySpecificSubCategory('{{ sub.name }}')" style="color:var(--primary); font-weight:700;">View products</a></div>
+                  <div style="padding:6px 0; font-size:0.8rem; color:var(--text-muted);">No sub-subcategories. <a href="javascript:void(0)" onclick="filterBySpecificSubCategory('{{ sub.name }}')" style="color:var(--primary); font-weight:700;">View {{ sub.product_count or 0 }} Products</a></div>
                 {% endif %}
               </div>
             </div>
@@ -4115,12 +4133,32 @@
       document.getElementById('changePasswordModal').style.display = 'none';
     }
 
+    let myOrdersLiveTimer = null;
+    function startOrdersLiveSync(targetOrderNumber = null) {
+      stopOrdersLiveSync();
+      if (!currentCustomer || !currentCustomer.phone) return;
+      myOrdersLiveTimer = setInterval(() => {
+        const modalEl = document.getElementById('orderHistoryModal');
+        if (modalEl && modalEl.style.display === 'flex' && currentCustomer && currentCustomer.phone) {
+          fetchMyOrdersHistory(targetOrderNumber);
+        }
+      }, 5000);
+    }
+    function stopOrdersLiveSync() {
+      if (myOrdersLiveTimer) {
+        clearInterval(myOrdersLiveTimer);
+        myOrdersLiveTimer = null;
+      }
+    }
+
     function openOrderHistoryModal(targetOrderNumber = null) {
       document.getElementById('orderHistoryModal').style.display = 'flex';
       fetchMyOrdersHistory(targetOrderNumber);
+      startOrdersLiveSync(targetOrderNumber);
     }
     function closeOrderHistoryModal() {
       document.getElementById('orderHistoryModal').style.display = 'none';
+      stopOrdersLiveSync();
     }
 
     function openCustomerSupportDialog() {
@@ -4189,12 +4227,15 @@
       }
     }
 
+    let activeDirectOnly = false;
+
     function filterBySpecificCategory(catName) {
       switchView('home');
       setFilterTab('all', document.getElementById('tab-all'));
       activeCategory = catName;
       activeSubCategory = 'all';
       activeSubSubCategory = 'all';
+      activeDirectOnly = false;
       document.querySelectorAll('.cat-item-pill').forEach(b => b.classList.remove('active'));
       const pill = Array.from(document.querySelectorAll('.cat-item-pill')).find(p => p.textContent.toLowerCase().includes(catName.toLowerCase()));
       if (pill) pill.classList.add('active');
@@ -4207,6 +4248,17 @@
       activeCategory = 'all';
       activeSubCategory = subName;
       activeSubSubCategory = 'all';
+      activeDirectOnly = false;
+      applyFilters();
+    }
+
+    function filterBySpecificSubCategoryDirect(subName) {
+      switchView('home');
+      setFilterTab('all', document.getElementById('tab-all'));
+      activeCategory = 'all';
+      activeSubCategory = subName;
+      activeSubSubCategory = 'all';
+      activeDirectOnly = true;
       applyFilters();
     }
 
@@ -4216,6 +4268,7 @@
       activeCategory = 'all';
       activeSubCategory = 'all';
       activeSubSubCategory = subsubName;
+      activeDirectOnly = false;
       applyFilters();
     }
 
@@ -4290,6 +4343,7 @@
         document.getElementById('loggedOutAuthArea').style.display = 'block';
         document.getElementById('loggedInProfileArea').style.display = 'none';
         stopCartLiveSync();
+        stopOrdersLiveSync();
         webNotifications = [];
         webUnreadNotifCount = 0;
         try { localStorage.removeItem('supershop_web_notifications'); } catch (e) {}
@@ -4777,7 +4831,7 @@
       if (Array.isArray(order.timeline) && order.timeline.length > 0) {
         steps = order.timeline;
       } else {
-        const isVerified = ['verified', 'packed', 'on_the_way', 'delivered'].includes(st);
+        const isVerified = ['verified', 'confirmed', 'packed', 'on_the_way', 'delivered'].includes(st);
         const isPacked = ['packed', 'on_the_way', 'delivered'].includes(st);
         const isOtw = ['on_the_way', 'delivered'].includes(st);
         const isDelivered = (st === 'delivered');
@@ -4790,8 +4844,8 @@
           ];
         } else {
           steps = [
-            { stage: 'placed', title: 'Placed', time: order.created_at, done: true, active: st === 'new' },
-            { stage: 'verified', title: 'Confirmed', time: order.confirmed_at, done: isVerified, active: st === 'verified' },
+            { stage: 'placed', title: 'Placed', time: order.created_at, done: true, active: ['new', 'pending', 'pending_confirmation', 'reviewing'].includes(st) },
+            { stage: 'verified', title: 'Confirmed', time: order.confirmed_at, done: isVerified, active: (st === 'verified' || st === 'confirmed') },
             { stage: 'packed', title: 'Packed', time: order.packed_at, done: isPacked, active: st === 'packed' },
             { stage: 'on_the_way', title: 'On The Way', time: order.on_the_way_at, done: isOtw, active: st === 'on_the_way' },
             { stage: 'delivered', title: 'Delivered', time: order.delivered_at, done: isDelivered, active: st === 'delivered' }
@@ -4845,7 +4899,10 @@
     const orderStatusConfig = {
       'new': { color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', badgeBg: '#e0f2fe', label: 'Order Placed' },
       'pending': { color: '#d97706', bg: '#fffbeb', border: '#fde68a', badgeBg: '#fef3c7', label: 'Pending Confirmation' },
+      'pending_confirmation': { color: '#d97706', bg: '#fffbeb', border: '#fde68a', badgeBg: '#fef3c7', label: 'Pending Confirmation' },
+      'reviewing': { color: '#d97706', bg: '#fffbeb', border: '#fde68a', badgeBg: '#fef3c7', label: 'Pending Confirmation' },
       'verified': { color: '#7c3aed', bg: '#fbf8ff', border: '#ddd6fe', badgeBg: '#ede9fe', label: 'Confirmed' },
+      'confirmed': { color: '#7c3aed', bg: '#fbf8ff', border: '#ddd6fe', badgeBg: '#ede9fe', label: 'Confirmed' },
       'packed': { color: '#ea580c', bg: '#fff7ed', border: '#ffedd5', badgeBg: '#ffedd5', label: 'Packed & Ready' },
       'on_the_way': { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', badgeBg: '#dbeafe', label: 'On The Way' },
       'delivered': { color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', badgeBg: '#dcfce7', label: 'Delivered' },
@@ -4859,6 +4916,9 @@
       try {
         const res = await fetch('/api/orders/my-orders?phone=' + encodeURIComponent(currentCustomer.phone));
         const orders = await res.json();
+        const expandedIds = Array.from(document.querySelectorAll('[id^="orderDetailBox_"]'))
+          .filter(el => el.style.display === 'block')
+          .map(el => el.id);
         lastFetchedMyOrders = Array.isArray(orders) ? orders : [];
         if (lastFetchedMyOrders.length > 0) {
           container.innerHTML = lastFetchedMyOrders.map((o, oIdx) => {
@@ -4995,6 +5055,14 @@
               </div>
             `;
           }).join('');
+
+          expandedIds.forEach(expId => {
+            const box = document.getElementById(expId);
+            const oid = expId.replace('orderDetailBox_', '');
+            const btn = document.getElementById('detailToggleBtn_' + oid);
+            if (box) box.style.display = 'block';
+            if (btn) btn.innerHTML = '▲ Hide Details';
+          });
 
           if (targetOrderNumber) {
             setTimeout(() => {
@@ -5882,7 +5950,7 @@
         const matchSearch = !q || name.includes(q) || sku.includes(q) || cat.includes(q) || sub.includes(q) || subsub.includes(q);
         const matchCat = activeCategory === 'all' || cat === activeCategory.toLowerCase();
         const matchSub = activeSubCategory === 'all' || sub === activeSubCategory.toLowerCase();
-        const matchSubSub = activeSubSubCategory === 'all' || subsub === activeSubSubCategory.toLowerCase();
+        const matchSubSub = activeDirectOnly ? (subsub === '') : (activeSubSubCategory === 'all' || subsub === activeSubSubCategory.toLowerCase());
         
         let matchTab = true;
         if (activeFilterTab === 'trending') matchTab = isTrending;
@@ -5899,7 +5967,9 @@
 
       document.getElementById('productCountLabel').textContent = `${count} Products`;
       if (activeSubCategory !== 'all') {
-        document.getElementById('gridTitle').textContent = `📁 Subcategory: ${activeSubCategory}`;
+        document.getElementById('gridTitle').textContent = activeDirectOnly
+          ? `📦 ${activeSubCategory} (সরাসরি আইটেম)`
+          : `📁 Subcategory: ${activeSubCategory}`;
       } else if (activeSubSubCategory !== 'all') {
         document.getElementById('gridTitle').textContent = `📄 ${activeSubSubCategory}`;
       } else if (activeCategory !== 'all') {

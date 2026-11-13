@@ -508,17 +508,26 @@
         <button type="button" onclick="closeSmartCropModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
       </div>
 
-      <!-- VIEW 1: 4-Corner Draggable Perspective Canvas with Loupe Magnifier -->
+      <!-- VIEW 1: 4-Corner Draggable Perspective & Free Area Crop Canvas with Loupe Magnifier -->
       <div id="cropStageEditor" class="p-3 space-y-2.5">
-        <div class="relative bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center h-[350px] max-h-[48vh] select-none touch-none" id="smartCropContainer">
+        <div class="grid grid-cols-2 gap-1.5 text-[11px] sm:text-xs">
+          <button type="button" id="custModePerspBtn" onclick="setSmartCropMode('perspective')" class="py-1.5 px-2 rounded-xl font-bold border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs transition cursor-pointer">
+            📐 ৪-কোনা ক্রপ (আঁকাবাঁকা সোজা)
+          </button>
+          <button type="button" id="custModeFreeBtn" onclick="setSmartCropMode('free')" class="py-1.5 px-2 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-400 transition cursor-pointer">
+            ⬜ ফ্রি ক্রপ (যেকোনো মাপে)
+          </button>
+        </div>
+
+        <div class="relative bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center h-[340px] max-h-[46vh] select-none touch-none" id="smartCropContainer">
           <canvas id="smartCropCanvas" class="block cursor-crosshair touch-none"></canvas>
           
           <!-- Magnifier Loupe: 4-Corner Zoom Loupe showing 2.5x Zoom with Crosshair -->
           <canvas id="smartLoupeCanvas" width="104" height="104" class="hidden absolute top-2.5 left-2.5 rounded-full border-2 border-emerald-400 shadow-2xl pointer-events-none z-20 bg-slate-950"></canvas>
         </div>
 
-        <p class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 text-center font-medium">
-          💡 ছবির <b>৪টি কোণা, ৪টি ধার (Edges) বা মাঝখানে ধরে</b> পুরো বক্সটি ড্র্যাগ করে প্রেসক্রিপশনে মেলান (কোণায় <b>জুম লুপ</b> দেখাবে)।
+        <p id="smartCropModeHint" class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 text-center font-medium">
+          💡 ছবির <b>৪টি কোণা</b> প্রেসক্রিপশনের যেকোনো বাঁকা কোণায় বসান — অটো সোজা হয়ে যাবে (কোণায় <b>জুম লুপ</b> দেখাবে)।
         </p>
 
         <!-- Ratio & Full Size / Auto Corners -->
@@ -1502,9 +1511,27 @@
       return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
     }
 
-    let smartDragMode = null; // null | { type: 'corner', idx: 0..3 } | { type: 'edge', edge: 0..3 } | { type: 'body' }
+    let smartCropMode = "perspective"; // "perspective" | "free"
+    let smartDragMode = null; // null | { type: 'corner', idx: 0..3 } | { type: 'edge', edge: 0..3 } | { type: 'body' } | { type: 'draw', startNormX, startNormY }
     let smartDragStart = { x: 0, y: 0 };
     let smartDragInitPts = [];
+
+    function setSmartCropMode(mode) {
+      smartCropMode = mode;
+      const pBtn = $("custModePerspBtn");
+      const fBtn = $("custModeFreeBtn");
+      const hint = $("smartCropModeHint");
+      if (mode === "free") {
+        if (fBtn) fBtn.className = "py-1.5 px-2 rounded-xl font-bold border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs transition cursor-pointer";
+        if (pBtn) pBtn.className = "py-1.5 px-2 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-400 transition cursor-pointer";
+        if (hint) hint.innerHTML = "💡 ছবির <b>যেকোনো অংশে টেনে</b> বা কোণা/ধার ধরে আপনার খুশিমতো মাপে ক্রপ করুন।";
+      } else {
+        if (pBtn) pBtn.className = "py-1.5 px-2 rounded-xl font-bold border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs transition cursor-pointer";
+        if (fBtn) fBtn.className = "py-1.5 px-2 rounded-xl font-bold border border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-400 transition cursor-pointer";
+        if (hint) hint.innerHTML = "💡 ছবির <b>৪টি কোণা</b> প্রেসক্রিপশনের যেকোনো বাঁকা কোণায় বসান — অটো সোজা হয়ে যাবে (কোণায় <b>জুম লুপ</b> দেখাবে)।";
+      }
+      drawSmartCrop();
+    }
 
     function drawSmartCrop() {
       const canvas = $("smartCropCanvas");
@@ -1739,7 +1766,19 @@
           return;
         }
 
-        // 4. If Clicked Outside, drag nearest edge
+        // 4. In Free Crop mode clicking outside handles starts drawing a free rectangle
+        if (smartCropMode === 'free') {
+          if (e.cancelable) e.preventDefault();
+          const nx = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
+          const ny = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+          smartDragMode = { type: 'draw', startNormX: nx, startNormY: ny };
+          smartDragStart = pos;
+          smartDragInitPts = smartPts.map(p => ({ ...p }));
+          drawSmartCrop();
+          return;
+        }
+
+        // 5. If Clicked Outside in 4-corner mode, drag nearest edge
         let closestEdge = 0;
         let minDist = 99999;
         edges.forEach((edge, i) => {
@@ -1785,7 +1824,26 @@
           const nx = Math.max(0.0, Math.min(1.0, init[idx].x + deltaNormX));
           const ny = Math.max(0.0, Math.min(1.0, init[idx].y + deltaNormY));
           smartPts[idx] = { x: nx, y: ny };
+          if (smartCropMode === 'free') {
+            if (idx === 0) { smartPts[1].y = ny; smartPts[3].x = nx; }
+            else if (idx === 1) { smartPts[0].y = ny; smartPts[2].x = nx; }
+            else if (idx === 2) { smartPts[3].y = ny; smartPts[1].x = nx; }
+            else if (idx === 3) { smartPts[2].y = ny; smartPts[0].x = nx; }
+          }
           updateLoupe(smartPts[idx]);
+        } else if (smartDragMode.type === 'draw') {
+          const curX = Math.max(0.0, Math.min(1.0, (pos.x - pad) / drawW));
+          const curY = Math.max(0.0, Math.min(1.0, (pos.y - pad) / drawH));
+          const minX = Math.min(smartDragMode.startNormX, curX);
+          const maxX = Math.min(1.0, Math.max(minX + 0.03, Math.max(smartDragMode.startNormX, curX)));
+          const minY = Math.min(smartDragMode.startNormY, curY);
+          const maxY = Math.min(1.0, Math.max(minY + 0.03, Math.max(smartDragMode.startNormY, curY)));
+          smartPts = [
+            { x: minX, y: minY },
+            { x: maxX, y: minY },
+            { x: maxX, y: maxY },
+            { x: minX, y: maxY }
+          ];
         } else if (smartDragMode.type === 'edge') {
           const edge = smartDragMode.edge;
           if (edge === 0) { // Top edge (0 & 1)
@@ -1884,18 +1942,33 @@
       return h;
     }
 
+    function sortSmartQuadClockwise(pts) {
+      if (!pts || pts.length !== 4) return pts;
+      const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
+      const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+      const sorted = [...pts].sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+      let tlIdx = 0;
+      let bestScore = Infinity;
+      for (let i = 0; i < 4; i++) {
+        const sc = sorted[i].x + sorted[i].y;
+        if (sc < bestScore) { bestScore = sc; tlIdx = i; }
+      }
+      return [sorted[tlIdx], sorted[(tlIdx + 1) % 4], sorted[(tlIdx + 2) % 4], sorted[(tlIdx + 3) % 4]];
+    }
+
     function warpPerspectiveClientSide(imgEl, pts, aspectKey) {
       const sw = imgEl.naturalWidth || imgEl.width;
       const sh = imgEl.naturalHeight || imgEl.height;
-      const p = pts.map(pt => [pt.x * sw, pt.y * sh]);
+      const ordered = sortSmartQuadClockwise(pts);
+      const p = ordered.map(pt => [pt.x * sw, pt.y * sh]);
 
       const wTop = Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]);
       const wBot = Math.hypot(p[2][0] - p[3][0], p[2][1] - p[3][1]);
       const hLeft = Math.hypot(p[3][0] - p[0][0], p[3][1] - p[0][1]);
       const hRight = Math.hypot(p[2][0] - p[1][0], p[2][1] - p[1][1]);
 
-      let outW = Math.max(120, Math.round((wTop + wBot) * 0.5));
-      let outH = Math.max(120, Math.round((hLeft + hRight) * 0.5));
+      let outW = Math.max(120, Math.round(Math.max(wTop, wBot)));
+      let outH = Math.max(120, Math.round(Math.max(hLeft, hRight)));
 
       if (aspectKey === "a4") {
         const tr = 210.0 / 297.0;
@@ -1906,7 +1979,7 @@
         outW = outH = sz;
       }
 
-      const maxDim = 1200;
+      const maxDim = 2200;
       if (Math.max(outW, outH) > maxDim) {
         const sc = maxDim / Math.max(outW, outH);
         outW = Math.round(outW * sc);
@@ -1943,10 +2016,19 @@
           if (u < 0) u = 0; else if (u > maxX) u = maxX;
           if (v < 0) v = 0; else if (v > maxY) v = maxY;
           const x0 = u | 0, y0 = v | 0;
-          const sIdx = (y0 * sw + x0) << 2;
-          dstData[idx] = srcData[sIdx];
-          dstData[idx + 1] = srcData[sIdx + 1];
-          dstData[idx + 2] = srcData[sIdx + 2];
+          const x1 = x0 < maxX ? x0 + 1 : maxX;
+          const y1 = y0 < maxY ? y0 + 1 : maxY;
+          const fx = u - x0, fy = v - y0;
+          const w00 = (1 - fx) * (1 - fy);
+          const w10 = fx * (1 - fy);
+          const w01 = (1 - fx) * fy;
+          const w11 = fx * fy;
+          const r0 = y0 * sw, r1 = y1 * sw;
+          const i00 = (r0 + x0) << 2, i10 = (r0 + x1) << 2;
+          const i01 = (r1 + x0) << 2, i11 = (r1 + x1) << 2;
+          dstData[idx]     = (srcData[i00] * w00 + srcData[i10] * w10 + srcData[i01] * w01 + srcData[i11] * w11 + 0.5) | 0;
+          dstData[idx + 1] = (srcData[i00 + 1] * w00 + srcData[i10 + 1] * w10 + srcData[i01 + 1] * w01 + srcData[i11 + 1] * w11 + 0.5) | 0;
+          dstData[idx + 2] = (srcData[i00 + 2] * w00 + srcData[i10 + 2] * w10 + srcData[i01 + 2] * w01 + srcData[i11 + 2] * w11 + 0.5) | 0;
           dstData[idx + 3] = 255;
           idx += 4;
         }
@@ -2054,7 +2136,7 @@
       const pv = $("filterPreviewCanvas");
       if (!pv) return;
 
-      currentEnhancedDataUri = pv.toDataURL("image/jpeg", 0.85);
+      currentEnhancedDataUri = pv.toDataURL("image/jpeg", 0.92);
       $("prescription_base64").value = currentEnhancedDataUri;
 
       // Update UI preview card
@@ -2764,12 +2846,42 @@
       }
     }
 
+    const RX_STATUS_BN_MAP = {
+      reviewing: "যাচাই চলছে",
+      confirmed: "কনফার্মড ও বিল প্রস্তুত",
+      verified: "কনফার্মড ও বিল প্রস্তুত",
+      packed: "প্যাকিং সম্পন্ন",
+      on_the_way: "ডেলিভারির পথে",
+      delivered: "ডেলিভারি সম্পন্ন",
+      cancelled: "বাতিল"
+    };
+    let rxOrdersPollTimer = null;
+    let _rxLastSyncedPhone = null;
+
+    function _stopRxOrdersPoll() {
+      if (rxOrdersPollTimer) {
+        clearInterval(rxOrdersPollTimer);
+        rxOrdersPollTimer = null;
+      }
+    }
+
+    function _startRxOrdersPoll() {
+      if (rxOrdersPollTimer) return;
+      rxOrdersPollTimer = setInterval(() => {
+        if (currentCustomer && currentCustomer.phone && !document.hidden) {
+          refreshRecentOrders(true);
+        }
+      }, 5000);
+    }
+
     function loadRecentOrders() {
       const badge = $("recentOrdersBadge");
       const list = $("recentOrdersList");
       if (!badge || !list) return;
 
       if (!currentCustomer || !currentCustomer.phone) {
+        _stopRxOrdersPoll();
+        _rxLastSyncedPhone = null;
         badge.innerText = "০";
         badge.classList.add("hidden");
         list.innerHTML = `
@@ -2784,8 +2896,13 @@
         return;
       }
 
+      const normPhone = currentCustomer.phone.replace(/[\s\-+]/g, '').replace(/^88/, '');
       const allOrders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
-      const orders = allOrders.filter(o => !o.phone || o.phone === currentCustomer.phone);
+      const orders = allOrders.filter(o => {
+        if (!o.phone) return false;
+        const op = String(o.phone).replace(/[\s\-+]/g, '').replace(/^88/, '');
+        return op === normPhone;
+      });
 
       if (orders.length > 0) {
         badge.innerText = orders.length;
@@ -2793,17 +2910,18 @@
 
         let html = "";
         orders.forEach(o => {
+          const stLabel = o.status_bn || RX_STATUS_BN_MAP[o.status] || 'যাচাই চলছে';
           html += `
             <div onclick="trackSpecificOrder('${o.order_number}')" class="p-2.5 bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-300 rounded-xl cursor-pointer transition flex items-center justify-between gap-2">
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span class="font-mono font-bold text-xs text-slate-900">${o.order_number}</span>
-                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">${o.status_bn || 'যাচাই চলছে'}</span>
+                  <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">${stLabel}</span>
                 </div>
                 <div class="text-[10px] text-slate-500 mt-0.5">${o.duration || 'প্রেসক্রিপশন'} • ওটিপি: <strong class="font-mono text-amber-700">${o.delivery_otp || '----'}</strong></div>
               </div>
               <div class="text-right shrink-0">
-                <span class="text-xs font-black text-emerald-700">৳${o.total_amount || '0'}</span>
+                <span class="text-xs font-black text-emerald-700">৳${Number(o.total_amount || 0).toFixed(0)}</span>
                 <span class="block text-[10px] text-emerald-600 font-bold">ট্র্যাক ➔</span>
               </div>
             </div>
@@ -2813,33 +2931,49 @@
       } else {
         badge.classList.add("hidden");
         badge.innerText = "০";
-        list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">এখনো কোনো অর্ডার দেওয়া হয়নি।</p>`;
+        list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">${_rxLastSyncedPhone === normPhone ? 'এখনো কোনো অর্ডার দেওয়া হয়নি।' : '⏳ অর্ডার তালিকা লোড হচ্ছে...'}</p>`;
       }
+
+      if (_rxLastSyncedPhone !== normPhone) {
+        _rxLastSyncedPhone = normPhone;
+        refreshRecentOrders(true);
+      }
+      _startRxOrdersPoll();
     }
 
-    async function refreshRecentOrders() {
+    async function refreshRecentOrders(silent = false) {
       if (!currentCustomer || !currentCustomer.phone) {
         loadRecentOrders();
         return;
       }
-      const orders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]");
-      if (orders.length === 0) return;
-
-      for (let o of orders) {
-        try {
-          const res = await fetch("/api/pharmacy/order-status/" + o.order_number);
-          const data = await res.json();
-          if (data.success) {
-            o.status = data.order_status;
-            o.status_bn = data.status_bn;
-            o.total_amount = data.total_amount;
-            o.assigned_rider_name = data.assigned_rider_name;
-            o.assigned_rider_phone = data.assigned_rider_phone;
-          }
-        } catch (e) {}
+      try {
+        const res = await fetch("/api/pharmacy/my-orders?phone=" + encodeURIComponent(currentCustomer.phone));
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.orders)) {
+          const normPhone = currentCustomer.phone.replace(/[\s\-+]/g, '').replace(/^88/, '');
+          const mapped = data.orders.map(o => ({
+            order_number: o.order_number,
+            phone: o.customer_phone || currentCustomer.phone,
+            status: o.order_status,
+            status_bn: RX_STATUS_BN_MAP[o.order_status] || 'যাচাই চলছে',
+            duration: (o.overall_duration_days && parseInt(o.overall_duration_days, 10) > 0) ? `${o.overall_duration_days} দিন` : 'প্রেসক্রিপশন',
+            delivery_otp: o.delivery_otp || '----',
+            total_amount: o.total_amount || 0,
+            assigned_rider_name: o.assigned_rider_name || '',
+            assigned_rider_phone: o.assigned_rider_phone || ''
+          }));
+          const otherOrders = JSON.parse(localStorage.getItem("supershop_rx_orders") || "[]").filter(o => {
+            if (!o.phone) return false;
+            const op = String(o.phone).replace(/[\s\-+]/g, '').replace(/^88/, '');
+            return op !== normPhone;
+          });
+          localStorage.setItem("supershop_rx_orders", JSON.stringify([...mapped, ...otherOrders].slice(0, 60)));
+          _rxLastSyncedPhone = normPhone;
+          loadRecentOrders();
+        }
+      } catch (e) {
+        if (!silent) console.warn("Pharmacy recent orders sync failed", e);
       }
-      localStorage.setItem("supershop_rx_orders", JSON.stringify(orders));
-      loadRecentOrders();
     }
 
     async function trackSpecificOrder(orderNumber) {
