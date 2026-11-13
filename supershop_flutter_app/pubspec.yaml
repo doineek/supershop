@@ -1,7 +1,7 @@
 name: supershop_app
 description: "Supershop Real-time E-Commerce & Delivery Flutter App (Dual Language English & Bangla)"
 publish_to: 'none'
-version: 1.0.29+30
+version: 1.0.30+31
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -19,6 +19,8 @@ dependencies:
   firebase_auth: ^4.17.8
   url_launcher: ^6.3.0
   package_info_plus: ^9.0.1
+  flutter_local_notifications: ^21.0.0
+  mobile_scanner: ^7.3.0
 
 dev_dependencies:
   flutter_test:

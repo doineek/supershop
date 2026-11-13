@@ -139,9 +139,9 @@
           {% if orders %}
             {% for order in orders %}
             {% set st = order.order_status %}
-            {% set st_bg = '#ffedd5' if st == 'reviewing' else ('#f5f3ff' if st == 'confirmed' else ('#fef3c7' if st == 'packed' else ('#cffafe' if st == 'on_the_way' else ('#d1fae5' if st == 'delivered' else '#fee2e2')))) %}
-            {% set st_color = '#c2410c' if st == 'reviewing' else ('#6d28d9' if st == 'confirmed' else ('#b45309' if st == 'packed' else ('#0e7490' if st == 'on_the_way' else ('#047857' if st == 'delivered' else '#b91c1c')))) %}
-            {% set st_text = 'Reviewing' if st == 'reviewing' else ('Confirmed' if st == 'confirmed' else ('Packed' if st == 'packed' else ('On The Way' if st == 'on_the_way' else ('Delivered' if st == 'delivered' else 'Cancelled')))) %}
+            {% set st_bg = '#ffedd5' if st == 'reviewing' else ('#fef3c7' if st == 'awaiting_customer_confirmation' else ('#f5f3ff' if st == 'confirmed' else ('#fef3c7' if st == 'packed' else ('#cffafe' if st == 'on_the_way' else ('#d1fae5' if st == 'delivered' else '#fee2e2'))))) %}
+            {% set st_color = '#c2410c' if st == 'reviewing' else ('#92400e' if st == 'awaiting_customer_confirmation' else ('#6d28d9' if st == 'confirmed' else ('#b45309' if st == 'packed' else ('#0e7490' if st == 'on_the_way' else ('#047857' if st == 'delivered' else '#b91c1c'))))) %}
+            {% set st_text = 'Reviewing' if st == 'reviewing' else ('🔔 Awaiting Cust Confirm' if st == 'awaiting_customer_confirmation' else ('Confirmed' if st == 'confirmed' else ('Packed' if st == 'packed' else ('On The Way' if st == 'on_the_way' else ('Delivered' if st == 'delivered' else 'Cancelled'))))) %}
 
             <tr style="border-bottom: 1px solid #e2e8f0; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
               <td style="padding: 14px 16px; vertical-align: top;">
@@ -712,6 +712,7 @@
       <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 6px;">Select New Status:</label>
       <select id="statusSelect" onchange="onStatusSelectChange()" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; font-weight: 600;">
         <option value="reviewing">⏳ Reviewing</option>
+        <option value="awaiting_customer_confirmation">🔔 Awaiting Customer Confirm</option>
         <option value="confirmed">✅ Confirmed</option>
         <option value="packed">📦 Packed</option>
         <option value="on_the_way">🛵 On The Way</option>
@@ -831,12 +832,45 @@
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Strip Price (TK)</label>
-          <input type="number" step="0.50" id="form_strip_price" name="strip_price" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #b45309; margin-bottom: 4px;">১ পিস ক্রয়মূল্য (Buy/Piece TK)</label>
+          <input type="number" step="0.01" id="form_cost_price" name="cost_price" oninput="autoCalcMedMultiUnits()" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #fcd34d; border-radius: 8px; font-size: 0.88rem; background: #fffbeb; font-weight: 700; box-sizing: border-box;">
         </div>
         <div>
-          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Stock Qty</label>
+          <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 4px;">Stock Qty (Base Pieces)</label>
           <input type="number" id="form_stock_qty" name="stock_qty" value="999" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; box-sizing: border-box;">
+        </div>
+      </div>
+
+      <!-- MULTI-UNIT PURCHASE & SELL PRICING: STRIP (পাতা) & PACKET (প্যাকেট) -->
+      <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 0.8rem; font-weight: 800; color: #0f172a;">📦 ১ পাতা (Strip) ও ১ প্যাকেট (Packet) এর ক্রয়-বিক্রয় মূল্য</div>
+        <div style="display: grid; grid-template-columns: 0.8fr 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 2px;">১ পাতায় পিস (Qty)</label>
+            <input type="number" min="1" id="form_strip_size" name="strip_size" value="10" oninput="autoCalcMedMultiUnits()" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem; font-weight: 700; box-sizing: border-box;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #b45309; margin-bottom: 2px;">১ পাতা ক্রয়মূল্য (Cost)</label>
+            <input type="number" step="0.01" id="form_strip_cost_price" name="strip_cost_price" placeholder="0.00" style="width: 100%; padding: 6px 8px; border: 1px solid #fcd34d; border-radius: 6px; font-size: 0.84rem; background: #fffbeb; font-weight: 700; box-sizing: border-box;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #047857; margin-bottom: 2px;">১ পাতা বিক্রয়মূল্য (Sell)</label>
+            <input type="number" step="0.50" id="form_strip_price" name="strip_price" placeholder="0.00" style="width: 100%; padding: 6px 8px; border: 1px solid #86efac; border-radius: 6px; font-size: 0.84rem; background: #f0fdf4; font-weight: 700; box-sizing: border-box;">
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 0.8fr 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 2px;">১ প্যাকেটে পিস (Qty)</label>
+            <input type="number" min="1" id="form_packet_size" name="packet_size" value="30" oninput="autoCalcMedMultiUnits()" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.84rem; font-weight: 700; box-sizing: border-box;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #b45309; margin-bottom: 2px;">১ প্যাকেট ক্রয়মূল্য (Cost)</label>
+            <input type="number" step="0.01" id="form_packet_cost_price" name="packet_cost_price" placeholder="0.00" style="width: 100%; padding: 6px 8px; border: 1px solid #fcd34d; border-radius: 6px; font-size: 0.84rem; background: #fffbeb; font-weight: 700; box-sizing: border-box;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #047857; margin-bottom: 2px;">১ প্যাকেট বিক্রয়মূল্য (Sell)</label>
+            <input type="number" step="0.50" id="form_packet_price" name="packet_price" placeholder="0.00" style="width: 100%; padding: 6px 8px; border: 1px solid #86efac; border-radius: 6px; font-size: 0.84rem; background: #f0fdf4; font-weight: 700; box-sizing: border-box;">
+          </div>
         </div>
       </div>
 
@@ -1011,7 +1045,7 @@
     }
   }
 
-  function recalcMedPriceFromMrp() {
+    function recalcMedPriceFromMrp() {
     const mrp = parseFloat(document.getElementById("form_mrp")?.value) || 0;
     const disc = parseFloat(document.getElementById("form_discount_percent")?.value) || 0;
     const sellInput = document.getElementById("form_unit_price");
@@ -1019,6 +1053,24 @@
       const sell = Math.max(0, mrp * (1 - disc / 100));
       sellInput.value = sell.toFixed(2);
     }
+    autoCalcMedMultiUnits();
+  }
+
+  function autoCalcMedMultiUnits() {
+    const pieceCost = parseFloat(document.getElementById("form_cost_price")?.value) || 0;
+    const pieceSell = parseFloat(document.getElementById("form_unit_price")?.value) || 0;
+    const sSize = Math.max(1, parseInt(document.getElementById("form_strip_size")?.value || "10", 10) || 10);
+    const pSize = Math.max(1, parseInt(document.getElementById("form_packet_size")?.value || "30", 10) || 30);
+
+    const scEl = document.getElementById("form_strip_cost_price");
+    const ssEl = document.getElementById("form_strip_price");
+    const pcEl = document.getElementById("form_packet_cost_price");
+    const psEl = document.getElementById("form_packet_price");
+
+    if (scEl && pieceCost > 0 && (!scEl.value || parseFloat(scEl.value) === 0)) scEl.value = (pieceCost * sSize).toFixed(2);
+    if (ssEl && pieceSell > 0 && (!ssEl.value || parseFloat(ssEl.value) === 0)) ssEl.value = (pieceSell * sSize).toFixed(2);
+    if (pcEl && pieceCost > 0 && (!pcEl.value || parseFloat(pcEl.value) === 0)) pcEl.value = (pieceCost * pSize).toFixed(2);
+    if (psEl && pieceSell > 0 && (!psEl.value || parseFloat(psEl.value) === 0)) psEl.value = (pieceSell * pSize).toFixed(2);
   }
 
   function recalcDiscountFromSellPrice() {
@@ -1189,6 +1241,9 @@
               <div style="display: flex; align-items: center; gap: 4px;">
                 <span style="font-weight: 700; color: #64748b;">TK</span>
                 <input type="number" step="0.50" id="medStripPrice_${m.id}" value="${parseFloat(m.strip_price || 0).toFixed(2)}" style="width: 75px; padding: 4px 6px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-weight: 700; color: #0f172a; font-size: 0.88rem;">
+              </div>
+              <div style="font-size:0.7rem; color:#64748b; margin-top:3px;">
+                Buy/Pc: <b>৳${parseFloat(m.cost_price || 0).toFixed(2)}</b> • Pkt: <b>৳${parseFloat(m.packet_price || 0).toFixed(0)}</b>
               </div>
             </td>
             <td style="padding: 12px 14px;">
@@ -2257,19 +2312,48 @@
     const med = (window._searchedMeds && window._searchedMeds[medId]) || adminMedsCache.find(x => x.id === medId);
     if (!med) return;
 
+    const unitSell = parseFloat(med.unit_price) || 0;
+    const stripSell = parseFloat(med.strip_price || 0) || (unitSell * (parseInt(med.strip_size || 10, 10) || 10));
+    const pktSell = parseFloat(med.packet_price || 0) || (unitSell * (parseInt(med.packet_size || 30, 10) || 30));
+
     activeBillItems.push({
+      item_type: "medicine",
       medicine_id: med.id,
       name: med.name,
       generic_name: med.generic_name,
       dosage_form: med.dosage_form,
       strength: med.strength,
+      unit_mode: "piece",
+      strip_size: parseInt(med.strip_size || 10, 10) || 10,
+      packet_size: parseInt(med.packet_size || 30, 10) || 30,
+      price_piece: unitSell,
+      price_strip: stripSell,
+      price_packet: pktSell,
       quantity: 10,
-      unit_price: parseFloat(med.unit_price),
-      total_price: Math.round(10 * parseFloat(med.unit_price) * 100) / 100
+      unit_price: unitSell,
+      total_price: Math.round(10 * unitSell * 100) / 100
     });
 
     document.getElementById("billMedSearchInput").value = "";
     document.getElementById("billMedDropdown").style.display = "none";
+    renderBillTable();
+  }
+
+  function onBillUnitModeChange(idx, mode) {
+    const it = activeBillItems[idx];
+    if (!it) return;
+    it.unit_mode = mode;
+    if (mode === "strip") {
+      it.unit = `পাতা (${it.strip_size || 10} পিস)`;
+      if (it.price_strip > 0) it.unit_price = it.price_strip;
+    } else if (mode === "packet") {
+      it.unit = `প্যাকেট (${it.packet_size || 30} পিস)`;
+      if (it.price_packet > 0) it.unit_price = it.price_packet;
+    } else {
+      it.unit = "পিস";
+      if (it.price_piece > 0) it.unit_price = it.price_piece;
+    }
+    it.total_price = Math.round((it.quantity || 1) * (it.unit_price || 0) * 100) / 100;
     renderBillTable();
   }
 
@@ -2302,12 +2386,21 @@
 
     let html = "";
     activeBillItems.forEach((it, idx) => {
+      const uMode = it.unit_mode || "piece";
+      const unitSelect = (it.medicine_id || it.item_type === "medicine")
+        ? `<select onchange="onBillUnitModeChange(${idx}, this.value)" style="margin-top:3px; padding:2px 5px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.72rem; font-weight:700; color:#0369a1;">
+             <option value="piece" ${uMode === 'piece' ? 'selected' : ''}>পিস (Piece)</option>
+             <option value="strip" ${uMode === 'strip' ? 'selected' : ''}>পাতা (${it.strip_size || 10})</option>
+             <option value="packet" ${uMode === 'packet' ? 'selected' : ''}>প্যাকেট (${it.packet_size || 30})</option>
+           </select>`
+        : "";
       html += `
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 8px 10px;">
             <strong style="color: #0f172a;">${it.name}</strong>
-            <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 4px; border-radius: 4px;">${it.dosage_form}</span>
+            <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 4px; border-radius: 4px;">${it.dosage_form || 'Med'}</span>
             <div style="font-size: 0.75rem; color: #64748b;">${it.strength || it.generic_name || ''}</div>
+            ${unitSelect}
           </td>
           <td style="padding: 8px 10px; text-align: center;">
             <input type="number" min="1" value="${it.quantity}" onchange="onBillQtyChange(${idx}, this.value)" style="width: 55px; padding: 4px; border: 1.5px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700;">
@@ -2464,6 +2557,11 @@
           discount_percent: discount,
           unit_price: unitPrice,
           strip_price: stripPrice,
+          strip_size: med.strip_size || 10,
+          strip_cost_price: med.strip_cost_price || 0,
+          packet_price: med.packet_price || 0,
+          packet_size: med.packet_size || 30,
+          packet_cost_price: med.packet_cost_price || 0,
           stock_qty: stockQty,
           expiry_date: expiryDate,
           low_stock_threshold: med.low_stock_threshold != null ? med.low_stock_threshold : 10,
@@ -2520,7 +2618,13 @@
     document.getElementById("form_mrp").value = "";
     document.getElementById("form_discount_percent").value = "0";
     document.getElementById("form_unit_price").value = "";
+    document.getElementById("form_cost_price").value = "";
+    document.getElementById("form_strip_size").value = "10";
+    document.getElementById("form_strip_cost_price").value = "";
     document.getElementById("form_strip_price").value = "";
+    document.getElementById("form_packet_size").value = "30";
+    document.getElementById("form_packet_cost_price").value = "";
+    document.getElementById("form_packet_price").value = "";
     document.getElementById("form_stock_qty").value = "999";
     document.getElementById("form_expiry_date").value = "";
     document.getElementById("form_low_stock_threshold").value = "10";
@@ -2577,7 +2681,13 @@
     document.getElementById("form_mrp").value = mrp;
     document.getElementById("form_discount_percent").value = disc;
     document.getElementById("form_unit_price").value = med.unit_price;
+    document.getElementById("form_cost_price").value = med.cost_price || 0;
+    document.getElementById("form_strip_size").value = parseInt(med.strip_size || 10, 10) || 10;
+    document.getElementById("form_strip_cost_price").value = med.strip_cost_price || 0;
     document.getElementById("form_strip_price").value = med.strip_price || 0;
+    document.getElementById("form_packet_size").value = parseInt(med.packet_size || 30, 10) || 30;
+    document.getElementById("form_packet_cost_price").value = med.packet_cost_price || 0;
+    document.getElementById("form_packet_price").value = med.packet_price || 0;
     document.getElementById("form_stock_qty").value = med.stock_qty || 999;
     document.getElementById("form_expiry_date").value = med.expiry_date || "";
     document.getElementById("form_low_stock_threshold").value = med.low_stock_threshold != null ? med.low_stock_threshold : 10;
@@ -2884,20 +2994,34 @@
       return;
     }
     const key = String(med.medicine_id || String(med.id).replace("med_", ""));
-    const cur = pharmPosCart[key] ? pharmPosCart[key].quantity : 0;
-    if (cur + 1 > stock) {
-      showPharmPosMsg(`Only ${stock} unit(s) available in stock for ${med.name}.`, true);
+    const existing = pharmPosCart[key];
+    const uCount = existing ? (existing.unit_count || 1) : 1;
+    const curPcs = existing ? (existing.quantity * uCount) : 0;
+    if (curPcs + uCount > stock) {
+      showPharmPosMsg(`Only ${stock} piece(s) available in stock for ${med.name}.`, true);
       return;
     }
-    if (pharmPosCart[key]) {
-      pharmPosCart[key].quantity += 1;
+    if (existing) {
+      existing.quantity += 1;
     } else {
+      const pPiece = parseFloat(med.price) || 0;
+      const sSize = Math.max(1, parseInt(med.strip_size || 10, 10) || 10);
+      const pSize = Math.max(1, parseInt(med.packet_size || 30, 10) || 30);
+      const pStrip = parseFloat(med.strip_price || 0) || Math.round(pPiece * sSize * 100) / 100;
+      const pPacket = parseFloat(med.packet_price || 0) || Math.round(pPiece * pSize * 100) / 100;
       pharmPosCart[key] = {
         medicine_id: parseInt(key, 10),
         name: med.name,
         sku: med.sku || ("MED-" + key),
-        price: parseFloat(med.price) || 0,
-        mrp: parseFloat(med.mrp) || parseFloat(med.price) || 0,
+        price: pPiece,
+        price_piece: pPiece,
+        price_strip: pStrip,
+        price_packet: pPacket,
+        strip_size: sSize,
+        packet_size: pSize,
+        sell_unit: "piece",
+        unit_count: 1,
+        mrp: parseFloat(med.mrp) || pPiece,
         stock: stock,
         quantity: 1
       };
@@ -2906,15 +3030,33 @@
     renderPharmPosCart();
   }
 
+  function changePharmCartUnit(key, unitMode) {
+    const item = pharmPosCart[key];
+    if (!item) return;
+    const mode = (unitMode === "strip" || unitMode === "packet") ? unitMode : "piece";
+    const uCount = mode === "strip" ? (item.strip_size || 10) : (mode === "packet" ? (item.packet_size || 30) : 1);
+    if (item.quantity * uCount > item.stock) {
+      showPharmPosMsg(`Only ${item.stock} piece(s) in stock — cannot select ${item.quantity} x ${uCount} pieces.`, true);
+      renderPharmPosCart();
+      return;
+    }
+    item.sell_unit = mode;
+    item.unit_count = uCount;
+    item.price = mode === "strip" ? (item.price_strip || item.price_piece * uCount) : (mode === "packet" ? (item.price_packet || item.price_piece * uCount) : item.price_piece);
+    savePharmPosCart();
+    renderPharmPosCart();
+  }
+
   function changePharmCartQty(key, deltaOrExact, isExact = false) {
     const item = pharmPosCart[key];
     if (!item) return;
+    const uCount = item.unit_count || 1;
     let nextQty = isExact ? parseInt(deltaOrExact || 1, 10) : (item.quantity + deltaOrExact);
     if (isNaN(nextQty) || nextQty <= 0) {
       delete pharmPosCart[key];
-    } else if (nextQty > item.stock) {
-      showPharmPosMsg(`Only ${item.stock} available for ${item.name}.`, true);
-      item.quantity = item.stock;
+    } else if (nextQty * uCount > item.stock) {
+      showPharmPosMsg(`Only ${item.stock} piece(s) available for ${item.name}.`, true);
+      item.quantity = Math.max(1, Math.floor(item.stock / uCount));
     } else {
       item.quantity = nextQty;
     }
@@ -2942,12 +3084,18 @@
     keys.forEach((key, idx) => {
       const it = pharmPosCart[key];
       const lineTotal = (it.price * it.quantity).toFixed(2);
+      const uMode = it.sell_unit || "piece";
       html += `
         <tr style="border-bottom: 1px solid #f1f5f9;">
           <td style="padding: 8px 6px; font-weight: 700; color: #64748b;">${idx + 1}</td>
           <td style="padding: 8px 6px;">
             <strong style="color: #0f172a;">${escapeHtml(it.name)}</strong>
-            <div style="font-size: 0.72rem; font-family: monospace; color: #0369a1;">SKU: ${escapeHtml(it.sku)} • Stock: ${it.stock}</div>
+            <div style="font-size: 0.72rem; font-family: monospace; color: #0369a1;">SKU: ${escapeHtml(it.sku)} • Stock: ${it.stock} পিস</div>
+            <select onchange="changePharmCartUnit('${key}', this.value)" style="margin-top:4px; padding:2px 6px; border:1px solid #cbd5e1; border-radius:4px; font-size:0.74rem; font-weight:700; color:#047857; background:#f0fdf4;">
+              <option value="piece" ${uMode === 'piece' ? 'selected' : ''}>পিস (৳${(it.price_piece || it.price).toFixed(2)})</option>
+              <option value="strip" ${uMode === 'strip' ? 'selected' : ''}>পাতা (${it.strip_size || 10} পিস • ৳${(it.price_strip || 0).toFixed(2)})</option>
+              <option value="packet" ${uMode === 'packet' ? 'selected' : ''}>প্যাকেট (${it.packet_size || 30} পিস • ৳${(it.price_packet || 0).toFixed(2)})</option>
+            </select>
           </td>
           <td style="padding: 8px 6px; text-align: center;">
             <div style="display: inline-flex; align-items: center; gap: 4px;">
@@ -3007,7 +3155,8 @@
 
     const items = keys.map(k => ({
       medicine_id: pharmPosCart[k].medicine_id,
-      quantity: pharmPosCart[k].quantity
+      quantity: pharmPosCart[k].quantity,
+      sell_unit: pharmPosCart[k].sell_unit || "piece"
     }));
     const cash_amount = parseFloat(document.getElementById("pharmPosCashInput")?.value) || 0;
     const card_amount = parseFloat(document.getElementById("pharmPosCardInput")?.value) || 0;

@@ -386,7 +386,7 @@ def _worker_push_users():
         if not db:
             return
         conn = get_connection()
-        users = conn.execute("SELECT id, username, password_hash, role, created_at, full_name, is_active, plain_password FROM users").fetchall()
+        users = conn.execute("SELECT id, username, password_hash, role, created_at, full_name, is_active, plain_password, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users").fetchall()
         conn.close()
 
         active_usernames = {str(u["username"]) for u in users}
@@ -550,6 +550,72 @@ def push_thermal_print_job_to_cloud(job_uuid):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def fetch_thermal_print_job_from_cloud(job_uuid):
+    """Actively reads a thermal print job from Firestore and updates local SQLite status if finalized."""
+    try:
+        db = _init_firebase()
+        if not db or not job_uuid:
+            return None
+        snap = db.collection("thermal_print_jobs").document(str(job_uuid)).get()
+        if not snap.exists:
+            return None
+        data = snap.to_dict() or {}
+        st = data.get("status", "pending")
+        if st and st != "pending":
+            def _update():
+                conn = get_connection()
+                try:
+                    conn.execute(
+                        "UPDATE thermal_print_jobs SET status = ?, printed_at = ?, printer_name = ?, error_msg = ? WHERE job_uuid = ? AND status = 'pending'",
+                        (st, data.get("printed_at", ""), data.get("printer_name", ""), data.get("error_msg", ""), str(job_uuid)),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+            execute_with_retry(_update)
+        return data
+    except Exception as e:
+        print(f"[remote_control] fetch_thermal_print_job error: {e}")
+        return None
+
+
+def push_pc_printer_heartbeat(printer_name=""):
+    """Records that the Windows PC print agent is currently online & listening for cloud print jobs."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return False
+        import socket
+        payload = {
+            "online_at": datetime.now().isoformat(),
+            "epoch": int(datetime.now().timestamp()),
+            "printer_name": printer_name or "",
+            "hostname": socket.gethostname(),
+        }
+        db.collection("thermal_agent_status").document("pc_printer").set(payload)
+        return True
+    except Exception:
+        return False
+
+
+def get_pc_printer_heartbeat():
+    """Returns latest PC print agent heartbeat from Firestore so clients know if PC agent is online."""
+    try:
+        db = _init_firebase()
+        if not db:
+            return None
+        snap = db.collection("thermal_agent_status").document("pc_printer").get()
+        if not snap.exists:
+            return None
+        data = snap.to_dict() or {}
+        now_ts = int(datetime.now().timestamp())
+        epoch = int(data.get("epoch") or 0)
+        data["is_online"] = (now_ts - epoch) <= 90 if epoch > 0 else False
+        return data
+    except Exception:
+        return None
+
+
 def delete_online_order_from_cloud(order_number, order_id=None):
     """Mirror local online order deletion into Firestore."""
     def _worker():
@@ -680,7 +746,7 @@ def push_full_backup():
             for ord_row in orders:
                 items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
                 order_items_map[ord_row["id"]] = [dict(i) for i in items]
-            users = conn.execute("SELECT id, username, password_hash, role, created_at, full_name, is_active, plain_password FROM users").fetchall()
+            users = conn.execute("SELECT id, username, password_hash, role, created_at, full_name, is_active, plain_password, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users").fetchall()
             packages = conn.execute("SELECT * FROM packages WHERE is_active = 1").fetchall()
             pkg_items_map = {}
             for pkg_row in packages:
@@ -1152,6 +1218,7 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             _ol_st = (data.get("order_status") or "new").strip().lower()
                             _ph_st = {
                                 "new": "reviewing", "pending": "reviewing", "pending_confirmation": "reviewing",
+                                "awaiting_customer_confirmation": "awaiting_customer_confirmation",
                                 "verified": "confirmed", "packed": "packed", "on_the_way": "on_the_way",
                                 "delivered": "delivered", "cancelled": "cancelled",
                             }.get(_ol_st, _ol_st)
@@ -1222,6 +1289,9 @@ def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
                                 assigned_rider_phone = ?,
                                 rider_fee = ?,
                                 admin_notes = ?,
+                                customer_confirmed = COALESCE(?, customer_confirmed),
+                                quote_sent_at = COALESCE(NULLIF(?, ''), quote_sent_at),
+                                quote_by = COALESCE(NULLIF(?, ''), quote_by),
                                 prescription_url = COALESCE(NULLIF(?, ''), prescription_url),
                                 prescription_enhanced_url = COALESCE(NULLIF(?, ''), prescription_enhanced_url),
                                 confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
@@ -1242,6 +1312,9 @@ def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
                             data.get("assigned_rider_phone"),
                             float(data.get("rider_fee") or 0.0),
                             data.get("admin_notes", ""),
+                            data.get("customer_confirmed"),
+                            data.get("quote_sent_at", ""),
+                            data.get("quote_by", ""),
                             data.get("prescription_url", ""),
                             data.get("prescription_enhanced_url", ""),
                             data.get("confirmed_at", ""),
@@ -1308,7 +1381,9 @@ def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
                         conn.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE order_number = ?", (ol_match["id"], order_num))
                         _ph_st = (data.get("order_status") or "reviewing").strip().lower()
                         _ol_st = {
-                            "reviewing": "pending_confirmation", "confirmed": "verified",
+                            "reviewing": "pending_confirmation",
+                            "awaiting_customer_confirmation": "awaiting_customer_confirmation",
+                            "confirmed": "verified",
                             "packed": "packed", "on_the_way": "on_the_way",
                             "delivered": "delivered", "cancelled": "cancelled",
                         }.get(_ph_st, _ph_st)
@@ -1375,19 +1450,20 @@ def _on_users_change(doc_snapshots, changes, read_time):
                     full_name = data.get("full_name", "")
                     is_active = int(data.get("is_active", 1))
                     plain_password = data.get("plain_password", "")
+                    can_rx_quote_bill = int(data.get("can_rx_quote_bill", 0) or 0)
                     created_at = data.get("created_at", datetime.now().isoformat())
                     if username and password_hash:
                         existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
                         if existing:
                             conn.execute("""
-                                UPDATE users SET password_hash = ?, role = ?, full_name = ?, is_active = ?, plain_password = ?
+                                UPDATE users SET password_hash = ?, role = ?, full_name = ?, is_active = ?, plain_password = ?, can_rx_quote_bill = ?
                                 WHERE username = ?
-                            """, (password_hash, role, full_name, is_active, plain_password, username))
+                            """, (password_hash, role, full_name, is_active, plain_password, can_rx_quote_bill, username))
                         else:
                             conn.execute("""
-                                INSERT INTO users (username, password_hash, role, full_name, is_active, plain_password, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, (username, password_hash, role, full_name, is_active, plain_password, created_at))
+                                INSERT INTO users (username, password_hash, role, full_name, is_active, plain_password, can_rx_quote_bill, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (username, password_hash, role, full_name, is_active, plain_password, can_rx_quote_bill, created_at))
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM users WHERE username = ?", (username,))
             conn.commit()
@@ -2212,17 +2288,18 @@ def pull_all_from_cloud(blocking=False):
                             full_name = data.get("full_name", "")
                             is_active = int(data.get("is_active", 1))
                             plain_password = data.get("plain_password", "")
+                            can_rx_quote_bill = int(data.get("can_rx_quote_bill", 0) or 0)
                             created_at = data.get("created_at", datetime.now().isoformat())
                             if existing:
                                 conn.execute("""
-                                    UPDATE users SET password_hash=?, role=?, full_name=?, is_active=?, plain_password=?
+                                    UPDATE users SET password_hash=?, role=?, full_name=?, is_active=?, plain_password=?, can_rx_quote_bill=?
                                     WHERE username=?
-                                """, (password_hash, role, full_name, is_active, plain_password, username))
+                                """, (password_hash, role, full_name, is_active, plain_password, can_rx_quote_bill, username))
                             else:
                                 conn.execute("""
-                                    INSERT INTO users (username, password_hash, role, full_name, is_active, plain_password, created_at)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, (username, password_hash, role, full_name, is_active, plain_password, created_at))
+                                    INSERT INTO users (username, password_hash, role, full_name, is_active, plain_password, can_rx_quote_bill, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """, (username, password_hash, role, full_name, is_active, plain_password, can_rx_quote_bill, created_at))
 
                     # 8. Pull Online Orders
                     for doc in order_docs:
@@ -2349,6 +2426,9 @@ def pull_all_from_cloud(blocking=False):
                                     assigned_rider_phone = ?,
                                     rider_fee = ?,
                                     admin_notes = ?,
+                                    customer_confirmed = COALESCE(?, customer_confirmed),
+                                    quote_sent_at = COALESCE(NULLIF(?, ''), quote_sent_at),
+                                    quote_by = COALESCE(NULLIF(?, ''), quote_by),
                                     prescription_url = COALESCE(NULLIF(?, ''), prescription_url),
                                     prescription_enhanced_url = COALESCE(NULLIF(?, ''), prescription_enhanced_url),
                                     confirmed_at = COALESCE(NULLIF(?, ''), confirmed_at),
@@ -2369,6 +2449,9 @@ def pull_all_from_cloud(blocking=False):
                                 data.get("assigned_rider_phone"),
                                 float(data.get("rider_fee") or 0.0),
                                 data.get("admin_notes", ""),
+                                data.get("customer_confirmed"),
+                                data.get("quote_sent_at", ""),
+                                data.get("quote_by", ""),
                                 data.get("prescription_url", ""),
                                 data.get("prescription_enhanced_url", ""),
                                 data.get("confirmed_at", ""),
@@ -2609,7 +2692,21 @@ def start():
         db.collection("customer_carts").on_snapshot(_on_customer_carts_change)
         db.collection("thermal_print_jobs").on_snapshot(_on_thermal_print_jobs_change)
 
+        def _pc_printer_heartbeat_loop():
+            import platform
+            if platform.system().lower() != "windows":
+                return
+            while True:
+                try:
+                    import thermal_printer
+                    target = thermal_printer.resolve_target_printer()
+                    push_pc_printer_heartbeat(target or "")
+                except Exception:
+                    pass
+                time.sleep(25)
+
         threading.Thread(target=_safety_net_loop, daemon=True).start()
+        threading.Thread(target=_pc_printer_heartbeat_loop, daemon=True).start()
         print("[remote_control] [OK] Firebase real-time two-way sync & remote control started successfully.", flush=True)
     except Exception as e:
         print(f"[remote_control] start error: {e}", flush=True)

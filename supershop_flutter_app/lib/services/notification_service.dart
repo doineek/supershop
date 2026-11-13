@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/notification_model.dart';
 import 'api_service.dart';
@@ -13,24 +14,61 @@ class NotificationService {
   final ValueNotifier<List<AppNotification>> notificationsNotifier = ValueNotifier<List<AppNotification>>([]);
   final ValueNotifier<int> unreadCountNotifier = ValueNotifier<int>(0);
 
+  final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
   final Set<int> _seenIds = <int>{};
+  final Set<int> _systemNotifiedIds = <int>{};
   Timer? _pollingTimer;
   bool _isFetching = false;
+  bool _localInitDone = false;
   String _currentPhone = '';
+
+  void Function(String payload)? onNotificationTap;
 
   String get currentPhone => _currentPhone;
   List<AppNotification> get notifications => notificationsNotifier.value;
   int get unreadCount => unreadCountNotifier.value;
 
   Future<void> init() async {
+    await _initLocalNotifications();
     await _loadFromCache();
     await fetchNotifications();
     _startPeriodicPolling();
   }
 
+  Future<void> _initLocalNotifications() async {
+    if (_localInitDone || kIsWeb) return;
+    _localInitDone = true;
+    try {
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      await _localPlugin.initialize(
+        settings: const InitializationSettings(android: androidInit),
+        onDidReceiveNotificationResponse: (NotificationResponse resp) {
+          final p = (resp.payload ?? '').trim();
+          if (p.isNotEmpty) {
+            onNotificationTap?.call(p);
+          }
+        },
+      );
+      final androidImpl = _localPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await androidImpl?.requestNotificationsPermission();
+      await androidImpl?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'doineek_pharmacy_alerts',
+          'DOINEEK Order & Pharmacy Alerts',
+          description: 'Instant pharmacy bill confirmation and order status updates',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] local notif init note: $e');
+    }
+  }
+
   void _startPeriodicPolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       fetchNotifications();
     });
   }
@@ -42,6 +80,7 @@ class NotificationService {
   void clearLocalState() {
     _currentPhone = '';
     _seenIds.clear();
+    _systemNotifiedIds.clear();
     notificationsNotifier.value = [];
     unreadCountNotifier.value = 0;
   }
@@ -64,6 +103,12 @@ class NotificationService {
       for (var s in seenList) {
         final id = int.tryParse(s);
         if (id != null) _seenIds.add(id);
+      }
+      final sysList = prefs.getStringList('cached_system_notified_ids') ?? [];
+      _systemNotifiedIds.clear();
+      for (var s in sysList) {
+        final id = int.tryParse(s);
+        if (id != null) _systemNotifiedIds.add(id);
       }
 
       // 2. Load cached notification list
@@ -98,6 +143,9 @@ class NotificationService {
 
       final seenList = _seenIds.map((id) => id.toString()).toList();
       await prefs.setStringList('cached_seen_notif_ids', seenList);
+
+      final sysList = _systemNotifiedIds.map((id) => id.toString()).toList();
+      await prefs.setStringList('cached_system_notified_ids', sysList);
     } catch (e) {
       debugPrint('[NotificationService] cache save error: $e');
     }
@@ -142,6 +190,7 @@ class NotificationService {
 
           notificationsNotifier.value = freshList;
           _recalculateUnread();
+          await _showNewSystemNotifications(freshList);
           await _saveToCache();
         }
       }
@@ -149,6 +198,39 @@ class NotificationService {
       debugPrint('[NotificationService] fetch error: $e');
     } finally {
       _isFetching = false;
+    }
+  }
+
+  Future<void> _showNewSystemNotifications(List<AppNotification> list) async {
+    if (kIsWeb) return;
+    if (!_localInitDone) await _initLocalNotifications();
+    for (final n in list) {
+      if (n.isRead || _seenIds.contains(n.id) || _systemNotifiedIds.contains(n.id)) {
+        continue;
+      }
+      _systemNotifiedIds.add(n.id);
+      try {
+        await _localPlugin.show(
+          id: n.id,
+          title: n.title,
+          body: n.message,
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'doineek_pharmacy_alerts',
+              'DOINEEK Order & Pharmacy Alerts',
+              channelDescription: 'Instant pharmacy bill confirmation and order status updates',
+              importance: Importance.max,
+              priority: Priority.high,
+              enableVibration: true,
+              playSound: true,
+              styleInformation: BigTextStyleInformation(''),
+            ),
+          ),
+          payload: n.referenceId.isNotEmpty ? n.referenceId : n.type,
+        );
+      } catch (e) {
+        debugPrint('[NotificationService] show tray notif error: $e');
+      }
     }
   }
 

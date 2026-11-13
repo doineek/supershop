@@ -1820,6 +1820,8 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
     switch (status) {
       case 'reviewing':
         return '⏳ ফার্মাসিস্ট যাচাই করছে';
+      case 'awaiting_customer_confirmation':
+        return '🔔 বিল কনফার্ম করুন';
       case 'confirmed':
         return '✅ বিল কনফার্মড';
       case 'packed':
@@ -2184,6 +2186,77 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
                                                 style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: Color(0xFF047857))),
                                           ],
                                         ),
+                                        if (st == 'awaiting_customer_confirmation') ...[
+                                          const SizedBox(height: 12),
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFFFBEB),
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  "🔔 আপনার প্রেসক্রিপশন যাচাই করে বিল প্রস্তুত হয়েছে!",
+                                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Color(0xFF92400E)),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  "মোট প্রদেয় ৳${total.toStringAsFixed(2)} — আপনি কনফার্ম করলেই কেবল প্যাকিং ও ডেলিভারি শুরু হবে।",
+                                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF78350F)),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: ElevatedButton.icon(
+                                                        onPressed: () async {
+                                                          final res = await ApiService.confirmPharmacyQuote(
+                                                            orderNumber: orderNum,
+                                                            customerPhone: (o['customer_phone'] ?? '').toString(),
+                                                            action: 'confirm',
+                                                          );
+                                                          if (!mounted) return;
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(res['message']?.toString() ?? 'কনফার্ম সম্পন্ন'),
+                                                              backgroundColor: res['success'] == true ? Colors.green : Colors.red,
+                                                            ),
+                                                          );
+                                                          if (res['success'] == true) _fetchOrders();
+                                                        },
+                                                        icon: const Icon(Icons.check_circle, size: 16, color: Colors.white),
+                                                        label: const Text("বিল কনফার্ম করুন", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    OutlinedButton(
+                                                      onPressed: () async {
+                                                        final res = await ApiService.confirmPharmacyQuote(
+                                                          orderNumber: orderNum,
+                                                          customerPhone: (o['customer_phone'] ?? '').toString(),
+                                                          action: 'cancel',
+                                                        );
+                                                        if (!mounted) return;
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(res['message']?.toString() ?? 'বাতিল হয়েছে'),
+                                                            backgroundColor: res['success'] == true ? Colors.orange : Colors.red,
+                                                          ),
+                                                        );
+                                                        if (res['success'] == true) _fetchOrders();
+                                                      },
+                                                      child: const Text("বাতিল", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),

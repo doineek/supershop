@@ -750,6 +750,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
       case 'pending_confirmation':
       case 'reviewing':
         return Colors.blue;
+      case 'awaiting_customer_confirmation':
+        return Colors.amber.shade800;
       case 'verified':
       case 'confirmed':
         return Colors.purple;
@@ -774,6 +776,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
         return 'Pending';
       case 'reviewing':
         return 'Reviewing';
+      case 'awaiting_customer_confirmation':
+        return 'Confirm Quote';
       case 'verified':
       case 'confirmed':
         return 'Confirmed';
@@ -1564,8 +1568,91 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                                   ),
                                 const SizedBox(height: 12),
 
+                                // Customer Quote Confirmation Gate for Pharmacy Orders
+                                if (order.orderStatus.trim().toLowerCase() == 'awaiting_customer_confirmation')
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFFBEB),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
+                                          children: [
+                                            Icon(Icons.notifications_active, color: Color(0xFFB45309), size: 18),
+                                            SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                'প্রেসক্রিপশন যাচাই করে বিল প্রস্তুত হয়েছে — কনফার্ম করুন!',
+                                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Color(0xFF92400E)),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'মোট প্রদেয় বিল: ৳${order.totalAmount.toStringAsFixed(2)}। আপনি কনফার্ম করলে প্যাকিং ও ডেলিভারি শুরু হবে।',
+                                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF78350F)),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: ElevatedButton.icon(
+                                                onPressed: () async {
+                                                  final r = await ApiService.confirmPharmacyQuote(
+                                                    orderNumber: order.orderNumber,
+                                                    customerPhone: order.customerPhone,
+                                                    action: 'confirm',
+                                                  );
+                                                  if (!mounted) return;
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(r['message']?.toString() ?? 'আপডেট সম্পন্ন'),
+                                                      backgroundColor: r['success'] == true ? Colors.green : Colors.red,
+                                                    ),
+                                                  );
+                                                  if (r['success'] == true) _fetchOrders();
+                                                },
+                                                icon: const Icon(Icons.check_circle, size: 16, color: Colors.white),
+                                                label: const Text('কনফার্ম করুন', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: () async {
+                                                  final r = await ApiService.confirmPharmacyQuote(
+                                                    orderNumber: order.orderNumber,
+                                                    customerPhone: order.customerPhone,
+                                                    action: 'cancel',
+                                                  );
+                                                  if (!mounted) return;
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(r['message']?.toString() ?? 'বাতিল হয়েছে'),
+                                                      backgroundColor: r['success'] == true ? Colors.orange : Colors.red,
+                                                    ),
+                                                  );
+                                                  if (r['success'] == true) _fetchOrders();
+                                                },
+                                                icon: const Icon(Icons.cancel, size: 16, color: Colors.red),
+                                                label: const Text('বাতিল', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
                                 // 10-Minute Live Cancel Timer Box / Cancellation Closed Notice
-                                if (order.orderStatus != 'delivered' && order.orderStatus != 'cancelled')
+                                if (order.orderStatus != 'delivered' && order.orderStatus != 'cancelled' && order.orderStatus.trim().toLowerCase() != 'awaiting_customer_confirmation')
                                   Column(
                                     children: [
                                       if (canCancel)

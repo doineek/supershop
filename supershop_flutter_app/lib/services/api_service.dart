@@ -10,8 +10,33 @@ import '../models/online_order.dart';
 class ApiService {
   static String _customUrl = "";
   static String _activeUrl = "";
+  static String _staffToken = "";
+
+  static String get staffToken => _staffToken;
+
+  static Future<void> setStaffToken(String token) async {
+    _staffToken = token.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_staffToken.isNotEmpty) {
+        await prefs.setString('staff_token', _staffToken);
+      } else {
+        await prefs.remove('staff_token');
+      }
+    } catch (_) {}
+  }
+
+  static Future<String> _ensureStaffToken() async {
+    if (_staffToken.isNotEmpty) return _staffToken;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _staffToken = (prefs.getString('staff_token') ?? '').trim();
+    } catch (_) {}
+    return _staffToken;
+  }
 
   static Future<void> initServerUrl() async {
+    await _ensureStaffToken();
     try {
       final prefs = await SharedPreferences.getInstance();
       String saved = prefs.getString('server_url') ?? '';
@@ -122,10 +147,16 @@ class ApiService {
   static String get activeUrl => baseUrl;
 
   static Future<http.Response?> httpGet(String path, {Duration timeout = const Duration(seconds: 8)}) async {
+    final tok = await _ensureStaffToken();
+    final Map<String, String> authHeaders = tok.isNotEmpty
+        ? {'X-Staff-Token': tok, 'Authorization': 'Bearer $tok'}
+        : <String, String>{};
     List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
     for (String serverUrl in urlsToTry) {
       try {
-        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(_effectiveTimeout(serverUrl, timeout));
+        final res = await http
+            .get(Uri.parse('$serverUrl$path'), headers: authHeaders.isNotEmpty ? authHeaders : null)
+            .timeout(_effectiveTimeout(serverUrl, timeout));
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
           return res;
@@ -145,7 +176,9 @@ class ApiService {
     if (_activeUrl.isEmpty && urlsToTry.length == 1) {
       for (String serverUrl in candidateUrls) {
         try {
-          final res = await http.get(Uri.parse('$serverUrl$path')).timeout(_effectiveTimeout(serverUrl, timeout));
+          final res = await http
+              .get(Uri.parse('$serverUrl$path'), headers: authHeaders.isNotEmpty ? authHeaders : null)
+              .timeout(_effectiveTimeout(serverUrl, timeout));
           if (_isValidJsonResponse(res)) {
             _activeUrl = serverUrl;
             return res;
@@ -157,12 +190,18 @@ class ApiService {
   }
 
   static Future<http.Response?> httpPost(String path, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 15)}) async {
+    final tok = await _ensureStaffToken();
+    final mergedHeaders = <String, String>{
+      ...(headers ?? {'Content-Type': 'application/json'}),
+      if (tok.isNotEmpty) 'X-Staff-Token': tok,
+      if (tok.isNotEmpty) 'Authorization': 'Bearer $tok',
+    };
     List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
     for (String serverUrl in urlsToTry) {
       try {
         final res = await http.post(
           Uri.parse('$serverUrl$path'),
-          headers: headers ?? {'Content-Type': 'application/json'},
+          headers: mergedHeaders,
           body: body,
         ).timeout(_effectiveTimeout(serverUrl, timeout));
 
@@ -187,7 +226,7 @@ class ApiService {
         try {
           final res = await http.post(
             Uri.parse('$serverUrl$path'),
-            headers: headers ?? {'Content-Type': 'application/json'},
+            headers: mergedHeaders,
             body: body,
           ).timeout(_effectiveTimeout(serverUrl, timeout));
           if (_isValidJsonResponse(res)) {
@@ -976,5 +1015,277 @@ class ApiService {
       return {'success': false, 'message': 'Print error: $e'};
     }
     return {'success': false, 'message': 'PC প্রিন্টারে রিকুয়েস্ট পাঠানো যায়নি।'};
+  }
+
+  /// Build signed SSO URL for opening any web Admin route already authenticated.
+  static Future<String> buildAdminSsoUrl(String nextPath) async {
+    final tok = await _ensureStaffToken();
+    final safeNext = nextPath.startsWith('/') ? nextPath : '/$nextPath';
+    if (tok.isEmpty) return '$baseUrl$safeNext';
+    return '$baseUrl/auth/sso-login?token=${Uri.encodeComponent(tok)}&next=${Uri.encodeComponent(safeNext)}';
+  }
+
+  /// Poll cloud/PC thermal print job status for live confirmation dialog.
+  static Future<Map<String, dynamic>> pollThermalPrintJobStatus(String jobUuid) async {
+    try {
+      final res = await httpGet('/api/thermal/job-status/${Uri.encodeComponent(jobUuid)}', timeout: const Duration(seconds: 8));
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'status': 'pending', 'message': '$e'};
+    }
+    return {'success': false, 'status': 'pending'};
+  }
+
+  static Future<Map<String, dynamic>> fetchThermalAgentStatus() async {
+    try {
+      final res = await httpGet('/api/thermal/agent-status', timeout: const Duration(seconds: 8));
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (_) {}
+    return {'success': false, 'online': false};
+  }
+
+  static Future<Map<String, dynamic>> testThermalPrint() async {
+    try {
+      final res = await httpPost('/api/thermal/test-print', body: jsonEncode({}), timeout: const Duration(seconds: 12));
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Test print failed: $e'};
+    }
+    return {'success': false, 'message': 'প্রিন্ট সার্ভার সাড়া দেয়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> confirmPharmacyQuote({
+    required String orderNumber,
+    String customerPhone = '',
+    String action = 'confirm',
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/pharmacy/customer-confirm-quote',
+        body: jsonEncode({
+          'order_number': orderNumber,
+          'customer_phone': customerPhone,
+          'action': action,
+        }),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'নেটওয়ার্ক সমস্যা: $e'};
+    }
+    return {'success': false, 'message': 'সার্ভারে কনফার্মেশন পাঠানো যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> fetchRiderPermissions({required String riderPhone}) async {
+    try {
+      final res = await httpGet('/api/rider/permissions?rider_phone=${Uri.encodeComponent(riderPhone.trim())}');
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (_) {}
+    return {'success': false, 'can_rx_quote_bill': false};
+  }
+
+  static Future<Map<String, dynamic>> fetchRiderRxQuoteOrders({required String riderPhone}) async {
+    try {
+      final res = await httpGet(
+        '/api/rider/rx-quote-orders?rider_phone=${Uri.encodeComponent(riderPhone.trim())}',
+        timeout: const Duration(seconds: 12),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e', 'orders': []};
+    }
+    return {'success': false, 'orders': []};
+  }
+
+  static Future<Map<String, dynamic>> submitRiderPharmacyQuote({
+    required int orderId,
+    required List<Map<String, dynamic>> items,
+    required String riderPhone,
+    double deliveryCharge = 50.0,
+    String adminNotes = '',
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/rider/pharmacy-quote/$orderId',
+        body: jsonEncode({
+          'rider_phone': riderPhone.trim(),
+          'items': items,
+          'delivery_charge': deliveryCharge,
+          'admin_notes': adminNotes,
+        }),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'নেটওয়ার্ক সমস্যা: $e'};
+    }
+    return {'success': false, 'message': 'কোটেশন পাঠানো যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> fetchAdminMobileDashboard() async {
+    try {
+      final res = await httpGet('/api/admin/mobile-dashboard', timeout: const Duration(seconds: 12));
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e'};
+    }
+    return {'success': false, 'message': 'ড্যাশবোর্ড লোড করা যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> fetchAdminPharmacyOrders({String status = ''}) async {
+    try {
+      final q = status.isNotEmpty ? '?status=${Uri.encodeComponent(status)}' : '';
+      final res = await httpGet('/api/admin/pharmacy/orders$q', timeout: const Duration(seconds: 12));
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (_) {}
+    return {'success': false, 'orders': []};
+  }
+
+  static Future<Map<String, dynamic>> fetchAdminRiders() async {
+    try {
+      final res = await httpGet('/api/admin/riders', timeout: const Duration(seconds: 10));
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (_) {}
+    return {'success': false, 'riders': []};
+  }
+
+  static Future<Map<String, dynamic>> toggleAdminRiderPermission({
+    required int riderId,
+    required bool allow,
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/admin/riders/permissions',
+        body: jsonEncode({'rider_id': riderId, 'can_rx_quote_bill': allow}),
+        timeout: const Duration(seconds: 12),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e'};
+    }
+    return {'success': false, 'message': 'পারমিশন আপডেট করা যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> saveAdminMedicine(Map<String, dynamic> payload) async {
+    try {
+      final res = await httpPost(
+        '/api/admin/pharmacy/medicines/save',
+        body: jsonEncode(payload),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e'};
+    }
+    return {'success': false, 'message': 'ওষুধ সংরক্ষণ করা যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> submitAdminPharmacyQuote({
+    required int orderId,
+    required List<Map<String, dynamic>> items,
+    double deliveryCharge = 50.0,
+    String adminNotes = '',
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/admin/pharmacy/orders/$orderId/generate-bill',
+        body: jsonEncode({
+          'items': items,
+          'delivery_charge': deliveryCharge,
+          'admin_notes': adminNotes,
+        }),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e'};
+    }
+    return {'success': false, 'message': 'বিল পাঠানো যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> updateAdminPharmacyOrderStatus({
+    required int orderId,
+    required String status,
+    int? riderId,
+    String otp = '',
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/admin/pharmacy/orders/$orderId/update-status',
+        body: jsonEncode({
+          'status': status,
+          if (riderId != null) 'rider_id': riderId,
+          if (otp.isNotEmpty) 'otp': otp,
+        }),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e'};
+    }
+    return {'success': false, 'message': 'স্ট্যাটাস আপডেট করা যায়নি।'};
+  }
+
+  /// Fetch paginated medicine catalog with purchase costs & multi-unit prices for Admin.
+  static Future<Map<String, dynamic>> fetchAdminMedicines({
+    String query = '',
+    int page = 1,
+    int perPage = 80,
+  }) async {
+    try {
+      final res = await httpGet(
+        '/api/admin/pharmacy/medicines/list?q=${Uri.encodeComponent(query.trim())}&page=$page&per_page=$perPage',
+        timeout: const Duration(seconds: 12),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e', 'medicines': []};
+    }
+    return {'success': false, 'medicines': []};
   }
 }

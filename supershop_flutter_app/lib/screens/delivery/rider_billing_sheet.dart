@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../widgets/barcode_scanner_sheet.dart';
+import '../../widgets/thermal_print_helper.dart';
 
 /// Opens the mobile Rider Billing bottom sheet supporting Regular Products, Combos & Pharmacy Medicines.
 Future<void> showRiderBillingModal(
@@ -66,7 +68,7 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
     super.dispose();
   }
 
-  Future<void> _loadCatalog(String query) async {
+  Future<void> _loadCatalog(String query, {bool autoAddExact = false}) async {
     if (!mounted) return;
     setState(() => _loadingCatalog = true);
     final res = await ApiService.fetchRiderCatalog(
@@ -75,21 +77,56 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
       type: 'all',
     );
     if (!mounted) return;
+    final prods = (res['products'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final pkgs = (res['packages'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final meds = (res['medicines'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
     setState(() {
-      _products = (res['products'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-      _packages = (res['packages'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-      _medicines = (res['medicines'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+      _products = prods;
+      _packages = pkgs;
+      _medicines = meds;
       _loadingCatalog = false;
     });
+
+    if (autoAddExact && query.isNotEmpty) {
+      final combined = [...meds, ...prods, ...pkgs];
+      if (combined.isNotEmpty) {
+        final qLower = query.trim().toLowerCase();
+        final exact = combined.firstWhere(
+          (m) => (m['sku'] ?? '').toString().trim().toLowerCase() == qLower,
+          orElse: () => combined.first,
+        );
+        if ((exact['sku'] ?? '').toString().trim().toLowerCase() == qLower ||
+            combined.length == 1) {
+          _addToCart(exact);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ স্ক্যান করা আইটেম যোগ হয়েছে: ${exact['name']}'),
+              backgroundColor: Colors.teal.shade700,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _scanBarcode() async {
+    final code = await BarcodeScannerSheet.scan(
+      context,
+      title: 'পণ্য / ঔষধের বারকোড স্ক্যান করুন',
+    );
+    if (code == null || code.isEmpty || !mounted) return;
+    _searchCtrl.text = code;
+    await _loadCatalog(code, autoAddExact: true);
   }
 
   void _onSearchChanged(String val) {
@@ -102,7 +139,17 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
   void _addToCart(Map<String, dynamic> item) {
     final int id = (item['id'] as num?)?.toInt() ?? 0;
     final String itemType = (item['item_type'] ?? 'product').toString();
-    final idx = _cart.indexWhere((c) => c['id'] == id && c['item_type'] == itemType);
+    final int stripSize = ((item['strip_size'] ?? 10) as num).toInt().clamp(1, 500);
+    final int packetSize = ((item['packet_size'] ?? 30) as num).toInt().clamp(1, 5000);
+    final double piecePrice = ((item['sell_price'] ?? 0) as num).toDouble();
+    final double stripPriceRaw = ((item['strip_price'] ?? 0) as num).toDouble();
+    final double packetPriceRaw = ((item['packet_price'] ?? 0) as num).toDouble();
+    final double stripPrice = stripPriceRaw > 0 ? stripPriceRaw : (piecePrice * stripSize);
+    final double packetPrice = packetPriceRaw > 0 ? packetPriceRaw : (piecePrice * packetSize);
+
+    final idx = _cart.indexWhere(
+      (c) => c['id'] == id && c['item_type'] == itemType && (c['sell_unit'] ?? 'piece') == 'piece',
+    );
     setState(() {
       if (idx >= 0) {
         _cart[idx]['quantity'] = (_cart[idx]['quantity'] as int) + 1;
@@ -111,9 +158,39 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
           'id': id,
           'item_type': itemType,
           'name': item['name'] ?? 'Item',
-          'unit_price': ((item['sell_price'] ?? 0) as num).toDouble(),
+          'sell_unit': 'piece',
+          'unit_price': piecePrice,
+          'piece_price': piecePrice,
+          'strip_price': stripPrice,
+          'packet_price': packetPrice,
+          'strip_size': stripSize,
+          'packet_size': packetSize,
           'quantity': 1,
         });
+      }
+    });
+  }
+
+  void _changeCartUnit(int index, String nextUnit) {
+    setState(() {
+      final c = _cart[index];
+      final double pieceP = ((c['piece_price'] ?? c['unit_price'] ?? 0) as num).toDouble();
+      final int sSize = ((c['strip_size'] ?? 10) as num).toInt().clamp(1, 500);
+      final int pSize = ((c['packet_size'] ?? 30) as num).toInt().clamp(1, 5000);
+      final double stripP = ((c['strip_price'] ?? 0) as num).toDouble() > 0
+          ? ((c['strip_price'] ?? 0) as num).toDouble()
+          : pieceP * sSize;
+      final double packetP = ((c['packet_price'] ?? 0) as num).toDouble() > 0
+          ? ((c['packet_price'] ?? 0) as num).toDouble()
+          : pieceP * pSize;
+
+      c['sell_unit'] = nextUnit;
+      if (nextUnit == 'strip') {
+        c['unit_price'] = stripP;
+      } else if (nextUnit == 'packet') {
+        c['unit_price'] = packetP;
+      } else {
+        c['unit_price'] = pieceP;
       }
     });
   }
@@ -166,6 +243,14 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
       final String thermalMsg = (th['message'] ?? '').toString();
 
       widget.onBillCreated?.call();
+      if (_printToPc && th.isNotEmpty) {
+        await ThermalPrintHelper.trackJobDialog(
+          context,
+          initialResult: th,
+          title: 'PC থার্মাল প্রিন্ট • $inv',
+        );
+        if (!mounted) return;
+      }
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -242,16 +327,33 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
               child: Column(
                 children: [
-                  TextField(
-                    controller: _searchCtrl,
-                    onChanged: _onSearchChanged,
-                    decoration: InputDecoration(
-                      hintText: 'পণ্য, কম্বো বা ঔষধের নাম লিখে খুঁজুন...',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      isDense: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchCtrl,
+                          onChanged: _onSearchChanged,
+                          decoration: InputDecoration(
+                            hintText: 'পণ্য, কম্বো বা ঔষধের নাম / SKU লিখুন...',
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                            isDense: true,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        tooltip: 'বারকোড স্ক্যান করুন',
+                        onPressed: _scanBarcode,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.indigo.shade700,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.qr_code_scanner, size: 20),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -330,17 +432,35 @@ class _RiderBillingSheetState extends State<RiderBillingSheet> {
                         itemCount: _cart.length,
                         itemBuilder: (_, i) {
                           final c = _cart[i];
+                          final bool isMed = c['item_type'] == 'medicine';
+                          final String selUnit = (c['sell_unit'] ?? 'piece').toString();
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: Text(
-                                    '${c['item_type'] == 'medicine' ? '💊' : '🛒'} ${c['name']}',
+                                    '${isMed ? '💊' : '🛒'} ${c['name']}',
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                   ),
                                 ),
+                                if (isMed) ...[
+                                  const SizedBox(width: 4),
+                                  DropdownButton<String>(
+                                    value: selUnit,
+                                    isDense: true,
+                                    underline: const SizedBox.shrink(),
+                                    items: [
+                                      const DropdownMenuItem(value: 'piece', child: Text('পিস', style: TextStyle(fontSize: 11))),
+                                      DropdownMenuItem(value: 'strip', child: Text('পাতা(${c['strip_size'] ?? 10})', style: const TextStyle(fontSize: 11))),
+                                      DropdownMenuItem(value: 'packet', child: Text('প্যাক(${c['packet_size'] ?? 30})', style: const TextStyle(fontSize: 11))),
+                                    ],
+                                    onChanged: (val) {
+                                      if (val != null) _changeCartUnit(i, val);
+                                    },
+                                  ),
+                                ],
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.red),

@@ -78,9 +78,9 @@
     </thead>
     <tbody>
       {% for order in orders %}
-      {% set st_color = '#10b981' if order.order_status == 'delivered' else ('#06b6d4' if order.order_status == 'on_the_way' else ('#f59e0b' if order.order_status == 'packed' else ('#8b5cf6' if order.order_status == 'verified' else ('#ef4444' if order.order_status == 'cancelled' else ('#ea580c' if order.order_status == 'pending_confirmation' else '#3b82f6'))))) %}
+      {% set st_color = '#10b981' if order.order_status == 'delivered' else ('#06b6d4' if order.order_status == 'on_the_way' else ('#d97706' if order.order_status in ('packed', 'awaiting_customer_confirmation') else ('#8b5cf6' if order.order_status == 'verified' else ('#ef4444' if order.order_status == 'cancelled' else ('#ea580c' if order.order_status == 'pending_confirmation' else '#3b82f6'))))) %}
       {% set bg_color = '#f8fafc' if loop.index is even else '#ffffff' %}
-      {% if order.order_status == 'pending_confirmation' %}{% set bg_color = '#fffbf5' %}{% elif order.order_status == 'new' %}{% set bg_color = '#f0f9ff' %}{% endif %}
+      {% if order.order_status in ('pending_confirmation', 'awaiting_customer_confirmation') %}{% set bg_color = '#fffbeb' %}{% elif order.order_status == 'new' %}{% set bg_color = '#f0f9ff' %}{% endif %}
       <tr id="orderRow_{{ order.id }}" style="border-bottom: 3px solid #e2e8f0; border-left: 6px solid {{ st_color }}; background: {{ bg_color }}; transition: background 0.2s ease;">
         <td style="padding: 14px 16px; vertical-align: top;">
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -106,7 +106,12 @@
               <div style="width:38px; height:38px; border-radius:8px; background:#f1f5f9; border:1px dashed #94a3b8; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#64748b; flex-shrink:0;">📷</div>
             {% endif %}
             <div>
-              <div style="font-weight: 600; color: #0f172a;">{{ order.customer_name }}</div>
+              <button type="button"
+                      onclick='openCustomerProfileByPhone({{ (order.customer_phone or "")|tojson }}, {{ (order.customer_name or "")|tojson }}, {{ (order.customer_email or "")|tojson }}, {{ ((order.address_details or "") ~ ", " ~ (order.area or "") ~ ", " ~ (order.district or ""))|tojson }})'
+                      title="কাস্টমারের বিস্তারিত প্রোফাইল ও অর্ডার হিস্ট্রি দেখুন"
+                      style="background:none; border:none; padding:0; text-align:left; font-weight:700; color:#1d4ed8; cursor:pointer; font-size:0.96rem; text-decoration:underline; text-underline-offset:3px;">
+                👤 {{ order.customer_name }}
+              </button>
               <div style="font-size: 0.85rem; color: #2563eb; display:flex; align-items:center; gap:4px; margin-top:2px;">
                 <span>📞 {{ order.customer_phone }}</span>
                 <a href="tel:{{ order.customer_phone }}" style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:700; text-decoration:none;">Call</a>
@@ -117,6 +122,10 @@
           {% if order.order_status == 'pending_confirmation' %}
           <div style="font-size:0.74rem; color:#c2410c; font-weight:800; margin-top:4px;">
             ⚠️ Phone Unverified - Please Call Before Dispatch
+          </div>
+          {% elif order.order_status == 'awaiting_customer_confirmation' %}
+          <div style="font-size:0.74rem; color:#b45309; background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:4px 7px; font-weight:800; margin-top:4px;">
+            ⏳ কাস্টমারের বিল কনফার্মেশনের অপেক্ষায় (কনফার্ম করলে প্যাকিং/রাইডার চালু হবে)
           </div>
           {% endif %}
           <div style="font-size: 0.82rem; color: #475569; margin-top: 4px;">
@@ -609,6 +618,93 @@
     });
   }
 
+  function escapeCustHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  async function openCustomerProfileByPhone(phone, fallbackName, fallbackEmail, fallbackAddr) {
+    document.getElementById('custSearchResults').style.display = 'none';
+    document.getElementById('modalCustName').innerText = '👤 ' + (fallbackName || 'Customer') + (phone ? ' (' + phone + ')' : '');
+    document.getElementById('modalCustBody').innerHTML = '<div style="padding:24px; text-align:center; color:#64748b;">⏳ কাস্টমার প্রোফাইল লোড হচ্ছে...</div>';
+    document.getElementById('custModal').style.display = 'flex';
+
+    try {
+      const res = await fetch('/customers/api/profile?phone=' + encodeURIComponent(phone || ''));
+      const d = await res.json();
+      if (!res.ok || !d.success) {
+        document.getElementById('modalCustBody').innerHTML = `
+          <div style="background:#f8fafc; padding:14px; border-radius:10px; border:1px solid #e2e8f0;">
+            <div><strong>Name:</strong> ${escapeCustHtml(fallbackName || 'Guest')}</div>
+            <div><strong>Mobile:</strong> ${escapeCustHtml(phone || 'N/A')}</div>
+            <div><strong>Address:</strong> ${escapeCustHtml(fallbackAddr || 'N/A')}</div>
+            <div style="margin-top:8px; color:#64748b; font-size:0.85rem;">${escapeCustHtml(d.message || 'Detailed registered profile not found for this phone.')}</div>
+          </div>`;
+        return;
+      }
+
+      const avatarHtml = d.profile_image
+        ? `<img src="${escapeCustHtml(d.profile_image)}" style="width:54px; height:54px; border-radius:50%; object-fit:cover; border:2px solid #cbd5e1;">`
+        : `<div style="width:54px; height:54px; border-radius:50%; background:#e0e7ff; color:#3730a3; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.3rem;">${escapeCustHtml((d.name || 'C').slice(0,1).toUpperCase())}</div>`;
+
+      const statusBadge = d.is_blocked
+        ? `<span style="background:#fee2e2; color:#b91c1c; padding:2px 8px; border-radius:99px; font-size:0.75rem; font-weight:800;">🚫 Blocked${d.block_reason ? ': ' + escapeCustHtml(d.block_reason) : ''}</span>`
+        : `<span style="background:#dcfce7; color:#15803d; padding:2px 8px; border-radius:99px; font-size:0.75rem; font-weight:800;">✅ Active Customer</span>`;
+
+      let html = `
+        <div style="display:flex; gap:14px; align-items:center; background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:14px;">
+          ${avatarHtml}
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <strong style="font-size:1.05rem; color:#0f172a;">${escapeCustHtml(d.name || fallbackName)}</strong>
+              ${statusBadge}
+            </div>
+            <div style="font-size:0.88rem; color:#2563eb; font-family:monospace; font-weight:700; margin-top:2px;">📞 ${escapeCustHtml(d.phone || phone)}</div>
+            <div style="font-size:0.82rem; color:#475569; margin-top:2px;">📧 ${escapeCustHtml(d.email || fallbackEmail || 'N/A')}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:0.74rem; color:#64748b; font-weight:700;">TOTAL SPENT</div>
+            <div style="font-size:1.15rem; font-weight:800; color:#15803d;">TK ${Number(d.total_spent || 0).toFixed(2)}</div>
+            <div style="font-size:0.75rem; color:#475569;">📦 ${d.total_orders || 0} Orders</div>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.82rem; margin-bottom:14px;">
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
+            <div><strong>📍 Address:</strong> ${escapeCustHtml(d.address_details || fallbackAddr || 'N/A')}</div>
+            <div style="margin-top:4px;"><strong>🗺️ Area:</strong> ${escapeCustHtml([d.area, d.district].filter(Boolean).join(', ') || 'N/A')}</div>
+            <div style="margin-top:4px;"><strong>📅 Member Since:</strong> ${escapeCustHtml(d.member_since || (d.created_at || '').slice(0, 10) || 'N/A')}</div>
+          </div>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
+            <div><strong>🌐 Last IP:</strong> <code>${escapeCustHtml(d.last_ip || d.registration_ip || 'N/A')}</code></div>
+            <div style="margin-top:4px;"><strong>📌 Location:</strong> ${escapeCustHtml(d.last_location || d.registration_location || 'N/A')}</div>
+            <div style="margin-top:4px;"><strong>📱 Device:</strong> ${escapeCustHtml(d.last_device || 'N/A')}</div>
+          </div>
+        </div>
+        <h4 style="margin: 10px 0 8px 0; color: #1e293b;">📋 Recent Orders (${(d.recent_orders || []).length})</h4>
+      `;
+
+      if (!d.recent_orders || d.recent_orders.length === 0) {
+        html += `<div style="color:#94a3b8; font-size:0.85rem; padding:10px;">No recent online orders recorded.</div>`;
+      } else {
+        d.recent_orders.forEach(o => {
+          html += `
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: white; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-weight:700; color:#0f172a;">#${escapeCustHtml(o.order_number)}</div>
+                <div style="font-size:0.78rem; color:#64748b;">Status: <strong>${escapeCustHtml(String(o.order_status || '').toUpperCase())}</strong> • ${escapeCustHtml(String(o.created_at || '').slice(0, 16))}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-weight:800; color:#16a34a;">TK ${Number(o.total_amount || 0).toFixed(2)}</div>
+                ${o.id ? `<a href="/online_orders/${o.id}/invoice" target="_blank" style="font-size:0.75rem; color:#2563eb; text-decoration:none; font-weight:700;">📄 Invoice</a>` : ''}
+              </div>
+            </div>`;
+        });
+      }
+      document.getElementById('modalCustBody').innerHTML = html;
+    } catch (e) {
+      document.getElementById('modalCustBody').innerHTML = `<div style="color:#dc2626; padding:16px;">Failed to load customer profile: ${escapeCustHtml(e)}</div>`;
+    }
+  }
+
   function openCustModal(cust) {
     document.getElementById('custSearchResults').style.display = 'none';
     document.getElementById('modalCustName').innerText = '👤 Customer: ' + cust.customer_name + ' (' + cust.customer_phone + ')';
@@ -668,7 +764,44 @@
       .catch(err => {});
   }, 4000);
 
+  function showThermalToast(msg, tone = 'info') {
+    let el = document.getElementById('thermalStatusToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'thermalStatusToast';
+      el.style.cssText = 'position:fixed; bottom:20px; right:20px; z-index:9999; max-width:380px; padding:12px 16px; border-radius:10px; font-weight:700; font-size:0.86rem; box-shadow:0 10px 25px rgba(0,0,0,0.22); color:#fff;';
+      document.body.appendChild(el);
+    }
+    el.style.background = tone === 'success' ? '#15803d' : (tone === 'error' ? '#b91c1c' : (tone === 'warn' ? '#b45309' : '#1e40af'));
+    el.innerText = msg;
+    el.style.display = 'block';
+  }
+
+  async function pollThermalJobStatusWeb(jobUuid) {
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 1200));
+      try {
+        const res = await fetch('/api/thermal/job-status/' + encodeURIComponent(jobUuid));
+        const st = await res.json();
+        if (st.status === 'printed') {
+          showThermalToast(`✅ প্রিন্ট সম্পন্ন হয়েছে! প্রিন্টার: ${st.printer_name || st.pc_printer_name || 'POS58'}`, 'success');
+          return;
+        }
+        if (st.status === 'failed') {
+          showThermalToast(`❌ প্রিন্ট ব্যর্থ: ${st.error_msg || 'Unknown printer error'}`, 'error');
+          return;
+        }
+        if (i >= 2 && !st.pc_agent_online) {
+          showThermalToast('⚠️ প্রিন্ট কিউ-তে রাখা হয়েছে, কিন্তু শপের Windows PC প্রিন্ট এজেন্ট এখন অফলাইন! পিসি চালু হলে অটো প্রিন্ট হবে।', 'warn');
+          return;
+        }
+      } catch (_) {}
+    }
+    showThermalToast('⏳ প্রিন্ট জব ক্লাউড কিউ-তে রয়েছে (PC Agent রেসপন্স চেক করুন)।', 'warn');
+  }
+
   async function triggerOrderThermalPrint(orderId, orderNumber, isPharmacy, pharmOrderId) {
+    showThermalToast(`🖨️ #${orderNumber} থার্মাল প্রিন্টে পাঠানো হচ্ছে...`, 'info');
     try {
       const res = await fetch('/api/thermal/print-job', {
         method: 'POST',
@@ -681,9 +814,20 @@
         })
       });
       const d = await res.json();
-      alert(d.message || (d.success ? 'Sent to PC thermal printer!' : 'Failed to print'));
+      if (!d.success) {
+        showThermalToast('❌ ' + (d.message || 'Failed to print'), 'error');
+        return;
+      }
+      if (d.printed_directly) {
+        showThermalToast(`✅ পিসি প্রিন্টারে প্রিন্ট সম্পন্ন: ${d.printer_name || 'Thermal Printer'}`, 'success');
+      } else if (d.job_uuid) {
+        showThermalToast('⏳ ক্লাউড কিউ-তে পাঠানো হয়েছে — পিসির কনফার্মেশনের জন্য অপেক্ষা করছে...', 'info');
+        pollThermalJobStatusWeb(d.job_uuid);
+      } else {
+        showThermalToast(d.message || 'Sent to PC thermal printer!', 'success');
+      }
     } catch (e) {
-      alert('Thermal print error: ' + e);
+      showThermalToast('❌ Thermal print error: ' + e, 'error');
     }
   }
 

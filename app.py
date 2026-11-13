@@ -970,7 +970,23 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
-            return redirect(url_for("login"))
+            tok = _get_bearer_or_param_token()
+            parsed = _verify_staff_token(tok)
+            if parsed:
+                conn_tmp = get_connection()
+                u = conn_tmp.execute(
+                    "SELECT id, username, role FROM users WHERE id = ? AND username = ? AND COALESCE(is_active, 1) = 1",
+                    (parsed["id"], parsed["username"]),
+                ).fetchone()
+                conn_tmp.close()
+                if u:
+                    session["user_id"] = u["id"]
+                    session["username"] = u["username"]
+                    session["role"] = u["role"]
+            if "user_id" not in session:
+                if request.path.startswith("/api/"):
+                    return jsonify({"success": False, "message": "Authentication required."}), 401
+                return redirect(url_for("login"))
         return view(*args, **kwargs)
     return wrapped
 
@@ -5585,6 +5601,9 @@ def riders_page():
     if "plain_password" not in columns:
         try: conn.execute("ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''")
         except: pass
+    if "can_rx_quote_bill" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN can_rx_quote_bill INTEGER NOT NULL DEFAULT 0")
+        except: pass
     conn.commit()
 
     start_date = request.args.get("start_date", "").strip()
@@ -5866,7 +5885,12 @@ def create_rider_admin():
     if "plain_password" not in columns:
         try: conn.execute("ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''")
         except: pass
+    if "can_rx_quote_bill" not in columns:
+        try: conn.execute("ALTER TABLE users ADD COLUMN can_rx_quote_bill INTEGER NOT NULL DEFAULT 0")
+        except: pass
     conn.commit()
+
+    can_rx_quote_bill = 1 if request.form.get("can_rx_quote_bill") in ("1", "true", "on", "yes") else 0
 
     existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
     if existing:
@@ -5875,8 +5899,8 @@ def create_rider_admin():
         return redirect(url_for("riders_page"))
 
     conn.execute(
-        "INSERT INTO users (username, password_hash, plain_password, role, full_name, is_active, created_at) VALUES (?, ?, ?, 'delivery', ?, 1, ?)",
-        (username, generate_password_hash(password), password, full_name, datetime.now().isoformat())
+        "INSERT INTO users (username, password_hash, plain_password, role, full_name, is_active, can_rx_quote_bill, created_at) VALUES (?, ?, ?, 'delivery', ?, 1, ?, ?)",
+        (username, generate_password_hash(password), password, full_name, can_rx_quote_bill, datetime.now().isoformat())
     )
     conn.commit()
     conn.close()
@@ -5895,21 +5919,26 @@ def edit_rider_admin():
     username = normalize_phone(request.form.get("username", ""))
     password = request.form.get("password", "").strip()
     is_active = request.form.get("is_active", type=int, default=1)
+    can_rx_quote_bill = 1 if request.form.get("can_rx_quote_bill") in ("1", "true", "on", "yes") else 0
 
     if not rider_id or not full_name or not username:
         flash("Rider ID, Name, and Mobile Number are required.", "error")
         return redirect(url_for("riders_page"))
 
     conn = get_connection()
+    cols = [c[1] for c in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "can_rx_quote_bill" not in cols:
+        try: conn.execute("ALTER TABLE users ADD COLUMN can_rx_quote_bill INTEGER NOT NULL DEFAULT 0")
+        except Exception: pass
     if password:
         conn.execute(
-            "UPDATE users SET full_name = ?, username = ?, password_hash = ?, plain_password = ?, is_active = ? WHERE id = ? AND role = 'delivery'",
-            (full_name, username, generate_password_hash(password), password, is_active, rider_id)
+            "UPDATE users SET full_name = ?, username = ?, password_hash = ?, plain_password = ?, is_active = ?, can_rx_quote_bill = ? WHERE id = ? AND role = 'delivery'",
+            (full_name, username, generate_password_hash(password), password, is_active, can_rx_quote_bill, rider_id)
         )
     else:
         conn.execute(
-            "UPDATE users SET full_name = ?, username = ?, is_active = ? WHERE id = ? AND role = 'delivery'",
-            (full_name, username, is_active, rider_id)
+            "UPDATE users SET full_name = ?, username = ?, is_active = ?, can_rx_quote_bill = ? WHERE id = ? AND role = 'delivery'",
+            (full_name, username, is_active, can_rx_quote_bill, rider_id)
         )
     conn.commit()
     conn.close()
@@ -7044,13 +7073,21 @@ def _compute_separated_reports(conn, date_filter, ledger_filter, dept="all"):
                 med_line_rev += l_rev
                 med_line_cogs += l_cogs
                 raw_n = serials.lstrip("💊").strip()
-                base_n = raw_n.rsplit(" (", 1)[0].strip().lower()
-                matched_m = med_by_name.get(base_n) or med_by_name.get(raw_n.lower())
+                pieces_sold = int(qty)
+                m_pcs = re.search(r"=\s*(\d+)\s*পিস\]", raw_n)
+                if m_pcs:
+                    try:
+                        pieces_sold = max(1, int(m_pcs.group(1)))
+                    except Exception:
+                        pieces_sold = int(qty)
+                clean_n = re.sub(r"\s*\[[^\]]*\]\s*$", "", raw_n).strip()
+                base_n = clean_n.rsplit(" (", 1)[0].strip().lower()
+                matched_m = med_by_name.get(base_n) or med_by_name.get(clean_n.lower())
                 if matched_m:
                     mid = matched_m["id"]
                     if l_cogs <= 0:
-                        l_cogs = float(matched_m.get("cost_price") or float(si["unit_price"] or 0.0) * 0.78) * qty
-                    med_perf[mid]["qty_sold"] += int(qty)
+                        l_cogs = float(matched_m.get("cost_price") or float(si["unit_price"] or 0.0) * 0.78 / max(1.0, pieces_sold / max(1.0, qty))) * pieces_sold
+                    med_perf[mid]["qty_sold"] += int(pieces_sold)
                     med_perf[mid]["revenue"] += l_rev
                     med_perf[mid]["cogs_amt"] += l_cogs
             else:
@@ -7126,8 +7163,10 @@ def _compute_separated_reports(conn, date_filter, ledger_filter, dept="all"):
         order_cogs = 0.0
         for it in j_items:
             q = int(it.get("quantity") or 1)
+            base_pcs = int(it.get("base_pieces") or (q * max(1, int(it.get("unit_count") or 1))))
             up = float(it.get("unit_price") or 0.0)
             lt = float(it.get("total_price") or (up * q))
+            it_type = (it.get("item_type") or ("medicine" if it.get("medicine_id") else ("product" if it.get("product_id") else "medicine"))).strip().lower()
             mid_raw = it.get("medicine_id")
             m_info = None
             if mid_raw:
@@ -7135,16 +7174,30 @@ def _compute_separated_reports(conn, date_filter, ledger_filter, dept="all"):
                     m_info = med_by_id.get(int(mid_raw))
                 except Exception:
                     m_info = None
-            if not m_info and it.get("name"):
+            if not m_info and it.get("name") and it_type == "medicine":
                 m_info = med_by_name.get(str(it.get("name") or "").strip().lower())
-            unit_cost = float(m_info.get("cost_price") or 0.0) if m_info else 0.0
-            if unit_cost <= 0 and up > 0:
-                unit_cost = round(up * 0.78, 2)
-            item_cogs = unit_cost * q
+
+            saved_total_cost = float(it.get("total_cost") or 0.0)
+            saved_unit_cost = float(it.get("cost_price") or 0.0)
+            if saved_total_cost > 0:
+                item_cogs = round(saved_total_cost, 2)
+            elif saved_unit_cost > 0:
+                item_cogs = round(saved_unit_cost * q, 2)
+            elif it_type == "product" and it.get("product_id"):
+                pr_c = conn.execute("SELECT cost_price FROM products WHERE id = ?", (int(it["product_id"]),)).fetchone()
+                pc = float(pr_c["cost_price"] or 0.0) if pr_c else 0.0
+                item_cogs = round((pc if pc > 0 else up * 0.78) * q, 2)
+            else:
+                unit_cost = float(m_info.get("cost_price") or 0.0) if m_info else 0.0
+                if unit_cost > 0:
+                    item_cogs = round(unit_cost * base_pcs, 2)
+                else:
+                    item_cogs = round((up * 0.78) * q, 2) if up > 0 else 0.0
+
             order_cogs += item_cogs
-            if m_info and m_info["id"] in med_perf:
+            if m_info and m_info["id"] in med_perf and it_type == "medicine":
                 mp = med_perf[m_info["id"]]
-                mp["qty_sold"] += q
+                mp["qty_sold"] += base_pcs
                 mp["revenue"] += lt
                 mp["cogs_amt"] += item_cogs
         if order_cogs <= 0 and po_tot > 0:
@@ -8491,6 +8544,11 @@ def assign_online_order_rider(order_id):
         flash("Order not found.", "error")
         return redirect(url_for("online_orders"))
 
+    if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation":
+        conn.close()
+        flash(f"Order #{order['order_number']} is awaiting customer confirmation. Customer must confirm the bill before dispatch.", "error")
+        return redirect(url_for("online_orders"))
+
     rider_name = ""
     rider_phone = ""
     if rider_id:
@@ -8528,6 +8586,7 @@ _OL_TO_PHARM_STATUS = {
     "pending": "reviewing",
     "pending_confirmation": "reviewing",
     "reviewing": "reviewing",
+    "awaiting_customer_confirmation": "awaiting_customer_confirmation",
     "verified": "confirmed",
     "confirmed": "confirmed",
     "packed": "packed",
@@ -8541,6 +8600,7 @@ _PHARM_TO_OL_STATUS = {
     "new": "new",
     "pending": "pending",
     "pending_confirmation": "pending_confirmation",
+    "awaiting_customer_confirmation": "awaiting_customer_confirmation",
     "confirmed": "verified",
     "verified": "verified",
     "packed": "packed",
@@ -8682,12 +8742,25 @@ def _ensure_online_order_for_pharmacy(conn, pharm_order_id, approved_items=None,
         conn.execute("DELETE FROM online_order_items WHERE order_id = ?", (ol_id,))
         if approved_items:
             for itm in approved_items:
+                it_t = (itm.get("item_type") or ("medicine" if itm.get("medicine_id") else "medicine")).lower()
+                if it_t == "product" and itm.get("product_id"):
+                    disp_pid = int(itm["product_id"])
+                    disp_name = itm.get("name") or "Product"
+                elif it_t == "package":
+                    disp_pid = _valid_pid
+                    disp_name = f"📦 {itm.get('name') or 'Combo'}"
+                else:
+                    disp_pid = _valid_pid
+                    qty_i = max(1, int(itm.get("quantity") or 1))
+                    base_pcs = int(itm.get("base_pieces") or qty_i)
+                    u_lbl = itm.get("unit") or "পিস"
+                    unit_note = f" [{qty_i}x {u_lbl} = {base_pcs} পিস]" if (base_pcs != qty_i or str(itm.get("unit_mode") or "piece") != "piece") else ""
+                    disp_name = f"💊 {itm['name']}" + (f" ({itm['strength']})" if itm.get("strength") else "") + unit_note
                 conn.execute("""
                     INSERT INTO online_order_items (order_id, product_id, product_name, unit_price, mrp_price, quantity, total_price)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    ol_id, _valid_pid,
-                    f"💊 {itm['name']} ({itm.get('strength', '')})",
+                    ol_id, disp_pid, disp_name,
                     float(itm.get("unit_price") or 0.0),
                     float(itm.get("unit_price") or 0.0),
                     int(itm.get("quantity") or 1),
@@ -8716,6 +8789,9 @@ def api_rider_accept_order():
     if not order:
         conn.close()
         return jsonify({"success": False, "message": "Order not found."}), 400
+    if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation":
+        conn.close()
+        return jsonify({"success": False, "message": "গ্রাহক এখনো প্রেসক্রিপশন/বিল কোটেশন কনফার্ম করেননি। গ্রাহক কনফার্ম করলে তবেই রাইডার নিতে পারবেন।"}), 400
 
     now_iso = get_bd_now_iso()
     rider_user = conn.execute("SELECT id, full_name FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (rider_phone, data.get("rider_phone", ""))).fetchone()
@@ -8761,6 +8837,9 @@ def api_rider_update_order_status():
     if not order:
         conn.close()
         return jsonify({"success": False, "message": "Order not found."}), 400
+    if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation":
+        conn.close()
+        return jsonify({"success": False, "message": "গ্রাহক এখনো প্রেসক্রিপশন/বিল কোটেশন কনফার্ম করেননি। গ্রাহক কনফার্ম করলে তবেই রাইডার নিতে পারবেন।"}), 400
 
     if status == "delivered":
         if not otp or order["delivery_otp"] != otp:
@@ -8947,44 +9026,116 @@ def api_online_orders_count():
     return jsonify({"new_count": new_count, "total_count": total_count})
 
 
+def _resolve_online_item_cost(conn, item):
+    """Resolves exact purchase cost_price for a regular product or package line item."""
+    pid = item["product_id"]
+    pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
+    if not pkg and item["product_name"]:
+        pkg = conn.execute(
+            "SELECT id FROM packages WHERE name = ? OR instr(?, name) > 0",
+            (item["product_name"], item["product_name"]),
+        ).fetchone()
+    if pkg:
+        p_items = conn.execute(
+            "SELECT pi.quantity, COALESCE(p.cost_price, 0) AS cost_price FROM package_items pi JOIN products p ON pi.product_id = p.id WHERE pi.package_id = ?",
+            (pkg["id"],),
+        ).fetchall()
+        return round(sum(float(pi["cost_price"] or 0.0) * float(pi["quantity"] or 1) for pi in p_items), 4)
+    prod = conn.execute("SELECT cost_price FROM products WHERE id = ?", (pid,)).fetchone()
+    return float(prod["cost_price"] or 0.0) if prod else 0.0
+
+
+def _apply_rx_approved_stock_delta(conn, pharm_order, restore=False):
+    """Deducts or restores pharmacy_medicines / products / packages stock from approved_items_json."""
+    try:
+        approved = json.loads(pharm_order["approved_items_json"] or "[]")
+    except Exception:
+        approved = []
+    if not isinstance(approved, list):
+        return []
+    for itm in approved:
+        if not isinstance(itm, dict):
+            continue
+        it_type = (itm.get("item_type") or ("medicine" if itm.get("medicine_id") else ("package" if itm.get("package_id") else ("product" if itm.get("product_id") else "medicine")))).strip().lower()
+        qty = max(1, int(itm.get("quantity") or 1))
+        if it_type == "medicine" and itm.get("medicine_id"):
+            base_pcs = int(itm.get("base_pieces") or (qty * max(1, int(itm.get("unit_count") or 1))))
+            if restore:
+                conn.execute("UPDATE pharmacy_medicines SET stock_qty = stock_qty + ? WHERE id = ?", (base_pcs, itm["medicine_id"]))
+            else:
+                conn.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (base_pcs, itm["medicine_id"]))
+        elif it_type == "package" and itm.get("package_id"):
+            pkg_id = int(itm["package_id"])
+            if restore:
+                conn.execute("UPDATE packages SET sold_quantity = MAX(0, sold_quantity - ?) WHERE id = ?", (qty, pkg_id))
+            else:
+                conn.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (qty, pkg_id))
+            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pkg_id,)).fetchall()
+            for pi in p_items:
+                if restore:
+                    conn.execute("UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?", (pi["quantity"] * qty, pi["product_id"]))
+                else:
+                    conn.execute("UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (pi["quantity"] * qty, pi["product_id"]))
+                remote_control.push_product_to_cloud(pi["product_id"])
+            remote_control.push_packages_to_cloud()
+        elif it_type == "product" and itm.get("product_id"):
+            prod_id = int(itm["product_id"])
+            if restore:
+                conn.execute("UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?", (qty, prod_id))
+            else:
+                conn.execute("UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (qty, prod_id))
+            remote_control.push_product_to_cloud(prod_id)
+    return approved
+
+
 def deduct_online_order_stock(conn, order):
-    """Deducts stock for online order if not deducted yet."""
+    """Deducts stock for online order (or linked RX pharmacy order) if not deducted yet."""
     order_id = order["id"]
+    if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation":
+        return
     current = conn.execute("SELECT is_stock_deducted FROM online_orders WHERE id = ?", (order_id,)).fetchone()
     if current and current["is_stock_deducted"] == 1:
         return
 
-    items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
-    for item in items:
-        pid = item["product_id"]
-        qty = item["quantity"]
-        pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
-        if not pkg and item["product_name"]:
-            pkg = conn.execute("SELECT id FROM packages WHERE name = ? OR instr(?, name) > 0", (item["product_name"], item["product_name"])).fetchone()
+    pharm_row = conn.execute(
+        "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+        (order_id, order["order_number"]),
+    ).fetchone()
+    is_rx = bool(pharm_row) or str(order["order_number"] or "").startswith("RX-")
 
-        if pkg:
-            conn.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (qty, pkg["id"]))
-            p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pkg["id"],)).fetchall()
-            for pi in p_items:
+    approved_rx = []
+    if is_rx and pharm_row:
+        approved_rx = _apply_rx_approved_stock_delta(conn, pharm_row, restore=False)
+    else:
+        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+        for item in items:
+            pid = item["product_id"]
+            qty = item["quantity"]
+            pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
+            if not pkg and item["product_name"]:
+                pkg = conn.execute("SELECT id FROM packages WHERE name = ? OR instr(?, name) > 0", (item["product_name"], item["product_name"])).fetchone()
+
+            if pkg:
+                conn.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (qty, pkg["id"]))
+                p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pkg["id"],)).fetchall()
+                for pi in p_items:
+                    conn.execute(
+                        "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
+                        (pi["quantity"] * qty, pi["product_id"])
+                    )
+                    remote_control.push_product_to_cloud(pi["product_id"])
+                remote_control.push_packages_to_cloud()
+            else:
                 conn.execute(
                     "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
-                    (pi["quantity"] * qty, pi["product_id"])
+                    (qty, pid)
                 )
-                remote_control.push_product_to_cloud(pi["product_id"])
-            remote_control.push_packages_to_cloud()
-        else:
-            conn.execute(
-                "UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?",
-                (qty, pid)
-            )
-            remote_control.push_product_to_cloud(pid)
+                remote_control.push_product_to_cloud(pid)
 
     conn.execute("UPDATE online_orders SET is_stock_deducted = 1 WHERE id = ?", (order_id,))
 
-    # Check if sale record already exists for this online order
     inv_num = f"INV-ONLINE-{order['order_number']}"
     existing_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
-    
     if not existing_sale:
         cur = conn.cursor()
         cur.execute("""
@@ -9008,51 +9159,88 @@ def deduct_online_order_stock(conn, order):
             datetime.now().isoformat()
         ))
         sale_id = cur.lastrowid
-        
-        for item in items:
-            cur.execute("""
-                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
-            """, (
-                sale_id,
-                item["product_id"],
-                item["quantity"],
-                item["unit_price"],
-                item["mrp_price"]
-            ))
+
+        first_p = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+        fk_pid = first_p["id"] if first_p else 1
+        if is_rx and approved_rx:
+            for itm in approved_rx:
+                it_type = (itm.get("item_type") or ("medicine" if itm.get("medicine_id") else "medicine")).strip().lower()
+                qty = max(1, int(itm.get("quantity") or 1))
+                u_price = float(itm.get("unit_price") or 0.0)
+                c_price = float(itm.get("cost_price") or 0.0)
+                if it_type == "product" and itm.get("product_id"):
+                    row_pid = int(itm["product_id"])
+                    if c_price <= 0:
+                        pr = conn.execute("SELECT cost_price FROM products WHERE id = ?", (row_pid,)).fetchone()
+                        c_price = float(pr["cost_price"] or 0.0) if pr else 0.0
+                    serial_lbl = ""
+                elif it_type == "package":
+                    row_pid = fk_pid
+                    serial_lbl = f"📦 {itm.get('name') or 'Combo'}"
+                else:
+                    row_pid = fk_pid
+                    base_pcs = int(itm.get("base_pieces") or qty)
+                    u_lbl = itm.get("unit") or "পিস"
+                    unit_note = f" [{qty}x {u_lbl} = {base_pcs} পিস]" if (base_pcs != qty or str(itm.get("unit_mode") or "piece") != "piece") else ""
+                    serial_lbl = f"💊 {itm.get('name', 'Medicine')}" + (f" ({itm['strength']})" if itm.get("strength") else "") + unit_note
+                cur.execute("""
+                    INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
+                    VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
+                """, (sale_id, row_pid, qty, u_price, u_price, round(c_price, 4), serial_lbl))
+        else:
+            items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+            for item in items:
+                c_price = _resolve_online_item_cost(conn, item)
+                cur.execute("""
+                    INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
+                    VALUES (?, ?, ?, ?, ?, 0, 0, ?)
+                """, (
+                    sale_id,
+                    item["product_id"],
+                    item["quantity"],
+                    item["unit_price"],
+                    item["mrp_price"],
+                    c_price,
+                ))
         remote_control.push_sale_to_cloud(sale_id)
 
 
 def restore_online_order_stock(conn, order):
-    """Restores stock for online order if stock was deducted."""
+    """Restores stock for online order (or linked RX pharmacy order) if stock was deducted."""
     order_id = order["id"]
     current = conn.execute("SELECT is_stock_deducted FROM online_orders WHERE id = ?", (order_id,)).fetchone()
     
-    # Restore stock if is_stock_deducted == 1 OR if order status was verified/packed/on_the_way/delivered
     is_deducted = (current and current["is_stock_deducted"] == 1) or (order["order_status"] in ("verified", "packed", "on_the_way", "delivered"))
 
     if is_deducted:
-        items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
-        for item in items:
-            pid = item["product_id"]
-            qty = item["quantity"]
-            pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
-            if pkg:
-                conn.execute("UPDATE packages SET sold_quantity = MAX(0, sold_quantity - ?) WHERE id = ?", (qty, pkg["id"]))
-                p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pid,)).fetchall()
-                for pi in p_items:
+        pharm_row = conn.execute(
+            "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+            (order_id, order["order_number"]),
+        ).fetchone()
+        if pharm_row and (current and current["is_stock_deducted"] == 1):
+            _apply_rx_approved_stock_delta(conn, pharm_row, restore=True)
+        elif not pharm_row:
+            items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
+            for item in items:
+                pid = item["product_id"]
+                qty = item["quantity"]
+                pkg = conn.execute("SELECT id FROM packages WHERE id = ?", (pid,)).fetchone()
+                if pkg:
+                    conn.execute("UPDATE packages SET sold_quantity = MAX(0, sold_quantity - ?) WHERE id = ?", (qty, pkg["id"]))
+                    p_items = conn.execute("SELECT product_id, quantity FROM package_items WHERE package_id = ?", (pid,)).fetchall()
+                    for pi in p_items:
+                        conn.execute(
+                            "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
+                            (pi["quantity"] * qty, pi["product_id"])
+                        )
+                        remote_control.push_product_to_cloud(pi["product_id"])
+                    remote_control.push_packages_to_cloud()
+                else:
                     conn.execute(
                         "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
-                        (pi["quantity"] * qty, pi["product_id"])
+                        (qty, pid)
                     )
-                    remote_control.push_product_to_cloud(pi["product_id"])
-                remote_control.push_packages_to_cloud()
-            else:
-                conn.execute(
-                    "UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?",
-                    (qty, pid)
-                )
-                remote_control.push_product_to_cloud(pid)
+                    remote_control.push_product_to_cloud(pid)
 
         conn.execute("UPDATE online_orders SET is_stock_deducted = 0 WHERE id = ?", (order_id,))
 
@@ -9073,6 +9261,11 @@ def update_online_order_status(order_id):
     if not order:
         conn.close()
         flash("Order not found.", "error")
+        return redirect(url_for("online_orders"))
+
+    if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation" and (new_status or "").strip().lower() != "cancelled":
+        conn.close()
+        flash(f"Order #{order['order_number']} is waiting for customer quote confirmation and cannot be moved forward yet.", "error")
         return redirect(url_for("online_orders"))
 
     now_iso = get_bd_now_iso()
@@ -9185,7 +9378,7 @@ def online_order_invoice(order_id):
     inv_num = f"INV-ONLINE-{order['order_number']}"
     sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (inv_num,)).fetchone()
     
-    if not sale:
+    if not sale and (order["order_status"] or "").strip().lower() != "awaiting_customer_confirmation":
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_name, customer_mobile,
@@ -9211,15 +9404,18 @@ def online_order_invoice(order_id):
         
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (order_id,)).fetchall()
         for item in items:
+            c_price = _resolve_online_item_cost(conn, order, item)
             cur.execute("""
-                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+                INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
+                VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
             """, (
                 sale_id,
                 item["product_id"],
                 item["quantity"],
                 item["unit_price"],
-                item["mrp_price"]
+                item["mrp_price"],
+                c_price,
+                item["product_name"] or ""
             ))
         conn.commit()
     else:
@@ -11637,6 +11833,103 @@ def api_auth_forgot_password_reset():
 
 
 
+def _make_staff_token(user_dict, ttl_seconds=86400 * 7):
+    """Creates an HMAC-SHA256 signed token for authenticated Admin/Cashier/Rider mobile requests."""
+    import hmac, hashlib, base64, time
+    uid = int(user_dict.get("id") or 0)
+    uname = str(user_dict.get("username") or "")
+    role = str(user_dict.get("role") or "")
+    exp = int(time.time()) + int(ttl_seconds)
+    payload = f"{uid}|{uname}|{role}|{exp}"
+    key = (app.secret_key or "supershop-secret").encode("utf-8")
+    sig = hmac.new(key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw = f"{payload}|{sig}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def _verify_staff_token(token):
+    """Verifies an HMAC-SHA256 staff token; returns dict {id, username, role} or None."""
+    import hmac, hashlib, base64, time
+    if not token or not isinstance(token, str):
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.strip().encode("ascii")).decode("utf-8")
+        parts = raw.split("|")
+        if len(parts) != 5:
+            return None
+        uid_s, uname, role, exp_s, sig = parts
+        payload = f"{uid_s}|{uname}|{role}|{exp_s}"
+        key = (app.secret_key or "supershop-secret").encode("utf-8")
+        expected = hmac.new(key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(exp_s) < int(time.time()):
+            return None
+        return {"id": int(uid_s), "username": uname, "role": role}
+    except Exception:
+        return None
+
+
+def _get_bearer_or_param_token(data=None):
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    if auth_hdr.lower().startswith("bearer "):
+        return auth_hdr[7:].strip()
+    payload = data if isinstance(data, dict) else {}
+    return (
+        request.headers.get("X-Staff-Token")
+        or payload.get("token")
+        or request.args.get("token")
+        or ""
+    ).strip()
+
+
+def _authorize_admin_or_cashier(conn, data=None):
+    """Validates an active Admin or Cashier via Flask session or signed mobile token."""
+    if session.get("user_id"):
+        u = conn.execute(
+            "SELECT * FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1 AND role IN ('admin', 'cashier')",
+            (session.get("user_id"),),
+        ).fetchone()
+        if u:
+            return dict(u)
+    tok = _get_bearer_or_param_token(data)
+    parsed = _verify_staff_token(tok)
+    if parsed and parsed.get("role") in ("admin", "cashier"):
+        u = conn.execute(
+            "SELECT * FROM users WHERE id = ? AND username = ? AND COALESCE(is_active, 1) = 1 AND role IN ('admin', 'cashier')",
+            (parsed["id"], parsed["username"]),
+        ).fetchone()
+        if u:
+            return dict(u)
+    return None
+
+
+@app.route("/auth/sso-login")
+def auth_sso_login():
+    """Logs an authenticated mobile Admin/Cashier into the browser session and redirects to next_url."""
+    tok = (request.args.get("token") or "").strip()
+    next_url = (request.args.get("next") or "/admin").strip()
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/admin"
+    parsed = _verify_staff_token(tok)
+    if not parsed:
+        flash("Session link expired. Please sign in again from the app.", "error")
+        return redirect(url_for("login"))
+    conn = get_connection()
+    u = conn.execute(
+        "SELECT * FROM users WHERE id = ? AND username = ? AND COALESCE(is_active, 1) = 1",
+        (parsed["id"], parsed["username"]),
+    ).fetchone()
+    conn.close()
+    if not u:
+        return redirect(url_for("login"))
+    session["user_id"] = u["id"]
+    session["username"] = u["username"]
+    session["role"] = u["role"]
+    session["full_name"] = u["full_name"] if "full_name" in u.keys() else u["username"]
+    return redirect(next_url)
+
+
 @app.route("/api/auth/login", methods=["POST"])
 @limiter.limit("10 per minute")
 def api_auth_login():
@@ -11670,14 +11963,17 @@ def api_auth_login():
         session["user_id"] = user["id"]
         session["username"] = user["username"]
         session["role"] = user.get("role", "admin")
+        staff_token = _make_staff_token(user)
         return jsonify({
             "success": True,
             "is_admin": True,
+            "token": staff_token,
             "user": {
                 "id": user["id"],
                 "name": user.get("full_name") or user["username"],
                 "phone": user["username"],
-                "role": user.get("role", "admin")
+                "role": user.get("role", "admin"),
+                "token": staff_token,
             }
         })
 
@@ -11707,15 +12003,19 @@ def api_auth_login():
         session["user_id"] = user["id"]
         session["username"] = user["username"]
         session["role"] = user.get("role", "delivery")
+        staff_token = _make_staff_token(user)
         conn.close()
         return jsonify({
             "success": True,
             "is_delivery_man": True,
+            "token": staff_token,
             "user": {
                 "id": user["id"],
                 "name": user.get("full_name") or user.get("username"),
                 "phone": user.get("username") or phone,
-                "role": user.get("role", "delivery")
+                "role": user.get("role", "delivery"),
+                "can_rx_quote_bill": bool(user.get("can_rx_quote_bill", 0)),
+                "token": staff_token,
             }
         })
 
@@ -12846,11 +13146,22 @@ def _init_pharmacy_db_schema():
         except Exception:
             pass
 
-        # Check and add cost_price column
-        try:
-            cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN cost_price REAL DEFAULT 0.0")
-        except Exception:
-            pass
+        # Check and add cost_price & multi-unit pricing columns
+        for col_sql in (
+            "ALTER TABLE pharmacy_medicines ADD COLUMN cost_price REAL DEFAULT 0.0",
+            "ALTER TABLE pharmacy_medicines ADD COLUMN strip_cost_price REAL DEFAULT 0.0",
+            "ALTER TABLE pharmacy_medicines ADD COLUMN packet_price REAL DEFAULT 0.0",
+            "ALTER TABLE pharmacy_medicines ADD COLUMN packet_cost_price REAL DEFAULT 0.0",
+            "ALTER TABLE pharmacy_medicines ADD COLUMN packet_size INTEGER DEFAULT 30",
+            "ALTER TABLE pharmacy_orders ADD COLUMN customer_confirmed INTEGER DEFAULT 0",
+            "ALTER TABLE pharmacy_orders ADD COLUMN quote_sent_at TEXT DEFAULT ''",
+            "ALTER TABLE pharmacy_orders ADD COLUMN quote_by TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN can_rx_quote_bill INTEGER DEFAULT 0",
+        ):
+            try:
+                cur.execute(col_sql)
+            except Exception:
+                pass
 
         # Standardize Bengali dosage forms to English
         dosage_map = {
@@ -13063,7 +13374,7 @@ def _search_pharmacy_medicines(
     offset=0,
     only_in_stock=False,
     include_manufacturer=False,
-    select_cols="id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required",
+    select_cols="id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, cost_price, mrp, discount_percent, strip_price, strip_cost_price, strip_size, packet_price, packet_cost_price, packet_size, stock_qty, is_prescription_required",
 ):
     """Fast contiguous-match pharmacy search ranked best-match-first."""
     q_clean = " ".join((q or "").strip().split())
@@ -13689,6 +14000,7 @@ def api_pharmacy_order_status(order_number):
     # Status names in Bengali
     status_bn_map = {
         "reviewing": "ফার্মাসিস্ট প্রেসক্রিপশন যাচাই করছেন",
+        "awaiting_customer_confirmation": "বিল প্রস্তুত — আপনার কনফার্মেশনের অপেক্ষায়",
         "confirmed": "অর্ডার নিশ্চিত ও বিল তৈরি সম্পন্ন",
         "packed": "ওষুধ প্যাকড সম্পন্ন (ডেলিভারির জন্য প্রস্তুত)",
         "on_the_way": "ডেলিভারির পথে (রাইডারের কাছে হস্তান্তরিত)",
@@ -13708,18 +14020,22 @@ def api_pharmacy_order_status(order_number):
 
     result = {
         "success": True,
+        "id": order["id"],
         "order_number": order["order_number"],
         "order_type": order["order_type"],
         "order_status": current_status,
         "status_bn": status_bn_map.get(current_status, current_status),
+        "customer_confirmed": int(order["customer_confirmed"] or 0) if "customer_confirmed" in order.keys() else 0,
+        "quote_sent_at": order["quote_sent_at"] if "quote_sent_at" in order.keys() else "",
+        "quote_by": order["quote_by"] if "quote_by" in order.keys() else "",
         "customer_name": order["customer_name"],
         "customer_phone": order["customer_phone"],
         "delivery_address": order["delivery_address"],
         "district": order["district"],
         "area": order["area"],
-        "prescription_url": order["prescription_url"],
-        "prescription_original_url": order["prescription_original_url"] or order["prescription_url"],
-        "prescription_enhanced_url": order["prescription_enhanced_url"] or order["prescription_url"],
+        "prescription_url": _abs_url(order["prescription_url"]),
+        "prescription_original_url": _abs_url(order["prescription_original_url"] or order["prescription_url"]),
+        "prescription_enhanced_url": _abs_url(order["prescription_enhanced_url"] or order["prescription_url"]),
         "overall_duration_days": order["overall_duration_days"],
         "customer_notes": order["customer_notes"],
         "requested_items": req_items,
@@ -13741,6 +14057,101 @@ def api_pharmacy_order_status(order_number):
     }
     conn.close()
     return jsonify(result)
+
+
+@app.route("/api/pharmacy/customer-confirm-quote", methods=["POST"])
+def api_pharmacy_customer_confirm_quote():
+    """Customer confirms or cancels a reviewed pharmacy bill quotation before packing/dispatch can start."""
+    data = request.get_json(silent=True) or request.form or {}
+    order_number = (data.get("order_number") or "").strip()
+    order_id = data.get("order_id")
+    action = (data.get("action") or "confirm").strip().lower()
+    raw_phone = (data.get("customer_phone") or session.get("customer_phone") or "").strip()
+    norm_phone = normalize_phone(raw_phone) or raw_phone
+
+    if not (order_number or order_id):
+        return jsonify({"success": False, "message": "অর্ডার নম্বর প্রয়োজন।"}), 400
+    if action not in ("confirm", "cancel"):
+        return jsonify({"success": False, "message": "অবৈধ অ্যাকশন।"}), 400
+
+    conn = get_connection()
+    if order_number:
+        order = conn.execute("SELECT * FROM pharmacy_orders WHERE order_number = ? LIMIT 1", (order_number,)).fetchone()
+    else:
+        order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ? LIMIT 1", (order_id,)).fetchone()
+
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "অর্ডার খুঁজে পাওয়া যায়নি।"}), 404
+
+    ord_phone_norm = normalize_phone(order["customer_phone"] or "") or (order["customer_phone"] or "").strip()
+    if norm_phone and ord_phone_norm and norm_phone != ord_phone_norm:
+        conn.close()
+        return jsonify({"success": False, "message": "এই অর্ডারটি আপনার অ্যাকাউন্টের সাথে মেলেনি।"}), 403
+
+    curr_st = (order["order_status"] or "").strip().lower()
+    if curr_st != "awaiting_customer_confirmation":
+        conn.close()
+        return jsonify({"success": False, "message": f"অর্ডারটি বর্তমানে '{curr_st}' অবস্থায় রয়েছে এবং কনফার্মেশনের জন্য অপেক্ষমাণ নয়।"}), 400
+
+    now_iso = get_bd_now_iso()
+    ol_id = _ensure_online_order_for_pharmacy(conn, order["id"], now_iso=now_iso)
+
+    if action == "confirm":
+        conn.execute("""
+            UPDATE pharmacy_orders SET
+                order_status = 'confirmed',
+                customer_confirmed = 1,
+                confirmed_at = CASE WHEN COALESCE(confirmed_at, '') = '' THEN ? ELSE confirmed_at END,
+                updated_at = ?
+            WHERE id = ?
+        """, (now_iso, now_iso, order["id"]))
+        if ol_id:
+            conn.execute("""
+                UPDATE online_orders SET
+                    order_status = 'verified',
+                    confirmed_at = CASE WHEN COALESCE(confirmed_at, '') = '' THEN ? ELSE confirmed_at END,
+                    updated_at = ?
+                WHERE id = ?
+            """, (now_iso, now_iso, ol_id))
+            ol_row = conn.execute("SELECT * FROM online_orders WHERE id = ?", (ol_id,)).fetchone()
+            if ol_row:
+                deduct_online_order_stock(conn, ol_row)
+                notify_order_status_change(ol_row, "verified", conn=conn)
+        msg = f"ধন্যবাদ! অর্ডার #{order['order_number']} কনফার্ম হয়েছে। এখন প্যাকিং ও ডেলিভারি শুরু হবে।"
+    else:
+        conn.execute("""
+            UPDATE pharmacy_orders SET
+                order_status = 'cancelled',
+                cancelled_at = CASE WHEN COALESCE(cancelled_at, '') = '' THEN ? ELSE cancelled_at END,
+                updated_at = ?
+            WHERE id = ?
+        """, (now_iso, now_iso, order["id"]))
+        if ol_id:
+            conn.execute("""
+                UPDATE online_orders SET
+                    order_status = 'cancelled',
+                    cancelled_at = CASE WHEN COALESCE(cancelled_at, '') = '' THEN ? ELSE cancelled_at END,
+                    updated_at = ?
+                WHERE id = ?
+            """, (now_iso, now_iso, ol_id))
+            ol_row = conn.execute("SELECT * FROM online_orders WHERE id = ?", (ol_id,)).fetchone()
+            if ol_row:
+                restore_online_order_stock(conn, ol_row)
+                notify_order_status_change(ol_row, "cancelled", conn=conn)
+        msg = f"অর্ডার #{order['order_number']} বাতিল করা হয়েছে।"
+
+    conn.commit()
+    conn.close()
+
+    try:
+        remote_control.push_pharmacy_order_to_cloud(order["id"])
+        if ol_id:
+            remote_control.push_online_order_to_cloud(ol_id)
+    except Exception:
+        pass
+
+    return jsonify({"success": True, "order_status": "confirmed" if action == "confirm" else "cancelled", "message": msg})
 
 
 # -----------------------------------------------------------------------------
@@ -13894,7 +14305,7 @@ def api_admin_pharmacy_medicines_list():
         limit=per_page,
         offset=offset,
         include_manufacturer=True,
-        select_cols="id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required, expiry_date, low_stock_threshold, cost_price",
+        select_cols="id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, cost_price, mrp, discount_percent, strip_price, strip_cost_price, strip_size, packet_price, packet_cost_price, packet_size, stock_qty, is_prescription_required, expiry_date, low_stock_threshold",
     )
     conn.close()
 
@@ -13934,13 +14345,313 @@ def api_admin_pharmacy_settings():
     return jsonify({"success": True, "message": "Pharmacy settings updated successfully.", "settings": updates})
 
 
+def _normalize_medicine_multi_unit_pricing(data, med_id=None, strip_size=10, packet_size=30):
+    """Computes consistent piece, strip (পাতা), and packet (প্যাকেট) purchase & selling prices."""
+    s_sz = max(1, int(strip_size or 10))
+    p_sz = max(1, int(packet_size or 30))
+
+    def _f(k):
+        try:
+            return max(0.0, float(data.get(k) or 0.0))
+        except Exception:
+            return 0.0
+
+    mrp = _f("mrp")
+    disc = min(100.0, _f("discount_percent"))
+    unit_price = _f("unit_price")
+    cost_price = _f("cost_price")
+    strip_price = _f("strip_price")
+    strip_cost_price = _f("strip_cost_price")
+    packet_price = _f("packet_price")
+    packet_cost_price = _f("packet_cost_price")
+
+    if mrp > 0 and disc > 0 and unit_price <= 0:
+        unit_price = round(mrp * (1.0 - disc / 100.0), 2)
+    elif mrp > 0 and unit_price > 0 and disc <= 0 and mrp > unit_price:
+        disc = round(((mrp - unit_price) / mrp) * 100.0, 1)
+    elif mrp <= 0 and unit_price > 0:
+        mrp = unit_price
+
+    if unit_price <= 0:
+        if strip_price > 0:
+            unit_price = round(strip_price / s_sz, 2)
+            mrp = mrp if mrp > 0 else unit_price
+        elif packet_price > 0:
+            unit_price = round(packet_price / p_sz, 2)
+            mrp = mrp if mrp > 0 else unit_price
+
+    if strip_price <= 0 and unit_price > 0:
+        strip_price = round(unit_price * s_sz, 2)
+    if packet_price <= 0 and unit_price > 0:
+        packet_price = round(unit_price * p_sz, 2)
+
+    if cost_price <= 0:
+        if strip_cost_price > 0:
+            cost_price = round(strip_cost_price / s_sz, 4)
+        elif packet_cost_price > 0:
+            cost_price = round(packet_cost_price / p_sz, 4)
+    if strip_cost_price <= 0 and cost_price > 0:
+        strip_cost_price = round(cost_price * s_sz, 2)
+    if packet_cost_price <= 0 and cost_price > 0:
+        packet_cost_price = round(cost_price * p_sz, 2)
+
+    return {
+        "mrp": round(mrp, 2),
+        "discount_percent": round(disc, 2),
+        "unit_price": round(unit_price, 2),
+        "cost_price": round(cost_price, 4),
+        "strip_size": s_sz,
+        "strip_price": round(strip_price, 2),
+        "strip_cost_price": round(strip_cost_price, 2),
+        "packet_size": p_sz,
+        "packet_price": round(packet_price, 2),
+        "packet_cost_price": round(packet_cost_price, 2),
+    }
+
+
+def _resolve_medicine_line_pricing(med_row, overall_disc, price_mode="piece", custom_unit_price=None):
+    """Resolves unit_count, sell_price, mrp_price, and exact purchase cost_price for piece/strip/packet."""
+    m = dict(med_row)
+    mode_raw = str(price_mode or "piece").strip().lower()
+    if mode_raw in ("strip", "পাতা", "pata"):
+        mode = "strip"
+    elif mode_raw in ("packet", "pack", "box", "প্যাকেট", "বক্স"):
+        mode = "packet"
+    else:
+        mode = "piece"
+
+    s_sz = max(1, int(m.get("strip_size") or 10))
+    p_sz = max(1, int(m.get("packet_size") or 30))
+
+    mrp_pc, sell_pc, eff_disc = _calc_medicine_sell_price(m, overall_disc)
+    cost_pc = float(m.get("cost_price") or 0.0)
+    s_cost = float(m.get("strip_cost_price") or 0.0)
+    p_cost = float(m.get("packet_cost_price") or 0.0)
+    if cost_pc <= 0 and s_cost > 0:
+        cost_pc = round(s_cost / s_sz, 4)
+    elif cost_pc <= 0 and p_cost > 0:
+        cost_pc = round(p_cost / p_sz, 4)
+
+    if mode == "strip":
+        unit_count = s_sz
+        base_strip_p = float(m.get("strip_price") or 0.0)
+        mrp_unit = round(base_strip_p if base_strip_p > 0 else (mrp_pc * s_sz), 2)
+        if base_strip_p > 0:
+            sell_unit = round(base_strip_p * (1.0 - eff_disc / 100.0), 2) if (eff_disc > 0 and float(m.get("discount_percent") or 0) <= 0 and overall_disc > 0) else round(base_strip_p, 2)
+        else:
+            sell_unit = round(sell_pc * s_sz, 2)
+        cost_unit = round(s_cost if s_cost > 0 else (cost_pc * s_sz), 2)
+        unit_label = f"পাতা ({s_sz} পিস)"
+    elif mode == "packet":
+        unit_count = p_sz
+        base_pkt_p = float(m.get("packet_price") or 0.0)
+        mrp_unit = round(base_pkt_p if base_pkt_p > 0 else (mrp_pc * p_sz), 2)
+        if base_pkt_p > 0:
+            sell_unit = round(base_pkt_p * (1.0 - eff_disc / 100.0), 2) if (eff_disc > 0 and float(m.get("discount_percent") or 0) <= 0 and overall_disc > 0) else round(base_pkt_p, 2)
+        else:
+            sell_unit = round(sell_pc * p_sz, 2)
+        cost_unit = round(p_cost if p_cost > 0 else (cost_pc * p_sz), 2)
+        unit_label = f"প্যাকেট ({p_sz} পিস)"
+    else:
+        unit_count = 1
+        mrp_unit = mrp_pc
+        sell_unit = sell_pc
+        cost_unit = round(cost_pc, 4)
+        unit_label = "পিস"
+
+    if custom_unit_price is not None:
+        try:
+            cp = float(custom_unit_price)
+            if cp > 0:
+                sell_unit = round(cp, 2)
+        except Exception:
+            pass
+
+    return {
+        "unit_mode": mode,
+        "unit_label": unit_label,
+        "unit_count": unit_count,
+        "sell_price": sell_unit,
+        "mrp_price": mrp_unit,
+        "cost_price": cost_unit,
+    }
+
+
+def _save_and_send_pharmacy_quote(conn, order_id, items, delivery_charge=50.0, admin_notes="", actor_name="Pharmacist"):
+    """Validates items (medicines by piece/strip/packet + regular products), saves quote, and requires customer confirmation."""
+    order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        return None, "অর্ডারটি পাওয়া যায়নি।"
+    shop_settings = get_all_settings(conn)
+    overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    processed_items = []
+    subtotal = 0.0
+    total_cost = 0.0
+    for it in items:
+        it_type = (it.get("item_type") or ("medicine" if it.get("medicine_id") else ("package" if it.get("package_id") else ("product" if it.get("product_id") else "medicine")))).strip().lower()
+        try:
+            qty = max(1, int(it.get("quantity") or it.get("qty") or 1))
+        except Exception:
+            qty = 1
+        price_mode = (it.get("unit_mode") or it.get("price_mode") or it.get("sell_unit") or it.get("unit") or "piece").strip()
+        med_id = it.get("medicine_id") or (it.get("id") if it_type == "medicine" else None)
+        prod_id = it.get("product_id") or (it.get("id") if it_type in ("product", "package") else None)
+        custom_price = it.get("unit_price")
+
+        if it_type == "medicine" and med_id:
+            med = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ?", (med_id,)).fetchone()
+            if med:
+                resolved = _resolve_medicine_line_pricing(med, overall_disc, price_mode=price_mode, custom_unit_price=custom_price)
+                unit_price = resolved["sell_price"]
+                cost_price = resolved["cost_price"]
+                unit_count = resolved["unit_count"]
+                unit_label = resolved["unit_label"]
+                unit_mode = resolved["unit_mode"]
+                name = (it.get("name") or med["name"] or "").strip()
+                gen = it.get("generic_name") or med["generic_name"] or ""
+                d_form = it.get("dosage_form") or med["dosage_form"] or "Tablet"
+                strength = it.get("strength") or med["strength"] or ""
+            else:
+                unit_price = float(custom_price or 0.0)
+                cost_price = float(it.get("cost_price") or 0.0)
+                unit_count = max(1, int(it.get("unit_count") or 1))
+                unit_label = it.get("unit") or "পিস"
+                unit_mode = "piece"
+                name = (it.get("name") or "").strip()
+                gen = it.get("generic_name") or ""
+                d_form = it.get("dosage_form") or "Tablet"
+                strength = it.get("strength") or ""
+        elif it_type in ("product", "package") and prod_id:
+            if it_type == "package":
+                pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (prod_id,)).fetchone()
+                name = (it.get("name") or (pkg["name"] if pkg else "")).strip()
+                unit_price = float(custom_price or (pkg["package_price"] if pkg else 0.0))
+                pkg_items = conn.execute("SELECT pi.quantity, COALESCE(p.cost_price, 0) AS cost_price FROM package_items pi JOIN products p ON pi.product_id = p.id WHERE pi.package_id = ?", (prod_id,)).fetchall()
+                cost_price = round(sum(float(x["cost_price"] or 0.0) * float(x["quantity"] or 1) for x in pkg_items), 2)
+                unit_label = "কম্বো প্যাকেজ"
+            else:
+                prod = conn.execute("SELECT * FROM products WHERE id = ?", (prod_id,)).fetchone()
+                name = (it.get("name") or (prod["name"] if prod else "")).strip()
+                unit_price = float(custom_price or (prod["sell_price"] if prod else 0.0))
+                cost_price = float(prod["cost_price"] or 0.0) if prod else float(it.get("cost_price") or 0.0)
+                unit_label = it.get("unit") or (prod["unit"] if prod and prod["unit"] else "পিস")
+            unit_count = 1
+            unit_mode = it_type
+            gen = ""
+            d_form = it_type.title()
+            strength = ""
+        else:
+            name = (it.get("name") or "").strip()
+            if not name:
+                continue
+            unit_price = float(custom_price or 0.0)
+            cost_price = float(it.get("cost_price") or 0.0)
+            unit_count = max(1, int(it.get("unit_count") or 1))
+            unit_label = it.get("unit") or "পিস"
+            unit_mode = "custom"
+            gen = it.get("generic_name") or ""
+            d_form = it.get("dosage_form") or "Tablet"
+            strength = it.get("strength") or ""
+
+        if not name:
+            continue
+        base_pieces = qty * unit_count
+        line_total = round(qty * unit_price, 2)
+        line_cost = round(qty * cost_price, 2)
+        subtotal += line_total
+        total_cost += line_cost
+        processed_items.append({
+            "item_type": it_type,
+            "medicine_id": int(med_id) if med_id else None,
+            "product_id": int(prod_id) if prod_id else None,
+            "name": name,
+            "generic_name": gen,
+            "dosage_form": d_form,
+            "strength": strength,
+            "quantity": qty,
+            "unit_mode": unit_mode,
+            "unit": unit_label,
+            "unit_count": unit_count,
+            "base_pieces": base_pieces,
+            "unit_price": round(unit_price, 2),
+            "cost_price": round(cost_price, 4),
+            "total_price": line_total,
+            "total_cost": line_cost,
+        })
+
+    if not processed_items:
+        return None, "অনুগ্রহ করে কমপক্ষে একটি ওষুধ বা পণ্য বিলে যোগ করুন।"
+
+    subtotal = round(subtotal, 2)
+    grand_total = round(subtotal + delivery_charge, 2)
+    now_iso = get_bd_now_iso()
+
+    conn.execute("""
+        UPDATE pharmacy_orders SET
+            approved_items_json = ?,
+            subtotal = ?,
+            delivery_charge = ?,
+            total_amount = ?,
+            admin_notes = ?,
+            order_status = 'awaiting_customer_confirmation',
+            customer_confirmed = 0,
+            quote_sent_at = ?,
+            quote_by = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (
+        json.dumps(processed_items, ensure_ascii=False),
+        subtotal, delivery_charge, grand_total,
+        admin_notes, now_iso, actor_name, now_iso, order_id
+    ))
+
+    ol_id = _ensure_online_order_for_pharmacy(conn, order_id, approved_items=processed_items, now_iso=now_iso)
+    order_ref = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
+    if ol_id and order_ref and order_ref["order_number"]:
+        stale_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (f"INV-ONLINE-{order_ref['order_number']}",)).fetchone()
+        if stale_sale:
+            conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (stale_sale["id"],))
+            conn.execute("DELETE FROM sales WHERE id = ?", (stale_sale["id"],))
+
+    # Notify Customer Android Notification Tray & Bell: Customer MUST confirm before order proceeds
+    cust_phone = (order_ref["customer_phone"] or "").strip() if order_ref else ""
+    ord_num = (order_ref["order_number"] or f"RX-{order_id}") if order_ref else f"RX-{order_id}"
+    if cust_phone:
+        add_customer_notification(
+            customer_phone=cust_phone,
+            title=f"💊 প্রেসক্রিপশন বিল প্রস্তুত — কনফার্ম করুন (#{ord_num})",
+            message=f"আপনার অর্ডার #{ord_num} যাচাই করে মোট বিল TK {grand_total:.2f} প্রস্তুত করা হয়েছে। অনুগ্রহ করে অ্যাপে প্রবেশ করে কনফার্ম করুন নতুবা প্যাকিং শুরু হবে না।",
+            notif_type="pharmacy_quote",
+            reference_id=str(ord_num),
+            conn=conn,
+        )
+
+    conn.commit()
+    try:
+        remote_control.push_pharmacy_order_to_cloud(order_id)
+        if ol_id:
+            remote_control.push_online_order_to_cloud(ol_id)
+    except Exception:
+        pass
+
+    return {
+        "order": dict(order_ref) if order_ref else {},
+        "online_order_id": ol_id,
+        "subtotal": subtotal,
+        "delivery_charge": delivery_charge,
+        "grand_total": grand_total,
+        "total_cost": round(total_cost, 2),
+        "processed_items": processed_items,
+    }, None
+
+
 @app.route("/api/admin/pharmacy/orders/<int:order_id>/generate-bill", methods=["POST"])
 @login_required
 def api_admin_pharmacy_generate_bill(order_id):
     """
-    Admin / Pharmacist reviews prescription, adds/modifies medicines,
-    sets quantities and unit prices, and confirms the order with calculated bill.
-    Synchronizes with online_orders for rider & receipt generation.
+    Admin / Pharmacist reviews prescription, adds medicines/products (with piece/strip/packet pricing),
+    and sends quote for MANDATORY customer confirmation before proceeding.
     """
     req_data = request.get_json(silent=True) or request.form or {}
     items = req_data.get("items") or []
@@ -13953,85 +14664,22 @@ def api_admin_pharmacy_generate_bill(order_id):
     if not items:
         return jsonify({"success": False, "message": "অনুগ্রহ করে কমপক্ষে একটি ওষুধ বিলে যোগ করুন।"}), 400
 
-    processed_items = []
-    subtotal = 0.0
-    for it in items:
-        name = (it.get("name") or "").strip()
-        if not name:
-            continue
-        try:
-            qty = int(it.get("quantity") or 1)
-        except Exception:
-            qty = 1
-        unit_price = float(it.get("unit_price") or 0.0)
-        line_total = round(qty * unit_price, 2)
-        subtotal += line_total
-
-        processed_items.append({
-            "medicine_id": it.get("medicine_id"),
-            "name": name,
-            "generic_name": it.get("generic_name") or "",
-            "dosage_form": it.get("dosage_form") or "Tablet",
-            "strength": it.get("strength") or "",
-            "quantity": qty,
-            "unit": it.get("unit") or "পিস",
-            "unit_price": unit_price,
-            "total_price": line_total
-        })
-
-    subtotal = round(subtotal, 2)
-    grand_total = round(subtotal + delivery_charge, 2)
-    now_iso = get_bd_now_iso()
-
+    actor_name = session.get("full_name") or session.get("username") or "Admin/Pharmacist"
     conn = get_connection()
-    cur = conn.cursor()
-
-    # 1. Update pharmacy_orders
-    cur.execute("""
-        UPDATE pharmacy_orders SET
-            approved_items_json = ?,
-            subtotal = ?,
-            delivery_charge = ?,
-            total_amount = ?,
-            admin_notes = ?,
-            order_status = 'confirmed',
-            confirmed_at = ?,
-            updated_at = ?
-        WHERE id = ?
-    """, (
-        json.dumps(processed_items, ensure_ascii=False),
-        subtotal, delivery_charge, grand_total,
-        admin_notes, now_iso, now_iso, order_id
-    ))
-
-    # 2. Synchronize with online_orders & online_order_items (creating/linking online_order even if online_order_id == 0)
-    ol_id = _ensure_online_order_for_pharmacy(conn, order_id, approved_items=processed_items, now_iso=now_iso)
-    order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
-    if ol_id and order and order["order_number"]:
-        stale_sale = conn.execute("SELECT id FROM sales WHERE invoice_number = ?", (f"INV-ONLINE-{order['order_number']}",)).fetchone()
-        if stale_sale:
-            conn.execute("DELETE FROM sale_items WHERE sale_id = ?", (stale_sale["id"],))
-            conn.execute("DELETE FROM sales WHERE id = ?", (stale_sale["id"],))
-    if ol_id:
-        ol_row = conn.execute("SELECT * FROM online_orders WHERE id = ?", (ol_id,)).fetchone()
-        if ol_row:
-            notify_order_status_change(ol_row, "verified", conn=conn)
-
-    conn.commit()
+    result, err = _save_and_send_pharmacy_quote(
+        conn, order_id, items, delivery_charge=delivery_charge, admin_notes=admin_notes, actor_name=actor_name
+    )
     conn.close()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
 
-    try:
-        remote_control.push_pharmacy_order_to_cloud(order_id)
-        if ol_id:
-            remote_control.push_online_order_to_cloud(ol_id)
-    except Exception:
-        pass
-
+    ol_id = result["online_order_id"]
+    ord_num = result["order"].get("order_number", order_id)
     invoice_url = f"/online_orders/{ol_id}/invoice" if ol_id else None
-
     return jsonify({
         "success": True,
-        "message": f"Order #{order['order_number']} bill confirmed successfully (Total: TK {grand_total:.2f}).",
+        "order_status": "awaiting_customer_confirmation",
+        "message": f"Order #{ord_num} bill sent to customer for confirmation (Total: TK {result['grand_total']:.2f}). Packing/delivery will unlock once customer confirms.",
         "online_order_id": ol_id,
         "invoice_url": invoice_url
     })
@@ -14050,7 +14698,7 @@ def api_admin_pharmacy_update_status(order_id):
     rider_id = data.get("rider_id")
     otp_code = (data.get("otp") or "").strip()
 
-    valid_statuses = ["reviewing", "confirmed", "packed", "on_the_way", "delivered", "cancelled"]
+    valid_statuses = ["reviewing", "awaiting_customer_confirmation", "confirmed", "packed", "on_the_way", "delivered", "cancelled"]
     if new_status not in valid_statuses:
         return jsonify({"success": False, "message": "অবৈধ স্ট্যাটাস।"}), 400
 
@@ -14059,6 +14707,14 @@ def api_admin_pharmacy_update_status(order_id):
     if not order:
         conn.close()
         return jsonify({"success": False, "message": "অর্ডার পাওয়া যায়নি।"}), 404
+
+    curr_st = (order["order_status"] or "").strip().lower()
+    if curr_st == "awaiting_customer_confirmation" and new_status in ("confirmed", "packed", "on_the_way", "delivered"):
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": "গ্রাহক এখনো বিলের কোটেশন কনফার্ম করেননি! কাস্টমার কনফার্ম না করা পর্যন্ত অর্ডার সামনে এগানো যাবে না।"
+        }), 400
 
     # OTP check if marking delivered
     if new_status == "delivered":
@@ -14162,23 +14818,25 @@ def api_admin_pharmacy_save_medicine():
     except Exception:
         discount_percent = 0.0
 
-    # Auto compute unit_price and discount if one is given
-    if mrp > 0 and discount_percent > 0 and unit_price <= 0:
-        unit_price = round(mrp * (1.0 - discount_percent / 100.0), 2)
-    elif mrp > 0 and unit_price > 0 and discount_percent <= 0 and mrp > unit_price:
-        discount_percent = round(((mrp - unit_price) / mrp) * 100.0, 1)
-    elif mrp <= 0 and unit_price > 0:
-        mrp = unit_price
-
     try:
-        strip_price = float(data.get("strip_price") or 0.0)
-    except Exception:
-        strip_price = 0.0
-
-    try:
-        strip_size = int(data.get("strip_size") or 10)
+        strip_size = max(1, int(data.get("strip_size") or 10))
     except Exception:
         strip_size = 10
+
+    try:
+        packet_size = max(1, int(data.get("packet_size") or 30))
+    except Exception:
+        packet_size = 30
+
+    norm_p = _normalize_medicine_multi_unit_pricing(data, med_id=med_id, strip_size=strip_size, packet_size=packet_size)
+    unit_price = norm_p["unit_price"]
+    mrp = norm_p["mrp"]
+    discount_percent = norm_p["discount_percent"]
+    strip_price = norm_p["strip_price"]
+    strip_cost_price = norm_p["strip_cost_price"]
+    packet_price = norm_p["packet_price"]
+    packet_cost_price = norm_p["packet_cost_price"]
+    cost_price = norm_p["cost_price"]
 
     try:
         stock_qty = int(data.get("stock_qty") or 999)
@@ -14190,11 +14848,6 @@ def api_admin_pharmacy_save_medicine():
         low_stock_threshold = int(data.get("low_stock_threshold") or 10)
     except Exception:
         low_stock_threshold = 10
-
-    try:
-        cost_price = float(data.get("cost_price") or 0.0)
-    except Exception:
-        cost_price = 0.0
 
     is_rx = 1 if data.get("is_prescription_required") in [1, "1", True, "true"] else 0
     now_iso = get_bd_now_iso()
@@ -14220,12 +14873,21 @@ def api_admin_pharmacy_save_medicine():
             UPDATE pharmacy_medicines SET
                 name = ?, generic_name = ?, dosage_form = ?, strength = ?,
                 manufacturer = ?, sku = ?, unit_price = ?, mrp = ?, discount_percent = ?,
-                strip_price = ?, strip_size = ?, stock_qty = ?, is_prescription_required = ?,
+                strip_price = ?, strip_cost_price = ?, strip_size = ?,
+                packet_price = ?, packet_cost_price = ?, packet_size = ?,
+                stock_qty = ?, is_prescription_required = ?,
                 expiry_date = ?, low_stock_threshold = ?, cost_price = ?,
                 description = ?, updated_at = ?
             WHERE id = ?
-        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, expiry_date, low_stock_threshold, cost_price, description, now_iso, med_id))
-        msg = f"'{name}' (SKU: {sku}) details and price updated successfully."
+        """, (
+            name, generic_name, dosage_form, strength, manufacturer, sku,
+            unit_price, mrp, discount_percent,
+            strip_price, strip_cost_price, strip_size,
+            packet_price, packet_cost_price, packet_size,
+            stock_qty, is_rx, expiry_date, low_stock_threshold, cost_price,
+            description, now_iso, med_id
+        ))
+        msg = f"'{name}' (SKU: {sku}) details and multi-unit pricing updated successfully."
     else:
         if not sku:
             cur.execute("SELECT MAX(id) FROM pharmacy_medicines")
@@ -14242,11 +14904,20 @@ def api_admin_pharmacy_save_medicine():
         cur.execute("""
             INSERT INTO pharmacy_medicines (
                 name, generic_name, dosage_form, strength, manufacturer, sku,
-                unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty,
-                is_prescription_required, expiry_date, low_stock_threshold, cost_price,
+                unit_price, mrp, discount_percent,
+                strip_price, strip_cost_price, strip_size,
+                packet_price, packet_cost_price, packet_size,
+                stock_qty, is_prescription_required, expiry_date, low_stock_threshold, cost_price,
                 image_url, description, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
-        """, (name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_rx, expiry_date, low_stock_threshold, cost_price, description, now_iso, now_iso))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?, ?)
+        """, (
+            name, generic_name, dosage_form, strength, manufacturer, sku,
+            unit_price, mrp, discount_percent,
+            strip_price, strip_cost_price, strip_size,
+            packet_price, packet_cost_price, packet_size,
+            stock_qty, is_rx, expiry_date, low_stock_threshold, cost_price,
+            description, now_iso, now_iso
+        ))
         med_id = cur.lastrowid
         msg = f"Medicine '{name}' (SKU: {sku}) added to catalog successfully."
 
@@ -14369,7 +15040,11 @@ def _format_pos_medicine_dict(r, overall_disc):
         "mrp": mrp_val,
         "discount_percent": eff_disc,
         "strip_price": float(r["strip_price"] or 0.0),
-        "strip_size": r["strip_size"] or "",
+        "strip_cost_price": float(r["strip_cost_price"] or 0.0) if "strip_cost_price" in r.keys() else 0.0,
+        "strip_size": r["strip_size"] or 10,
+        "packet_price": float(r["packet_price"] or 0.0) if "packet_price" in r.keys() else 0.0,
+        "packet_cost_price": float(r["packet_cost_price"] or 0.0) if "packet_cost_price" in r.keys() else 0.0,
+        "packet_size": int(r["packet_size"] or 30) if "packet_size" in r.keys() else 30,
         "stock_qty": int(r["stock_qty"] or 0),
         "expiry_date": r["expiry_date"] or "",
         "cost_price": float(r["cost_price"] or 0.0),
@@ -14488,11 +15163,22 @@ def api_admin_pharmacy_pos_checkout():
             return jsonify({"error": f'Medicine "{med["name"]}" expired on {med["expiry_date"]}.'}), 400
 
         quantity = max(1, int(item.get("quantity") or 1))
-        if med["stock_qty"] is not None and int(med["stock_qty"]) < quantity:
+        sell_unit = (item.get("sell_unit") or item.get("unit_mode") or item.get("price_mode") or item.get("unit") or "piece").strip()
+        resolved = _resolve_medicine_line_pricing(
+            med,
+            overall_disc,
+            price_mode=sell_unit,
+            custom_unit_price=item.get("unit_price"),
+        )
+        deduct_pcs = quantity * resolved["unit_count"]
+        if med["stock_qty"] is not None and int(med["stock_qty"]) < deduct_pcs:
             conn.close()
-            return jsonify({"error": f'Not enough stock for "{med["name"]}" ({med["stock_qty"]} available, {quantity} requested).'}), 400
+            return jsonify({
+                "error": f'Not enough stock for "{med["name"]}" ({med["stock_qty"]} পিস available, {deduct_pcs} পিস requested).'
+            }), 400
 
-        mrp_val, sell_p, _ = _calc_medicine_sell_price(med, overall_disc)
+        mrp_val = resolved["mrp_price"]
+        sell_p = resolved["sell_price"]
         line_subtotal = round(sell_p * quantity, 2)
         sub_total += line_subtotal
         mrp_total += round(mrp_val * quantity, 2)
@@ -14501,9 +15187,12 @@ def api_admin_pharmacy_pos_checkout():
             "medicine_name": med["name"],
             "medicine_strength": med["strength"] or med["dosage_form"] or "",
             "quantity": quantity,
+            "deduct_pcs": deduct_pcs,
+            "unit_mode": resolved["unit_mode"],
+            "unit_label": resolved["unit_label"],
             "unit_price": sell_p,
             "mrp_price": mrp_val,
-            "cost_price": float(med["cost_price"] or 0.0),
+            "cost_price": resolved["cost_price"],
         })
 
     grand_total = max(0.0, sub_total - extra_discount)
@@ -14549,8 +15238,13 @@ def api_admin_pharmacy_pos_checkout():
     first_p = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
     fk_pid = first_p["id"] if first_p else 1
     for ld in line_details:
-        cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld["quantity"], ld["medicine_id"]))
-        med_title = f"💊 {ld['medicine_name']}" + (f" ({ld['medicine_strength']})" if ld["medicine_strength"] else "")
+        cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld["deduct_pcs"], ld["medicine_id"]))
+        unit_suffix = (
+            f" [{ld['quantity']}x {ld['unit_label']} = {ld['deduct_pcs']} পিস]"
+            if (ld["deduct_pcs"] != ld["quantity"] or ld["unit_mode"] != "piece")
+            else ""
+        )
+        med_title = f"💊 {ld['medicine_name']}" + (f" ({ld['medicine_strength']})" if ld["medicine_strength"] else "") + unit_suffix
         cur.execute("""
             INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
             VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
@@ -14578,11 +15272,20 @@ def api_admin_pharmacy_pos_checkout():
 
 
 def _authorize_staff_or_rider(conn, data=None):
-    """Validates either a logged-in web staff/rider session or an active rider/staff identity from mobile."""
+    """Validates either a logged-in web staff/rider session, signed staff token, or active rider/staff identity."""
     if session.get("user_id"):
         u = conn.execute(
-            "SELECT id, username, full_name, role FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1",
+            "SELECT id, username, full_name, role, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1",
             (session.get("user_id"),),
+        ).fetchone()
+        if u:
+            return dict(u)
+    tok = _get_bearer_or_param_token(data)
+    parsed = _verify_staff_token(tok)
+    if parsed:
+        u = conn.execute(
+            "SELECT id, username, full_name, role, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE id = ? AND username = ? AND COALESCE(is_active, 1) = 1",
+            (parsed["id"], parsed["username"]),
         ).fetchone()
         if u:
             return dict(u)
@@ -14593,7 +15296,7 @@ def _authorize_staff_or_rider(conn, data=None):
     if rider_id:
         try:
             u = conn.execute(
-                "SELECT id, username, full_name, role FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1",
+                "SELECT id, username, full_name, role, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1",
                 (int(rider_id),),
             ).fetchone()
             if u:
@@ -14604,7 +15307,7 @@ def _authorize_staff_or_rider(conn, data=None):
         candidates = list(set(filter(None, [raw_phone, norm_p, f"88{norm_p}" if norm_p else "", f"+88{norm_p}" if norm_p else ""])))
         placeholders = ",".join("?" for _ in candidates)
         u = conn.execute(
-            f"SELECT id, username, full_name, role FROM users WHERE COALESCE(is_active, 1) = 1 AND username IN ({placeholders}) LIMIT 1",
+            f"SELECT id, username, full_name, role, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE COALESCE(is_active, 1) = 1 AND username IN ({placeholders}) LIMIT 1",
             tuple(candidates),
         ).fetchone()
         if u:
@@ -14689,10 +15392,10 @@ def api_rider_catalog():
             med_rows = conn.execute("""
                 SELECT * FROM pharmacy_medicines
                 WHERE COALESCE(stock_qty, 0) > 0
-                  AND (name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ?)
-                ORDER BY CASE WHEN name LIKE ? THEN 0 WHEN generic_name LIKE ? THEN 1 ELSE 2 END, name ASC
+                  AND (name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ? OR COALESCE(sku, '') LIKE ?)
+                ORDER BY CASE WHEN UPPER(COALESCE(sku, '')) = UPPER(?) THEN 0 WHEN name LIKE ? THEN 1 WHEN generic_name LIKE ? THEN 2 ELSE 3 END, name ASC
                 LIMIT ?
-            """, (like, like, like, f"{q}%", f"{q}%", limit)).fetchall()
+            """, (like, like, like, like, q, f"{q}%", f"{q}%", limit)).fetchall()
         else:
             med_rows = conn.execute("""
                 SELECT * FROM pharmacy_medicines
@@ -14706,6 +15409,7 @@ def api_rider_catalog():
             medicines_out.append({
                 "id": md["id"],
                 "item_type": "medicine",
+                "sku": md.get("sku") or f"MED-{md['id']:05d}",
                 "name": md["name"] or "",
                 "generic_name": md.get("generic_name") or "",
                 "dosage_form": md.get("dosage_form") or "Tablet",
@@ -14713,6 +15417,13 @@ def api_rider_catalog():
                 "manufacturer": md.get("manufacturer") or "",
                 "sell_price": sell_p,
                 "mrp": mrp_val,
+                "cost_price": float(md.get("cost_price") or 0.0),
+                "strip_price": float(md.get("strip_price") or 0.0),
+                "strip_cost_price": float(md.get("strip_cost_price") or 0.0),
+                "strip_size": int(md.get("strip_size") or 10),
+                "packet_price": float(md.get("packet_price") or 0.0),
+                "packet_cost_price": float(md.get("packet_cost_price") or 0.0),
+                "packet_size": int(md.get("packet_size") or 30),
                 "discount_percent": eff_disc,
                 "stock_qty": int(md.get("stock_qty") or 0),
                 "unit": md.get("unit") or "পিস",
@@ -14788,33 +15499,44 @@ def api_rider_create_bill():
                 conn.close()
                 return jsonify({"success": False, "message": f"Medicine not found (ID: {item_id})."}), 404
             m_dict = dict(med)
-            if int(m_dict.get("stock_qty") or 0) < qty:
+            sell_unit = (raw.get("sell_unit") or raw.get("unit_mode") or raw.get("price_mode") or raw.get("unit") or "piece").strip()
+            resolved = _resolve_medicine_line_pricing(
+                m_dict,
+                overall_pharm_disc,
+                price_mode=sell_unit,
+                custom_unit_price=raw.get("unit_price"),
+            )
+            deduct_pcs = qty * resolved["unit_count"]
+            if int(m_dict.get("stock_qty") or 0) < deduct_pcs:
                 conn.close()
-                return jsonify({"success": False, "message": f"{m_dict['name']} স্টকে পর্যাপ্ত নেই (বাকি: {m_dict.get('stock_qty', 0)})।"}), 400
-            mrp_val, sell_p, _ = _calc_medicine_sell_price(m_dict, overall_pharm_disc)
-            if raw.get("unit_price") is not None:
-                try:
-                    custom_p = float(raw.get("unit_price"))
-                    if custom_p > 0:
-                        sell_p = custom_p
-                except Exception:
-                    pass
+                return jsonify({
+                    "success": False,
+                    "message": f"{m_dict['name']} স্টকে পর্যাপ্ত নেই (বাকি: {m_dict.get('stock_qty', 0)} পিস, প্রয়োজন: {deduct_pcs} পিস)।"
+                }), 400
+            mrp_val = resolved["mrp_price"]
+            sell_p = resolved["sell_price"]
             has_medicine = True
             line_sub = round(sell_p * qty, 2)
             sub_total += line_sub
             mrp_total += round(mrp_val * qty, 2)
             strength = m_dict.get("strength") or m_dict.get("dosage_form") or ""
+            unit_suffix = (
+                f" [{qty}x {resolved['unit_label']} = {deduct_pcs} পিস]"
+                if (deduct_pcs != qty or resolved["unit_mode"] != "piece")
+                else ""
+            )
             line_details.append({
                 "kind": "medicine",
                 "medicine_id": m_dict["id"],
                 "product_id": fk_pid,
                 "quantity": qty,
+                "deduct_pcs": deduct_pcs,
                 "unit_price": sell_p,
                 "mrp_price": mrp_val,
                 "vat_pct": 0.0,
                 "vat_amount": 0.0,
-                "cost_price": float(m_dict.get("cost_price") or 0.0),
-                "unit_serials": f"💊 {m_dict['name']}" + (f" ({strength})" if strength else ""),
+                "cost_price": resolved["cost_price"],
+                "unit_serials": f"💊 {m_dict['name']}" + (f" ({strength})" if strength else "") + unit_suffix,
             })
         elif item_type == "package":
             pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (item_id,)).fetchone()
@@ -14925,7 +15647,7 @@ def api_rider_create_bill():
     touched_packages = False
     for ld in line_details:
         if ld["kind"] == "medicine":
-            cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld["quantity"], ld["medicine_id"]))
+            cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld.get("deduct_pcs", ld["quantity"]), ld["medicine_id"]))
         elif ld["kind"] == "package":
             cur.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (ld["quantity"], ld["package_id"]))
             touched_packages = True
@@ -15080,6 +15802,395 @@ def api_thermal_print_job():
         except Exception:
             pass
     return jsonify(res), (200 if res.get("success") else 400)
+
+
+@app.route("/api/admin/mobile-dashboard", methods=["GET"])
+def api_admin_mobile_dashboard():
+    """Native mobile admin dashboard stats, printer heartbeat, recent orders, and rider list."""
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    today_prefix = get_bd_now().strftime("%Y-%m-%d")
+    sales_row = conn.execute(
+        "SELECT COUNT(*) AS cnt, COALESCE(SUM(rounded_total), 0) AS rev FROM sales WHERE substr(invoice_date, 1, 10) = ?",
+        (today_prefix,),
+    ).fetchone()
+    cogs_row = conn.execute(
+        "SELECT COALESCE(SUM(si.quantity * COALESCE(si.cost_price, 0)), 0) AS cogs FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE substr(s.invoice_date, 1, 10) = ?",
+        (today_prefix,),
+    ).fetchone()
+    sales_today = round(float(sales_row["rev"] or 0.0), 2) if sales_row else 0.0
+    cogs_today = round(float(cogs_row["cogs"] or 0.0), 2) if cogs_row else 0.0
+    tx_today = int(sales_row["cnt"] or 0) if sales_row else 0
+
+    pending_online = conn.execute(
+        "SELECT COUNT(*) FROM online_orders WHERE order_status IN ('pending_confirmation', 'confirmed', 'awaiting_customer_confirmation', 'packed', 'on_the_way')"
+    ).fetchone()[0]
+    pending_rx = conn.execute(
+        "SELECT COUNT(*) FROM pharmacy_orders WHERE order_status IN ('pending', 'reviewing', 'awaiting_customer_confirmation')"
+    ).fetchone()[0]
+    products_cnt = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+    meds_cnt = conn.execute("SELECT COUNT(*) FROM pharmacy_medicines WHERE is_active = 1").fetchone()[0]
+    low_stock_meds = conn.execute(
+        "SELECT COUNT(*) FROM pharmacy_medicines WHERE is_active = 1 AND COALESCE(stock_qty, 0) <= COALESCE(low_stock_threshold, 10)"
+    ).fetchone()[0]
+    customers_cnt = conn.execute("SELECT COUNT(*) FROM customer_users").fetchone()[0]
+
+    recent_orders = [
+        dict(r)
+        for r in conn.execute("""
+            SELECT id, order_number, customer_name, customer_phone, district, area, address_details,
+                   total_amount, order_status, assigned_rider_id, assigned_rider_name, created_at
+            FROM online_orders
+            ORDER BY id DESC
+            LIMIT 15
+        """).fetchall()
+    ]
+    riders = [
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "full_name": r["full_name"] or r["username"],
+            "is_active": int(r["is_active"] or 0) == 1,
+            "can_rx_quote_bill": int(r["can_rx_quote_bill"] or 0) == 1,
+        }
+        for r in conn.execute(
+            "SELECT id, username, full_name, is_active, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE role = 'delivery' ORDER BY id DESC"
+        ).fetchall()
+    ]
+
+    is_win = thermal_printer.is_windows_pc()
+    local_printer = thermal_printer.resolve_target_printer(conn) if is_win else ""
+    conn.close()
+
+    hb = remote_control.get_pc_printer_heartbeat() or {}
+    pc_online = bool(is_win and local_printer) or bool(hb.get("is_online"))
+    pc_printer_name = local_printer or hb.get("printer_name") or ""
+    pc_last_seen = hb.get("online_at") or ""
+
+    return jsonify({
+        "success": True,
+        "sales_today": sales_today,
+        "profit_today": round(sales_today - cogs_today, 2),
+        "transactions_today": tx_today,
+        "pending_online_orders": pending_online,
+        "pending_rx_orders": pending_rx,
+        "products_count": products_cnt,
+        "medicines_count": meds_cnt,
+        "low_stock_medicines": low_stock_meds,
+        "customers_count": customers_cnt,
+        "recent_orders": recent_orders,
+        "riders": riders,
+        "pc_agent_online": pc_online,
+        "pc_printer_name": pc_printer_name,
+        "pc_last_seen": pc_last_seen,
+        "is_windows_pc": is_win,
+    })
+
+
+def _serialize_pharmacy_order_for_mobile(row):
+    d = dict(row)
+    for k in ("requested_items_json", "approved_items_json"):
+        out_k = k.replace("_json", "")
+        try:
+            d[out_k] = json.loads(d.get(k) or "[]")
+        except Exception:
+            d[out_k] = []
+    imgs = []
+    for cand in (d.get("prescription_url"), d.get("prescription_enhanced_url"), d.get("prescription_original_url")):
+        c = (cand or "").strip()
+        if not c:
+            continue
+        if c.startswith("["):
+            try:
+                parsed = json.loads(c)
+                if isinstance(parsed, list):
+                    for u in parsed:
+                        su = str(u or "").strip()
+                        if su and su not in imgs:
+                            imgs.append(su)
+                    continue
+            except Exception:
+                pass
+        if c not in imgs:
+            imgs.append(c)
+    d["prescription_images"] = imgs
+    d["customer_confirmed"] = int(d.get("customer_confirmed") or 0) == 1
+    return d
+
+
+@app.route("/api/admin/pharmacy/orders", methods=["GET"])
+def api_admin_pharmacy_orders():
+    """Lists pharmacy orders with parsed items and linked rider info for Web/Mobile Admin."""
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    status_filter = (request.args.get("status") or "").strip().lower()
+    sql = """
+        SELECT po.*,
+               COALESCE(oo.assigned_rider_id, 0) AS assigned_rider_id,
+               COALESCE(oo.assigned_rider_name, '') AS assigned_rider_name
+        FROM pharmacy_orders po
+        LEFT JOIN online_orders oo ON oo.id = po.online_order_id OR oo.order_number = po.order_number
+    """
+    params = []
+    if status_filter:
+        sql += " WHERE LOWER(COALESCE(po.order_status, '')) = ? "
+        params.append(status_filter)
+    sql += " ORDER BY po.id DESC LIMIT 60"
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "orders": [_serialize_pharmacy_order_for_mobile(r) for r in rows],
+    })
+
+
+@app.route("/api/admin/riders", methods=["GET"])
+def api_admin_riders():
+    """Returns all riders with permissions and active delivery count."""
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    rows = conn.execute("""
+        SELECT u.id, u.username, u.full_name, u.is_active,
+               COALESCE(u.can_rx_quote_bill, 0) AS can_rx_quote_bill,
+               u.created_at,
+               (SELECT COUNT(*) FROM online_orders oo
+                WHERE oo.assigned_rider_id = u.id
+                  AND oo.order_status IN ('confirmed', 'packed', 'on_the_way')) AS active_deliveries
+        FROM users u
+        WHERE u.role = 'delivery'
+        ORDER BY u.id DESC
+    """).fetchall()
+    conn.close()
+    riders = [
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "full_name": r["full_name"] or r["username"],
+            "is_active": int(r["is_active"] or 0) == 1,
+            "can_rx_quote_bill": int(r["can_rx_quote_bill"] or 0) == 1,
+            "active_deliveries": int(r["active_deliveries"] or 0),
+            "created_at": r["created_at"] or "",
+        }
+        for r in rows
+    ]
+    return jsonify({"success": True, "riders": riders})
+
+
+@app.route("/api/admin/riders/permissions", methods=["POST"])
+def api_admin_rider_permissions():
+    """Admin toggles can_rx_quote_bill permission for a Rider."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    try:
+        rider_id = int(data.get("rider_id") or 0)
+    except Exception:
+        rider_id = 0
+    if rider_id <= 0:
+        conn.close()
+        return jsonify({"success": False, "message": "Valid rider_id is required."}), 400
+
+    raw_flag = data.get("can_rx_quote_bill")
+    allow = 1 if str(raw_flag).strip().lower() in ("1", "true", "yes", "on") else 0
+
+    rider = conn.execute("SELECT id, username, full_name FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+    if not rider:
+        conn.close()
+        return jsonify({"success": False, "message": "Rider not found."}), 404
+
+    conn.execute("UPDATE users SET can_rx_quote_bill = ? WHERE id = ?", (allow, rider_id))
+    conn.commit()
+    conn.close()
+
+    try:
+        remote_control.push_users_to_cloud()
+    except Exception:
+        pass
+
+    return jsonify({
+        "success": True,
+        "rider_id": rider_id,
+        "can_rx_quote_bill": bool(allow),
+        "message": f"{rider['full_name'] or rider['username']} এর Rx স্ক্যান ও কোটেশন পারমিশন {'চালু' if allow else 'বন্ধ'} করা হয়েছে।",
+    })
+
+
+@app.route("/api/rider/permissions", methods=["GET"])
+def api_rider_permissions():
+    """Returns current permission flags for logged-in rider or staff."""
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn)
+    conn.close()
+    if not actor:
+        return jsonify({"success": False, "message": "Unauthorized rider or staff session."}), 401
+
+    has_rx_perm = (actor.get("role") in ("admin", "cashier")) or (int(actor.get("can_rx_quote_bill") or 0) == 1)
+    return jsonify({
+        "success": True,
+        "rider_id": actor["id"],
+        "role": actor["role"],
+        "can_rx_quote_bill": has_rx_perm,
+    })
+
+
+@app.route("/api/rider/rx-quote-orders", methods=["GET"])
+def api_rider_rx_quote_orders():
+    """Returns pending/reviewing/awaiting-confirmation pharmacy orders for permitted Riders."""
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Unauthorized rider or staff session."}), 401
+
+    has_perm = (actor.get("role") in ("admin", "cashier")) or (int(actor.get("can_rx_quote_bill") or 0) == 1)
+    if not has_perm:
+        conn.close()
+        return jsonify({"success": False, "message": "আপনার প্রেসক্রিপশন কোটেশন তৈরি করার অনুমতি নেই। অ্যাডমিনের অনুমতি নিন।"}), 403
+
+    rows = conn.execute("""
+        SELECT po.*,
+               COALESCE(oo.assigned_rider_id, 0) AS assigned_rider_id,
+               COALESCE(oo.assigned_rider_name, '') AS assigned_rider_name
+        FROM pharmacy_orders po
+        LEFT JOIN online_orders oo ON oo.id = po.online_order_id OR oo.order_number = po.order_number
+        WHERE po.order_status IN ('pending', 'reviewing', 'awaiting_customer_confirmation', 'confirmed')
+        ORDER BY CASE
+            WHEN po.order_status IN ('pending', 'reviewing') THEN 0
+            WHEN po.order_status = 'awaiting_customer_confirmation' THEN 1
+            ELSE 2
+        END, po.id DESC
+        LIMIT 50
+    """).fetchall()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "orders": [_serialize_pharmacy_order_for_mobile(r) for r in rows],
+    })
+
+
+@app.route("/api/rider/pharmacy-quote/<int:order_id>", methods=["POST"])
+def api_rider_pharmacy_quote(order_id):
+    """Allows an authorized Rider (or Admin/Cashier) to prepare & send a pharmacy quotation to customer."""
+    data = request.get_json(silent=True) or {}
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Unauthorized rider or staff session."}), 401
+
+    has_perm = (actor.get("role") in ("admin", "cashier")) or (int(actor.get("can_rx_quote_bill") or 0) == 1)
+    if not has_perm:
+        conn.close()
+        return jsonify({"success": False, "message": "আপনার প্রেসক্রিপশন বিল/কোটেশন পাঠানোর অনুমতি নেই।"}), 403
+
+    items = data.get("items") or []
+    admin_notes = (data.get("admin_notes") or "").strip()
+    try:
+        delivery_charge = float(data.get("delivery_charge") if data.get("delivery_charge") is not None else 50.0)
+    except Exception:
+        delivery_charge = 50.0
+
+    actor_label = actor.get("full_name") or actor.get("username") or "Rider"
+    if actor.get("role") == "delivery":
+        actor_label = f"Rider: {actor_label}"
+
+    res, err = _save_and_send_pharmacy_quote(
+        conn,
+        order_id,
+        items=items,
+        delivery_charge=delivery_charge,
+        admin_notes=admin_notes,
+        actor_name=actor_label,
+    )
+    conn.close()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+    return jsonify({
+        "success": True,
+        "message": "কোটেশন কাস্টমারের মোবাইলে পাঠানো হয়েছে। কাস্টমার কনফার্ম করলে পরবর্তী ধাপ চালু হবে।",
+        **(res or {}),
+    })
+
+
+@app.route("/api/thermal/job-status/<job_uuid>", methods=["GET"])
+def api_thermal_job_status(job_uuid):
+    """Returns live thermal print job confirmation status synced from Firestore + Windows PC heartbeat."""
+    cloud_job = remote_control.fetch_thermal_print_job_from_cloud(job_uuid) or {}
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM thermal_print_jobs WHERE job_uuid = ?", (job_uuid,)).fetchone()
+    is_win = thermal_printer.is_windows_pc()
+    local_printer = thermal_printer.resolve_target_printer(conn) if is_win else ""
+    conn.close()
+
+    hb = remote_control.get_pc_printer_heartbeat() or {}
+    pc_online = bool(is_win and local_printer) or bool(hb.get("is_online"))
+    pc_printer_name = local_printer or hb.get("printer_name") or ""
+
+    if not row and not cloud_job:
+        return jsonify({
+            "success": False,
+            "message": "Print job not found.",
+            "pc_agent_online": pc_online,
+            "pc_printer_name": pc_printer_name,
+        }), 404
+
+    job = dict(row) if row else {}
+    if cloud_job.get("status"):
+        job["status"] = cloud_job.get("status")
+        job["printed_at"] = cloud_job.get("printed_at") or job.get("printed_at") or ""
+        job["printer_name"] = cloud_job.get("printer_name") or job.get("printer_name") or ""
+        job["error_msg"] = cloud_job.get("error_msg") or job.get("error_msg") or ""
+
+    return jsonify({
+        "success": True,
+        "job_uuid": job_uuid,
+        "status": job.get("status") or "pending",
+        "mode": job.get("mode") or "",
+        "printer_name": job.get("printer_name") or pc_printer_name,
+        "printed_at": job.get("printed_at") or "",
+        "error_msg": job.get("error_msg") or "",
+        "created_at": job.get("created_at") or "",
+        "pc_agent_online": pc_online,
+        "pc_printer_name": pc_printer_name,
+        "pc_last_seen": hb.get("online_at") or "",
+        "is_windows_pc": is_win,
+    })
+
+
+@app.route("/api/thermal/agent-status", methods=["GET"])
+def api_thermal_agent_status():
+    """Returns whether a Windows PC print agent/local printer is currently online."""
+    conn = get_connection()
+    is_win = thermal_printer.is_windows_pc()
+    local_printer = thermal_printer.resolve_target_printer(conn) if is_win else ""
+    conn.close()
+
+    hb = remote_control.get_pc_printer_heartbeat() or {}
+    online = bool(is_win and local_printer) or bool(hb.get("is_online"))
+    return jsonify({
+        "success": True,
+        "online": online,
+        "is_windows_pc": is_win,
+        "printer_name": local_printer or hb.get("printer_name") or "",
+        "last_seen": hb.get("online_at") or "",
+        "hostname": hb.get("hostname") or "",
+    })
 
 
 if __name__ == "__main__":

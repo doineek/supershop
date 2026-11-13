@@ -368,6 +368,15 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('user_email', user['email'] ?? '');
       await prefs.setBool('is_delivery_man', _isDeliveryMan);
       await prefs.setBool('stay_signed_in', _staySignedIn);
+      final staffTok = (res['token'] ?? user['token'] ?? '').toString().trim();
+      if (staffTok.isNotEmpty) {
+        await ApiService.setStaffToken(staffTok);
+      }
+      if (_isDeliveryMan) {
+        await prefs.setBool('rider_can_rx_quote_bill', user['can_rx_quote_bill'] == true || user['can_rx_quote_bill'] == 1);
+      } else {
+        await prefs.remove('rider_can_rx_quote_bill');
+      }
 
       String phoneKey = user['phone'] ?? phone;
       String userImg = (user['profile_image'] ?? user['avatar_url'] ?? user['avatar_base64'] ?? '').toString().trim();
@@ -824,6 +833,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (res['success'] == true) {
                         Navigator.pop(ctx);
                         final prefs = await SharedPreferences.getInstance();
+                        final staffTok = (res['token'] ?? res['user']?['token'] ?? '').toString().trim();
+                        if (staffTok.isNotEmpty) {
+                          await ApiService.setStaffToken(staffTok);
+                        }
                         await prefs.setString('user_phone', u);
                         await prefs.setString('user_name', res['user']?['name'] ?? u);
                         await prefs.setString('user_role', res['user']?['role'] ?? 'admin');

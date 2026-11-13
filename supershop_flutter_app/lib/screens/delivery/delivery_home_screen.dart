@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
+import '../../widgets/thermal_print_helper.dart';
 import '../auth/login_screen.dart';
 import 'rider_billing_sheet.dart';
+import 'rider_rx_quote_screen.dart';
 
 class DeliveryHomeScreen extends StatefulWidget {
   const DeliveryHomeScreen({Key? key}) : super(key: key);
@@ -21,6 +23,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   Timer? _refreshTimer;
   String _riderName = 'Delivery Rider';
   String _riderPhone = '';
+  bool _canRxQuoteBill = false;
   final Set<int> _notifiedOrderIds = {};
   int _viewMode = 0; // 0 = 2 Columns (Side-by-side), 1 = Orders only, 2 = Earnings only
   String _deptFilter = 'all'; // 'all', 'regular', 'pharmacy'
@@ -44,8 +47,23 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     setState(() {
       _riderName = prefs.getString('user_name') ?? 'Delivery Rider';
       _riderPhone = prefs.getString('user_phone') ?? '';
+      _canRxQuoteBill = prefs.getBool('rider_can_rx_quote_bill') ?? false;
     });
     _loadAllData();
+  }
+
+  Future<void> _refreshRiderPermissions() async {
+    if (_riderPhone.trim().isEmpty) return;
+    final res = await ApiService.fetchRiderPermissions(riderPhone: _riderPhone);
+    if (!mounted) return;
+    if (res['success'] == true) {
+      final bool allow = res['can_rx_quote_bill'] == true;
+      if (allow != _canRxQuoteBill) {
+        setState(() => _canRxQuoteBill = allow);
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('rider_can_rx_quote_bill', allow);
+    }
   }
 
   Future<void> _loadAllData({bool silent = false}) async {
@@ -59,6 +77,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     await Future.wait([
       _loadDeliveryOrders(),
       _loadRiderEarnings(),
+      _refreshRiderPermissions(),
     ]);
   }
 
@@ -294,6 +313,17 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         ),
         backgroundColor: Colors.orange.shade800,
         actions: [
+          if (_canRxQuoteBill)
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RiderRxQuoteScreen(riderPhone: _riderPhone),
+                ),
+              ),
+              icon: const Icon(Icons.qr_code_scanner, color: Colors.amberAccent, size: 18),
+              label: const Text('Rx বিল', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+            ),
           TextButton.icon(
             onPressed: () => showRiderBillingModal(
               context,
@@ -318,7 +348,9 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
               await prefs.remove('user_phone');
               await prefs.remove('user_name');
               await prefs.remove('is_delivery_man');
+              await prefs.remove('rider_can_rx_quote_bill');
               await prefs.setBool('stay_signed_in', false);
+              await ApiService.setStaffToken('');
               if (!mounted) return;
               nav.pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -534,19 +566,12 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
 
   Future<void> _printOrderThermal(OnlineOrder order) async {
     final bool usePharm = order.isPharmacyOrder && order.pharmacyOrderId > 0;
-    final res = await ApiService.printOnPcThermal(
+    await ThermalPrintHelper.printAndConfirm(
+      context,
       riderPhone: _riderPhone,
       sourceType: usePharm ? 'pharmacy_order' : 'online_order',
       sourceId: usePharm ? order.pharmacyOrderId : order.id,
       invoiceNumber: order.orderNumber,
-    );
-    if (!mounted) return;
-    final bool ok = res['success'] == true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(res['message']?.toString() ?? (ok ? 'PC প্রিন্টারে পাঠানো হয়েছে!' : 'প্রিন্ট ব্যর্থ হয়েছে')),
-        backgroundColor: ok ? Colors.teal.shade700 : Colors.red,
-      ),
     );
   }
 
@@ -702,6 +727,10 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     Color statusColor;
     String statusLabel;
     switch (order.orderStatus) {
+      case 'awaiting_customer_confirmation':
+        statusColor = Colors.amber.shade800;
+        statusLabel = "কাস্টমার কনফার্ম বাকি";
+        break;
       case 'new':
         statusColor = Colors.purple;
         statusLabel = "NEW (নতুন)";
@@ -939,6 +968,24 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   }
 
   Widget _buildOrderActionButton(OnlineOrder order, bool isCompact) {
+    if (order.orderStatus == 'awaiting_customer_confirmation') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.amber.shade50,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.amber.shade400),
+        ),
+        child: Text(
+          '⏳ কাস্টমার বিল কনফার্ম করলে প্যাক/ডেলিভারি শুরু হবে',
+          style: TextStyle(
+            fontSize: isCompact ? 10 : 11,
+            fontWeight: FontWeight.bold,
+            color: Colors.amber.shade900,
+          ),
+        ),
+      );
+    }
     final bool isUnassignedPool = order.assignedRiderPhone.trim().isEmpty &&
         (order.orderStatus == 'new' || order.orderStatus == 'verified' || order.orderStatus == 'packed');
     if (order.orderStatus == 'new' || isUnassignedPool) {

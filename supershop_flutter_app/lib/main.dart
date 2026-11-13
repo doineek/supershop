@@ -11,6 +11,10 @@ import 'providers/locale_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/customer/home_screen.dart';
+import 'screens/customer/my_orders_screen.dart';
+import 'services/notification_service.dart';
+
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +27,18 @@ void main() async {
   } catch (e) {
     debugPrint("Firebase initializeApp note: $e");
   }
+  NotificationService.instance.onNotificationTap = (payload) {
+    final nav = appNavigatorKey.currentState;
+    if (nav != null) {
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => MyOrdersScreen(
+            targetOrderNumber: payload.startsWith('RX-') || payload.startsWith('ORD-') ? payload : null,
+          ),
+        ),
+      );
+    }
+  };
   runApp(const SupershopApp());
 }
 
@@ -40,6 +56,7 @@ class SupershopApp extends StatelessWidget {
       child: Consumer2<LocaleProvider, ThemeProvider>(
         builder: (context, localeProv, themeProv, child) {
           return MaterialApp(
+            navigatorKey: appNavigatorKey,
             title: 'DOINEEK Supershop',
             debugShowCheckedModeBanner: false,
             themeMode: themeProv.themeMode,

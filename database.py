@@ -71,6 +71,10 @@ def init_db():
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL CHECK(role IN ('admin', 'cashier', 'delivery')),
+        full_name TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        plain_password TEXT NOT NULL DEFAULT '',
+        can_rx_quote_bill INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     );
 
@@ -360,9 +364,18 @@ def init_db():
         manufacturer TEXT NOT NULL DEFAULT '',
         sku TEXT NOT NULL DEFAULT '',
         unit_price REAL NOT NULL DEFAULT 0.0,
+        cost_price REAL NOT NULL DEFAULT 0.0,
+        mrp REAL NOT NULL DEFAULT 0.0,
+        discount_percent REAL NOT NULL DEFAULT 0.0,
         strip_price REAL NOT NULL DEFAULT 0.0,
+        strip_cost_price REAL NOT NULL DEFAULT 0.0,
         strip_size INTEGER NOT NULL DEFAULT 10,
+        packet_price REAL NOT NULL DEFAULT 0.0,
+        packet_cost_price REAL NOT NULL DEFAULT 0.0,
+        packet_size INTEGER NOT NULL DEFAULT 30,
         stock_qty INTEGER NOT NULL DEFAULT 999,
+        low_stock_threshold INTEGER NOT NULL DEFAULT 10,
+        expiry_date TEXT NOT NULL DEFAULT '',
         is_prescription_required INTEGER NOT NULL DEFAULT 0,
         image_url TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
@@ -667,12 +680,22 @@ def init_db():
 
     # Pharmacy Indexes & Initial Medicines Seed
     try:
-        # Ensure original & enhanced prescription url columns exist
+        # Ensure original & enhanced prescription url & customer quote confirmation columns exist
         p_cols = [r[1] for r in cur.execute("PRAGMA table_info(pharmacy_orders)").fetchall()]
         if "prescription_original_url" not in p_cols:
             cur.execute("ALTER TABLE pharmacy_orders ADD COLUMN prescription_original_url TEXT DEFAULT ''")
         if "prescription_enhanced_url" not in p_cols:
             cur.execute("ALTER TABLE pharmacy_orders ADD COLUMN prescription_enhanced_url TEXT DEFAULT ''")
+        if "customer_confirmed" not in p_cols:
+            cur.execute("ALTER TABLE pharmacy_orders ADD COLUMN customer_confirmed INTEGER NOT NULL DEFAULT 0")
+        if "quote_sent_at" not in p_cols:
+            cur.execute("ALTER TABLE pharmacy_orders ADD COLUMN quote_sent_at TEXT NOT NULL DEFAULT ''")
+        if "quote_by" not in p_cols:
+            cur.execute("ALTER TABLE pharmacy_orders ADD COLUMN quote_by TEXT NOT NULL DEFAULT ''")
+
+        u_cols = [r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()]
+        if "can_rx_quote_bill" not in u_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN can_rx_quote_bill INTEGER NOT NULL DEFAULT 0")
 
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_orders_phone ON pharmacy_orders(customer_phone)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_orders_num ON pharmacy_orders(order_number)")
@@ -688,6 +711,19 @@ def init_db():
         if "sku" not in med_col_names:
             cur.execute("ALTER TABLE pharmacy_medicines ADD COLUMN sku TEXT DEFAULT ''")
             cur.execute("UPDATE pharmacy_medicines SET sku = printf('MED-%05d', id) WHERE sku IS NULL OR sku = ''")
+        for col_name, col_def in [
+            ("cost_price", "REAL NOT NULL DEFAULT 0.0"),
+            ("mrp", "REAL NOT NULL DEFAULT 0.0"),
+            ("discount_percent", "REAL NOT NULL DEFAULT 0.0"),
+            ("strip_cost_price", "REAL NOT NULL DEFAULT 0.0"),
+            ("packet_price", "REAL NOT NULL DEFAULT 0.0"),
+            ("packet_cost_price", "REAL NOT NULL DEFAULT 0.0"),
+            ("packet_size", "INTEGER NOT NULL DEFAULT 30"),
+            ("expiry_date", "TEXT NOT NULL DEFAULT ''"),
+            ("low_stock_threshold", "INTEGER NOT NULL DEFAULT 10"),
+        ]:
+            if col_name not in med_col_names:
+                cur.execute(f"ALTER TABLE pharmacy_medicines ADD COLUMN {col_name} {col_def}")
         
         cur.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines")
         if cur.fetchone()["c"] == 0:

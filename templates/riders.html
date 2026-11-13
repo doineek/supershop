@@ -190,6 +190,14 @@
               INACTIVE
             </span>
           {% endif %}
+          <div style="margin-top:5px;">
+            <button type="button"
+                    onclick="toggleRiderRxPerm({{ r.id }}, {{ 0 if r.can_rx_quote_bill else 1 }})"
+                    title="Click to toggle Rx Barcode Scan & Quotation Bill permission"
+                    style="background:{{ '#eff6ff' if r.can_rx_quote_bill else '#f8fafc' }}; color:{{ '#1d4ed8' if r.can_rx_quote_bill else '#64748b' }}; border:1px solid {{ '#93c5fd' if r.can_rx_quote_bill else '#cbd5e1' }}; padding:2px 7px; border-radius:6px; font-size:10.5px; font-weight:700; cursor:pointer;">
+              {{ '🔬 Rx Scan & Quote: ON' if r.can_rx_quote_bill else '🔬 Rx Scan & Quote: OFF' }}
+            </button>
+          </div>
         </td>
         <td style="padding:12px 14px; text-align:right;">
           <div style="display:inline-flex; gap:6px; justify-content:flex-end; align-items:center;">
@@ -210,7 +218,7 @@
             </button>
 
             <!-- Edit Button -->
-            <button type="button" class="btn btn-outline btn-small" onclick="openEditRiderModal({{ r.id }}, '{{ r.full_name|escape }}', '{{ r.username }}', {{ r.is_active }})" style="padding:5px 8px; border-radius:6px; font-size:0.80rem;">
+            <button type="button" class="btn btn-outline btn-small" onclick="openEditRiderModal({{ r.id }}, '{{ r.full_name|escape }}', '{{ r.username }}', {{ r.is_active }}, {{ r.can_rx_quote_bill|default(0) }})" style="padding:5px 8px; border-radius:6px; font-size:0.80rem;">
               ✏️
             </button>
 
@@ -420,9 +428,16 @@
         <input type="text" name="username" required maxlength="11" placeholder="e.g. 01712345678" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
-      <div style="margin-bottom:18px;">
+      <div style="margin-bottom:14px;">
         <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Login Password *</label>
         <input type="password" name="password" required placeholder="Minimum 4 characters" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+      </div>
+
+      <div style="margin-bottom:16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px;">
+        <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:0.84rem; color:#1e3a8a; font-weight:700;">
+          <input type="checkbox" name="can_rx_quote_bill" value="1" style="margin-top:2px;">
+          <span>🔬 প্রেসক্রিপশন দেখে মোবাইল বারকোড স্ক্যান ও কোটেশন বিল তৈরির অনুমতি (Rx Scan &amp; Quote)</span>
+        </label>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px;">
@@ -456,12 +471,19 @@
         <input type="password" name="password" placeholder="Leave empty to keep unchanged" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
       </div>
 
-      <div style="margin-bottom:18px;">
+      <div style="margin-bottom:14px;">
         <label style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:4px;">Account Status</label>
         <select name="is_active" id="editRiderIsActive" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
           <option value="1">ACTIVE</option>
           <option value="0">INACTIVE / Suspended</option>
         </select>
+      </div>
+
+      <div style="margin-bottom:16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px;">
+        <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size:0.84rem; color:#1e3a8a; font-weight:700;">
+          <input type="checkbox" name="can_rx_quote_bill" id="editRiderCanRxQuoteBill" value="1" style="margin-top:2px;">
+          <span>🔬 প্রেসক্রিপশন দেখে মোবাইল বারকোড স্ক্যান ও কোটেশন বিল তৈরির অনুমতি (Rx Scan &amp; Quote)</span>
+        </label>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px;">
@@ -784,11 +806,31 @@ function renderProfileOrders(rider) {
 function openCreateRiderModal() { document.getElementById('createRiderModal').style.display = 'flex'; }
 function closeCreateRiderModal() { document.getElementById('createRiderModal').style.display = 'none'; }
 
-function openEditRiderModal(id, name, username, isActive) {
+async function toggleRiderRxPerm(riderId, allowFlag) {
+  try {
+    const res = await fetch('/api/admin/riders/permissions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ rider_id: riderId, can_rx_quote_bill: allowFlag === 1 })
+    });
+    const d = await res.json();
+    if (d.success) {
+      location.reload();
+    } else {
+      alert(d.message || 'Permission update failed.');
+    }
+  } catch (e) {
+    alert('Failed to update permission: ' + e);
+  }
+}
+
+function openEditRiderModal(id, name, username, isActive, canRxQuoteBill = 0) {
   document.getElementById('editRiderId').value = id;
   document.getElementById('editRiderFullName').value = name || username;
   document.getElementById('editRiderUsername').value = username;
   document.getElementById('editRiderIsActive').value = isActive;
+  const rxCb = document.getElementById('editRiderCanRxQuoteBill');
+  if (rxCb) rxCb.checked = (Number(canRxQuoteBill) === 1);
   document.getElementById('editRiderModal').style.display = 'flex';
 }
 function closeEditRiderModal() { document.getElementById('editRiderModal').style.display = 'none'; }

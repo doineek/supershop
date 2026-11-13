@@ -179,6 +179,27 @@
           <div id="dPharmacistAdviceTxt" class="text-blue-800 leading-relaxed">-</div>
         </div>
 
+        <!-- Mandatory Customer Quote Confirmation Gate -->
+        <div id="dConfirmQuoteBox" class="hidden bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-2.5 shadow-sm">
+          <div class="flex items-start gap-2.5">
+            <span class="text-xl leading-none">🔔</span>
+            <div class="space-y-1">
+              <div class="text-xs font-extrabold text-amber-950">আপনার প্রেসক্রিপশন যাচাই করে বিল প্রস্তুত করা হয়েছে — কনফার্ম করুন!</div>
+              <div id="dConfirmQuoteSub" class="text-[11px] text-amber-900 font-medium">
+                মোট প্রদেয়: ৳০.০০। আপনি কনফার্ম করলেই কেবল অর্ডার প্যাকিং ও ডেলিভারি শুরু হবে।
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <button type="button" id="btnConfirmRxQuote" onclick="submitCustomerQuoteAction('confirm')" class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-xs">
+              ✅ বিল কনফার্ম করুন
+            </button>
+            <button type="button" id="btnCancelRxQuote" onclick="submitCustomerQuoteAction('cancel')" class="py-2.5 px-3 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-xl text-xs font-extrabold transition">
+              ❌ অর্ডার বাতিল করুন
+            </button>
+          </div>
+        </div>
+
         <!-- Rider Contact Card (if assigned) -->
         <div id="dRiderCard" class="hidden bg-teal-50 border border-teal-200 rounded-2xl p-3.5 flex items-center justify-between">
           <div class="flex items-center gap-2.5">
@@ -455,6 +476,59 @@
       document.getElementById("dCustName").innerText = d.customer_name;
       document.getElementById("dCustPhone").innerText = d.customer_phone;
       document.getElementById("dCustAddress").innerText = `${d.delivery_address}, ${d.area}, ${d.district}`;
+
+      window._currentRxTrackOrder = d;
+      updateCustomerConfirmBox(d);
+    }
+
+    function updateCustomerConfirmBox(d) {
+      const box = document.getElementById("dConfirmQuoteBox");
+      const sub = document.getElementById("dConfirmQuoteSub");
+      if (!box) return;
+      const st = String(d?.order_status || "").toLowerCase();
+      if (st === "awaiting_customer_confirmation") {
+        if (sub) {
+          sub.innerText = `সর্বমোট বিল ৳${parseFloat(d.total_amount || 0).toFixed(2)} (ডেলিভারি ৳${parseFloat(d.delivery_charge || 0).toFixed(2)} সহ)। আপনি কনফার্ম করলেই কেবল প্যাকিং ও ডেলিভারি শুরু হবে।`;
+        }
+        box.classList.remove("hidden");
+      } else {
+        box.classList.add("hidden");
+      }
+    }
+
+    async function submitCustomerQuoteAction(action) {
+      const ord = window._currentRxTrackOrder;
+      if (!ord || !ord.order_number) return;
+      if (action === "cancel" && !confirm("আপনি কি নিশ্চিতভাবে এই প্রেসক্রিপশন অর্ডারটি বাতিল করতে চান?")) return;
+
+      const btnC = document.getElementById("btnConfirmRxQuote");
+      const btnX = document.getElementById("btnCancelRxQuote");
+      if (btnC) btnC.disabled = true;
+      if (btnX) btnX.disabled = true;
+      try {
+        const res = await fetch("/api/pharmacy/customer-confirm-quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_number: ord.order_number,
+            customer_phone: ord.customer_phone || "",
+            action: action
+          })
+        });
+        const d = await res.json();
+        if (d.success) {
+          alert(d.message || "সফলভাবে আপডেট হয়েছে!");
+          await fetchAndDisplayOrder(ord.order_number, true);
+          loadSavedLocalOrders();
+        } else {
+          alert(d.message || "আপডেট করা যায়নি।");
+        }
+      } catch (e) {
+        alert("নেটওয়ার্ক সমস্যা: " + e);
+      } finally {
+        if (btnC) btnC.disabled = false;
+        if (btnX) btnX.disabled = false;
+      }
     }
 
     function openRxFullView() {
@@ -485,7 +559,9 @@
     }
 
     const TRACK_STATUS_BN_MAP = {
+      pending: "অপেক্ষমান",
       reviewing: "যাচাই চলছে",
+      awaiting_customer_confirmation: "আপনার কনফার্মেশনের অপেক্ষায় (বিল প্রস্তুত)",
       confirmed: "কনফার্মড ও বিল প্রস্তুত",
       verified: "কনফার্মড ও বিল প্রস্তুত",
       packed: "প্যাকিং সম্পন্ন",
