@@ -252,7 +252,12 @@
       <h1>🛍️ DOINEEK SUPERSHOP</h1>
       <div class="meta">
         {{ "ব্যবসায়িক পারফরম্যান্স ও এআই এক্সিকিউটিভ রিপোর্ট" if lang == 'bn' else "Business Performance & AI Executive Report" }} | 
-        <strong>{{ period|upper }} PERIOD</strong>
+        <strong>{{ period|upper }} PERIOD</strong> |
+        <strong>
+          {% if dept == 'pharmacy' %}PHARMACY ONLY
+          {% elif dept == 'general' %}OTHER PRODUCTS ONLY
+          {% else %}WHOLE SUPERSHOP{% endif %}
+        </strong>
       </div>
       <div style="font-size:11px; color:#94a3b8; margin-top:2px;">
         Generated: {{ generated_at }} | Store: DOINEEK Main Branch
@@ -440,6 +445,28 @@
             TK {{ "%.2f"|format(offers_summary.net_profit) }}
           </td>
         </tr>
+        {% if general_summary is defined and pharmacy_summary is defined %}
+        <tr style="background:#eff6ff;">
+          <td><strong>🛒 Other Products Department Total (সাধারণ পণ্য মোট)</strong></td>
+          <td>{{ general_summary.tx_count }}</td>
+          <td>TK {{ "%.2f"|format(general_summary.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(general_summary.cogs) }}</td>
+          <td>TK {{ "%.2f"|format(general_summary.gross_profit) }}</td>
+          <td style="font-weight:700; color:{{ '#15803d' if general_summary.net_profit >= 0 else '#b91c1c' }};">
+            TK {{ "%.2f"|format(general_summary.net_profit) }}
+          </td>
+        </tr>
+        <tr style="background:#ecfdf5;">
+          <td><strong>💊 Pharmacy Department Total (ফার্মেসী মোট)</strong></td>
+          <td>{{ pharmacy_summary.tx_count }}</td>
+          <td>TK {{ "%.2f"|format(pharmacy_summary.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(pharmacy_summary.cogs) }}</td>
+          <td>TK {{ "%.2f"|format(pharmacy_summary.gross_profit) }}</td>
+          <td style="font-weight:700; color:{{ '#15803d' if pharmacy_summary.net_profit >= 0 else '#b91c1c' }};">
+            TK {{ "%.2f"|format(pharmacy_summary.net_profit) }}
+          </td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -447,12 +474,12 @@
   <!-- 4. Top Selling Products -->
   <div class="table-container">
     <div class="table-title">
-      <span>🔥 {{ "সর্বোচ্চ বিক্রিত পণ্য (Top Selling Products)" if lang == 'bn' else "Top Selling Products" }}</span>
+      <span>🔥 {{ "সর্বোচ্চ বিক্রিত আইটেম (Top Selling Items)" if lang == 'bn' else "Top Selling Items" }}</span>
     </div>
     <table>
       <thead>
         <tr>
-          <th>{{ "পণ্য" if lang == 'bn' else "Product" }}</th>
+          <th>{{ "আইটেম" if lang == 'bn' else "Item" }}</th>
           <th>{{ "বিক্রিত পরিমাণ" if lang == 'bn' else "Qty Sold" }}</th>
           <th>{{ "বিক্রয় মূল্য" if lang == 'bn' else "Revenue" }}</th>
           <th>{{ "ক্রয় খরচ" if lang == 'bn' else "Cost (COGS)" }}</th>
@@ -476,6 +503,36 @@
       </tbody>
     </table>
   </div>
+
+  {% if dept != 'pharmacy' and top_medicines %}
+  <div class="table-container" style="margin-top:20px;">
+    <div class="table-title">
+      <span>💊 {{ "সর্বোচ্চ বিক্রিত ফার্মেসী ঔষধ (Top Pharmacy Medicines)" if lang == 'bn' else "Top Selling Pharmacy Medicines" }}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ "ঔষধ" if lang == 'bn' else "Medicine" }}</th>
+          <th>{{ "বিক্রিত" if lang == 'bn' else "Qty Sold" }}</th>
+          <th>{{ "বিক্রয় মূল্য" if lang == 'bn' else "Revenue" }}</th>
+          <th>{{ "ক্রয় খরচ" if lang == 'bn' else "Cost" }}</th>
+          <th>{{ "মুনাফা" if lang == 'bn' else "Profit" }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in top_medicines %}
+        <tr>
+          <td><strong>{{ m.name }}</strong></td>
+          <td>{{ m.qty_sold }}</td>
+          <td>TK {{ "%.2f"|format(m.revenue) }}</td>
+          <td>TK {{ "%.2f"|format(m.cogs_amt) }}</td>
+          <td style="color:#16a34a; font-weight:700;">TK {{ "%.2f"|format(m.profit) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 
   <!-- Footer -->
   <div style="border-top:1.5px solid #e2e8f0; padding-top:16px; margin-top:32px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8;">

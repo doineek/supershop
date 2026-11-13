@@ -2,12 +2,17 @@
 {% block title %}Online Orders - App & Web{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
   <div>
-    <h1 style="margin: 0; font-size: 1.8rem; font-family: 'Space Grotesk', sans-serif;">Online Orders</h1>
-    <p style="margin: 5px 0 0 0; color: #666;">Customer Mobile App & Web Orders</p>
+    <h1 style="margin: 0; font-size: 1.8rem; font-family: 'Space Grotesk', sans-serif;">
+      {% if session.get('role') == 'delivery' %}🛵 Rider Portal — Orders & Billing{% else %}Online Orders{% endif %}
+    </h1>
+    <p style="margin: 5px 0 0 0; color: #666;">Customer Mobile App & Web Orders (Other Products & Pharmacy Separated)</p>
   </div>
-  <div style="display: flex; gap: 10px; align-items: center;">
+  <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+    <button type="button" onclick="openRiderBillingModal()" style="background: #0f766e; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 700; cursor: pointer;">
+      🧾 Create Rider Bill
+    </button>
     <button id="enableSoundBtn" onclick="toggleNotifications()" style="background: #15803d; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
       Notifications: ON
     </button>
@@ -15,6 +20,19 @@
       Refresh Orders
     </button>
   </div>
+</div>
+
+<!-- DEPARTMENT FILTER TABS -->
+<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
+  <a href="{{ url_for('online_orders', dept='all') }}" style="text-decoration:none; padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.88rem; border:1.5px solid {{ '#0f172a' if dept=='all' else '#cbd5e1' }}; background:{{ '#0f172a' if dept=='all' else '#fff' }}; color:{{ '#fff' if dept=='all' else '#334155' }};">
+    📦 All Orders ({{ all_orders_count }})
+  </a>
+  <a href="{{ url_for('online_orders', dept='regular') }}" style="text-decoration:none; padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.88rem; border:1.5px solid {{ '#2563eb' if dept=='regular' else '#cbd5e1' }}; background:{{ '#2563eb' if dept=='regular' else '#fff' }}; color:{{ '#fff' if dept=='regular' else '#1e40af' }};">
+    🛒 Other Products ({{ regular_count }})
+  </a>
+  <a href="{{ url_for('online_orders', dept='pharmacy') }}" style="text-decoration:none; padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.88rem; border:1.5px solid {{ '#059669' if dept=='pharmacy' else '#cbd5e1' }}; background:{{ '#059669' if dept=='pharmacy' else '#fff' }}; color:{{ '#fff' if dept=='pharmacy' else '#065f46' }};">
+    💊 Pharmacy Orders ({{ pharmacy_count }})
+  </a>
 </div>
 
 <!-- Custom Live Customer Search & Order Number Search Section -->
@@ -65,9 +83,16 @@
       {% if order.order_status == 'pending_confirmation' %}{% set bg_color = '#fffbf5' %}{% elif order.order_status == 'new' %}{% set bg_color = '#f0f9ff' %}{% endif %}
       <tr id="orderRow_{{ order.id }}" style="border-bottom: 3px solid #e2e8f0; border-left: 6px solid {{ st_color }}; background: {{ bg_color }}; transition: background 0.2s ease;">
         <td style="padding: 14px 16px; vertical-align: top;">
-          <div style="display:flex; align-items:center; gap:6px;">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             <span style="font-size:0.75rem; font-weight:700; color:#64748b; background:#e2e8f0; padding:1px 6px; border-radius:6px;">#{{ loop.index }}</span>
             <strong style="font-family: 'IBM Plex Mono', monospace; color: #1e293b; font-size:1.02rem;">{{ order.order_number }}</strong>
+          </div>
+          <div style="margin-top:5px;">
+            {% if order.is_pharmacy_order %}
+              <span style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:6px;">💊 PHARMACY</span>
+            {% else %}
+              <span style="background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:6px;">🛒 REGULAR</span>
+            {% endif %}
           </div>
           <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">{{ order.created_at[:16].replace('T', ' ') }}</div>
         </td>
@@ -99,6 +124,20 @@
             <span style="color: #64748b; font-weight: 500;">{{ order.address_details }}</span>
             <a href="javascript:void(0)" onclick="openEditAddrModal({{ order.id }}, '{{ order.order_number }}', '{{ order.address_details|replace('\'', '\\\'') }}')" style="display:inline-block; margin-left:6px; color:#2563eb; font-size:0.75rem; text-decoration:none; font-weight:700;">✏️ Edit</a>
           </div>
+          <div style="font-size: 0.75rem; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:4px 7px; margin-top:5px;">
+            {% if order.customer_member_since %}<span>📅 Joined: {{ order.customer_member_since }}</span>{% endif %}
+            {% if order.customer_last_ip %}<br><span style="font-family:monospace;">🌐 {{ order.customer_last_ip }}</span>{% endif %}
+            {% if order.customer_last_location %} <span>• {{ order.customer_last_location }}</span>{% endif %}
+          </div>
+          {% if order.is_pharmacy_order and (order.prescription_url or order.customer_notes or order.overall_duration_days) %}
+          <div style="font-size: 0.76rem; color:#065f46; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:5px 8px; margin-top:5px;">
+            {% if order.prescription_url %}
+              <div><a href="{{ order.prescription_url }}" target="_blank" style="color:#047857; font-weight:800; text-decoration:underline;">📄 View Prescription</a></div>
+            {% endif %}
+            {% if order.overall_duration_days %}<div>⏱️ Duration: <b>{{ order.overall_duration_days }} days</b></div>{% endif %}
+            {% if order.customer_notes %}<div>📝 Note: {{ order.customer_notes }}</div>{% endif %}
+          </div>
+          {% endif %}
         </td>
 
         <td style="padding: 14px 16px; vertical-align: top;">
@@ -106,9 +145,13 @@
             {% for item in order.order_items %}
             <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:0.86rem; color:#1e293b; display:flex; justify-content:space-between; align-items:center;">
               <div>
+                {% if not order.is_pharmacy_order and item.product_id %}
                 <a href="{{ url_for('edit_product', product_id=item.product_id) }}" target="_blank" style="font-weight:700; color:#2563eb; text-decoration:none;" title="Click to view product details">
                   {{ item.product_name }}
                 </a>
+                {% else %}
+                <span style="font-weight:700; color:#065f46;">{{ item.product_name }}</span>
+                {% endif %}
                 <div style="font-size:0.75rem; color:#64748b;">
                   Qty: <strong>{{ item.quantity }}</strong> × TK {{ "%.2f"|format(item.unit_price) }}
                 </div>
@@ -166,13 +209,18 @@
         </td>
 
         <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
+          <div style="display:flex; flex-direction:column; gap:6px; align-items:center;">
           {% if order.order_status in ['verified', 'packed', 'on_the_way', 'delivered'] %}
-          <a href="/online_orders/{{ order.id }}/invoice" target="_blank" style="display: inline-block; background: #16a34a; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; text-decoration: none; font-size: 0.82rem;">
-            🖨️ Print Invoice
-          </a>
+            <a href="/online_orders/{{ order.id }}/invoice" target="_blank" style="display: inline-block; background: #16a34a; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; text-decoration: none; font-size: 0.82rem; width:100%;">
+              🖨️ Print Invoice
+            </a>
+            <button type="button" onclick="triggerOrderThermalPrint({{ order.id }}, '{{ order.order_number }}', {{ 'true' if order.is_pharmacy_order else 'false' }}, {{ order.pharmacy_order_id or 0 }})" style="background:#0f172a; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.80rem; width:100%;">
+              🖥️ PC Thermal
+            </button>
           {% else %}
-          <span style="color: #94a3b8; font-size: 0.8rem;">(Requires Verify)</span>
+            <span style="color: #94a3b8; font-size: 0.8rem;">(Requires Verify)</span>
           {% endif %}
+          </div>
         </td>
 
         <td style="padding: 14px 16px; vertical-align: top; text-align: center;">
@@ -619,5 +667,189 @@
       })
       .catch(err => {});
   }, 4000);
+
+  async function triggerOrderThermalPrint(orderId, orderNumber, isPharmacy, pharmOrderId) {
+    try {
+      const res = await fetch('/api/thermal/print-job', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          source_type: isPharmacy && pharmOrderId ? 'pharmacy_order' : 'online_order',
+          source_id: isPharmacy && pharmOrderId ? pharmOrderId : orderId,
+          invoice_number: orderNumber,
+          requested_from: 'web_orders'
+        })
+      });
+      const d = await res.json();
+      alert(d.message || (d.success ? 'Sent to PC thermal printer!' : 'Failed to print'));
+    } catch (e) {
+      alert('Thermal print error: ' + e);
+    }
+  }
+
+  let _rbCart = [];
+  let _rbCatalog = { products: [], packages: [], medicines: [] };
+  let _rbTab = 'products';
+
+  function openRiderBillingModal() {
+    document.getElementById('riderBillingModal').style.display = 'flex';
+    loadRiderCatalog();
+    renderRiderBillCart();
+  }
+  function closeRiderBillingModal() {
+    document.getElementById('riderBillingModal').style.display = 'none';
+  }
+  function switchRiderBillTab(tab) {
+    _rbTab = tab;
+    document.getElementById('rbTabProd').style.background = tab === 'products' ? '#1e40af' : '#f1f5f9';
+    document.getElementById('rbTabProd').style.color = tab === 'products' ? '#fff' : '#334155';
+    document.getElementById('rbTabPharm').style.background = tab === 'pharmacy' ? '#047857' : '#f1f5f9';
+    document.getElementById('rbTabPharm').style.color = tab === 'pharmacy' ? '#fff' : '#334155';
+    loadRiderCatalog();
+  }
+  async function loadRiderCatalog() {
+    const q = (document.getElementById('rbSearchInput').value || '').trim();
+    const listEl = document.getElementById('rbCatalogList');
+    listEl.innerHTML = '<div style="padding:16px; color:#64748b; text-align:center;">Searching...</div>';
+    try {
+      const res = await fetch(`/api/rider/catalog?type=${_rbTab}&q=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      if (!d.success) {
+        listEl.innerHTML = '<div style="padding:12px; color:#dc2626;">Could not load catalog.</div>';
+        return;
+      }
+      _rbCatalog = d;
+      const items = _rbTab === 'pharmacy' ? (d.medicines || []) : ([...(d.products || []), ...(d.packages || [])]);
+      if (!items.length) {
+        listEl.innerHTML = '<div style="padding:16px; color:#64748b; text-align:center;">No matching items in stock.</div>';
+        return;
+      }
+      listEl.innerHTML = items.map(it => {
+        const sub = it.item_type === 'medicine'
+          ? `${it.generic_name || ''} ${it.strength || ''} · Stock: ${it.stock_qty}`
+          : `${it.category || it.unit || ''} · Stock: ${it.stock_qty}`;
+        return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid #e2e8f0; gap:8px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:13px; color:#0f172a;">${it.item_type==='medicine'?'💊 ':''}${it.name}</div>
+            <div style="font-size:11px; color:#64748b;">${sub}</div>
+          </div>
+          <div style="font-weight:800; color:#16a34a; font-size:13px; white-space:nowrap;">TK ${Number(it.sell_price||0).toFixed(2)}</div>
+          <button type="button" onclick='addRiderCartItem(${JSON.stringify(it).replace(/'/g,"&#39;")})' style="background:#2563eb; color:#fff; border:none; padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer; font-size:12px;">+ Add</button>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      listEl.innerHTML = '<div style="padding:12px; color:#dc2626;">Error: ' + e + '</div>';
+    }
+  }
+  function addRiderCartItem(item) {
+    const idx = _rbCart.findIndex(x => x.id === item.id && x.item_type === item.item_type);
+    if (idx >= 0) {
+      _rbCart[idx].quantity += 1;
+    } else {
+      _rbCart.push({ id: item.id, item_type: item.item_type, name: item.name, sell_price: Number(item.sell_price || 0), quantity: 1 });
+    }
+    renderRiderBillCart();
+  }
+  function updateRiderCartQty(idx, delta) {
+    _rbCart[idx].quantity += delta;
+    if (_rbCart[idx].quantity <= 0) _rbCart.splice(idx, 1);
+    renderRiderBillCart();
+  }
+  function renderRiderBillCart() {
+    const el = document.getElementById('rbCartList');
+    const sub = _rbCart.reduce((acc, it) => acc + it.sell_price * it.quantity, 0);
+    const disc = parseFloat(document.getElementById('rbDiscountInput')?.value || 0) || 0;
+    const net = Math.max(0, Math.round(sub - disc));
+    document.getElementById('rbNetTotal').textContent = `TK ${net.toFixed(2)}`;
+    if (!_rbCart.length) {
+      el.innerHTML = '<div style="padding:14px; color:#64748b; font-size:12.5px; text-align:center;">No items added yet.</div>';
+      return;
+    }
+    el.innerHTML = _rbCart.map((it, idx) => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-bottom:1px dashed #e2e8f0; font-size:12.5px;">
+        <div style="flex:1;"><b>${it.item_type==='medicine'?'💊 ':'🛒 '}${it.name}</b><br><span style="color:#64748b;">TK ${it.sell_price.toFixed(2)} × ${it.quantity}</span></div>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <button type="button" onclick="updateRiderCartQty(${idx},-1)" style="width:24px; height:24px; border:1px solid #cbd5e1; background:#fff; border-radius:4px; cursor:pointer; font-weight:bold;">-</button>
+          <span style="min-width:18px; text-align:center; font-weight:700;">${it.quantity}</span>
+          <button type="button" onclick="updateRiderCartQty(${idx},1)" style="width:24px; height:24px; border:1px solid #cbd5e1; background:#fff; border-radius:4px; cursor:pointer; font-weight:bold;">+</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  async function submitRiderBill() {
+    if (!_rbCart.length) { alert('Please add at least one product or medicine.'); return; }
+    const btn = document.getElementById('rbSubmitBtn');
+    btn.disabled = true; btn.textContent = 'Processing...';
+    try {
+      const res = await fetch('/api/rider/create-bill', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          customer_name: document.getElementById('rbCustName').value.trim(),
+          customer_phone: document.getElementById('rbCustPhone').value.trim(),
+          extra_discount: parseFloat(document.getElementById('rbDiscountInput').value || 0) || 0,
+          print_to_pc: document.getElementById('rbPrintPcCheck').checked,
+          requested_from: 'web_rider_billing',
+          items: _rbCart
+        })
+      });
+      const d = await res.json();
+      if (!d.success) {
+        alert(d.message || 'Bill creation failed');
+      } else {
+        let msg = d.message || 'Bill created!';
+        if (d.thermal_print && d.thermal_print.message) msg += '\n🖨️ ' + d.thermal_print.message;
+        alert(msg);
+        _rbCart = [];
+        closeRiderBillingModal();
+        if (d.receipt_url) window.open(d.receipt_url, '_blank');
+      }
+    } catch (e) {
+      alert('Error: ' + e);
+    } finally {
+      btn.disabled = false; btn.textContent = '✅ Complete Bill & Save';
+    }
+  }
 </script>
+
+<!-- Web Rider / Mobile Billing Modal (Other Products & Pharmacy Medicines) -->
+<div id="riderBillingModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:1100; align-items:center; justify-content:center; padding:12px;">
+  <div style="background:#fff; width:100%; max-width:920px; max-height:90vh; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(0,0,0,0.3);">
+    <div style="padding:14px 20px; background:#0f172a; color:#fff; display:flex; justify-content:space-between; align-items:center;">
+      <div style="font-weight:800; font-size:16px;">🧾 Rider Mobile / Quick Billing (Products &amp; Pharmacy)</div>
+      <button type="button" onclick="closeRiderBillingModal()" style="background:#334155; color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:700;">✕ Close</button>
+    </div>
+    <div style="padding:16px; overflow-y:auto; display:grid; grid-template-columns:1.15fr 0.85fr; gap:16px;">
+      <div>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <button type="button" id="rbTabProd" onclick="switchRiderBillTab('products')" style="flex:1; padding:8px; border:none; border-radius:8px; font-weight:700; cursor:pointer; background:#1e40af; color:#fff;">🛒 Other Products &amp; Combos</button>
+          <button type="button" id="rbTabPharm" onclick="switchRiderBillTab('pharmacy')" style="flex:1; padding:8px; border:none; border-radius:8px; font-weight:700; cursor:pointer; background:#f1f5f9; color:#334155;">💊 Pharmacy Medicines</button>
+        </div>
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+          <input id="rbSearchInput" type="text" placeholder="Search product, SKU, medicine or generic..." style="flex:1; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px;" oninput="loadRiderCatalog()">
+        </div>
+        <div id="rbCatalogList" style="border:1px solid #e2e8f0; border-radius:10px; max-height:360px; overflow-y:auto;"></div>
+      </div>
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+        <div style="font-weight:800; font-size:14px; color:#0f172a;">Selected Items &amp; Customer</div>
+        <input id="rbCustName" type="text" placeholder="Customer Name (optional)" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">
+        <input id="rbCustPhone" type="text" placeholder="Customer Mobile (e.g. 017...)" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">
+        <div id="rbCartList" style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; max-height:190px; overflow-y:auto;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px;">
+          <label>Extra Discount (TK):</label>
+          <input id="rbDiscountInput" type="number" min="0" value="0" style="width:90px; padding:5px 8px; border:1px solid #cbd5e1; border-radius:6px;" oninput="renderRiderBillCart()">
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:16px; font-weight:800; color:#15803d; border-top:1px solid #cbd5e1; padding-top:8px;">
+          <span>Payable Total:</span>
+          <span id="rbNetTotal">TK 0.00</span>
+        </div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; cursor:pointer;">
+          <input type="checkbox" id="rbPrintPcCheck" checked>
+          <span>🖥️ Print receipt directly on Shop PC Thermal Printer</span>
+        </label>
+        <button id="rbSubmitBtn" type="button" onclick="submitRiderBill()" style="background:#16a34a; color:#fff; border:none; padding:10px 14px; border-radius:8px; font-weight:800; cursor:pointer; font-size:14px;">✅ Complete Bill &amp; Save</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

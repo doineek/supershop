@@ -1,31 +1,151 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1>Good day, {{ session.username }}</h1>
-<p class="subtitle">Here's what's happening in the shop right now.</p>
-
-<div class="grid">
-  <div class="card">
-    <div class="label">Sales today</div>
-    <div class="value">TK {{ "%.2f"|format(today_total) }}</div>
+<div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+  <div>
+    <h1 style="margin:0;">Dashboard</h1>
+    <p class="subtitle" style="margin:4px 0 0;">Click any metric card below to inspect live itemized details, channel splits, and thermal print options.</p>
   </div>
-  <div class="card">
-    <div class="label">Transactions today</div>
-    <div class="value">{{ today_count }}</div>
-  </div>
-  <div class="card">
-    <div class="label">Products in catalog</div>
-    <div class="value">{{ total_products }}</div>
-  </div>
-  <div class="card {{ 'warn' if low_stock|length > 0 }}">
-    <div class="label">Low stock alerts</div>
-    <div class="value">{{ low_stock|length }}</div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <a href="/sales" class="btn btn-outline btn-small">📋 Full Sales Log</a>
+    <a href="/online_orders" class="btn btn-outline btn-small">📱 Online &amp; Pharmacy Orders</a>
   </div>
 </div>
 
-<h2>Low stock items</h2>
+<style>
+  .kpi-clickable {
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+    position: relative;
+  }
+  .kpi-clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    border-color: #2563eb;
+  }
+  .kpi-subgrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #e2e8f0;
+    font-size: 11px;
+    color: #475569;
+  }
+  .kpi-hint {
+    font-size: 11px;
+    color: #2563eb;
+    font-weight: 700;
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .dash-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .dash-modal-backdrop.open { display: flex; }
+  .dash-modal {
+    background: #fff;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 960px;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+  }
+  .dash-modal-head {
+    padding: 16px 20px;
+    background: #0f172a;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .dash-modal-body {
+    padding: 18px 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .pill-tab {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .pill-tab.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+</style>
+
+<div class="grid">
+  <div class="card kpi-clickable" onclick="openDashDetail('sales_today')" title="Click for Sales Today channel breakdown & invoices">
+    <div class="label">Sales today</div>
+    <div class="value">TK {{ "%.2f"|format(today_total) }}</div>
+    <div class="kpi-subgrid">
+      <span>🛒 Shop POS: <b>{{ "%.0f"|format(sales_breakdown.regular_pos.total) }}</b></span>
+      <span>📱 Shop Online: <b>{{ "%.0f"|format(sales_breakdown.regular_online.total) }}</b></span>
+      <span>💊 Pharm POS: <b>{{ "%.0f"|format(sales_breakdown.pharmacy_pos.total) }}</b></span>
+      <span>🏥 Pharm Online: <b>{{ "%.0f"|format(sales_breakdown.pharmacy_online.total) }}</b></span>
+    </div>
+    <div class="kpi-hint"><span>Inspect channel breakdown</span><span>Details →</span></div>
+  </div>
+
+  <div class="card kpi-clickable" onclick="openDashDetail('transactions_today')" title="Click to inspect today's invoices">
+    <div class="label">Transactions today</div>
+    <div class="value">{{ today_count }}</div>
+    <div class="kpi-subgrid">
+      <span>🛒 Regular POS: <b>{{ sales_breakdown.regular_pos.count }}</b></span>
+      <span>📱 Regular On: <b>{{ sales_breakdown.regular_online.count }}</b></span>
+      <span>💊 Pharm POS: <b>{{ sales_breakdown.pharmacy_pos.count }}</b></span>
+      <span>🏥 Pharm On: <b>{{ sales_breakdown.pharmacy_online.count }}</b></span>
+    </div>
+    <div class="kpi-hint"><span>View &amp; print receipts</span><span>Details →</span></div>
+  </div>
+
+  <div class="card kpi-clickable" onclick="openDashDetail('catalog')" title="Click to inspect catalog valuation & stock">
+    <div class="label">Products in catalog</div>
+    <div class="value">{{ total_products }}</div>
+    <div class="kpi-subgrid">
+      <span>📦 Regular: <b>{{ general_products_count }}</b></span>
+      <span>💊 Medicines: <b>{{ pharmacy_medicines_count }}</b></span>
+      <span>🎁 Combos: <b>{{ packages_count }}</b></span>
+      <span>✅ Active SKUs</span>
+    </div>
+    <div class="kpi-hint"><span>Products, medicines &amp; value</span><span>Details →</span></div>
+  </div>
+
+  {% set total_low_alerts = (low_stock|length) + (low_stock_medicines|length if low_stock_medicines is defined else 0) %}
+  <div class="card kpi-clickable {{ 'warn' if total_low_alerts > 0 }}" onclick="openDashDetail('low_stock')" title="Click to view low stock products & medicines">
+    <div class="label">Low stock alerts</div>
+    <div class="value">{{ total_low_alerts }}</div>
+    <div class="kpi-subgrid">
+      <span>📦 General Low: <b>{{ low_stock|length }}</b></span>
+      <span>💊 Pharm Low: <b>{{ low_stock_medicines|length if low_stock_medicines is defined else 0 }}</b></span>
+    </div>
+    <div class="kpi-hint"><span>Reorder watchlist</span><span>Details →</span></div>
+  </div>
+</div>
+
+<h2>Low-stock items — General Products</h2>
 {% if low_stock %}
-<table>
+<table class="table">
   <tr><th>Product</th><th>SKU</th><th class="num">In stock</th><th class="num">Reorder at</th></tr>
   {% for p in low_stock %}
   <tr class="row-low">
@@ -37,6 +157,185 @@
   {% endfor %}
 </table>
 {% else %}
-<p class="subtitle">Nothing is running low. Good shape!</p>
+<p class="subtitle">Nothing is running low in General Products. Good shape!</p>
 {% endif %}
+
+{% if low_stock_medicines is defined and low_stock_medicines %}
+<h2 style="margin-top:24px;">Low-stock items — 💊 Pharmacy Medicines</h2>
+<table class="table">
+  <tr><th>Medicine</th><th>Dosage / Strength</th><th class="num">In stock</th><th class="num">Reorder at</th><th>Expiry</th></tr>
+  {% for m in low_stock_medicines %}
+  <tr class="row-low">
+    <td><strong>{{ m.name }}</strong></td>
+    <td>{{ m.dosage_form or '' }} {{ m.strength or '' }}</td>
+    <td class="num">{{ m.stock_qty }}</td>
+    <td class="num">{{ m.low_stock_threshold }}</td>
+    <td>{{ m.expiry_date or '—' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<div id="dashDetailBackdrop" class="dash-modal-backdrop" onclick="if(event.target===this) closeDashDetail()">
+  <div class="dash-modal">
+    <div class="dash-modal-head">
+      <div>
+        <div id="dashModalTitle" style="font-size:16px; font-weight:800;">Details</div>
+        <div id="dashModalSub" style="font-size:12px; color:#94a3b8; margin-top:2px;"></div>
+      </div>
+      <button type="button" onclick="closeDashDetail()" style="background:#334155; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-weight:700;">✕ Close</button>
+    </div>
+    <div class="dash-modal-body" id="dashModalBody">
+      Loading...
+    </div>
+  </div>
+</div>
+
+<script>
+let _dashTab = 'sales_today';
+let _dashChannel = 'all';
+
+function closeDashDetail() {
+  document.getElementById('dashDetailBackdrop').classList.remove('open');
+}
+
+async function openDashDetail(tab, channel, q) {
+  _dashTab = tab || _dashTab;
+  _dashChannel = channel || 'all';
+  const titles = {
+    sales_today: '📊 Sales Today — Detailed Channel Breakdown',
+    transactions_today: '🧾 Transactions Today — Invoice List',
+    catalog: '📦 Full Catalog — Products, Medicines & Packages',
+    low_stock: '⚠️ Low Stock Alerts — Regular & Pharmacy',
+  };
+  document.getElementById('dashModalTitle').textContent = titles[_dashTab] || 'Details';
+  document.getElementById('dashModalSub').textContent = 'Live database breakdown';
+  document.getElementById('dashDetailBackdrop').classList.add('open');
+  await fetchAndRenderDashDetail(q || '');
+}
+
+async function fetchAndRenderDashDetail(q) {
+  const body = document.getElementById('dashModalBody');
+  body.innerHTML = '<div style="padding:32px; text-align:center; color:#64748b;">Loading live details...</div>';
+  try {
+    const url = `/api/dashboard/details?tab=${encodeURIComponent(_dashTab)}&channel=${encodeURIComponent(_dashChannel)}&q=${encodeURIComponent(q || '')}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.success) {
+      body.innerHTML = '<div style="color:#dc2626; padding:16px;">Failed to load details.</div>';
+      return;
+    }
+
+    if (_dashTab === 'sales_today' || _dashTab === 'transactions_today') {
+      const b = data.breakdown || {};
+      const channels = [
+        { k: 'all', lbl: 'All Channels' },
+        { k: 'regular_pos', lbl: `🛒 Shop POS (${(b.regular_pos||{}).count||0} · TK ${Number((b.regular_pos||{}).total||0).toFixed(0)})` },
+        { k: 'regular_online', lbl: `📱 Shop Online (${(b.regular_online||{}).count||0} · TK ${Number((b.regular_online||{}).total||0).toFixed(0)})` },
+        { k: 'pharmacy_pos', lbl: `💊 Pharm POS (${(b.pharmacy_pos||{}).count||0} · TK ${Number((b.pharmacy_pos||{}).total||0).toFixed(0)})` },
+        { k: 'pharmacy_online', lbl: `🏥 Pharm Online (${(b.pharmacy_online||{}).count||0} · TK ${Number((b.pharmacy_online||{}).total||0).toFixed(0)})` },
+      ];
+      let html = `
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+          ${channels.map(c => `<button class="pill-tab ${_dashChannel===c.k?'active':''}" onclick="openDashDetail('${_dashTab}','${c.k}', document.getElementById('dashSearchBox')?.value||'')">${c.lbl}</button>`).join('')}
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; background:#f8fafc; padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0;">
+          <div style="font-size:13px;">
+            Showing <strong>${data.total_count}</strong> tx &nbsp;|&nbsp;
+            Total: <strong style="color:#16a34a;">TK ${Number(data.total_amount||0).toFixed(2)}</strong> &nbsp;|&nbsp;
+            Cash: <strong>TK ${Number(data.cash_total||0).toFixed(0)}</strong> &nbsp;|&nbsp;
+            Card/Digital: <strong>TK ${Number(data.card_total||0).toFixed(0)}</strong>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <input id="dashSearchBox" type="text" value="${(q||'').replace(/"/g,'&quot;')}" placeholder="Search invoice / mobile..." style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;" onkeydown="if(event.key==='Enter') fetchAndRenderDashDetail(this.value)">
+            <button class="btn btn-primary btn-small" onclick="fetchAndRenderDashDetail(document.getElementById('dashSearchBox').value)">Search</button>
+          </div>
+        </div>
+        <table class="table" style="font-size:12.5px;">
+          <thead><tr><th>Invoice</th><th>Time</th><th>Customer</th><th>Channel</th><th class="num">Total</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${(data.items||[]).length ? data.items.map(it => `
+              <tr>
+                <td><strong>${it.invoice_number}</strong></td>
+                <td>${it.created_at}</td>
+                <td>${it.customer_name}${it.customer_mobile ? ' ('+it.customer_mobile+')' : ''}</td>
+                <td><span style="background:#f1f5f9; padding:2px 7px; border-radius:6px; font-size:11px; font-weight:700;">${it.category_label}</span></td>
+                <td class="num" style="font-weight:700; color:#16a34a;">TK ${Number(it.total||0).toFixed(2)}</td>
+                <td>
+                  <a href="${it.view_url}" class="btn btn-outline btn-small">View</a>
+                  <button type="button" class="btn btn-small" style="background:#0f172a; color:#fff; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; font-size:11px;" onclick="dashThermalPrint('${it.id ? 'sale' : 'pharmacy_order'}', ${it.id || 0}, '${it.invoice_number}')">🖨️ PC Print</button>
+                </td>
+              </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b;">No matching transactions today.</td></tr>'}
+          </tbody>
+        </table>`;
+      body.innerHTML = html;
+      return;
+    }
+
+    if (_dashTab === 'catalog') {
+      const s = data.summary || {};
+      body.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:14px;">
+          <div style="background:#eff6ff; padding:10px 12px; border-radius:10px; border:1px solid #bfdbfe;">
+            <div style="font-size:11px; color:#1d4ed8; font-weight:700;">REGULAR PRODUCTS</div>
+            <div style="font-size:18px; font-weight:800;">${s.general_count||0} (${s.general_units||0} units)</div>
+            <div style="font-size:11px; color:#475569;">Stock cost val: TK ${Number(s.general_valuation||0).toFixed(0)}</div>
+          </div>
+          <div style="background:#ecfdf5; padding:10px 12px; border-radius:10px; border:1px solid #a7f3d0;">
+            <div style="font-size:11px; color:#047857; font-weight:700;">PHARMACY MEDICINES</div>
+            <div style="font-size:18px; font-weight:800;">${s.pharmacy_count||0} (${s.pharmacy_units||0} units)</div>
+          </div>
+          <div style="background:#f5f3ff; padding:10px 12px; border-radius:10px; border:1px solid #ddd6fe;">
+            <div style="font-size:11px; color:#6d28d9; font-weight:700;">COMBO PACKAGES</div>
+            <div style="font-size:18px; font-weight:800;">${s.packages_count||0} Active</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:6px; margin-bottom:12px;">
+          <input id="dashCatSearch" type="text" value="${(q||'').replace(/"/g,'&quot;')}" placeholder="Filter products or medicines..." style="flex:1; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" onkeydown="if(event.key==='Enter') fetchAndRenderDashDetail(this.value)">
+          <button class="btn btn-primary btn-small" onclick="fetchAndRenderDashDetail(document.getElementById('dashCatSearch').value)">Search</button>
+        </div>
+        <h4 style="margin:8px 0;">🛒 Regular Products (Recent 40)</h4>
+        <table class="table" style="font-size:12px; margin-bottom:16px;">
+          <thead><tr><th>Name</th><th>Category</th><th>SKU</th><th class="num">Price</th><th class="num">Stock</th></tr></thead>
+          <tbody>${(data.general_products||[]).map(p => `<tr><td>${p.name}</td><td>${p.cat_name||'General'}</td><td>${p.sku||''}</td><td class="num">TK ${Number(p.sell_price||0).toFixed(2)}</td><td class="num">${p.stock_qty}</td></tr>`).join('')}</tbody>
+        </table>
+        <h4 style="margin:8px 0;">💊 Pharmacy Medicines (Recent 40)</h4>
+        <table class="table" style="font-size:12px;">
+          <thead><tr><th>Medicine</th><th>Generic</th><th>Strength</th><th class="num">MRP/Unit</th><th class="num">Stock</th></tr></thead>
+          <tbody>${(data.pharmacy_medicines||[]).map(m => `<tr><td>${m.name}</td><td>${m.generic_name||''}</td><td>${m.strength||''}</td><td class="num">TK ${Number(m.unit_price||0).toFixed(2)}</td><td class="num">${m.stock_qty}</td></tr>`).join('')}</tbody>
+        </table>`;
+      return;
+    }
+
+    body.innerHTML = `
+      <h4 style="margin:4px 0 8px;">📦 Low Stock Regular Products (${(data.general_low_stock||[]).length})</h4>
+      <table class="table" style="font-size:12px; margin-bottom:16px;">
+        <thead><tr><th>Product</th><th>SKU</th><th class="num">In Stock</th><th class="num">Threshold</th><th class="num">Price</th></tr></thead>
+        <tbody>${(data.general_low_stock||[]).length ? data.general_low_stock.map(p => `<tr class="row-low"><td>${p.name}</td><td>${p.sku||''}</td><td class="num">${p.stock_qty}</td><td class="num">${p.low_stock_threshold}</td><td class="num">TK ${Number(p.sell_price||0).toFixed(2)}</td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center; color:#16a34a;">All regular products adequately stocked.</td></tr>'}</tbody>
+      </table>
+      <h4 style="margin:4px 0 8px;">💊 Low Stock Pharmacy Medicines (${(data.pharmacy_low_stock||[]).length})</h4>
+      <table class="table" style="font-size:12px;">
+        <thead><tr><th>Medicine</th><th>Generic</th><th class="num">In Stock</th><th class="num">Threshold</th><th>Expiry</th></tr></thead>
+        <tbody>${(data.pharmacy_low_stock||[]).length ? data.pharmacy_low_stock.map(m => `<tr class="row-low"><td>${m.name} ${m.strength||''}</td><td>${m.generic_name||''}</td><td class="num">${m.stock_qty}</td><td class="num">${m.low_stock_threshold}</td><td>${m.expiry_date||'—'}</td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center; color:#16a34a;">All pharmacy medicines adequately stocked.</td></tr>'}</tbody>
+      </table>`;
+  } catch (e) {
+    body.innerHTML = '<div style="color:#dc2626; padding:16px;">Error loading details: ' + e + '</div>';
+  }
+}
+
+async function dashThermalPrint(srcType, srcId, invNum) {
+  try {
+    const res = await fetch('/api/thermal/print-job', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ source_type: srcType, source_id: srcId, invoice_number: invNum, requested_from: 'dashboard_modal' })
+    });
+    const d = await res.json();
+    alert(d.message || (d.success ? 'Sent to PC thermal printer!' : 'Thermal print failed'));
+  } catch (e) {
+    alert('Error sending thermal print: ' + e);
+  }
+}
+</script>
 {% endblock %}

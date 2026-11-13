@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
 import '../auth/login_screen.dart';
+import 'rider_billing_sheet.dart';
 
 class DeliveryHomeScreen extends StatefulWidget {
   const DeliveryHomeScreen({Key? key}) : super(key: key);
@@ -22,6 +23,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   String _riderPhone = '';
   final Set<int> _notifiedOrderIds = {};
   int _viewMode = 0; // 0 = 2 Columns (Side-by-side), 1 = Orders only, 2 = Earnings only
+  String _deptFilter = 'all'; // 'all', 'regular', 'pharmacy'
 
   @override
   void initState() {
@@ -292,6 +294,15 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         ),
         backgroundColor: Colors.orange.shade800,
         actions: [
+          TextButton.icon(
+            onPressed: () => showRiderBillingModal(
+              context,
+              riderPhone: _riderPhone,
+              onBillCreated: () => _loadAllData(silent: true),
+            ),
+            icon: const Icon(Icons.receipt_long, color: Colors.white, size: 18),
+            label: const Text('বিল', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             tooltip: "Refresh Data",
@@ -385,6 +396,17 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
           );
         },
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => showRiderBillingModal(
+          context,
+          riderPhone: _riderPhone,
+          onBillCreated: () => _loadAllData(silent: true),
+        ),
+        backgroundColor: Colors.teal.shade700,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_shopping_cart),
+        label: const Text('নতুন বিল', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
     );
   }
 
@@ -449,7 +471,122 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   // =========================================================================
   // COLUMN 1: Active Online Orders (Unconfirmed new + assigned/deployed orders)
   // =========================================================================
+  String _resolveMediaUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+    final base = ApiService.baseUrl;
+    return trimmed.startsWith('/') ? '$base$trimmed' : '$base/$trimmed';
+  }
+
+  void _showPrescriptionModal(OnlineOrder order) {
+    final url = _resolveMediaUrl(
+      order.prescriptionUrl.isNotEmpty ? order.prescriptionUrl : order.prescriptionOriginalUrl,
+    );
+    if (url.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              color: Colors.green.shade800,
+              child: Row(
+                children: [
+                  const Icon(Icons.medication, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'প্রেসক্রিপশন #${order.orderNumber}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4.0,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('প্রেসক্রিপশন লোড করা যায়নি।'),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _printOrderThermal(OnlineOrder order) async {
+    final bool usePharm = order.isPharmacyOrder && order.pharmacyOrderId > 0;
+    final res = await ApiService.printOnPcThermal(
+      riderPhone: _riderPhone,
+      sourceType: usePharm ? 'pharmacy_order' : 'online_order',
+      sourceId: usePharm ? order.pharmacyOrderId : order.id,
+      invoiceNumber: order.orderNumber,
+    );
+    if (!mounted) return;
+    final bool ok = res['success'] == true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(res['message']?.toString() ?? (ok ? 'PC প্রিন্টারে পাঠানো হয়েছে!' : 'প্রিন্ট ব্যর্থ হয়েছে')),
+        backgroundColor: ok ? Colors.teal.shade700 : Colors.red,
+      ),
+    );
+  }
+
+  Widget _buildDeptFilterChip(String key, String label, Color color) {
+    final bool selected = _deptFilter == key;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _deptFilter = key),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: selected ? color : Colors.grey.shade300),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+              color: selected ? Colors.white : Colors.grey.shade800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildOrdersColumn({required bool isCompact}) {
+    final int regCount = _deliveryOrders.where((o) => !o.isPharmacyOrder).length;
+    final int pharmCount = _deliveryOrders.where((o) => o.isPharmacyOrder).length;
+    final List<OnlineOrder> visibleOrders = _deptFilter == 'pharmacy'
+        ? _deliveryOrders.where((o) => o.isPharmacyOrder).toList()
+        : (_deptFilter == 'regular'
+            ? _deliveryOrders.where((o) => !o.isPharmacyOrder).toList()
+            : _deliveryOrders);
+
     return Container(
       color: const Color(0xFFF8FAFC),
       child: Column(
@@ -462,39 +599,53 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
               color: Colors.blue.shade50,
               border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
             ),
-            child: Row(
+            child: Column(
               children: [
-                const Icon(Icons.list_alt, color: Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "কলাম ১: চলতি অর্ডার সমূহ",
-                        style: TextStyle(
-                          fontSize: isCompact ? 13 : 15,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
-                        ),
+                Row(
+                  children: [
+                    const Icon(Icons.list_alt, color: Colors.blue, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "কলাম ১: চলতি অর্ডার সমূহ",
+                            style: TextStyle(
+                              fontSize: isCompact ? 13 : 15,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                          Text(
+                            "সাধারণ পণ্য ও ফার্মেসী অর্ডার আলাদা দেখুন",
+                            style: TextStyle(fontSize: isCompact ? 10 : 11, color: Colors.blue.shade700),
+                          ),
+                        ],
                       ),
-                      Text(
-                        "নতুন ও অ্যাসাইনকৃত ডেলিভারি",
-                        style: TextStyle(fontSize: isCompact ? 10 : 11, color: Colors.blue.shade700),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade700,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ],
-                  ),
+                      child: Text(
+                        "${visibleOrders.length}",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade700,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    "${_deliveryOrders.length}",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _buildDeptFilterChip('all', 'সব (${_deliveryOrders.length})', Colors.blueGrey.shade800),
+                    const SizedBox(width: 6),
+                    _buildDeptFilterChip('regular', '🛒 অন্যান্য ($regCount)', Colors.blue.shade700),
+                    const SizedBox(width: 6),
+                    _buildDeptFilterChip('pharmacy', '💊 ফার্মেসী ($pharmCount)', Colors.green.shade700),
+                  ],
                 ),
               ],
             ),
@@ -504,7 +655,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
           Expanded(
             child: _isLoadingOrders
                 ? const Center(child: CircularProgressIndicator())
-                : _deliveryOrders.isEmpty
+                : visibleOrders.isEmpty
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(20.0),
@@ -530,9 +681,9 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                         onRefresh: () => _loadAllData(),
                         child: ListView.builder(
                           padding: EdgeInsets.all(isCompact ? 8 : 12),
-                          itemCount: _deliveryOrders.length,
+                          itemCount: visibleOrders.length,
                           itemBuilder: (context, index) {
-                            final order = _deliveryOrders[index];
+                            final order = visibleOrders[index];
                             return _buildOrderCard(order, isCompact);
                           },
                         ),
@@ -581,7 +732,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Row: Order Number & Status
+            // Top Row: Order Number, Dept Badge & Status
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -589,13 +740,38 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "📦 #${order.orderNumber}",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: isCompact ? 13 : 15,
-                          color: Colors.blue.shade900,
-                        ),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            "${order.isPharmacyOrder ? '💊' : '📦'} #${order.orderNumber}",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: isCompact ? 13 : 15,
+                              color: order.isPharmacyOrder ? Colors.green.shade900 : Colors.blue.shade900,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: order.isPharmacyOrder ? Colors.green.shade50 : Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(
+                                color: order.isPharmacyOrder ? Colors.green.shade300 : Colors.blue.shade200,
+                              ),
+                            ),
+                            child: Text(
+                              order.isPharmacyOrder ? "💊 ফার্মেসী" : "🛒 সাধারণ",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: order.isPharmacyOrder ? Colors.green.shade800 : Colors.blue.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       Text(
                         "📅 $timeStr",
@@ -644,6 +820,68 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+            if (order.customerIp.isNotEmpty || order.ipLocation.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  "🌐 IP: ${order.customerIp.isNotEmpty ? order.customerIp : '—'}${order.ipLocation.isNotEmpty ? ' • ${order.ipLocation}' : ''}",
+                  style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade600),
+                ),
+              ),
+            if (order.items.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Text(
+                  order.items.map((it) => "• ${it.productName} × ${it.quantity}").join('\n'),
+                  style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+            if (order.isPharmacyOrder && (order.prescriptionUrl.isNotEmpty || order.customerNotes.isNotEmpty || order.overallDurationDays > 0)) ...[
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (order.overallDurationDays > 0)
+                      Text('⏱️ মেয়াদ: ${order.overallDurationDays} দিন', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                    if (order.customerNotes.isNotEmpty)
+                      Text('📝 নোট: ${order.customerNotes}', style: TextStyle(fontSize: 10.5, color: Colors.green.shade800)),
+                    if (order.prescriptionUrl.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => _showPrescriptionModal(order),
+                          icon: const Icon(Icons.image_search, size: 15),
+                          label: const Text('📄 প্রেসক্রিপশন দেখুন', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.green.shade800,
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
 
             // Cash Collection and Action
@@ -674,10 +912,25 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Action Buttons based on Status
-            SizedBox(
-              width: double.infinity,
-              child: _buildOrderActionButton(order, isCompact),
+            // Action Buttons + PC Thermal Print
+            Row(
+              children: [
+                Expanded(child: _buildOrderActionButton(order, isCompact)),
+                const SizedBox(width: 6),
+                ElevatedButton.icon(
+                  onPressed: () => _printOrderThermal(order),
+                  icon: const Icon(Icons.print, size: 15, color: Colors.white),
+                  label: Text(
+                    isCompact ? "PC প্রিন্ট" : "🖨️ PC প্রিন্ট",
+                    style: TextStyle(fontSize: isCompact ? 10 : 11, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueGrey.shade800,
+                    padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 12, vertical: 9),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -686,7 +939,9 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
   }
 
   Widget _buildOrderActionButton(OnlineOrder order, bool isCompact) {
-    if (order.orderStatus == 'new') {
+    final bool isUnassignedPool = order.assignedRiderPhone.trim().isEmpty &&
+        (order.orderStatus == 'new' || order.orderStatus == 'verified' || order.orderStatus == 'packed');
+    if (order.orderStatus == 'new' || isUnassignedPool) {
       return ElevatedButton.icon(
         onPressed: () => _acceptOrder(order),
         icon: const Icon(Icons.check_circle, size: 16, color: Colors.white),
@@ -758,6 +1013,8 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     double defaultFee = 40.0;
     List<dynamic> payouts = [];
     List<dynamic> deliveredOrders = [];
+    Map<String, dynamic> regularStats = {};
+    Map<String, dynamic> pharmacyStats = {};
 
     if (_riderEarnings != null) {
       totalEarned = ((_riderEarnings!['total_earned'] ?? 0) as num).toDouble();
@@ -768,6 +1025,12 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
       defaultFee = ((_riderEarnings!['default_rider_fee'] ?? 40) as num).toDouble();
       payouts = _riderEarnings!['payouts'] ?? [];
       deliveredOrders = _riderEarnings!['delivered_orders'] ?? [];
+      if (_riderEarnings!['regular_stats'] is Map) {
+        regularStats = Map<String, dynamic>.from(_riderEarnings!['regular_stats']);
+      }
+      if (_riderEarnings!['pharmacy_stats'] is Map) {
+        pharmacyStats = Map<String, dynamic>.from(_riderEarnings!['pharmacy_stats']);
+      }
     }
 
     return Container(
@@ -964,6 +1227,37 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                             ],
                           ),
 
+                          const SizedBox(height: 8),
+
+                          // Regular vs Pharmacy Earnings Split
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatMetricCard(
+                                  title: "🛒 সাধারণ ডেলিভারি",
+                                  value: "${(regularStats['delivered'] ?? 0)} টি",
+                                  subtitle:
+                                      "আয়: TK ${((regularStats['earned'] ?? 0) as num).toStringAsFixed(0)} | ক্যাশ: TK ${((regularStats['collected'] ?? 0) as num).toStringAsFixed(0)}",
+                                  icon: Icons.shopping_bag,
+                                  color: Colors.indigo,
+                                  isCompact: isCompact,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildStatMetricCard(
+                                  title: "💊 ফার্মেসী ডেলিভারি",
+                                  value: "${(pharmacyStats['delivered'] ?? 0)} টি",
+                                  subtitle:
+                                      "আয়: TK ${((pharmacyStats['earned'] ?? 0) as num).toStringAsFixed(0)} | ক্যাশ: TK ${((pharmacyStats['collected'] ?? 0) as num).toStringAsFixed(0)}",
+                                  icon: Icons.local_pharmacy,
+                                  color: Colors.green,
+                                  isCompact: isCompact,
+                                ),
+                              ),
+                            ],
+                          ),
+
                           const SizedBox(height: 16),
 
                           // 3. Payout History Section (Matches Admin Panel Ledger)
@@ -1074,6 +1368,8 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                             ...deliveredOrders.take(15).map((o) {
                               String dDate = (o['delivered_at'] ?? o['created_at'] ?? '').toString();
                               if (dDate.length > 16) dDate = dDate.substring(0, 16).replaceFirst('T', ' ');
+                              final bool isPharmDel = o['is_pharmacy_order'] == true ||
+                                  (o['order_number'] ?? '').toString().toUpperCase().startsWith('RX-');
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 6),
                                 elevation: 1,
@@ -1087,8 +1383,12 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              "📦 #${o['order_number']}",
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                              "${isPharmDel ? '💊' : '📦'} #${o['order_number']} (${isPharmDel ? 'ফার্মেসী' : 'সাধারণ'})",
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                                color: isPharmDel ? Colors.green.shade800 : Colors.black87,
+                                              ),
                                             ),
                                             Text(
                                               "👤 ${o['customer_name']} | 📍 ${o['area']}",

@@ -172,6 +172,9 @@ class OnlineOrder {
   final int overallDurationDays;
   final String customerNotes;
   final String pharmacyOrderType;
+  final int pharmacyOrderId;
+  final String customerIp;
+  final String ipLocation;
   final List<OrderTimelineStep> timeline;
   final List<OrderItem> items;
 
@@ -208,6 +211,9 @@ class OnlineOrder {
     this.overallDurationDays = 0,
     this.customerNotes = '',
     this.pharmacyOrderType = '',
+    this.pharmacyOrderId = 0,
+    this.customerIp = '',
+    this.ipLocation = '',
     this.timeline = const [],
     required this.items,
   });
@@ -264,6 +270,9 @@ class OnlineOrder {
       overallDurationDays: _asInt(json['overall_duration_days']),
       customerNotes: _asStr(json['customer_notes']),
       pharmacyOrderType: _asStr(json['pharmacy_order_type']),
+      pharmacyOrderId: _asInt(json['pharmacy_order_id']),
+      customerIp: _asStr(json['customer_ip']),
+      ipLocation: _asStr(json['ip_location']),
       timeline: timelineList,
       items: itemList,
     );

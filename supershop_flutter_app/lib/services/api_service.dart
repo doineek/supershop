@@ -895,4 +895,86 @@ class ApiService {
       'message': 'সার্ভারের সাথে সংযোগ স্থাপন করা যাচ্ছে না। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করুন।',
     };
   }
+
+  /// Fetch searchable catalog (regular products, combo packages & pharmacy medicines) for Rider billing.
+  static Future<Map<String, dynamic>> fetchRiderCatalog({
+    required String riderPhone,
+    String query = '',
+    String type = 'all',
+  }) async {
+    try {
+      final path =
+          '/api/rider/catalog?rider_phone=${Uri.encodeComponent(riderPhone.trim())}&type=${Uri.encodeComponent(type)}&q=${Uri.encodeComponent(query.trim())}';
+      final res = await httpGet(path, timeout: const Duration(seconds: 12));
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (e) {
+      debugPrint('Error fetching rider catalog: $e');
+    }
+    return {'success': false, 'products': [], 'packages': [], 'medicines': []};
+  }
+
+  /// Create a Rider POS / delivery bill for regular products, combos, medicines, or mixed.
+  static Future<Map<String, dynamic>> createRiderBill({
+    required String riderPhone,
+    required String customerName,
+    required String customerPhone,
+    required List<Map<String, dynamic>> items,
+    double extraDiscount = 0.0,
+    bool printToPc = false,
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/rider/create-bill',
+        body: jsonEncode({
+          'rider_phone': riderPhone.trim(),
+          'customer_name': customerName.trim(),
+          'customer_phone': customerPhone.trim(),
+          'extra_discount': extraDiscount,
+          'print_to_pc': printToPc,
+          'requested_from': 'flutter_rider_app',
+          'items': items,
+        }),
+        timeout: const Duration(seconds: 20),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+    return {'success': false, 'message': 'বিল তৈরি করা সম্ভব হয়নি।'};
+  }
+
+  /// Request direct Windows PC / Firebase relay thermal print for an order or sale.
+  static Future<Map<String, dynamic>> printOnPcThermal({
+    required String riderPhone,
+    required String sourceType,
+    required int sourceId,
+    String invoiceNumber = '',
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/thermal/print-job',
+        body: jsonEncode({
+          'rider_phone': riderPhone.trim(),
+          'source_type': sourceType,
+          'source_id': sourceId,
+          'invoice_number': invoiceNumber,
+          'requested_from': 'flutter_rider_app',
+        }),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Print error: $e'};
+    }
+    return {'success': false, 'message': 'PC প্রিন্টারে রিকুয়েস্ট পাঠানো যায়নি।'};
+  }
 }

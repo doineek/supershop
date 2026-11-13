@@ -97,6 +97,14 @@
 <div class="{% if session.user_id %}app-shell{% else %}unauth-shell{% endif %}">
   {% if session.user_id %}
   <nav class="sidebar">
+    {% if session.role == 'delivery' %}
+    <a href="{{ url_for('online_orders') }}" class="sidebar-item {{ 'active' if request.path == '/online_orders' }}">
+      <span class="sidebar-icon">🛵</span><span>Rider Orders &amp; Billing</span>
+    </a>
+    <a href="{{ url_for('sales_history') }}" class="sidebar-item {{ 'active' if request.path == '/sales' or request.path.startswith('/sales') }}">
+      <span class="sidebar-icon">📋</span><span>Sales log</span>
+    </a>
+    {% else %}
     <a href="{{ url_for('dashboard') }}" class="sidebar-item {{ 'active' if request.path in ['/', '/dashboard', '/admin'] }}">
       <span class="sidebar-icon">📊</span><span>Dashboard</span>
     </a>
@@ -121,6 +129,7 @@
     <a href="{{ url_for('returned_items') }}" class="sidebar-item {{ 'active' if request.path == '/returned_items' }}">
       <span class="sidebar-icon">🚫</span><span>Returned / Expired</span>
     </a>
+    {% endif %}
     {% if session.role == 'admin' %}
     <a href="{{ url_for('packages_page') }}" class="sidebar-item {{ 'active' if request.path == '/packages' }}">
       <span class="sidebar-icon">🎁</span><span>Product Packages</span>

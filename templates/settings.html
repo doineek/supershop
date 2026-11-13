@@ -217,6 +217,83 @@
       <textarea name="policy_help_center" rows="2" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">{{ settings.policy_help_center or '' }}</textarea>
     </div>
 
+    <div style="margin-top:18px; padding:16px; border:1px solid #cbd5e1; border-radius:10px; background:#f8fafc;">
+      <h3 style="margin:0 0 8px 0; font-size:15px; color:#0f172a;">🖨️ PC Thermal Printer Settings (58mm / 80mm ESC/POS Relay)</h3>
+      <p style="margin:0 0 12px 0; font-size:12.5px; color:#475569;">
+        Configure the Windows thermal printer attached to the shop PC so Riders &amp; Mobile users can print receipts directly to this PC via USB/Cloud relay.
+      </p>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <div>
+          <label style="font-weight:600; font-size:13px;">Target Windows Thermal Printer</label>
+          <input type="text" name="thermal_printer_name" id="thermalPrinterNameInput" list="windowsPrinterList"
+                 value="{{ settings.thermal_printer_name or '' }}"
+                 placeholder="Leave blank for Auto-Detect (e.g. POSPrinter POS58)"
+                 style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; margin-top:4px;">
+          <datalist id="windowsPrinterList">
+            {% for pr in (thermal_printers or []) %}
+            <option value="{{ pr }}">
+            {% endfor %}
+          </datalist>
+          <small style="color:#0369a1; display:block; margin-top:4px;">
+            Detected: {{ (thermal_printers or [])|join(', ') or 'Cloud / Non-Windows host' }}
+            {% if thermal_resolved %}<br>✅ Active resolved target: <b>{{ thermal_resolved }}</b> ({{ thermal_reason }}){% endif %}
+          </small>
+        </div>
+        <div>
+          <label style="font-weight:600; font-size:13px;">Receipt Paper Width</label>
+          <select name="thermal_paper_width" id="thermalPaperWidthSelect" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; margin-top:4px;">
+            <option value="58mm" {{ 'selected' if (settings.thermal_paper_width or '58mm') == '58mm' }}>58mm (32 columns - Standard Mini POS)</option>
+            <option value="80mm" {{ 'selected' if settings.thermal_paper_width == '80mm' }}>80mm (48 columns - Wide Receipt)</option>
+          </select>
+        </div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; cursor:pointer;">
+        <input type="checkbox" name="thermal_pc_auto_print" value="1" {{ 'checked' if (settings.thermal_pc_auto_print or '1') == '1' }}>
+        <span>Auto-print incoming mobile/rider jobs on this shop Windows PC when running</span>
+      </label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center;">
+        <button type="button" class="btn btn-outline btn-small" onclick="sendThermalTestPrint()" style="border-color:#0f172a; color:#0f172a; font-weight:700;">🧪 Send Test Print to PC</button>
+        <button type="button" class="btn btn-outline btn-small" onclick="processThermalQueue()">🔄 Process Pending Print Queue</button>
+        <span id="thermalStatusMsg" style="font-size:12px; color:#334155;"></span>
+      </div>
+    </div>
+
+    <script>
+    async function sendThermalTestPrint() {
+      const msgEl = document.getElementById('thermalStatusMsg');
+      msgEl.textContent = 'Sending test slip...';
+      try {
+        const res = await fetch('/api/thermal/test-print', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            printer_name: document.getElementById('thermalPrinterNameInput').value,
+            paper_width: document.getElementById('thermalPaperWidthSelect').value
+          })
+        });
+        const d = await res.json();
+        msgEl.style.color = d.success ? '#15803d' : '#dc2626';
+        msgEl.textContent = d.message || (d.success ? 'Printed!' : 'Failed');
+      } catch (e) {
+        msgEl.style.color = '#dc2626';
+        msgEl.textContent = 'Error: ' + e;
+      }
+    }
+    async function processThermalQueue() {
+      const msgEl = document.getElementById('thermalStatusMsg');
+      msgEl.textContent = 'Checking pending queue...';
+      try {
+        const res = await fetch('/api/thermal/process-pending', { method: 'POST' });
+        const d = await res.json();
+        msgEl.style.color = '#0369a1';
+        msgEl.textContent = `Queue check: printed=${d.printed||0}, failed=${d.failed||0}, remaining=${d.remaining||0}`;
+      } catch (e) {
+        msgEl.style.color = '#dc2626';
+        msgEl.textContent = 'Error: ' + e;
+      }
+    }
+    </script>
+
     <button class="btn btn-primary" type="submit" style="margin-top:16px;">Save Settings & Store Policies</button>
   </form>
 </div>

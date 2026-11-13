@@ -1,22 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Financial Reports & Ledger{% endblock %}
 {% block content %}
-<div class="toolbar" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+<div class="toolbar" style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
   <div>
-    <h1 style="margin:0; font-size:1.6rem; color:#0f172a;">📊 Financial Overview & Analytics Reports</h1>
-    <p class="subtitle" style="margin:4px 0 0 0; color:#64748b;">Comprehensive Sales Revenue, COGS, Ledger Allocations & Net Profit across all channels.</p>
+    <h1 style="margin:0; font-size:1.6rem; color:#0f172a;">
+      📊 Financial Overview & Analytics Reports
+      {% if dept == 'general' %}
+        <span style="font-size:0.85rem; background:#dbeafe; color:#1d4ed8; padding:3px 10px; border-radius:999px; vertical-align:middle;">🛒 Other Products Only</span>
+      {% elif dept == 'pharmacy' %}
+        <span style="font-size:0.85rem; background:#d1fae5; color:#047857; padding:3px 10px; border-radius:999px; vertical-align:middle;">💊 Pharmacy Only</span>
+      {% else %}
+        <span style="font-size:0.85rem; background:#e0e7ff; color:#4338ca; padding:3px 10px; border-radius:999px; vertical-align:middle;">🏬 Whole Supershop</span>
+      {% endif %}
+    </h1>
+    <p class="subtitle" style="margin:4px 0 0 0; color:#64748b;">Comprehensive Sales Revenue, COGS, Ledger Allocations & Net Profit separated by Other Products, Pharmacy & Whole Supershop.</p>
   </div>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     <!-- PDF Export Buttons -->
-    <a href="{{ url_for('reports_export_pdf', period=period, lang='en') }}" target="_blank" style="background:#4338ca; color:#ffffff; text-decoration:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(67,56,202,0.25);">
+    <a href="{{ url_for('reports_export_pdf', period=period, dept=dept, lang='en') }}" target="_blank" style="background:#4338ca; color:#ffffff; text-decoration:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(67,56,202,0.25);">
       <span>📄 Download PDF (English)</span>
     </a>
-    <a href="{{ url_for('reports_export_pdf', period=period, lang='bn') }}" target="_blank" style="background:#059669; color:#ffffff; text-decoration:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(5,150,105,0.25);">
+    <a href="{{ url_for('reports_export_pdf', period=period, dept=dept, lang='bn') }}" target="_blank" style="background:#059669; color:#ffffff; text-decoration:none; padding:9px 14px; border-radius:8px; font-weight:700; font-size:0.84rem; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(5,150,105,0.25);">
       <span>📄 PDF ডাউনলোড (বাংলা)</span>
     </a>
 
     <!-- Period Select -->
-    <select id="periodSelect" onchange="window.location.href='{{ url_for('reports') }}?period=' + this.value"
+    <select id="periodSelect" onchange="window.location.href='{{ url_for('reports') }}?period=' + this.value + '&dept={{ dept }}'"
             style="padding:9px 16px; font-size:14px; font-weight:700; border:2px solid #6366f1; border-radius:8px; background:#fff; color:#4338ca; cursor:pointer; box-shadow:0 2px 6px rgba(99,102,241,0.15);">
       <option value="daily" {{ 'selected' if period=='daily' }}>📅 Daily (Today)</option>
       <option value="weekly" {{ 'selected' if period=='weekly' }}>📆 Weekly (Last 7 Days)</option>
@@ -28,6 +37,34 @@
       <option value="all" {{ 'selected' if period=='all' }}>♾️ All-Time Overall</option>
     </select>
   </div>
+</div>
+
+<!-- DEPARTMENT REPORT SWITCHER CARDS -->
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:22px;">
+  <a href="{{ url_for('reports', period=period, dept='all') }}" style="text-decoration:none; background:{{ '#eef2ff' if dept=='all' else '#ffffff' }}; border:2px solid {{ '#4f46e5' if dept=='all' else '#e2e8f0' }}; border-radius:12px; padding:14px 16px; display:block; color:inherit;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:800; color:#312e81; font-size:0.95rem;">🏬 Whole Supershop</span>
+      <span style="font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:999px; background:#c7d2fe; color:#312e81;">{{ whole_summary.tx_count }} tx</span>
+    </div>
+    <div style="font-size:1.35rem; font-weight:900; color:#1e1b4b; margin-top:6px;">TK {{ "%.2f"|format(whole_summary.revenue) }}</div>
+    <div style="font-size:0.78rem; color:#475569; margin-top:4px;">POS: TK {{ "%.0f"|format(whole_summary.pos_revenue) }} • Online: TK {{ "%.0f"|format(whole_summary.online_revenue) }} • Net: <b>TK {{ "%.0f"|format(whole_summary.net_profit) }}</b></div>
+  </a>
+  <a href="{{ url_for('reports', period=period, dept='general') }}" style="text-decoration:none; background:{{ '#eff6ff' if dept=='general' else '#ffffff' }}; border:2px solid {{ '#2563eb' if dept=='general' else '#e2e8f0' }}; border-radius:12px; padding:14px 16px; display:block; color:inherit;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:800; color:#1d4ed8; font-size:0.95rem;">🛒 Other Products</span>
+      <span style="font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:999px; background:#bfdbfe; color:#1e40af;">{{ general_summary.tx_count }} tx</span>
+    </div>
+    <div style="font-size:1.35rem; font-weight:900; color:#1e3a8a; margin-top:6px;">TK {{ "%.2f"|format(general_summary.revenue) }}</div>
+    <div style="font-size:0.78rem; color:#475569; margin-top:4px;">POS: TK {{ "%.0f"|format(general_summary.pos_revenue) }} • Online: TK {{ "%.0f"|format(general_summary.online_revenue) }} • Net: <b>TK {{ "%.0f"|format(general_summary.net_profit) }}</b></div>
+  </a>
+  <a href="{{ url_for('reports', period=period, dept='pharmacy') }}" style="text-decoration:none; background:{{ '#ecfdf5' if dept=='pharmacy' else '#ffffff' }}; border:2px solid {{ '#059669' if dept=='pharmacy' else '#e2e8f0' }}; border-radius:12px; padding:14px 16px; display:block; color:inherit;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:800; color:#047857; font-size:0.95rem;">💊 Pharmacy & Medicines</span>
+      <span style="font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:999px; background:#a7f3d0; color:#065f46;">{{ pharmacy_summary.tx_count }} tx</span>
+    </div>
+    <div style="font-size:1.35rem; font-weight:900; color:#064e3b; margin-top:6px;">TK {{ "%.2f"|format(pharmacy_summary.revenue) }}</div>
+    <div style="font-size:0.78rem; color:#475569; margin-top:4px;">POS: TK {{ "%.0f"|format(pharmacy_summary.pos_revenue) }} • Online: TK {{ "%.0f"|format(pharmacy_summary.online_revenue) }} • Net: <b>TK {{ "%.0f"|format(pharmacy_summary.net_profit) }}</b></div>
+  </a>
 </div>
 
 <!-- ================= 0. AI EXECUTIVE BUSINESS INTELLIGENCE & ACTIONABLE REPORT ================= -->
@@ -366,7 +403,9 @@ function regenerateAiReport() {
   const spinner = document.getElementById('aiRegenSpinner');
   const btnText = document.getElementById('aiRegenText');
   const btn = document.getElementById('btnRegenerateAiReport');
-  const period = new URLSearchParams(window.location.search).get('period') || 'monthly';
+  const params = new URLSearchParams(window.location.search);
+  const period = params.get('period') || 'monthly';
+  const dept = params.get('dept') || '{{ dept }}';
 
   if (spinner) spinner.style.display = 'inline-block';
   if (btnText) btnText.innerText = 'Generating...';
@@ -378,7 +417,7 @@ function regenerateAiReport() {
     toggleAiReportVisibility();
   }
 
-  fetch(`/reports/api/regenerate_ai_report?period=${encodeURIComponent(period)}&mode=${encodeURIComponent(mode)}`)
+  fetch(`/reports/api/regenerate_ai_report?period=${encodeURIComponent(period)}&mode=${encodeURIComponent(mode)}&dept=${encodeURIComponent(dept)}`)
     .then(r => r.json())
     .then(data => {
       if (data && data.success) {
@@ -751,6 +790,53 @@ function regenerateAiReport() {
 
   </div>
 </div>
+
+{% if dept != 'pharmacy' and (top_medicines or slow_medicines or dead_medicines) %}
+<div style="margin-bottom:28px;">
+  <h2 style="font-size:1.15rem; color:#065f46; margin:0 0 12px 0;">💊 Pharmacy Medicines Performance (Separate Medicine Breakdown)</h2>
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+    <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:12px; padding:14px;">
+      <h4 style="margin:0 0 10px 0; color:#047857; font-size:13.5px;">🏆 Top Selling Medicines</h4>
+      {% if top_medicines %}
+        {% for m in top_medicines %}
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; border-bottom:1px dotted #a7f3d0;">
+          <span><b>{{ m.name }}</b></span>
+          <span style="font-weight:700; color:#047857;">{{ m.qty_sold }} sold (TK {{ "%.0f"|format(m.revenue) }})</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size:12.5px; color:#64748b; margin:0;">No medicine sales recorded in this period.</p>
+      {% endif %}
+    </div>
+    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:14px;">
+      <h4 style="margin:0 0 10px 0; color:#b45309; font-size:13.5px;">🐢 Slow Moving Medicines</h4>
+      {% if slow_medicines %}
+        {% for m in slow_medicines %}
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; border-bottom:1px dotted #fde68a;">
+          <span><b>{{ m.name }}</b></span>
+          <span style="color:#b45309;">{{ m.qty_sold }} sold / {{ m.stock_qty }} left</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size:12.5px; color:#64748b; margin:0;">None in this period.</p>
+      {% endif %}
+    </div>
+    <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:12px; padding:14px;">
+      <h4 style="margin:0 0 10px 0; color:#b91c1c; font-size:13.5px;">⚠️ Zero-Sale In-Stock Medicines</h4>
+      {% if dead_medicines %}
+        {% for m in dead_medicines %}
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; border-bottom:1px dotted #fecaca;">
+          <span><b>{{ m.name }}</b></span>
+          <span style="color:#dc2626; font-weight:700;">{{ m.stock_qty }} in stock</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size:12.5px; color:#64748b; margin:0;">All active medicines moved!</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- 5. INCOME & EXPENSE LEDGER WITH TARGET SEGMENT & 1-CLICK SORTING -->
 <div style="display:grid; grid-template-columns: 360px 1fr; gap:24px; margin-bottom:32px; align-items:start;">

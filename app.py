@@ -79,7 +79,10 @@ from database import (
     get_portal_notifications, mark_all_portal_notifications_as_read, clear_portal_notifications
 )
 from barcode_utils import generate_barcode_svg
+import ipaddress
+import json
 import remote_control
+import thermal_printer
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
@@ -180,6 +183,317 @@ def get_real_client_ip():
             return x_forwarded.split(",")[0].strip()
         return request.remote_addr or "127.0.0.1"
     return "127.0.0.1"
+
+
+_IP_GEO_MEM_CACHE = {}
+
+
+def _resolve_ip_and_location(conn=None, ip_addr=None):
+    """Resolve client IP & human-readable location fast without stalling requests."""
+    ip = (ip_addr or get_real_client_ip() or "127.0.0.1").strip()
+    if "," in ip:
+        ip = ip.split(",")[0].strip()
+
+    # Fast local/private network detection
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+            return ip, "Local Network / Shop Wi-Fi"
+    except Exception:
+        if ip in ("127.0.0.1", "localhost", "::1") or ip.startswith(("192.168.", "10.", "172.16.")):
+            return ip, "Local Network / Shop Wi-Fi"
+
+    cf_city = request.headers.get("CF-IPCity", "").strip() if has_request_context() else ""
+    cf_country = request.headers.get("CF-IPCountry", "").strip() if has_request_context() else ""
+    if cf_city or cf_country:
+        lbl = ", ".join(p for p in (cf_city, cf_country) if p and p.upper() != "XX")
+        if lbl:
+            _IP_GEO_MEM_CACHE[ip] = lbl
+            return ip, lbl
+
+    if ip in _IP_GEO_MEM_CACHE:
+        return ip, _IP_GEO_MEM_CACHE[ip]
+
+    if conn is not None:
+        try:
+            cached = conn.execute("SELECT location_label FROM ip_geo_cache WHERE ip = ?", (ip,)).fetchone()
+            if cached and cached["location_label"]:
+                _IP_GEO_MEM_CACHE[ip] = cached["location_label"]
+                return ip, cached["location_label"]
+        except Exception:
+            pass
+
+    location_label = "Bangladesh / Online IP"
+    try:
+        req = urllib.request.Request(
+            f"http://ip-api.com/json/{urllib.parse.quote(ip)}?fields=status,country,regionName,city,isp",
+            headers={"User-Agent": "DOINEEK-Supershop/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            info = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            if info.get("status") == "success":
+                parts = []
+                for k in ("city", "regionName", "country"):
+                    v = (info.get(k) or "").strip()
+                    if v and v not in parts:
+                        parts.append(v)
+                isp = (info.get("isp") or "").strip()
+                loc_str = ", ".join(parts)
+                if isp:
+                    loc_str = f"{loc_str} ({isp[:28]})" if loc_str else isp[:36]
+                if loc_str:
+                    location_label = loc_str
+                    if conn is not None:
+                        try:
+                            conn.execute(
+                                """INSERT OR REPLACE INTO ip_geo_cache
+                                   (ip, location_label, city, region, country, isp, updated_at)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                (
+                                    ip, location_label, info.get("city", ""),
+                                    info.get("regionName", ""), info.get("country", ""),
+                                    isp, get_bd_now_iso(),
+                                ),
+                            )
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
+    _IP_GEO_MEM_CACHE[ip] = location_label
+    return ip, location_label
+
+
+def _extract_device_hint(data=None):
+    if isinstance(data, dict) and data.get("device"):
+        return str(data.get("device"))[:64]
+    if has_request_context():
+        cli = request.headers.get("X-App-Client", "").strip()
+        if cli:
+            return cli[:64]
+        ua = request.headers.get("User-Agent", "").strip()
+        low = ua.lower()
+        if "dart" in low or "flutter" in low:
+            return "Android Mobile App"
+        if "android" in low:
+            return "Android Browser"
+        if "iphone" in low or "ipad" in low or "ios" in low:
+            return "iOS Browser"
+        if "windows" in low:
+            return "Windows PC"
+        if "macintosh" in low:
+            return "Mac Browser"
+        if ua:
+            return ua[:40]
+    return ""
+
+
+def _touch_customer_network_info(conn, phone, data=None, ip_addr=None, is_register=False):
+    """Captures IP, geo location, and device on registration, login, orders, and profile activity."""
+    if not phone or not conn:
+        return "", ""
+    clean_p = normalize_phone(phone) or str(phone).strip()
+    ip, loc = _resolve_ip_and_location(conn, ip_addr=ip_addr)
+    dev = _extract_device_hint(data)
+    now_iso = get_bd_now_iso()
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(customer_users)").fetchall()}
+        if "last_ip" not in cols:
+            return ip, loc
+        if is_register:
+            conn.execute(
+                """UPDATE customer_users SET
+                   registration_ip = COALESCE(NULLIF(registration_ip, ''), ?),
+                   registration_location = COALESCE(NULLIF(registration_location, ''), ?),
+                   last_ip = ?, last_location = ?, last_seen_at = ?, last_device = ?
+                   WHERE phone = ? OR phone = ?""",
+                (ip, loc, ip, loc, now_iso, dev, clean_p, phone),
+            )
+        else:
+            conn.execute(
+                """UPDATE customer_users SET
+                   registration_ip = COALESCE(NULLIF(registration_ip, ''), ?),
+                   registration_location = COALESCE(NULLIF(registration_location, ''), ?),
+                   last_ip = ?, last_location = ?, last_seen_at = ?,
+                   last_device = COALESCE(NULLIF(?, ''), last_device)
+                   WHERE phone = ? OR phone = ?""",
+                (ip, loc, ip, loc, now_iso, dev, clean_p, phone),
+            )
+    except Exception as e:
+        print(f"[network_track] Customer IP update error: {e}")
+    return ip, loc
+
+
+def _member_since_label(created_at_str):
+    if not created_at_str:
+        return "Unknown"
+    s = str(created_at_str).strip()
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+        days = max(0, (now - dt).days)
+        pretty = dt.strftime("%d %b %Y, %I:%M %p")
+        if days == 0:
+            return f"{pretty} (Joined Today)"
+        if days == 1:
+            return f"{pretty} (1 day ago)"
+        if days < 30:
+            return f"{pretty} ({days} days ago)"
+        months = days // 30
+        if months < 12:
+            return f"{pretty} ({months} mo ago)"
+        years = days // 365
+        return f"{pretty} ({years} yr ago)"
+    except Exception:
+        return s[:16].replace("T", " ")
+
+
+def _classify_sale_record(sale_dict, item_rows=None):
+    """Unified classification into regular_pos, regular_online, pharmacy_pos, or pharmacy_online."""
+    inv = str(sale_dict.get("invoice_number") or "").upper()
+    ch = str(sale_dict.get("channel") or "Offline").strip()
+    total_amt = float(sale_dict.get("rounded_total") or sale_dict.get("total_amount") or 0.0)
+    items = item_rows or []
+
+    med_item_amt = 0.0
+    reg_item_amt = 0.0
+    has_med = False
+    has_reg = False
+    for it in items:
+        serials = str(it.get("unit_serials") if isinstance(it, dict) else (it["unit_serials"] or "")).strip()
+        line_amt = float((it["unit_price"] or 0.0)) * float((it["quantity"] or 1))
+        if serials.startswith("💊"):
+            has_med = True
+            med_item_amt += line_amt
+        else:
+            has_reg = True
+            reg_item_amt += line_amt
+
+    if inv.startswith("INV-ONLINE-RX-") or (ch in ("Online", "Pharmacy Online") and ("RX-" in inv or (has_med and not has_reg))):
+        cat = "pharmacy_online"
+        label = "🏥 Pharmacy Online"
+        return {
+            "sales_category": cat, "category_label": label,
+            "is_pharmacy": True, "is_online": True, "is_mixed": False,
+            "regular_amount": 0.0, "pharmacy_amount": total_amt,
+        }
+
+    if ch == "Pharmacy POS" or inv.startswith(("RXPOS", "INV-RX-POS", "PHARM-POS")) or (ch != "Online" and has_med and not has_reg):
+        cat = "pharmacy_pos"
+        label = "💊 Pharmacy POS"
+        return {
+            "sales_category": cat, "category_label": label,
+            "is_pharmacy": True, "is_online": False, "is_mixed": False,
+            "regular_amount": 0.0, "pharmacy_amount": total_amt,
+        }
+
+    if ch == "Online" or inv.startswith("INV-ONLINE-"):
+        return {
+            "sales_category": "regular_online", "category_label": "📱 Regular Online",
+            "is_pharmacy": False, "is_online": True, "is_mixed": False,
+            "regular_amount": total_amt, "pharmacy_amount": 0.0,
+        }
+
+    if has_med and has_reg and (med_item_amt + reg_item_amt) > 0:
+        pharm_share = round(total_amt * (med_item_amt / (med_item_amt + reg_item_amt)), 2)
+        reg_share = round(total_amt - pharm_share, 2)
+        return {
+            "sales_category": "regular_pos", "category_label": "🛒💊 Mixed POS (Shop + Pharmacy)",
+            "is_pharmacy": True, "is_online": False, "is_mixed": True,
+            "regular_amount": reg_share, "pharmacy_amount": pharm_share,
+        }
+
+    return {
+        "sales_category": "regular_pos", "category_label": "🛒 Regular POS",
+        "is_pharmacy": False, "is_online": False, "is_mixed": False,
+        "regular_amount": total_amt, "pharmacy_amount": 0.0,
+    }
+
+
+def _collect_enriched_sales(conn, date_sql=None):
+    """Returns enriched sales list (combining sales table + confirmed/delivered pharmacy_orders without double-counting)."""
+    where_sales = f" WHERE {date_sql.replace('created_at', 's.created_at')}" if date_sql else ""
+    rows = conn.execute(f"""
+        SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
+        FROM sales s
+        LEFT JOIN users u ON s.cashier_id = u.id
+        {where_sales}
+        ORDER BY s.id DESC
+    """).fetchall()
+
+    sale_ids = [r["id"] for r in rows]
+    items_by_sale = {}
+    if sale_ids:
+        placeholders = ",".join("?" for _ in sale_ids)
+        for it in conn.execute(f"SELECT * FROM sale_items WHERE sale_id IN ({placeholders})", tuple(sale_ids)).fetchall():
+            items_by_sale.setdefault(it["sale_id"], []).append(it)
+
+    enriched = []
+    seen_inv = set()
+    for r in rows:
+        d = dict(r)
+        inv = str(d.get("invoice_number") or "")
+        if inv:
+            seen_inv.add(inv.upper())
+        info = _classify_sale_record(d, items_by_sale.get(d["id"], []))
+        d.update(info)
+        d["is_virtual_pharmacy_online"] = False
+        d["view_url"] = url_for("sale_receipt", sale_id=d["id"]) if has_request_context() else f"/sales/{d['id']}"
+        enriched.append(d)
+
+    # Include confirmed/packed/on_the_way/delivered pharmacy online orders that don't yet have an INV-ONLINE-RX row in sales
+    where_po = f" AND {date_sql}" if date_sql else ""
+    po_rows = conn.execute(f"""
+        SELECT * FROM pharmacy_orders
+        WHERE order_status IN ('confirmed', 'packed', 'on_the_way', 'delivered')
+          AND total_amount > 0
+          {where_po}
+        ORDER BY id DESC
+    """).fetchall()
+    for po in po_rows:
+        po_num = str(po["order_number"] or "").strip()
+        expected_inv = f"INV-ONLINE-{po_num}".upper()
+        if expected_inv in seen_inv:
+            continue
+        amt = float(po["total_amount"] or 0.0)
+        ol_id = int(po["online_order_id"] or 0)
+        if not ol_id and po_num:
+            ol_match = conn.execute("SELECT id FROM online_orders WHERE order_number = ?", (po_num,)).fetchone()
+            if ol_match:
+                ol_id = ol_match["id"]
+        view_url = f"/online_orders/{ol_id}/invoice" if ol_id else "/admin/pharmacy-orders"
+        enriched.append({
+            "id": 0,
+            "pharmacy_order_id": po["id"],
+            "online_order_id": ol_id,
+            "invoice_number": f"INV-ONLINE-{po_num}",
+            "invoice_date": (po["created_at"] or "")[:19].replace("T", " "),
+            "created_at": po["created_at"] or "",
+            "customer_name": po["customer_name"] or "",
+            "customer_mobile": po["customer_phone"] or "",
+            "cashier_name": f"Rx: {po['order_status'].upper()}",
+            "channel": "Pharmacy Online",
+            "total_amount": float(po["subtotal"] or amt),
+            "rounded_total": amt,
+            "vat_amount": 0.0,
+            "saved_amount": 0.0,
+            "cash_amount": amt if po["payment_status"] == "paid" else 0.0,
+            "card_amount": 0.0,
+            "change_amount": 0.0,
+            "sales_category": "pharmacy_online",
+            "category_label": "🏥 Pharmacy Online",
+            "is_pharmacy": True,
+            "is_online": True,
+            "is_mixed": False,
+            "regular_amount": 0.0,
+            "pharmacy_amount": amt,
+            "is_virtual_pharmacy_online": True,
+            "view_url": view_url,
+            "order_number": po_num,
+        })
+
+    enriched.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return enriched
 
 # In-App Rate Limiter (Protects against HTTP floods and brute-force attacks)
 limiter = Limiter(
@@ -1143,7 +1457,9 @@ def api_customer_update_profile():
         conn.execute(f"UPDATE customer_users SET {', '.join(updates)} WHERE phone = ?", tuple(params))
         conn.commit()
 
-    updated_cust = conn.execute("SELECT id, phone, name, email, avatar_url, avatar_base64, profile_image, address FROM customer_users WHERE phone = ?", (db_phone,)).fetchone()
+    _touch_customer_network_info(conn, db_phone, data=data if 'data' in locals() else None)
+    conn.commit()
+    updated_cust = conn.execute("SELECT id, phone, name, email, avatar_url, avatar_base64, profile_image, address, created_at, registration_ip, registration_location, last_ip, last_location, last_seen_at, last_device FROM customer_users WHERE phone = ?", (db_phone,)).fetchone()
     conn.close()
     
     try:
@@ -1179,6 +1495,9 @@ def api_customer_profile():
         conn.close()
         return jsonify({"success": False, "message": "Customer not found"}), 404
 
+    _touch_customer_network_info(conn, user["phone"])
+    conn.commit()
+    user = conn.execute("SELECT * FROM customer_users WHERE id = ?", (user["id"],)).fetchone()
     u_dict = dict(user)
     raw_img = (u_dict.get("profile_image") or u_dict.get("avatar_url") or u_dict.get("avatar_base64") or "").strip()
     if raw_img and raw_img.startswith("/"):
@@ -1196,7 +1515,15 @@ def api_customer_profile():
             "profile_image": prof_img,
             "avatar_url": prof_img,
             "avatar_base64": prof_img,
-            "address": u_dict.get("address", "")
+            "address": u_dict.get("address", ""),
+            "created_at": u_dict.get("created_at", ""),
+            "member_since": _member_since_label(u_dict.get("created_at", "")),
+            "registration_ip": u_dict.get("registration_ip", ""),
+            "registration_location": u_dict.get("registration_location", ""),
+            "last_ip": u_dict.get("last_ip", ""),
+            "last_location": u_dict.get("last_location", ""),
+            "last_seen_at": u_dict.get("last_seen_at", ""),
+            "last_device": u_dict.get("last_device", ""),
         }
     })
 
@@ -1229,22 +1556,187 @@ def flutter_web_app(path="index.html"):
 def dashboard():
     conn = get_connection()
     today = date.today().isoformat()
-    today_sales = conn.execute(
-        "SELECT COALESCE(SUM(rounded_total), 0) AS total, COUNT(*) AS count "
-        "FROM sales WHERE date(created_at) = ?", (today,)
-    ).fetchone()
-    total_products = conn.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"]
+    today_sales_rows = _collect_enriched_sales(conn, date_sql=f"date(created_at) = '{today}'")
+
+    breakdown = {
+        "regular_pos": {"count": 0, "total": 0.0},
+        "regular_online": {"count": 0, "total": 0.0},
+        "pharmacy_pos": {"count": 0, "total": 0.0},
+        "pharmacy_online": {"count": 0, "total": 0.0},
+    }
+    total_today_amt = 0.0
+    total_today_cnt = len(today_sales_rows)
+    for row in today_sales_rows:
+        amt = float(row.get("rounded_total") or row.get("total_amount") or 0.0)
+        total_today_amt += amt
+        if row.get("is_mixed"):
+            breakdown["regular_pos"]["count"] += 1
+            breakdown["regular_pos"]["total"] += float(row.get("regular_amount") or 0.0)
+            breakdown["pharmacy_pos"]["count"] += 1
+            breakdown["pharmacy_pos"]["total"] += float(row.get("pharmacy_amount") or 0.0)
+        else:
+            cat = row.get("sales_category", "regular_pos")
+            if cat in breakdown:
+                breakdown[cat]["count"] += 1
+                breakdown[cat]["total"] += amt
+
+    general_products_count = conn.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"]
+    pharmacy_medicines_count = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()["c"]
+    packages_count = conn.execute("SELECT COUNT(*) AS c FROM packages WHERE is_active = 1").fetchone()["c"]
+    total_products = general_products_count + pharmacy_medicines_count
+
     low_stock = conn.execute(
         "SELECT * FROM products WHERE stock_qty <= low_stock_threshold ORDER BY stock_qty ASC"
+    ).fetchall()
+    low_stock_medicines = conn.execute(
+        "SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND stock_qty <= low_stock_threshold ORDER BY stock_qty ASC LIMIT 50"
     ).fetchall()
     conn.close()
     return render_template(
         "dashboard.html",
-        today_total=today_sales["total"],
-        today_count=today_sales["count"],
+        today_total=round(total_today_amt, 2),
+        today_count=total_today_cnt,
+        sales_breakdown=breakdown,
         total_products=total_products,
+        general_products_count=general_products_count,
+        pharmacy_medicines_count=pharmacy_medicines_count,
+        packages_count=packages_count,
         low_stock=low_stock,
+        low_stock_medicines=low_stock_medicines,
     )
+
+
+@app.route("/api/dashboard/details")
+@login_required
+def api_dashboard_details():
+    """Returns rich drill-down data when clicking Dashboard KPI cards."""
+    tab = (request.args.get("tab") or "sales_today").strip()
+    q = (request.args.get("q") or "").strip().lower()
+    channel_filter = (request.args.get("channel") or "all").strip()
+    today = date.today().isoformat()
+    conn = get_connection()
+
+    if tab in ("sales_today", "transactions_today"):
+        rows = _collect_enriched_sales(conn, date_sql=f"date(created_at) = '{today}'")
+        breakdown = {
+            "regular_pos": {"label": "🛒 Other Products POS", "count": 0, "total": 0.0},
+            "regular_online": {"label": "📱 Other Products Online", "count": 0, "total": 0.0},
+            "pharmacy_pos": {"label": "💊 Pharmacy POS", "count": 0, "total": 0.0},
+            "pharmacy_online": {"label": "🏥 Pharmacy Online", "count": 0, "total": 0.0},
+        }
+        cash_sum = 0.0
+        card_sum = 0.0
+        for r in rows:
+            cash_sum += float(r.get("cash_amount") or 0.0)
+            card_sum += float(r.get("card_amount") or 0.0)
+            if r.get("is_mixed"):
+                breakdown["regular_pos"]["count"] += 1
+                breakdown["regular_pos"]["total"] = round(breakdown["regular_pos"]["total"] + float(r.get("regular_amount") or 0.0), 2)
+                breakdown["pharmacy_pos"]["count"] += 1
+                breakdown["pharmacy_pos"]["total"] = round(breakdown["pharmacy_pos"]["total"] + float(r.get("pharmacy_amount") or 0.0), 2)
+            else:
+                k = r.get("sales_category", "regular_pos")
+                if k in breakdown:
+                    breakdown[k]["count"] += 1
+                    breakdown[k]["total"] = round(breakdown[k]["total"] + float(r.get("rounded_total") or 0.0), 2)
+
+        filtered = []
+        for r in rows:
+            if channel_filter != "all":
+                if not (r.get("sales_category") == channel_filter or (r.get("is_mixed") and channel_filter in ("regular_pos", "pharmacy_pos"))):
+                    continue
+            if q:
+                hay = f"{r.get('invoice_number','')} {r.get('customer_name','')} {r.get('customer_mobile','')} {r.get('cashier_name','')}".lower()
+                if q not in hay:
+                    continue
+            filtered.append({
+                "id": r.get("id", 0),
+                "invoice_number": r.get("invoice_number", ""),
+                "created_at": str(r.get("created_at") or "")[:16].replace("T", " "),
+                "customer_name": r.get("customer_name") or "Walk-in",
+                "customer_mobile": r.get("customer_mobile") or "",
+                "cashier_name": r.get("cashier_name") or "",
+                "sales_category": r.get("sales_category", "regular_pos"),
+                "category_label": r.get("category_label", ""),
+                "total": round(float(r.get("rounded_total") or r.get("total_amount") or 0.0), 2),
+                "cash_amount": round(float(r.get("cash_amount") or 0.0), 2),
+                "card_amount": round(float(r.get("card_amount") or 0.0), 2),
+                "view_url": r.get("view_url", "#"),
+            })
+        conn.close()
+        return jsonify({
+            "success": True,
+            "tab": tab,
+            "date": today,
+            "total_amount": round(sum(x["total"] for x in filtered), 2),
+            "total_count": len(filtered),
+            "cash_total": round(cash_sum, 2),
+            "card_total": round(card_sum, 2),
+            "breakdown": breakdown,
+            "items": filtered[:200],
+        })
+
+    if tab == "catalog":
+        gen_cnt = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+        gen_units = conn.execute("SELECT COALESCE(SUM(stock_qty), 0) FROM products").fetchone()[0]
+        gen_val = conn.execute("SELECT COALESCE(SUM(stock_qty * cost_price), 0) FROM products").fetchone()[0]
+        med_cnt = conn.execute("SELECT COUNT(*) FROM pharmacy_medicines WHERE is_active = 1").fetchone()[0]
+        med_units = conn.execute("SELECT COALESCE(SUM(stock_qty), 0) FROM pharmacy_medicines WHERE is_active = 1").fetchone()[0]
+        pkg_cnt = conn.execute("SELECT COUNT(*) FROM packages WHERE is_active = 1").fetchone()[0]
+
+        like = f"%{q}%"
+        if q:
+            gen_rows = conn.execute(
+                """SELECT p.id, p.name, p.sku, p.sell_price, p.stock_qty, p.low_stock_threshold, c.name AS cat_name
+                   FROM products p LEFT JOIN categories c ON p.category_id = c.id
+                   WHERE p.name LIKE ? OR p.sku LIKE ? ORDER BY p.id DESC LIMIT 40""",
+                (like, like),
+            ).fetchall()
+            med_rows = conn.execute(
+                """SELECT id, name, generic_name, strength, dosage_form, unit_price, stock_qty, low_stock_threshold
+                   FROM pharmacy_medicines WHERE is_active = 1 AND (name LIKE ? OR generic_name LIKE ? OR sku LIKE ?)
+                   ORDER BY stock_qty ASC LIMIT 40""",
+                (like, like, like),
+            ).fetchall()
+        else:
+            gen_rows = conn.execute(
+                """SELECT p.id, p.name, p.sku, p.sell_price, p.stock_qty, p.low_stock_threshold, c.name AS cat_name
+                   FROM products p LEFT JOIN categories c ON p.category_id = c.id
+                   ORDER BY p.id DESC LIMIT 40"""
+            ).fetchall()
+            med_rows = conn.execute(
+                """SELECT id, name, generic_name, strength, dosage_form, unit_price, stock_qty, low_stock_threshold
+                   FROM pharmacy_medicines WHERE is_active = 1 ORDER BY id DESC LIMIT 40"""
+            ).fetchall()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "tab": "catalog",
+            "summary": {
+                "general_count": gen_cnt,
+                "general_units": int(gen_units or 0),
+                "general_valuation": round(float(gen_val or 0.0), 2),
+                "pharmacy_count": med_cnt,
+                "pharmacy_units": int(med_units or 0),
+                "packages_count": pkg_cnt,
+            },
+            "general_products": [dict(r) for r in gen_rows],
+            "pharmacy_medicines": [dict(r) for r in med_rows],
+        })
+
+    gen_low = conn.execute(
+        "SELECT id, name, sku, stock_qty, low_stock_threshold, sell_price FROM products WHERE stock_qty <= low_stock_threshold ORDER BY stock_qty ASC LIMIT 100"
+    ).fetchall()
+    med_low = conn.execute(
+        "SELECT id, name, generic_name, strength, dosage_form, stock_qty, low_stock_threshold, unit_price, expiry_date FROM pharmacy_medicines WHERE is_active = 1 AND stock_qty <= low_stock_threshold ORDER BY stock_qty ASC LIMIT 100"
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "tab": "low_stock",
+        "general_low_stock": [dict(r) for r in gen_low],
+        "pharmacy_low_stock": [dict(r) for r in med_low],
+    })
 
 
 # ===========================================================================
@@ -4079,15 +4571,64 @@ def checkout():
 @app.route("/sales")
 @login_required
 def sales_history():
+    selected_channel = (request.args.get("channel") or "all").strip().lower()
+    if selected_channel not in ("all", "regular_pos", "regular_online", "pharmacy_pos", "pharmacy_online"):
+        selected_channel = "all"
+
     conn = get_connection()
-    # Both Admin and Cashier can view all sales and online customer transactions
-    rows = conn.execute("""
-        SELECT s.*, COALESCE(u.username, 'Online App') AS cashier_name
-        FROM sales s LEFT JOIN users u ON s.cashier_id = u.id
-        ORDER BY s.id DESC
-    """).fetchall()
+    enriched_all = _collect_enriched_sales(conn)
     conn.close()
-    return render_template("sales_history.html", sales=rows)
+
+    channel_summary = {
+        "all": {"count": len(enriched_all), "amount": round(sum(float(s.get("rounded_total") or 0.0) for s in enriched_all), 2)},
+        "regular_pos": {"count": 0, "amount": 0.0},
+        "regular_online": {"count": 0, "amount": 0.0},
+        "pharmacy_pos": {"count": 0, "amount": 0.0},
+        "pharmacy_online": {"count": 0, "amount": 0.0},
+    }
+    for s in enriched_all:
+        cat = s.get("sales_category") or "regular_pos"
+        reg_amt = float(s.get("regular_amount") or 0.0)
+        pharm_amt = float(s.get("pharmacy_amount") or 0.0)
+        if cat == "regular_online":
+            channel_summary["regular_online"]["count"] += 1
+            channel_summary["regular_online"]["amount"] += reg_amt
+        elif cat == "pharmacy_online":
+            channel_summary["pharmacy_online"]["count"] += 1
+            channel_summary["pharmacy_online"]["amount"] += pharm_amt
+        elif cat == "pharmacy_pos":
+            channel_summary["pharmacy_pos"]["count"] += 1
+            channel_summary["pharmacy_pos"]["amount"] += pharm_amt
+        elif s.get("is_mixed"):
+            channel_summary["regular_pos"]["count"] += 1
+            channel_summary["regular_pos"]["amount"] += reg_amt
+            channel_summary["pharmacy_pos"]["count"] += 1
+            channel_summary["pharmacy_pos"]["amount"] += pharm_amt
+        else:
+            channel_summary["regular_pos"]["count"] += 1
+            channel_summary["regular_pos"]["amount"] += reg_amt
+
+    for k in channel_summary:
+        channel_summary[k]["amount"] = round(channel_summary[k]["amount"], 2)
+
+    if selected_channel == "regular_pos":
+        filtered_sales = [s for s in enriched_all if s.get("sales_category") == "regular_pos"]
+    elif selected_channel == "regular_online":
+        filtered_sales = [s for s in enriched_all if s.get("sales_category") == "regular_online"]
+    elif selected_channel == "pharmacy_pos":
+        filtered_sales = [s for s in enriched_all if s.get("sales_category") == "pharmacy_pos" or s.get("is_mixed")]
+    elif selected_channel == "pharmacy_online":
+        filtered_sales = [s for s in enriched_all if s.get("sales_category") == "pharmacy_online"]
+    else:
+        filtered_sales = enriched_all
+
+    return render_template(
+        "sales_history.html",
+        sales=filtered_sales,
+        all_sales_count=len(enriched_all),
+        channel_summary=channel_summary,
+        selected_channel=selected_channel,
+    )
 
 
 @app.route("/sales/<int:sale_id>/delete", methods=["POST"])
@@ -4462,16 +5003,41 @@ def customers_api_profile():
     area = user["area"] if user and "area" in user.keys() else ""
     address_details = user["address_details"] if user and "address_details" in user.keys() else ""
     profile_image = ""
-    if user:
-        u_dict = dict(user)
+    u_dict = dict(user) if user else {}
+    if u_dict:
         profile_image = (u_dict.get("profile_image") or u_dict.get("avatar_url") or u_dict.get("avatar_base64") or u_dict.get("avatar") or u_dict.get("image_url") or "").strip()
 
-    if not district or not area:
-        latest_order = conn.execute("SELECT district, area, address_details FROM online_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
-        if latest_order:
-            if not district: district = latest_order["district"] or ""
-            if not area: area = latest_order["area"] or ""
-            if not address_details: address_details = latest_order["address_details"] or ""
+    latest_order = conn.execute(
+        "SELECT district, area, address_details, customer_ip, ip_location, created_at FROM online_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 1",
+        (phone,),
+    ).fetchone()
+    if latest_order:
+        if not district: district = latest_order["district"] or ""
+        if not area: area = latest_order["area"] or ""
+        if not address_details: address_details = latest_order["address_details"] or ""
+
+    earliest_order = conn.execute(
+        "SELECT created_at FROM online_orders WHERE customer_phone = ? ORDER BY id ASC LIMIT 1",
+        (phone,),
+    ).fetchone()
+    created_at = (u_dict.get("created_at") or (earliest_order["created_at"] if earliest_order else "") or "").strip()
+    ord_ip = (latest_order["customer_ip"] if latest_order else "") or ""
+    ord_loc = (latest_order["ip_location"] if latest_order else "") or ""
+    reg_ip = (u_dict.get("registration_ip") or ord_ip or "").strip()
+    reg_loc = (u_dict.get("registration_location") or ord_loc or "").strip()
+    last_ip = (u_dict.get("last_ip") or ord_ip or reg_ip or "").strip()
+    last_loc = (u_dict.get("last_location") or ord_loc or reg_loc or "").strip()
+    last_seen = (u_dict.get("last_seen_at") or (latest_order["created_at"] if latest_order else "") or "").strip()
+    last_device = (u_dict.get("last_device") or "").strip()
+
+    recent_online = conn.execute(
+        """SELECT order_number, created_at, total_amount, order_status,
+                  COALESCE(customer_ip, '') AS customer_ip, COALESCE(ip_location, '') AS ip_location,
+                  area, district
+           FROM online_orders WHERE customer_phone = ? ORDER BY id DESC LIMIT 8""",
+        (phone,),
+    ).fetchall()
+    recent_orders = [dict(ro) for ro in recent_online]
 
     conn.close()
 
@@ -4479,15 +5045,24 @@ def customers_api_profile():
         "success": True,
         "name": cust_name or f"Customer {phone}",
         "phone": phone,
-        "email": user["email"] if user else "",
+        "email": u_dict.get("email", ""),
         "profile_image": profile_image,
         "district": district or "Not specified",
         "area": area or "Not specified",
         "address_details": address_details or "No detailed address recorded",
-        "is_blocked": user["is_blocked"] if user else 0,
-        "block_reason": user["block_reason"] if user else "",
+        "is_blocked": u_dict.get("is_blocked", 0),
+        "block_reason": u_dict.get("block_reason", ""),
         "total_orders": total_orders,
-        "total_spent": round(total_spent, 2)
+        "total_spent": round(total_spent, 2),
+        "created_at": created_at,
+        "member_since": _member_since_label(created_at),
+        "registration_ip": reg_ip,
+        "registration_location": reg_loc,
+        "last_ip": last_ip,
+        "last_location": last_loc,
+        "last_seen_at": last_seen,
+        "last_device": last_device,
+        "recent_orders": recent_orders,
     })
 
 
@@ -4528,6 +5103,8 @@ def customers_page():
                        s.rounded_total AS total_amount,
                        COALESCE(s.channel, 'Offline') AS channel,
                        'Completed' AS status,
+                       COALESCE(s.customer_ip, '') AS customer_ip,
+                       COALESCE(s.ip_location, '') AS ip_location,
                        '/sales/' || s.id || '/print' AS receipt_url
                 FROM sales s
                 WHERE s.customer_name LIKE ? OR s.customer_mobile LIKE ? OR s.customer_mobile IN ({placeholders})
@@ -4542,6 +5119,8 @@ def customers_page():
                        o.total_amount,
                        'Online App' AS channel,
                        o.order_status AS status,
+                       COALESCE(o.customer_ip, '') AS customer_ip,
+                       COALESCE(o.ip_location, '') AS ip_location,
                        '/online_orders/' || o.id || '/invoice' AS receipt_url
                 FROM online_orders o
                 WHERE o.customer_name LIKE ? OR o.customer_phone LIKE ? OR o.customer_phone IN ({placeholders})
@@ -4556,6 +5135,8 @@ def customers_page():
                        s.rounded_total AS total_amount,
                        COALESCE(s.channel, 'Offline') AS channel,
                        'Completed' AS status,
+                       COALESCE(s.customer_ip, '') AS customer_ip,
+                       COALESCE(s.ip_location, '') AS ip_location,
                        '/sales/' || s.id || '/print' AS receipt_url
                 FROM sales s
                 WHERE s.customer_name LIKE ? OR s.customer_mobile LIKE ?
@@ -4570,6 +5151,8 @@ def customers_page():
                        o.total_amount,
                        'Online App' AS channel,
                        o.order_status AS status,
+                       COALESCE(o.customer_ip, '') AS customer_ip,
+                       COALESCE(o.ip_location, '') AS ip_location,
                        '/online_orders/' || o.id || '/invoice' AS receipt_url
                 FROM online_orders o
                 WHERE o.customer_name LIKE ? OR o.customer_phone LIKE ?
@@ -4598,16 +5181,27 @@ def customers_page():
 
     online_stats = conn.execute("""
         SELECT customer_phone, MAX(customer_name) AS customer_name, COUNT(*) AS order_count,
-               COALESCE(SUM(total_amount), 0) AS online_spent, MAX(created_at) AS last_activity
+               COALESCE(SUM(total_amount), 0) AS online_spent, MAX(created_at) AS last_activity,
+               MIN(created_at) AS first_order_at
         FROM online_orders
         WHERE customer_phone != ''
         GROUP BY customer_phone
     """).fetchall()
     online_dict = {o["customer_phone"]: dict(o) for o in online_stats}
 
+    latest_ip_by_phone = {}
+    for ipr in conn.execute("""
+        SELECT customer_phone, customer_ip, ip_location
+        FROM online_orders
+        WHERE customer_phone != '' AND COALESCE(customer_ip, '') != ''
+        ORDER BY id ASC
+    """).fetchall():
+        latest_ip_by_phone[ipr["customer_phone"]] = (ipr["customer_ip"], ipr["ip_location"] or "")
+
     pos_stats = conn.execute("""
         SELECT customer_mobile, MAX(customer_name) AS customer_name, COUNT(*) AS visit_count,
                COALESCE(SUM(rounded_total), 0) AS pos_spent, MAX(created_at) AS last_visit,
+               MIN(created_at) AS first_visit_at,
                SUM(CASE WHEN channel = 'Online' THEN 1 ELSE 0 END) AS online_sales_cnt,
                SUM(CASE WHEN channel IS NULL OR channel != 'Online' THEN 1 ELSE 0 END) AS offline_sales_cnt
         FROM sales
@@ -4684,6 +5278,15 @@ def customers_page():
                             pass
                         break
 
+        joined_at = reg_info.get("created_at") or online_dict.get(phone, {}).get("first_order_at") or pos_info.get("first_visit_at") or ""
+        order_ip, order_loc = latest_ip_by_phone.get(phone, ("", ""))
+        reg_ip = (reg_info.get("registration_ip") or order_ip or "").strip()
+        reg_loc = (reg_info.get("registration_location") or order_loc or "").strip()
+        last_ip = (reg_info.get("last_ip") or order_ip or reg_ip or "").strip()
+        last_loc = (reg_info.get("last_location") or order_loc or reg_loc or "").strip()
+        last_seen = (reg_info.get("last_seen_at") or last_activity or "").strip()
+        last_dev = (reg_info.get("last_device") or "").strip()
+
         customer_directory.append({
             "customer_name": name,
             "customer_mobile": phone,
@@ -4697,6 +5300,14 @@ def customers_page():
             "is_blocked": is_blocked,
             "blocked_until": blocked_until,
             "block_reason": block_reason,
+            "created_at": joined_at,
+            "member_since": _member_since_label(joined_at),
+            "registration_ip": reg_ip,
+            "registration_location": reg_loc,
+            "last_ip": last_ip,
+            "last_location": last_loc,
+            "last_seen_at": last_seen,
+            "last_device": last_dev,
         })
 
     if search:
@@ -5509,6 +6120,9 @@ def settings_page():
             "auto_record_expired_as_loss": "1" if request.form.get("auto_record_expired_as_loss") else "0",
             "pharmacy_delivery_charge": request.form.get("pharmacy_delivery_charge", "50").strip() or "50",
             "pharmacy_discount_percent": request.form.get("pharmacy_discount_percent", "0").strip() or "0",
+            "thermal_printer_name": request.form.get("thermal_printer_name", "").strip(),
+            "thermal_paper_width": request.form.get("thermal_paper_width", "58mm").strip() or "58mm",
+            "thermal_pc_auto_print": "1" if request.form.get("thermal_pc_auto_print") else "0",
         }
         update_settings(conn, values)
         conn.commit()
@@ -5517,8 +6131,21 @@ def settings_page():
         flash("Shop settings and policies updated successfully.", "success")
         return redirect(url_for("settings_page"))
     current_settings = get_all_settings(conn)
+    thermal_resolved = thermal_printer.resolve_target_printer(conn)
+    thermal_reason = (
+        f"Active Windows Printer: {thermal_resolved}"
+        if thermal_resolved
+        else "No local Windows printer detected (Cloud Relay / Queue mode)"
+    )
+    thermal_printers = thermal_printer.list_windows_printers()
     conn.close()
-    return render_template("settings.html", settings=current_settings)
+    return render_template(
+        "settings.html",
+        settings=current_settings,
+        thermal_printers=thermal_printers,
+        thermal_resolved=thermal_resolved,
+        thermal_reason=thermal_reason,
+    )
 
 
 @app.route("/categories/edit/<int:category_id>", methods=["POST"])
@@ -6326,113 +6953,248 @@ def delete_user(user_id):
 # Advanced Financial Reports & Custom Ledger (Admin Only)
 # ===========================================================================
 
-@app.route("/reports", methods=["GET"])
-@login_required
-@admin_required
-def reports():
-    conn = get_connection()
-    period = request.args.get("period", "monthly")
+def _resolve_report_period_filters(period):
     today = date.today()
     today_str = today.isoformat()
-
     if period == "daily":
-        date_filter = f"date(created_at) = '{today_str}'"
-        ledger_filter = f"date(entry_date) = '{today_str}'"
-    elif period == "weekly":
+        return "daily", f"date(created_at) = '{today_str}'", f"date(entry_date) = '{today_str}'"
+    if period == "weekly":
         start = (today - timedelta(days=6)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "3_monthly":
+        return "weekly", f"date(created_at) >= '{start}'", f"date(entry_date) >= '{start}'"
+    if period == "3_monthly":
         start = (today - timedelta(days=89)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "6_monthly":
+        return "3_monthly", f"date(created_at) >= '{start}'", f"date(entry_date) >= '{start}'"
+    if period == "6_monthly":
         start = (today - timedelta(days=179)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "quarterly":
+        return "6_monthly", f"date(created_at) >= '{start}'", f"date(entry_date) >= '{start}'"
+    if period == "quarterly":
         quarter_start_month = ((today.month - 1) // 3) * 3 + 1
         start = date(today.year, quarter_start_month, 1).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "yearly":
-        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
-        ledger_filter = f"strftime('%Y', entry_date) = '{today_str[:4]}'"
-    elif period == "all":
-        date_filter = "1=1"
-        ledger_filter = "1=1"
-    else:  # default monthly
-        period = "monthly"
-        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
-        ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
+        return "quarterly", f"date(created_at) >= '{start}'", f"date(entry_date) >= '{start}'"
+    if period == "yearly":
+        return "yearly", f"strftime('%Y', created_at) = '{today_str[:4]}'", f"strftime('%Y', entry_date) = '{today_str[:4]}'"
+    if period == "all":
+        return "all", "1=1", "1=1"
+    return "monthly", f"strftime('%Y-%m', created_at) = '{today_str[:7]}'", f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
 
-    # 1. Offline POS counter sales summary
-    offline_sales_summary = conn.execute(f"""
-        SELECT 
-            COALESCE(SUM(rounded_total), 0) AS revenue,
-            COALESCE(SUM(vat_amount), 0) AS vat,
-            COALESCE(SUM(saved_amount), 0) AS discounts,
-            COUNT(id) AS tx_count
-        FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}
+
+def _compute_separated_reports(conn, date_filter, ledger_filter, dept="all"):
+    """Computes separated Other-Products, Pharmacy, and Combined supershop metrics without double counting."""
+    # 1. POS counter & Rider POS sales (exclude mirrored INV-ONLINE-* rows)
+    pos_sales = conn.execute(f"""
+        SELECT id, invoice_number, channel, total_amount, rounded_total, vat_amount, saved_amount
+        FROM sales
+        WHERE COALESCE(channel, '') != 'Online'
+          AND COALESCE(invoice_number, '') NOT LIKE 'INV-ONLINE-%'
+          AND {date_filter}
+    """).fetchall()
+
+    pos_sale_ids = [s["id"] for s in pos_sales]
+    pos_items_by_sale = {}
+    if pos_sale_ids:
+        ph = ",".join("?" for _ in pos_sale_ids)
+        for si in conn.execute(f"SELECT * FROM sale_items WHERE sale_id IN ({ph})", tuple(pos_sale_ids)).fetchall():
+            pos_items_by_sale.setdefault(si["sale_id"], []).append(si)
+
+    # Map pharmacy medicines for COGS and medicine top/slow/dead stock attribution
+    all_meds = conn.execute("SELECT id, name, dosage_form, strength, stock_qty, cost_price, mrp, unit_price FROM pharmacy_medicines").fetchall()
+    med_by_id = {m["id"]: dict(m) for m in all_meds}
+    med_by_name = {}
+    for m in all_meds:
+        key = (m["name"] or "").strip().lower()
+        if key and key not in med_by_name:
+            med_by_name[key] = dict(m)
+
+    med_perf = {}
+    for m in all_meds:
+        med_perf[m["id"]] = {
+            "id": m["id"],
+            "name": f"💊 {m['name']}" + (f" ({m['strength']})" if m["strength"] else ""),
+            "sku": m["dosage_form"] or "Medicine",
+            "stock_qty": int(m["stock_qty"] or 0),
+            "qty_sold": 0,
+            "revenue": 0.0,
+            "cogs_amt": 0.0,
+            "profit": 0.0,
+        }
+
+    gen_pos_tx = 0
+    gen_pos_rev = 0.0
+    gen_pos_cogs = 0.0
+    pharm_pos_tx = 0
+    pharm_pos_rev = 0.0
+    pharm_pos_cogs = 0.0
+
+    for s in pos_sales:
+        s_items = pos_items_by_sale.get(s["id"], [])
+        s_total = float(s["rounded_total"] or s["total_amount"] or 0.0)
+        ch = (s["channel"] or "").strip()
+
+        med_line_rev = 0.0
+        med_line_cogs = 0.0
+        gen_line_rev = 0.0
+        gen_line_cogs = 0.0
+
+        for si in s_items:
+            qty = float(si["quantity"] or 1)
+            l_rev = float(si["unit_price"] or 0.0) * qty
+            l_cogs = float(si["cost_price"] or 0.0) * qty
+            serials = str(si["unit_serials"] or "").strip()
+            if serials.startswith("💊"):
+                med_line_rev += l_rev
+                med_line_cogs += l_cogs
+                raw_n = serials.lstrip("💊").strip()
+                base_n = raw_n.rsplit(" (", 1)[0].strip().lower()
+                matched_m = med_by_name.get(base_n) or med_by_name.get(raw_n.lower())
+                if matched_m:
+                    mid = matched_m["id"]
+                    if l_cogs <= 0:
+                        l_cogs = float(matched_m.get("cost_price") or float(si["unit_price"] or 0.0) * 0.78) * qty
+                    med_perf[mid]["qty_sold"] += int(qty)
+                    med_perf[mid]["revenue"] += l_rev
+                    med_perf[mid]["cogs_amt"] += l_cogs
+            else:
+                gen_line_rev += l_rev
+                gen_line_cogs += l_cogs
+
+        if ch == "Pharmacy POS" or (med_line_rev > 0 and gen_line_rev == 0):
+            pharm_pos_tx += 1
+            pharm_pos_rev += s_total
+            pharm_pos_cogs += (med_line_cogs if med_line_cogs > 0 else gen_line_cogs)
+        elif med_line_rev > 0 and gen_line_rev > 0 and (med_line_rev + gen_line_rev) > 0:
+            ratio = med_line_rev / (med_line_rev + gen_line_rev)
+            p_part = round(s_total * ratio, 2)
+            g_part = round(s_total - p_part, 2)
+            pharm_pos_tx += 1
+            pharm_pos_rev += p_part
+            pharm_pos_cogs += med_line_cogs
+            gen_pos_tx += 1
+            gen_pos_rev += g_part
+            gen_pos_cogs += gen_line_cogs
+        else:
+            gen_pos_tx += 1
+            gen_pos_rev += s_total
+            gen_pos_cogs += gen_line_cogs
+
+    # 2. General / Other Products Online Orders (exclude RX- pharmacy orders and cancelled)
+    gen_on_row = conn.execute(f"""
+        SELECT COUNT(*) AS tx_count, COALESCE(SUM(total_amount), 0) AS revenue
+        FROM online_orders
+        WHERE COALESCE(order_number, '') NOT LIKE 'RX-%'
+          AND COALESCE(order_status, '') != 'cancelled'
+          AND {date_filter}
     """).fetchone()
-
-    # 2. Online orders summary
-    online_orders_summary = conn.execute(f"""
-        SELECT 
-            COUNT(*) AS tx_count,
-            COALESCE(SUM(total_amount), 0) AS revenue
-        FROM online_orders WHERE {date_filter}
-    """).fetchone()
-
-    # 3. Offline COGS
-    offline_cogs_row = conn.execute(f"""
-        SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs
-        FROM sale_items si
-        JOIN sales s ON si.sale_id = s.id
-        WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}
-    """).fetchone()
-
-    # 4. Online COGS
-    online_cogs_row = conn.execute(f"""
-        SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs
+    gen_on_cogs_row = conn.execute(f"""
+        SELECT COALESCE(SUM(oi.quantity * COALESCE(NULLIF(p.cost_price, 0), oi.unit_price * 0.7)), 0) AS total_cogs
         FROM online_order_items oi
         JOIN online_orders o ON oi.order_id = o.id
         LEFT JOIN products p ON oi.product_id = p.id
-        WHERE {date_filter.replace('created_at', 'o.created_at')}
+        WHERE COALESCE(o.order_number, '') NOT LIKE 'RX-%'
+          AND COALESCE(o.order_status, '') != 'cancelled'
+          AND {date_filter.replace('created_at', 'o.created_at')}
     """).fetchone()
 
-    pos_rev = float(offline_sales_summary["revenue"])
-    online_rev = float(online_orders_summary["revenue"])
-    pos_cnt = int(offline_sales_summary["tx_count"])
-    online_cnt = int(online_orders_summary["tx_count"])
-    pos_cogs = float(offline_cogs_row["total_cogs"])
-    online_cogs = float(online_cogs_row["total_cogs"])
+    gen_on_tx = int(gen_on_row["tx_count"] or 0)
+    gen_on_rev = float(gen_on_row["revenue"] or 0.0)
+    gen_on_cogs = float(gen_on_cogs_row["total_cogs"] or 0.0)
 
-    # 5. Product Packages Sales (POS + Online)
+    # 3. Pharmacy Online Orders (confirmed / packed / on_the_way / delivered)
+    pharm_on_rows = conn.execute(f"""
+        SELECT * FROM pharmacy_orders
+        WHERE order_status IN ('confirmed', 'packed', 'on_the_way', 'delivered')
+          AND {date_filter}
+    """).fetchall()
+
+    pharm_on_tx = 0
+    pharm_on_rev = 0.0
+    pharm_on_cogs = 0.0
+    seen_rx = set()
+
+    for po in pharm_on_rows:
+        ord_num = str(po["order_number"] or "").strip()
+        if ord_num:
+            seen_rx.add(ord_num.upper())
+        pharm_on_tx += 1
+        po_tot = float(po["total_amount"] or 0.0)
+        pharm_on_rev += po_tot
+
+        raw_j = po["approved_items_json"] or po["requested_items_json"] or "[]"
+        try:
+            j_items = json.loads(raw_j) if raw_j else []
+        except Exception:
+            j_items = []
+        order_cogs = 0.0
+        for it in j_items:
+            q = int(it.get("quantity") or 1)
+            up = float(it.get("unit_price") or 0.0)
+            lt = float(it.get("total_price") or (up * q))
+            mid_raw = it.get("medicine_id")
+            m_info = None
+            if mid_raw:
+                try:
+                    m_info = med_by_id.get(int(mid_raw))
+                except Exception:
+                    m_info = None
+            if not m_info and it.get("name"):
+                m_info = med_by_name.get(str(it.get("name") or "").strip().lower())
+            unit_cost = float(m_info.get("cost_price") or 0.0) if m_info else 0.0
+            if unit_cost <= 0 and up > 0:
+                unit_cost = round(up * 0.78, 2)
+            item_cogs = unit_cost * q
+            order_cogs += item_cogs
+            if m_info and m_info["id"] in med_perf:
+                mp = med_perf[m_info["id"]]
+                mp["qty_sold"] += q
+                mp["revenue"] += lt
+                mp["cogs_amt"] += item_cogs
+        if order_cogs <= 0 and po_tot > 0:
+            order_cogs = round(float(po["subtotal"] or po_tot) * 0.78, 2)
+        pharm_on_cogs += order_cogs
+
+    # Fallback: include any confirmed/delivered RX- online_orders absent from pharmacy_orders
+    rx_oo_rows = conn.execute(f"""
+        SELECT id, order_number, total_amount, subtotal FROM online_orders
+        WHERE order_number LIKE 'RX-%'
+          AND order_status IN ('verified', 'packed', 'on_the_way', 'delivered')
+          AND {date_filter}
+    """).fetchall()
+    for rx in rx_oo_rows:
+        onum = str(rx["order_number"] or "").strip().upper()
+        if onum and onum not in seen_rx:
+            seen_rx.add(onum)
+            amt = float(rx["total_amount"] or 0.0)
+            pharm_on_tx += 1
+            pharm_on_rev += amt
+            pharm_on_cogs += round(float(rx["subtotal"] or amt) * 0.78, 2)
+
+    # 4. Packages & Offers Sales (General department subsets)
+    o_date = date_filter.replace("created_at", "o.created_at")
+    s_date = date_filter.replace("created_at", "s.created_at")
     pos_pkg = conn.execute(f"""
-        SELECT 
-            COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
-            COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
-            COALESCE(SUM(si.quantity), 0) AS qty_sold,
-            COUNT(DISTINCT si.sale_id) AS tx_count
+        SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
+               COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
+               COALESCE(SUM(si.quantity), 0) AS qty_sold,
+               COUNT(DISTINCT si.sale_id) AS tx_count
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         JOIN products p ON si.product_id = p.id
-        WHERE (p.unit LIKE '%package%' OR p.unit LIKE '%combo%' OR p.name LIKE '%📦%' OR p.name LIKE '%package%' OR p.name LIKE '%combo%')
-        AND {date_filter.replace('created_at', 's.created_at')}
+        WHERE COALESCE(s.channel, '') != 'Online'
+          AND COALESCE(s.invoice_number, '') NOT LIKE 'INV-ONLINE-%'
+          AND (p.unit LIKE '%package%' OR p.unit LIKE '%combo%' OR p.name LIKE '%📦%' OR p.name LIKE '%package%' OR p.name LIKE '%combo%')
+          AND {s_date}
     """).fetchone()
-
     online_pkg = conn.execute(f"""
-        SELECT 
-            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
-            COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs,
-            COALESCE(SUM(oi.quantity), 0) AS qty_sold,
-            COUNT(DISTINCT oi.order_id) AS tx_count
+        SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
+               COALESCE(SUM(oi.quantity * COALESCE(NULLIF(p.cost_price, 0), oi.unit_price * 0.7)), 0) AS cogs,
+               COALESCE(SUM(oi.quantity), 0) AS qty_sold,
+               COUNT(DISTINCT oi.order_id) AS tx_count
         FROM online_order_items oi
         JOIN online_orders o ON oi.order_id = o.id
         LEFT JOIN products p ON oi.product_id = p.id
-        WHERE (oi.product_name LIKE '📦%' OR oi.product_name LIKE '%package%' OR oi.product_name LIKE '%combo%' OR (p.unit IS NOT NULL AND (p.unit LIKE '%package%' OR p.unit LIKE '%combo%')))
-        AND {date_filter.replace('created_at', 'o.created_at')}
+        WHERE COALESCE(o.order_number, '') NOT LIKE 'RX-%'
+          AND COALESCE(o.order_status, '') != 'cancelled'
+          AND (oi.product_name LIKE '📦%' OR oi.product_name LIKE '%package%' OR oi.product_name LIKE '%combo%' OR (p.unit IS NOT NULL AND (p.unit LIKE '%package%' OR p.unit LIKE '%combo%')))
+          AND {o_date}
     """).fetchone()
 
     pkg_rev = float(pos_pkg["revenue"]) + float(online_pkg["revenue"])
@@ -6440,35 +7202,31 @@ def reports():
     pkg_tx = int(pos_pkg["tx_count"]) + int(online_pkg["tx_count"])
     pkg_qty = int(pos_pkg["qty_sold"]) + int(online_pkg["qty_sold"])
 
-    # 6. Offers & Promotions Sales (POS + Online)
     pos_off = conn.execute(f"""
-        SELECT 
-            COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
-            COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
-            COALESCE(SUM(si.quantity), 0) AS qty_sold,
-            COUNT(DISTINCT si.sale_id) AS tx_count
+        SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue,
+               COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs,
+               COALESCE(SUM(si.quantity), 0) AS qty_sold,
+               COUNT(DISTINCT si.sale_id) AS tx_count
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         JOIN products p ON si.product_id = p.id
-        WHERE (
-            p.is_offer = 1 OR p.is_promotion = 1 OR (p.offer_type != '' AND p.offer_type IS NOT NULL)
-        )
-        AND {date_filter.replace('created_at', 's.created_at')}
+        WHERE COALESCE(s.channel, '') != 'Online'
+          AND COALESCE(s.invoice_number, '') NOT LIKE 'INV-ONLINE-%'
+          AND (p.is_offer = 1 OR p.is_promotion = 1 OR (p.offer_type != '' AND p.offer_type IS NOT NULL))
+          AND {s_date}
     """).fetchone()
-
     online_off = conn.execute(f"""
-        SELECT 
-            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
-            COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs,
-            COALESCE(SUM(oi.quantity), 0) AS qty_sold,
-            COUNT(DISTINCT oi.order_id) AS tx_count
+        SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue,
+               COALESCE(SUM(oi.quantity * COALESCE(NULLIF(p.cost_price, 0), oi.unit_price * 0.7)), 0) AS cogs,
+               COALESCE(SUM(oi.quantity), 0) AS qty_sold,
+               COUNT(DISTINCT oi.order_id) AS tx_count
         FROM online_order_items oi
         JOIN online_orders o ON oi.order_id = o.id
         JOIN products p ON oi.product_id = p.id
-        WHERE (
-            p.is_offer = 1 OR p.is_promotion = 1 OR (p.offer_type != '' AND p.offer_type IS NOT NULL)
-        )
-        AND {date_filter.replace('created_at', 'o.created_at')}
+        WHERE COALESCE(o.order_number, '') NOT LIKE 'RX-%'
+          AND COALESCE(o.order_status, '') != 'cancelled'
+          AND (p.is_offer = 1 OR p.is_promotion = 1 OR (p.offer_type != '' AND p.offer_type IS NOT NULL))
+          AND {o_date}
     """).fetchone()
 
     off_rev = float(pos_off["revenue"]) + float(online_off["revenue"])
@@ -6476,159 +7234,273 @@ def reports():
     off_tx = int(pos_off["tx_count"]) + int(online_off["tx_count"])
     off_qty = int(pos_off["qty_sold"]) + int(online_off["qty_sold"])
 
-    # Ledger entries for this period
-    ledger_entries = conn.execute(f"""
-        SELECT * FROM ledger_entries
-        WHERE {ledger_filter}
-        ORDER BY entry_date DESC, id DESC
-    """).fetchall()
+    # 5. Ledger entries & segment breakdown
+    ledger_entries = conn.execute(f"SELECT * FROM ledger_entries WHERE {ledger_filter} ORDER BY entry_date DESC, id DESC").fetchall()
 
-    def get_ledger_sums(segment_name):
-        if segment_name == 'all':
-            inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income')
-            exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense')
-        else:
-            inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income' and (r['target_segment'] or 'all') == segment_name)
-            exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense' and (r['target_segment'] or 'all') == segment_name)
+    def _seg_sum(*seg_names):
+        inc = sum(float(r["amount"]) for r in ledger_entries if r["entry_type"] == "income" and (r["target_segment"] or "all") in seg_names)
+        exp = sum(float(r["amount"]) for r in ledger_entries if r["entry_type"] == "expense" and (r["target_segment"] or "all") in seg_names)
         return inc, exp
 
-    all_inc, all_exp = get_ledger_sums('all')
-    on_inc, on_exp = get_ledger_sums('online')
-    pos_inc, pos_exp = get_ledger_sums('offline')
-    pkg_inc, pkg_exp = get_ledger_sums('packages')
-    off_inc, off_exp = get_ledger_sums('offers')
+    all_inc = sum(float(r["amount"]) for r in ledger_entries if r["entry_type"] == "income")
+    all_exp = sum(float(r["amount"]) for r in ledger_entries if r["entry_type"] == "expense")
+    on_inc, on_exp = _seg_sum("online")
+    pos_inc, pos_exp = _seg_sum("offline")
+    pkg_inc, pkg_exp = _seg_sum("packages")
+    off_inc, off_exp = _seg_sum("offers")
+    pharm_inc, pharm_exp = _seg_sum("pharmacy")
+    gen_only_inc, gen_only_exp = _seg_sum("online", "offline", "packages", "offers", "general")
 
-    # Overall Summary
-    total_rev = pos_rev + online_rev
-    total_cogs = pos_cogs + online_cogs
-    total_tx = pos_cnt + online_cnt
-    overall_gross = total_rev - total_cogs
-    overall_net = (overall_gross + all_inc) - all_exp
+    # 6. Build the 3 Department Summary Bundles
+    gen_rev = round(gen_pos_rev + gen_on_rev, 2)
+    gen_cogs = round(gen_pos_cogs + gen_on_cogs, 2)
+    gen_tx = gen_pos_tx + gen_on_tx
+    gen_gross = round(gen_rev - gen_cogs, 2)
+    gen_net = round(gen_gross + gen_only_inc - gen_only_exp, 2)
 
-    # Online Summary
-    online_gross = online_rev - online_cogs
-    online_net = (online_gross + on_inc) - on_exp
+    pharm_rev = round(pharm_pos_rev + pharm_on_rev, 2)
+    pharm_cogs = round(pharm_pos_cogs + pharm_on_cogs, 2)
+    pharm_tx = pharm_pos_tx + pharm_on_tx
+    pharm_gross = round(pharm_rev - pharm_cogs, 2)
+    pharm_net = round(pharm_gross + pharm_inc - pharm_exp, 2)
 
-    # Offline Summary
-    offline_gross = pos_rev - pos_cogs
-    offline_net = (offline_gross + pos_inc) - pos_exp
+    whole_rev = round(gen_rev + pharm_rev, 2)
+    whole_cogs = round(gen_cogs + pharm_cogs, 2)
+    whole_tx = gen_tx + pharm_tx
+    whole_gross = round(whole_rev - whole_cogs, 2)
+    whole_net = round(whole_gross + all_inc - all_exp, 2)
 
-    # Packages Summary
-    pkg_gross = pkg_rev - pkg_cogs
-    pkg_net = (pkg_gross + pkg_inc) - pkg_exp
+    general_summary = {
+        "tx_count": gen_tx, "revenue": gen_rev, "cogs": gen_cogs,
+        "gross_profit": gen_gross, "income": gen_only_inc, "expense": gen_only_exp, "net_profit": gen_net,
+        "pos_tx": gen_pos_tx, "pos_revenue": round(gen_pos_rev, 2), "pos_cogs": round(gen_pos_cogs, 2),
+        "online_tx": gen_on_tx, "online_revenue": round(gen_on_rev, 2), "online_cogs": round(gen_on_cogs, 2),
+    }
+    pharmacy_summary = {
+        "tx_count": pharm_tx, "revenue": pharm_rev, "cogs": pharm_cogs,
+        "gross_profit": pharm_gross, "income": pharm_inc, "expense": pharm_exp, "net_profit": pharm_net,
+        "pos_tx": pharm_pos_tx, "pos_revenue": round(pharm_pos_rev, 2), "pos_cogs": round(pharm_pos_cogs, 2),
+        "online_tx": pharm_on_tx, "online_revenue": round(pharm_on_rev, 2), "online_cogs": round(pharm_on_cogs, 2),
+    }
+    whole_summary = {
+        "tx_count": whole_tx, "revenue": whole_rev, "cogs": whole_cogs,
+        "gross_profit": whole_gross, "income": all_inc, "expense": all_exp, "net_profit": whole_net,
+        "pos_tx": gen_pos_tx + pharm_pos_tx, "pos_revenue": round(gen_pos_rev + pharm_pos_rev, 2), "pos_cogs": round(gen_pos_cogs + pharm_pos_cogs, 2),
+        "online_tx": gen_on_tx + pharm_on_tx, "online_revenue": round(gen_on_rev + pharm_on_rev, 2), "online_cogs": round(gen_on_cogs + pharm_on_cogs, 2),
+    }
 
-    # Offers Summary
-    off_gross = off_rev - off_cogs
-    off_net = (off_gross + off_inc) - off_exp
-
-    sold_subquery = f"""
-        SELECT si.product_id AS product_id,
-               SUM(si.quantity) AS qty_sold,
-               SUM(si.quantity * si.unit_price) AS revenue,
-               SUM(si.quantity * si.cost_price) AS cogs_amt
-        FROM sale_items si
-        JOIN sales s ON si.sale_id = s.id
-        WHERE {date_filter.replace('created_at', 's.created_at')}
-        GROUP BY si.product_id
+    # 7. Product & Medicine Performance Rankings
+    prod_sold_sub = f"""
+        SELECT product_id,
+               SUM(qty_sold) AS qty_sold,
+               SUM(revenue) AS revenue,
+               SUM(cogs_amt) AS cogs_amt
+        FROM (
+            SELECT si.product_id AS product_id,
+                   si.quantity AS qty_sold,
+                   si.quantity * si.unit_price AS revenue,
+                   si.quantity * si.cost_price AS cogs_amt
+            FROM sale_items si
+            JOIN sales s ON si.sale_id = s.id
+            WHERE COALESCE(s.channel, '') != 'Online'
+              AND COALESCE(s.invoice_number, '') NOT LIKE 'INV-ONLINE-%'
+              AND COALESCE(si.unit_serials, '') NOT LIKE '💊%'
+              AND {s_date}
+            UNION ALL
+            SELECT oi.product_id AS product_id,
+                   oi.quantity AS qty_sold,
+                   oi.quantity * oi.unit_price AS revenue,
+                   oi.quantity * COALESCE(NULLIF(p.cost_price, 0), oi.unit_price * 0.7) AS cogs_amt
+            FROM online_order_items oi
+            JOIN online_orders o ON oi.order_id = o.id
+            LEFT JOIN products p ON oi.product_id = p.id
+            WHERE COALESCE(o.order_number, '') NOT LIKE 'RX-%'
+              AND COALESCE(o.order_status, '') != 'cancelled'
+              AND {o_date}
+        ) combined_gen
+        GROUP BY product_id
     """
-    product_performance = conn.execute(f"""
+    gen_perf_rows = conn.execute(f"""
         SELECT p.id, p.name, p.sku, p.stock_qty,
                COALESCE(sold.qty_sold, 0) AS qty_sold,
                COALESCE(sold.revenue, 0) AS revenue,
                COALESCE(sold.cogs_amt, 0) AS cogs_amt,
                (COALESCE(sold.revenue, 0) - COALESCE(sold.cogs_amt, 0)) AS profit
         FROM products p
-        LEFT JOIN ({sold_subquery}) sold ON sold.product_id = p.id
+        LEFT JOIN ({prod_sold_sub}) sold ON sold.product_id = p.id
         ORDER BY qty_sold DESC, revenue DESC
     """).fetchall()
+    gen_perf = [dict(r) for r in gen_perf_rows]
+    gen_top = [r for r in gen_perf if r["qty_sold"] > 0][:8]
+    gen_dead = [r for r in gen_perf if r["qty_sold"] == 0 and r["stock_qty"] > 0][:8]
+    gen_slow = sorted([r for r in gen_perf if r["qty_sold"] > 0 and r["stock_qty"] > 0], key=lambda x: x["qty_sold"])[:8]
 
-    total_units_sold = sum(row["qty_sold"] for row in product_performance) or 1
-    top_products = [row for row in product_performance if row["qty_sold"] > 0][:8]
-    dead_stock = [row for row in product_performance if row["qty_sold"] == 0 and row["stock_qty"] > 0][:8]
-    slow_movers = [
-        row for row in product_performance
-        if row["qty_sold"] > 0 and row["stock_qty"] > 0
-    ]
-    slow_movers = sorted(slow_movers, key=lambda r: r["qty_sold"])[:8]
-    max_qty_sold = max((row["qty_sold"] for row in product_performance), default=0) or 1
+    for mp in med_perf.values():
+        mp["revenue"] = round(mp["revenue"], 2)
+        mp["cogs_amt"] = round(mp["cogs_amt"], 2)
+        mp["profit"] = round(mp["revenue"] - mp["cogs_amt"], 2)
+    med_list = sorted(med_perf.values(), key=lambda x: (x["qty_sold"], x["revenue"]), reverse=True)
+    top_medicines = [r for r in med_list if r["qty_sold"] > 0][:8]
+    dead_medicines = [r for r in med_list if r["qty_sold"] == 0 and r["stock_qty"] > 0][:8]
+    slow_medicines = sorted([r for r in med_list if r["qty_sold"] > 0 and r["stock_qty"] > 0], key=lambda x: x["qty_sold"])[:8]
 
-    # AI Executive Intelligence & Advisory Report Generation
+    # 8. Select Active Department Slice (`all`, `general`, `pharmacy`)
+    if dept == "pharmacy":
+        active = pharmacy_summary
+        active_online = {
+            "tx_count": pharm_on_tx, "revenue": round(pharm_on_rev, 2), "cogs": round(pharm_on_cogs, 2),
+            "gross_profit": round(pharm_on_rev - pharm_on_cogs, 2),
+            "income": pharm_inc, "expense": 0.0,
+            "net_profit": round(pharm_on_rev - pharm_on_cogs + pharm_inc, 2),
+        }
+        active_offline = {
+            "tx_count": pharm_pos_tx, "revenue": round(pharm_pos_rev, 2), "cogs": round(pharm_pos_cogs, 2),
+            "gross_profit": round(pharm_pos_rev - pharm_pos_cogs, 2),
+            "income": 0.0, "expense": pharm_exp,
+            "net_profit": round(pharm_pos_rev - pharm_pos_cogs - pharm_exp, 2),
+        }
+        active_top, active_slow, active_dead = top_medicines, slow_medicines, dead_medicines
+        total_units_sold = sum(r["qty_sold"] for r in med_list) or 1
+        max_qty_sold = max((r["qty_sold"] for r in med_list), default=0) or 1
+    elif dept == "general":
+        active = general_summary
+        active_online = {
+            "tx_count": gen_on_tx, "revenue": round(gen_on_rev, 2), "cogs": round(gen_on_cogs, 2),
+            "gross_profit": round(gen_on_rev - gen_on_cogs, 2),
+            "income": on_inc, "expense": on_exp,
+            "net_profit": round((gen_on_rev - gen_on_cogs) + on_inc - on_exp, 2),
+        }
+        active_offline = {
+            "tx_count": gen_pos_tx, "revenue": round(gen_pos_rev, 2), "cogs": round(gen_pos_cogs, 2),
+            "gross_profit": round(gen_pos_rev - gen_pos_cogs, 2),
+            "income": pos_inc, "expense": pos_exp,
+            "net_profit": round((gen_pos_rev - gen_pos_cogs) + pos_inc - pos_exp, 2),
+        }
+        active_top, active_slow, active_dead = gen_top, gen_slow, gen_dead
+        total_units_sold = sum(r["qty_sold"] for r in gen_perf) or 1
+        max_qty_sold = max((r["qty_sold"] for r in gen_perf), default=0) or 1
+    else:
+        active = whole_summary
+        active_online = {
+            "tx_count": whole_summary["online_tx"], "revenue": whole_summary["online_revenue"], "cogs": whole_summary["online_cogs"],
+            "gross_profit": round(whole_summary["online_revenue"] - whole_summary["online_cogs"], 2),
+            "income": on_inc + pharm_inc, "expense": on_exp,
+            "net_profit": round(whole_summary["online_revenue"] - whole_summary["online_cogs"] + on_inc + pharm_inc - on_exp, 2),
+        }
+        active_offline = {
+            "tx_count": whole_summary["pos_tx"], "revenue": whole_summary["pos_revenue"], "cogs": whole_summary["pos_cogs"],
+            "gross_profit": round(whole_summary["pos_revenue"] - whole_summary["pos_cogs"], 2),
+            "income": pos_inc, "expense": pos_exp + pharm_exp,
+            "net_profit": round(whole_summary["pos_revenue"] - whole_summary["pos_cogs"] + pos_inc - pos_exp - pharm_exp, 2),
+        }
+        combined_top = sorted(gen_top + top_medicines, key=lambda x: (x["qty_sold"], x["revenue"]), reverse=True)[:8]
+        combined_slow = sorted(gen_slow + slow_medicines, key=lambda x: x["qty_sold"])[:8]
+        combined_dead = (gen_dead + dead_medicines)[:8]
+        active_top, active_slow, active_dead = combined_top, combined_slow, combined_dead
+        total_units_sold = (sum(r["qty_sold"] for r in gen_perf) + sum(r["qty_sold"] for r in med_list)) or 1
+        max_qty_sold = max([r["qty_sold"] for r in gen_perf] + [r["qty_sold"] for r in med_list], default=0) or 1
+
+    pkg_gross = round(pkg_rev - pkg_cogs, 2)
+    off_gross = round(off_rev - off_cogs, 2)
     metrics_bundle = {
-        "revenue": total_rev,
-        "cogs": total_cogs,
-        "gross_profit": overall_gross,
-        "net_profit": overall_net,
-        "other_income": all_inc,
-        "other_expenses": all_exp,
-        "tx_count": total_tx,
-        "online_revenue": online_rev,
-        "pos_revenue": pos_rev,
-        "top_products": top_products,
-        "dead_stock": dead_stock,
-        "slow_movers": slow_movers
+        "revenue": active["revenue"],
+        "cogs": active["cogs"],
+        "gross_profit": active["gross_profit"],
+        "net_profit": active["net_profit"],
+        "other_income": active["income"],
+        "other_expenses": active["expense"],
+        "tx_count": active["tx_count"],
+        "online_revenue": active_online["revenue"],
+        "pos_revenue": active_offline["revenue"],
+        "top_products": active_top,
+        "dead_stock": active_dead,
+        "slow_movers": active_slow,
     }
+
+    return {
+        "revenue": active["revenue"],
+        "cogs": active["cogs"],
+        "gross_profit": active["gross_profit"],
+        "other_income": active["income"],
+        "other_expenses": active["expense"],
+        "net_profit": active["net_profit"],
+        "tx_count": active["tx_count"],
+        "ledger_entries": ledger_entries,
+        "online_summary": active_online,
+        "offline_summary": active_offline,
+        "packages_summary": {
+            "tx_count": pkg_tx, "qty_sold": pkg_qty, "revenue": round(pkg_rev, 2), "cogs": round(pkg_cogs, 2),
+            "gross_profit": pkg_gross, "income": pkg_inc, "expense": pkg_exp,
+            "net_profit": round(pkg_gross + pkg_inc - pkg_exp, 2),
+        },
+        "offers_summary": {
+            "tx_count": off_tx, "qty_sold": off_qty, "revenue": round(off_rev, 2), "cogs": round(off_cogs, 2),
+            "gross_profit": off_gross, "income": off_inc, "expense": off_exp,
+            "net_profit": round(off_gross + off_inc - off_exp, 2),
+        },
+        "general_summary": general_summary,
+        "pharmacy_summary": pharmacy_summary,
+        "whole_summary": whole_summary,
+        "top_products": active_top,
+        "slow_movers": active_slow,
+        "dead_stock": active_dead,
+        "top_medicines": top_medicines,
+        "slow_medicines": slow_medicines,
+        "dead_medicines": dead_medicines,
+        "total_units_sold": total_units_sold,
+        "max_qty_sold": max_qty_sold,
+        "metrics_bundle": metrics_bundle,
+    }
+
+
+@app.route("/reports", methods=["GET"])
+@login_required
+@admin_required
+def reports():
+    conn = get_connection()
+    period = request.args.get("period", "monthly")
+    dept = (request.args.get("dept") or "all").strip().lower()
+    if dept not in ("all", "general", "pharmacy"):
+        dept = "all"
     mode = request.args.get("mode", "examples")
-    ai_report_en = build_ai_business_report(metrics_bundle, "en", mode)
-    ai_report_bn = build_ai_business_report(metrics_bundle, "bn", mode)
+
+    period, date_filter, ledger_filter = _resolve_report_period_filters(period)
+    bundle = _compute_separated_reports(conn, date_filter, ledger_filter, dept=dept)
+
+    ai_report_en = build_ai_business_report(bundle["metrics_bundle"], "en", mode)
+    ai_report_bn = build_ai_business_report(bundle["metrics_bundle"], "bn", mode)
 
     conn.close()
     return render_template(
         "reports.html",
         period=period,
+        dept=dept,
         mode=mode,
-        revenue=total_rev,
-        cogs=total_cogs,
-        gross_profit=overall_gross,
-        other_income=all_inc,
-        other_expenses=all_exp,
-        net_profit=overall_net,
-        ledger_entries=ledger_entries,
-        top_products=top_products,
-        slow_movers=slow_movers,
-        dead_stock=dead_stock,
-        total_units_sold=total_units_sold,
-        max_qty_sold=max_qty_sold,
-        tx_count=total_tx,
+        revenue=bundle["revenue"],
+        cogs=bundle["cogs"],
+        gross_profit=bundle["gross_profit"],
+        other_income=bundle["other_income"],
+        other_expenses=bundle["other_expenses"],
+        net_profit=bundle["net_profit"],
+        ledger_entries=bundle["ledger_entries"],
+        top_products=bundle["top_products"],
+        slow_movers=bundle["slow_movers"],
+        dead_stock=bundle["dead_stock"],
+        top_medicines=bundle["top_medicines"],
+        slow_medicines=bundle["slow_medicines"],
+        dead_medicines=bundle["dead_medicines"],
+        total_units_sold=bundle["total_units_sold"],
+        max_qty_sold=bundle["max_qty_sold"],
+        tx_count=bundle["tx_count"],
         ai_report_en=ai_report_en,
         ai_report_bn=ai_report_bn,
-        online_summary={
-            "tx_count": online_cnt,
-            "revenue": online_rev,
-            "cogs": online_cogs,
-            "gross_profit": online_gross,
-            "income": on_inc,
-            "expense": on_exp,
-            "net_profit": online_net
-        },
-        offline_summary={
-            "tx_count": pos_cnt,
-            "revenue": pos_rev,
-            "cogs": pos_cogs,
-            "gross_profit": offline_gross,
-            "income": pos_inc,
-            "expense": pos_exp,
-            "net_profit": offline_net
-        },
-        packages_summary={
-            "tx_count": pkg_tx,
-            "qty_sold": pkg_qty,
-            "revenue": pkg_rev,
-            "cogs": pkg_cogs,
-            "gross_profit": pkg_gross,
-            "income": pkg_inc,
-            "expense": pkg_exp,
-            "net_profit": pkg_net
-        },
-        offers_summary={
-            "tx_count": off_tx,
-            "qty_sold": off_qty,
-            "revenue": off_rev,
-            "cogs": off_cogs,
-            "gross_profit": off_gross,
-            "income": off_inc,
-            "expense": off_exp,
-            "net_profit": off_net
-        }
+        online_summary=bundle["online_summary"],
+        offline_summary=bundle["offline_summary"],
+        packages_summary=bundle["packages_summary"],
+        offers_summary=bundle["offers_summary"],
+        general_summary=bundle["general_summary"],
+        pharmacy_summary=bundle["pharmacy_summary"],
+        whole_summary=bundle["whole_summary"],
     )
 
 
@@ -7042,91 +7914,21 @@ def build_ai_business_report(metrics: dict, lang: str = "en", mode: str = "examp
 def api_regenerate_ai_report():
     period = request.args.get("period", "monthly")
     mode = request.args.get("mode", "examples")
-    today = date.today()
-    today_str = today.isoformat()
+    dept = (request.args.get("dept") or "all").strip().lower()
+    if dept not in ("all", "general", "pharmacy"):
+        dept = "all"
 
     conn = get_connection()
-    if period == "daily":
-        date_filter = f"date(created_at) = '{today_str}'"
-        ledger_filter = f"date(entry_date) = '{today_str}'"
-    elif period == "weekly":
-        start = (today - timedelta(days=6)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "3_monthly":
-        start = (today - timedelta(days=89)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "6_monthly":
-        start = (today - timedelta(days=179)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "quarterly":
-        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
-        start = date(today.year, quarter_start_month, 1).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "yearly":
-        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
-        ledger_filter = f"strftime('%Y', entry_date) = '{today_str[:4]}'"
-    elif period == "all":
-        date_filter = "1=1"
-        ledger_filter = "1=1"
-    else:
-        period = "monthly"
-        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
-        ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
-
-    offline_sales = conn.execute(f"SELECT COALESCE(SUM(rounded_total), 0) AS revenue, COUNT(id) AS tx_count FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}").fetchone()
-    online_sales = conn.execute(f"SELECT COALESCE(SUM(total_amount), 0) AS revenue, COUNT(*) AS tx_count FROM online_orders WHERE {date_filter}").fetchone()
-    offline_cogs = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
-    online_cogs = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id LEFT JOIN products p ON oi.product_id = p.id WHERE {date_filter.replace('created_at', 'o.created_at')}").fetchone()
-
-    pos_rev = float(offline_sales["revenue"])
-    online_rev = float(online_sales["revenue"])
-    total_rev = pos_rev + online_rev
-    pos_cnt = int(offline_sales["tx_count"])
-    online_cnt = int(online_sales["tx_count"])
-    total_tx = pos_cnt + online_cnt
-
-    pos_cogs = float(offline_cogs["total_cogs"])
-    online_cogs = float(online_cogs["total_cogs"])
-    total_cogs = pos_cogs + online_cogs
-    overall_gross = total_rev - total_cogs
-
-    ledger_entries = conn.execute(f"SELECT * FROM ledger_entries WHERE {ledger_filter}").fetchall()
-    all_inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income')
-    all_exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense')
-    overall_net = (overall_gross + all_inc) - all_exp
-
-    sold_sub = f"SELECT si.product_id, SUM(si.quantity) AS qty_sold, SUM(si.quantity * si.unit_price) AS revenue, SUM(si.quantity * si.cost_price) AS cogs_amt FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE {date_filter.replace('created_at', 's.created_at')} GROUP BY si.product_id"
-    prods = conn.execute(f"SELECT p.id, p.name, p.stock_qty, COALESCE(s.qty_sold, 0) AS qty_sold, COALESCE(s.revenue, 0) AS revenue, COALESCE(s.cogs_amt, 0) AS cogs_amt, (COALESCE(s.revenue, 0) - COALESCE(s.cogs_amt, 0)) AS profit FROM products p LEFT JOIN ({sold_sub}) s ON s.product_id = p.id ORDER BY qty_sold DESC").fetchall()
-    top_products = [dict(r) for r in prods if r["qty_sold"] > 0][:8]
-    dead_stock = [dict(r) for r in prods if r["qty_sold"] == 0 and r["stock_qty"] > 0][:8]
-    slow_movers = [dict(r) for r in sorted([r for r in prods if r["qty_sold"] > 0 and r["stock_qty"] > 0], key=lambda x: x["qty_sold"])[:8]]
-
-    metrics_bundle = {
-        "revenue": total_rev,
-        "cogs": total_cogs,
-        "gross_profit": overall_gross,
-        "net_profit": overall_net,
-        "other_income": all_inc,
-        "other_expenses": all_exp,
-        "tx_count": total_tx,
-        "online_revenue": online_rev,
-        "pos_revenue": pos_rev,
-        "top_products": top_products,
-        "dead_stock": dead_stock,
-        "slow_movers": slow_movers
-    }
-
-    ai_report_en = build_ai_business_report(metrics_bundle, "en", mode)
-    ai_report_bn = build_ai_business_report(metrics_bundle, "bn", mode)
+    period, date_filter, ledger_filter = _resolve_report_period_filters(period)
+    bundle = _compute_separated_reports(conn, date_filter, ledger_filter, dept=dept)
+    ai_report_en = build_ai_business_report(bundle["metrics_bundle"], "en", mode)
+    ai_report_bn = build_ai_business_report(bundle["metrics_bundle"], "bn", mode)
     conn.close()
 
     return jsonify({
         "success": True,
         "mode": mode,
+        "dept": dept,
         "ai_report_en": ai_report_en,
         "ai_report_bn": ai_report_bn
     })
@@ -7139,121 +7941,37 @@ def reports_export_pdf():
     period = request.args.get("period", "monthly")
     lang = request.args.get("lang", "en")
     mode = request.args.get("mode", "examples")
-    today = date.today()
-    today_str = today.isoformat()
+    dept = (request.args.get("dept") or "all").strip().lower()
+    if dept not in ("all", "general", "pharmacy"):
+        dept = "all"
 
     conn = get_connection()
-    if period == "daily":
-        date_filter = f"date(created_at) = '{today_str}'"
-        ledger_filter = f"date(entry_date) = '{today_str}'"
-    elif period == "weekly":
-        start = (today - timedelta(days=6)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "3_monthly":
-        start = (today - timedelta(days=89)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "6_monthly":
-        start = (today - timedelta(days=179)).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "quarterly":
-        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
-        start = date(today.year, quarter_start_month, 1).isoformat()
-        date_filter = f"date(created_at) >= '{start}'"
-        ledger_filter = f"date(entry_date) >= '{start}'"
-    elif period == "yearly":
-        date_filter = f"strftime('%Y', created_at) = '{today_str[:4]}'"
-        ledger_filter = f"strftime('%Y', entry_date) = '{today_str[:4]}'"
-    elif period == "all":
-        date_filter = "1=1"
-        ledger_filter = "1=1"
-    else:
-        period = "monthly"
-        date_filter = f"strftime('%Y-%m', created_at) = '{today_str[:7]}'"
-        ledger_filter = f"strftime('%Y-%m', entry_date) = '{today_str[:7]}'"
-
-    # 1. Offline POS counter
-    offline_sales = conn.execute(f"SELECT COALESCE(SUM(rounded_total), 0) AS revenue, COUNT(id) AS tx_count FROM sales WHERE (channel IS NULL OR channel != 'Online') AND {date_filter}").fetchone()
-    # 2. Online orders
-    online_sales = conn.execute(f"SELECT COALESCE(SUM(total_amount), 0) AS revenue, COUNT(*) AS tx_count FROM online_orders WHERE {date_filter}").fetchone()
-    # 3. COGS
-    offline_cogs = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.cost_price), 0) AS total_cogs FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE (s.channel IS NULL OR s.channel != 'Online') AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
-    online_cogs = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS total_cogs FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id LEFT JOIN products p ON oi.product_id = p.id WHERE {date_filter.replace('created_at', 'o.created_at')}").fetchone()
-
-    pos_rev = float(offline_sales["revenue"])
-    online_rev = float(online_sales["revenue"])
-    pos_cnt = int(offline_sales["tx_count"])
-    online_cnt = int(online_sales["tx_count"])
-    pos_cogs = float(offline_cogs["total_cogs"])
-    online_cogs = float(online_cogs["total_cogs"])
-
-    # Packages & Offers
-    pos_pkg = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue, COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs, COUNT(DISTINCT si.sale_id) AS tx_count FROM sale_items si JOIN sales s ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE (p.unit LIKE '%package%' OR p.unit LIKE '%combo%' OR p.name LIKE '%📦%') AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
-    online_pkg = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue, COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs, COUNT(DISTINCT oi.order_id) AS tx_count FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id LEFT JOIN products p ON oi.product_id = p.id WHERE (oi.product_name LIKE '📦%' OR oi.product_name LIKE '%package%') AND {date_filter.replace('created_at', 'o.created_at')}").fetchone()
-
-    pkg_rev = float(pos_pkg["revenue"]) + float(online_pkg["revenue"])
-    pkg_cogs = float(pos_pkg["cogs"]) + float(online_pkg["cogs"])
-    pkg_tx = int(pos_pkg["tx_count"]) + int(online_pkg["tx_count"])
-
-    pos_off = conn.execute(f"SELECT COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue, COALESCE(SUM(si.quantity * si.cost_price), 0) AS cogs, COUNT(DISTINCT si.sale_id) AS tx_count FROM sale_items si JOIN sales s ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE (p.is_offer = 1 OR p.is_promotion = 1) AND {date_filter.replace('created_at', 's.created_at')}").fetchone()
-    online_off = conn.execute(f"SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue, COALESCE(SUM(oi.quantity * COALESCE(p.cost_price, oi.unit_price * 0.7)), 0) AS cogs, COUNT(DISTINCT oi.order_id) AS tx_count FROM online_order_items oi JOIN online_orders o ON oi.order_id = o.id JOIN products p ON oi.product_id = p.id WHERE (p.is_offer = 1 OR p.is_promotion = 1) AND {date_filter.replace('created_at', 'o.created_at')}").fetchone()
-
-    off_rev = float(pos_off["revenue"]) + float(online_off["revenue"])
-    off_cogs = float(pos_off["cogs"]) + float(online_off["cogs"])
-    off_tx = int(pos_off["tx_count"]) + int(online_off["tx_count"])
-
-    # Ledger sums
-    ledger_entries = conn.execute(f"SELECT * FROM ledger_entries WHERE {ledger_filter}").fetchall()
-    all_inc = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'income')
-    all_exp = sum(float(r['amount']) for r in ledger_entries if r['entry_type'] == 'expense')
-
-    total_rev = pos_rev + online_rev
-    total_cogs = pos_cogs + online_cogs
-    total_tx = pos_cnt + online_cnt
-    overall_gross = total_rev - total_cogs
-    overall_net = (overall_gross + all_inc) - all_exp
-
-    sold_sub = f"SELECT si.product_id, SUM(si.quantity) AS qty_sold, SUM(si.quantity * si.unit_price) AS revenue, SUM(si.quantity * si.cost_price) AS cogs_amt FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE {date_filter.replace('created_at', 's.created_at')} GROUP BY si.product_id"
-    prods = conn.execute(f"SELECT p.id, p.name, p.stock_qty, COALESCE(s.qty_sold, 0) AS qty_sold, COALESCE(s.revenue, 0) AS revenue, COALESCE(s.cogs_amt, 0) AS cogs_amt, (COALESCE(s.revenue, 0) - COALESCE(s.cogs_amt, 0)) AS profit FROM products p LEFT JOIN ({sold_sub}) s ON s.product_id = p.id ORDER BY qty_sold DESC").fetchall()
-    top_products = [r for r in prods if r["qty_sold"] > 0][:8]
-    dead_stock = [r for r in prods if r["qty_sold"] == 0 and r["stock_qty"] > 0][:8]
-    slow_movers = sorted([r for r in prods if r["qty_sold"] > 0 and r["stock_qty"] > 0], key=lambda x: x["qty_sold"])[:8]
-
-    metrics_bundle = {
-        "revenue": total_rev,
-        "cogs": total_cogs,
-        "gross_profit": overall_gross,
-        "net_profit": overall_net,
-        "other_income": all_inc,
-        "other_expenses": all_exp,
-        "tx_count": total_tx,
-        "online_revenue": online_rev,
-        "pos_revenue": pos_rev,
-        "top_products": top_products,
-        "dead_stock": dead_stock,
-        "slow_movers": slow_movers
-    }
-    ai_report = build_ai_business_report(metrics_bundle, lang, mode)
+    period, date_filter, ledger_filter = _resolve_report_period_filters(period)
+    bundle = _compute_separated_reports(conn, date_filter, ledger_filter, dept=dept)
+    ai_report = build_ai_business_report(bundle["metrics_bundle"], lang, mode)
     conn.close()
 
     return render_template(
         "report_pdf.html",
         period=period,
         lang=lang,
+        dept=dept,
         generated_at=datetime.now().strftime("%d %b %Y, %I:%M %p"),
-        revenue=total_rev,
-        cogs=total_cogs,
-        gross_profit=overall_gross,
-        net_profit=overall_net,
-        tx_count=total_tx,
+        revenue=bundle["revenue"],
+        cogs=bundle["cogs"],
+        gross_profit=bundle["gross_profit"],
+        net_profit=bundle["net_profit"],
+        tx_count=bundle["tx_count"],
         ai_report=ai_report,
-        top_products=top_products,
-        offline_summary={"tx_count": pos_cnt, "revenue": pos_rev, "cogs": pos_cogs, "gross_profit": pos_rev - pos_cogs, "net_profit": pos_rev - pos_cogs},
-        online_summary={"tx_count": online_cnt, "revenue": online_rev, "cogs": online_cogs, "gross_profit": online_rev - online_cogs, "net_profit": online_rev - online_cogs},
-        packages_summary={"tx_count": pkg_tx, "revenue": pkg_rev, "cogs": pkg_cogs, "gross_profit": pkg_rev - pkg_cogs, "net_profit": pkg_rev - pkg_cogs},
-        offers_summary={"tx_count": off_tx, "revenue": off_rev, "cogs": off_cogs, "gross_profit": off_rev - off_cogs, "net_profit": off_rev - off_cogs}
+        top_products=bundle["top_products"],
+        top_medicines=bundle["top_medicines"],
+        offline_summary=bundle["offline_summary"],
+        online_summary=bundle["online_summary"],
+        packages_summary=bundle["packages_summary"],
+        offers_summary=bundle["offers_summary"],
+        general_summary=bundle["general_summary"],
+        pharmacy_summary=bundle["pharmacy_summary"],
+        whole_summary=bundle["whole_summary"],
     )
 
 
@@ -7498,9 +8216,57 @@ def delete_ledger_entry(entry_id):
 @app.route("/online_orders")
 @login_required
 def online_orders():
+    dept = (request.args.get("dept") or "all").strip().lower()
+    if dept not in ("all", "regular", "pharmacy"):
+        dept = "all"
+
     conn = get_connection()
-    orders = conn.execute("SELECT * FROM online_orders WHERE order_number NOT LIKE 'RX-%' ORDER BY id DESC").fetchall()
+    # Ensure confirmed/packed/dispatched/delivered pharmacy orders are mirrored in online_orders
+    try:
+        unsynced_pharm = conn.execute("""
+            SELECT po.id, po.approved_items_json, po.requested_items_json
+            FROM pharmacy_orders po
+            LEFT JOIN online_orders oo ON po.online_order_id = oo.id
+            WHERE po.order_status IN ('confirmed', 'packed', 'on_the_way', 'delivered')
+              AND (oo.id IS NULL OR oo.order_status IN ('pending', 'pending_confirmation', 'reviewing', 'new'))
+        """).fetchall()
+        if unsynced_pharm:
+            now_sync = get_bd_now_iso()
+            for up in unsynced_pharm:
+                raw_j = up["approved_items_json"] or up["requested_items_json"] or "[]"
+                try:
+                    parsed_itms = json.loads(raw_j) if raw_j else None
+                except Exception:
+                    parsed_itms = None
+                _ensure_online_order_for_pharmacy(conn, up["id"], approved_items=parsed_itms, now_iso=now_sync)
+            conn.commit()
+    except Exception as e:
+        print(f"[online_orders] Pharmacy sync notice: {e}")
+
+    user_role = session.get("role", "")
+    user_id = session.get("user_id")
+    username = (session.get("username") or "").strip()
+
+    if user_role == "delivery":
+        norm_u = normalize_phone(username)
+        u_patterns = list(set(filter(None, [username, norm_u, f"88{norm_u}" if norm_u else "", f"+88{norm_u}" if norm_u else ""])))
+        placeholders = ",".join("?" for _ in u_patterns) if u_patterns else "''"
+        orders = conn.execute(f"""
+            SELECT * FROM online_orders
+            WHERE (
+                ((assigned_rider_phone IS NULL OR assigned_rider_phone = '') AND COALESCE(assigned_rider_id, 0) = 0
+                 AND order_status IN ('new', 'verified', 'packed'))
+                OR
+                (assigned_rider_phone IN ({placeholders}) OR (assigned_rider_id IS NOT NULL AND assigned_rider_id = ?))
+            )
+            ORDER BY id DESC
+        """, tuple(u_patterns + [user_id or 0])).fetchall()
+    else:
+        orders = conn.execute("SELECT * FROM online_orders ORDER BY id DESC").fetchall()
+
     orders_list = []
+    regular_count = 0
+    pharmacy_count = 0
     for ord_row in orders:
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
         o_dict = dict(ord_row)
@@ -7509,7 +8275,7 @@ def online_orders():
             it_dict = dict(i)
             p_id = it_dict.get("product_id")
             p_name = (it_dict.get("product_name") or "").strip()
-            
+
             pkg = None
             is_combo_tag = p_name.startswith("📦") or it_dict.get("unit") == "Combo Package"
             is_regular_prod = conn.execute("SELECT id FROM products WHERE id = ?", (p_id,)).fetchone() if p_id else None
@@ -7537,14 +8303,80 @@ def online_orders():
 
             item_list.append(it_dict)
 
+        ord_num = str(o_dict.get("order_number") or "")
+        is_pharm = ord_num.upper().startswith("RX-")
+        pharm_row = conn.execute(
+            "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+            (o_dict["id"], ord_num),
+        ).fetchone()
+        if pharm_row:
+            is_pharm = True
+            o_dict["pharmacy_order_id"] = pharm_row["id"]
+            o_dict["prescription_url"] = pharm_row["prescription_url"] or ""
+            o_dict["prescription_original_url"] = pharm_row["prescription_original_url"] or ""
+            o_dict["customer_notes"] = pharm_row["customer_notes"] or ""
+            o_dict["overall_duration_days"] = pharm_row["overall_duration_days"] or 0
+            if not o_dict.get("customer_ip") and "customer_ip" in pharm_row.keys():
+                o_dict["customer_ip"] = pharm_row["customer_ip"] or ""
+            if not o_dict.get("ip_location") and "ip_location" in pharm_row.keys():
+                o_dict["ip_location"] = pharm_row["ip_location"] or ""
+            if not item_list or (len(item_list) == 1 and float(item_list[0].get("unit_price") or 0) == 0 and float(o_dict.get("total_amount") or 0) > 0):
+                raw_j = pharm_row["approved_items_json"] or pharm_row["requested_items_json"] or "[]"
+                try:
+                    j_items = json.loads(raw_j) if raw_j else []
+                except Exception:
+                    j_items = []
+                if j_items:
+                    item_list = [
+                        {
+                            "product_id": it.get("medicine_id") or 0,
+                            "product_name": f"💊 {it.get('name', 'Medicine')}" + (f" ({it.get('strength')})" if it.get("strength") else ""),
+                            "unit_price": float(it.get("unit_price") or 0.0),
+                            "mrp_price": float(it.get("unit_price") or 0.0),
+                            "quantity": int(it.get("quantity") or 1),
+                            "total_price": float(it.get("total_price") or 0.0),
+                        }
+                        for it in j_items
+                    ]
+
+        o_dict["is_pharmacy_order"] = is_pharm
         o_dict["items"] = item_list
         o_dict["order_items"] = item_list
-        c_user = conn.execute("SELECT profile_image, avatar_url, avatar_base64 FROM customer_users WHERE phone = ?", (o_dict.get("customer_phone", ""),)).fetchone()
-        o_dict["customer_profile_image"] = (c_user["profile_image"] or c_user["avatar_url"] or c_user["avatar_base64"]) if c_user else ""
+
+        c_phone = o_dict.get("customer_phone", "")
+        c_user = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (c_phone,)).fetchone()
+        cu_d = dict(c_user) if c_user else {}
+        o_dict["customer_profile_image"] = (cu_d.get("profile_image") or cu_d.get("avatar_url") or cu_d.get("avatar_base64") or "")
+        o_dict["customer_created_at"] = cu_d.get("created_at") or ""
+        o_dict["customer_member_since"] = _member_since_label(cu_d.get("created_at") or o_dict.get("created_at") or "")
+        o_dict["customer_last_ip"] = o_dict.get("customer_ip") or cu_d.get("last_ip") or cu_d.get("registration_ip") or ""
+        o_dict["customer_last_location"] = o_dict.get("ip_location") or cu_d.get("last_location") or cu_d.get("registration_location") or ""
+        o_dict["customer_last_device"] = cu_d.get("last_device") or ""
+
+        if is_pharm:
+            pharmacy_count += 1
+        else:
+            regular_count += 1
         orders_list.append(o_dict)
+
+    if dept == "pharmacy":
+        filtered_orders = [o for o in orders_list if o.get("is_pharmacy_order")]
+    elif dept == "regular":
+        filtered_orders = [o for o in orders_list if not o.get("is_pharmacy_order")]
+    else:
+        filtered_orders = orders_list
+
     riders = conn.execute("SELECT * FROM users WHERE role = 'delivery' AND is_active = 1").fetchall()
     conn.close()
-    return render_template("online_orders.html", orders=orders_list, riders=riders)
+    return render_template(
+        "online_orders.html",
+        orders=filtered_orders,
+        all_orders_count=len(orders_list),
+        regular_count=regular_count,
+        pharmacy_count=pharmacy_count,
+        dept=dept,
+        riders=riders,
+    )
 
 
 def notify_order_status_change(order_row_or_dict, new_status, conn=None):
@@ -7673,11 +8505,17 @@ def assign_online_order_rider(order_id):
         (rider_id or 0, rider_name, rider_phone, now_iso, now_iso, order_id)
     )
     deduct_online_order_stock(conn, order)
+    pharm_id = _sync_pharmacy_from_online_order(
+        conn, order, 'verified', now_iso,
+        rider_id=rider_id or 0, rider_name=rider_name, rider_phone=rider_phone,
+    )
     notify_order_status_change(order, 'verified', conn=conn)
     conn.commit()
     conn.close()
 
     remote_control.push_online_order_to_cloud(order_id)
+    if pharm_id:
+        remote_control.push_pharmacy_order_to_cloud(pharm_id)
     if rider_name:
         flash(f"Order #{order['order_number']} assigned to Delivery Rider '{rider_name}' ({rider_phone}) and verified!", "success")
     else:
@@ -8027,6 +8865,12 @@ def api_rider_earnings():
     all_time_delivered = 0
     all_time_earned = 0.0
     all_time_collected = 0.0
+    reg_delivered = 0
+    reg_earned = 0.0
+    reg_collected = 0.0
+    pharm_delivered = 0
+    pharm_earned = 0.0
+    pharm_collected = 0.0
     delivered_orders = []
 
     for ord_row in rider_orders:
@@ -8035,18 +8879,30 @@ def api_rider_earnings():
         o_fee = float(o_dict.get("rider_fee") or 0)
         if o_fee <= 0 and is_del:
             o_fee = default_fee
-        
+        ord_num = str(o_dict.get("order_number") or "")
+        is_pharm = ord_num.upper().startswith("RX-")
+        o_amt = float(o_dict.get("total_amount") or 0)
+
         if is_del:
             all_time_delivered += 1
             all_time_earned += o_fee
-            all_time_collected += float(o_dict.get("total_amount") or 0)
+            all_time_collected += o_amt
+            if is_pharm:
+                pharm_delivered += 1
+                pharm_earned += o_fee
+                pharm_collected += o_amt
+            else:
+                reg_delivered += 1
+                reg_earned += o_fee
+                reg_collected += o_amt
             delivered_orders.append({
                 "id": o_dict.get("id"),
-                "order_number": o_dict.get("order_number") or "",
+                "order_number": ord_num,
+                "is_pharmacy_order": is_pharm,
                 "customer_name": o_dict.get("customer_name") or "",
                 "customer_phone": o_dict.get("customer_phone") or "",
                 "area": o_dict.get("area") or "",
-                "total_amount": float(o_dict.get("total_amount") or 0),
+                "total_amount": o_amt,
                 "rider_fee": o_fee,
                 "delivered_at": o_dict.get("delivered_at") or o_dict.get("updated_at") or "",
                 "created_at": o_dict.get("created_at") or "",
@@ -8067,6 +8923,16 @@ def api_rider_earnings():
         "total_paid": all_time_paid,
         "balance_due": balance_due,
         "total_collected": all_time_collected,
+        "regular_stats": {
+            "delivered": reg_delivered,
+            "earned": round(reg_earned, 2),
+            "collected": round(reg_collected, 2),
+        },
+        "pharmacy_stats": {
+            "delivered": pharm_delivered,
+            "earned": round(pharm_earned, 2),
+            "collected": round(pharm_collected, 2),
+        },
         "payouts": payouts_data,
         "delivered_orders": delivered_orders,
     })
@@ -8398,9 +9264,23 @@ def api_online_customer_search():
             "SELECT * FROM online_orders WHERE customer_phone = ? ORDER BY id DESC",
             (r["customer_phone"],)
         ).fetchall()
+        cu = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (r["customer_phone"],)).fetchone()
+        cu_d = dict(cu) if cu else {}
+        orders_list = [dict(o) for o in orders]
+        first_created = cu_d.get("created_at") or (orders_list[-1].get("created_at") if orders_list else "")
+        latest_ord_ip = next((o.get("customer_ip") for o in orders_list if o.get("customer_ip")), "")
+        latest_ord_loc = next((o.get("ip_location") for o in orders_list if o.get("ip_location")), "")
         cust_dict = dict(r)
+        cust_dict["created_at"] = first_created
+        cust_dict["member_since"] = _member_since_label(first_created)
+        cust_dict["registration_ip"] = cu_d.get("registration_ip") or latest_ord_ip
+        cust_dict["registration_location"] = cu_d.get("registration_location") or latest_ord_loc
+        cust_dict["last_ip"] = cu_d.get("last_ip") or latest_ord_ip
+        cust_dict["last_location"] = cu_d.get("last_location") or latest_ord_loc
+        cust_dict["last_seen_at"] = cu_d.get("last_seen_at") or ""
+        cust_dict["last_device"] = cu_d.get("last_device") or ""
         cust_dict["order_count"] = len(orders)
-        cust_dict["orders"] = [dict(o) for o in orders]
+        cust_dict["orders"] = orders_list
         results.append(cust_dict)
 
     conn.close()
@@ -8998,19 +9878,21 @@ def api_place_order():
 
     initial_order_status = "new" if is_customer_verified else "pending_confirmation"
 
+    cust_ip, cust_loc = _touch_customer_network_info(conn, clean_phone, data=data)
+
     # 2. Insert into online_orders
     cur.execute("""
         INSERT INTO online_orders (
             order_number, customer_name, customer_phone, customer_email,
             country, district, area, address_details, payment_method,
             payment_status, subtotal, delivery_charge, total_amount,
-            order_status, delivery_otp, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            order_status, delivery_otp, customer_ip, ip_location, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         order_number, customer_name, clean_phone, customer_email,
         country, district, area, address_details, payment_method,
         "pending" if payment_method == "cod" else "paid",
-        subtotal, delivery_charge, total_amount, initial_order_status, otp, created_at, created_at
+        subtotal, delivery_charge, total_amount, initial_order_status, otp, cust_ip, cust_loc, created_at, created_at
     ))
     order_id = cur.lastrowid
 
@@ -9055,8 +9937,9 @@ def api_place_order():
     cur.execute("""
         INSERT INTO sales (
             invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
-            total_amount, rounded_total, vat_amount, saved_amount, cash_amount, card_amount, change_amount, created_at, is_synced
-        ) VALUES (?, ?, ?, ?, ?, ?, 'Online', ?, ?, 0, 0, ?, 0, 0, ?, 0)
+            total_amount, rounded_total, vat_amount, saved_amount, cash_amount, card_amount, change_amount,
+            customer_ip, ip_location, created_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, 'Online', ?, ?, 0, 0, ?, 0, 0, ?, ?, ?, 0)
     """, (
         inv_num,
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -9067,6 +9950,8 @@ def api_place_order():
         subtotal,
         total_amount,
         total_amount,
+        cust_ip,
+        cust_loc,
         created_at
     ))
     sale_id = cur.lastrowid
@@ -10311,23 +11196,46 @@ def api_delivery_orders():
     rider_id = request.args.get("rider_id", type=int)
 
     conn = get_connection()
+    # Reconcile any confirmed/packed/dispatched pharmacy orders into online_orders so Riders always see them
+    try:
+        unsynced_pharm = conn.execute("""
+            SELECT po.id, po.approved_items_json, po.requested_items_json
+            FROM pharmacy_orders po
+            LEFT JOIN online_orders oo ON po.online_order_id = oo.id
+            WHERE po.order_status IN ('confirmed', 'packed', 'on_the_way')
+              AND (oo.id IS NULL OR oo.order_status IN ('pending', 'pending_confirmation', 'reviewing', 'new'))
+        """).fetchall()
+        if unsynced_pharm:
+            now_sync = get_bd_now_iso()
+            for up in unsynced_pharm:
+                raw_j = up["approved_items_json"] or up["requested_items_json"] or "[]"
+                try:
+                    parsed_itms = json.loads(raw_j) if raw_j else None
+                except Exception:
+                    parsed_itms = None
+                _ensure_online_order_for_pharmacy(conn, up["id"], approved_items=parsed_itms, now_iso=now_sync)
+            conn.commit()
+    except Exception as e:
+        print(f"[delivery_orders] Pharmacy sync notice: {e}")
+
     if raw_phone or norm_phone or rider_id:
         phone_patterns = list(set(filter(None, [raw_phone, norm_phone, f"88{norm_phone}" if norm_phone else "", f"+88{norm_phone}" if norm_phone else ""])))
         if not rider_id and norm_phone:
             u = conn.execute("SELECT id FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (norm_phone, raw_phone)).fetchone()
             if u:
                 rider_id = u["id"]
-        
+
         placeholders = ",".join("?" for _ in phone_patterns) if phone_patterns else "''"
-        params = phone_patterns + phone_patterns + [rider_id or 0]
+        params = phone_patterns + [rider_id or 0]
 
         orders = conn.execute(f"""
-            SELECT * FROM online_orders 
+            SELECT * FROM online_orders
             WHERE (
-                (order_status = 'new' AND (assigned_rider_phone IS NULL OR assigned_rider_phone = '' OR assigned_rider_phone IN ({placeholders})))
+                ((assigned_rider_phone IS NULL OR assigned_rider_phone = '') AND COALESCE(assigned_rider_id, 0) = 0
+                 AND order_status IN ('new', 'verified', 'packed'))
                 OR
-                ((assigned_rider_phone IN ({placeholders}) OR (assigned_rider_id IS NOT NULL AND assigned_rider_id = ?)) 
-                 AND order_status IN ('verified', 'packed', 'on_the_way'))
+                ((assigned_rider_phone IN ({placeholders}) OR (assigned_rider_id IS NOT NULL AND assigned_rider_id = ?))
+                 AND order_status IN ('new', 'verified', 'packed', 'on_the_way'))
             )
             ORDER BY id DESC
         """, params).fetchall()
@@ -10340,7 +11248,57 @@ def api_delivery_orders():
     for ord_row in orders:
         items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
         o_dict = dict(ord_row)
-        o_dict["items"] = [dict(i) for i in items]
+        item_dicts = [dict(i) for i in items]
+
+        ord_num = str(o_dict.get("order_number") or "")
+        is_pharm = ord_num.upper().startswith("RX-")
+        pharm_row = None
+        if is_pharm:
+            pharm_row = conn.execute(
+                "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+                (o_dict["id"], ord_num),
+            ).fetchone()
+        else:
+            pharm_row = conn.execute(
+                "SELECT * FROM pharmacy_orders WHERE online_order_id = ? LIMIT 1",
+                (o_dict["id"],),
+            ).fetchone()
+            if pharm_row:
+                is_pharm = True
+
+        o_dict["is_pharmacy_order"] = is_pharm
+        if pharm_row:
+            o_dict["pharmacy_order_id"] = pharm_row["id"]
+            o_dict["prescription_url"] = pharm_row["prescription_url"] or ""
+            o_dict["prescription_original_url"] = pharm_row["prescription_original_url"] or ""
+            o_dict["customer_notes"] = pharm_row["customer_notes"] or ""
+            o_dict["overall_duration_days"] = pharm_row["overall_duration_days"] or 0
+            o_dict["order_type"] = pharm_row["order_type"] or ""
+            if not o_dict.get("customer_ip") and "customer_ip" in pharm_row.keys():
+                o_dict["customer_ip"] = pharm_row["customer_ip"] or ""
+            if not o_dict.get("ip_location") and "ip_location" in pharm_row.keys():
+                o_dict["ip_location"] = pharm_row["ip_location"] or ""
+            # Fallback to pharmacy approved/requested items if online_order_items only has a 0-price placeholder
+            if not item_dicts or (len(item_dicts) == 1 and float(item_dicts[0].get("unit_price") or 0) == 0 and float(o_dict.get("total_amount") or 0) > 0):
+                raw_j = pharm_row["approved_items_json"] or pharm_row["requested_items_json"] or "[]"
+                try:
+                    j_items = json.loads(raw_j) if raw_j else []
+                except Exception:
+                    j_items = []
+                if j_items:
+                    item_dicts = [
+                        {
+                            "product_id": it.get("medicine_id") or 0,
+                            "product_name": f"💊 {it.get('name', 'Medicine')}" + (f" ({it.get('strength')})" if it.get("strength") else ""),
+                            "unit_price": float(it.get("unit_price") or 0.0),
+                            "mrp_price": float(it.get("unit_price") or 0.0),
+                            "quantity": int(it.get("quantity") or 1),
+                            "total_price": float(it.get("total_price") or 0.0),
+                        }
+                        for it in j_items
+                    ]
+
+        o_dict["items"] = item_dicts
         result.append(o_dict)
 
     conn.close()
@@ -10596,9 +11554,18 @@ def api_auth_register():
             "message": "Already registered with this mobile number or email."
         }), 400
 
+    reg_ip, reg_loc = _resolve_ip_and_location(conn)
+    reg_dev = _extract_device_hint(data)
+    now_iso = datetime.now().isoformat()
     conn.execute(
-        "INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (phone, name, email, generate_password_hash(password), password, is_verified, datetime.now().isoformat())
+        """INSERT INTO customer_users
+           (phone, name, email, password_hash, plain_password, is_verified, created_at,
+            registration_ip, registration_location, last_ip, last_location, last_seen_at, last_device)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            phone, name, email, generate_password_hash(password), password, is_verified, now_iso,
+            reg_ip, reg_loc, reg_ip, reg_loc, now_iso, reg_dev,
+        )
     )
     conn.commit()
     conn.close()
@@ -10767,9 +11734,9 @@ def api_auth_login():
         return jsonify({"success": False, "message": block_msg}), 403
 
     cust = conn.execute("SELECT * FROM customer_users WHERE phone = ?", (phone_to_check,)).fetchone()
-    conn.close()
 
     if not cust:
+        conn.close()
         return jsonify({
             "success": False,
             "message": "এই মোবাইল নম্বরটি নিবন্ধিত কাস্টমার হিসেবে পাওয়া যায়নি। অনুগ্রহ করে আগে একাউন্ট তৈরি করুন।"
@@ -10778,10 +11745,20 @@ def api_auth_login():
     c_dict = dict(cust)
     if not check_password_hash(c_dict.get("password_hash") or "", password):
         if not (c_dict.get("plain_password") and c_dict.get("plain_password") == password):
+            conn.close()
             return jsonify({"success": False, "message": "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে পুনরায় চেষ্টা করুন।"}), 401
 
     if c_dict.get("is_verified") != 1:
+        conn.close()
         return jsonify({"success": False, "message": "একাউন্টটি যাচাইকৃত নয়। অনুগ্রহ করে OTP দিয়ে যাচাই করুন।"}), 401
+
+    cust_ip, cust_loc = _touch_customer_network_info(conn, phone_to_check, data=data)
+    conn.commit()
+    conn.close()
+    try:
+        remote_control.push_customer_user_to_cloud(phone_to_check)
+    except Exception:
+        pass
 
     raw_img = (c_dict.get("profile_image") or c_dict.get("avatar_url") or c_dict.get("avatar_base64") or "").strip()
     if raw_img and raw_img.startswith("/"):
@@ -10798,7 +11775,11 @@ def api_auth_login():
             "profile_image": prof_img,
             "avatar_url": prof_img,
             "avatar_base64": prof_img,
-            "address": c_dict.get("address", "")
+            "address": c_dict.get("address", ""),
+            "created_at": c_dict.get("created_at", ""),
+            "member_since": _member_since_label(c_dict.get("created_at", "")),
+            "last_ip": cust_ip or c_dict.get("last_ip", ""),
+            "last_location": cust_loc or c_dict.get("last_location", ""),
         }
     })
 
@@ -12440,6 +13421,7 @@ def pharmacy_place_order():
     order_number = f"RX-{datetime.now().strftime('%y%m%d')}-{random.randint(1000, 9999)}"
     delivery_otp = f"{random.randint(1000, 9999)}"
     now_iso = get_bd_now_iso()
+    cust_ip, cust_loc = _touch_customer_network_info(conn, customer_phone, data=data)
 
     cur = conn.cursor()
     # 1. Insert into pharmacy_orders
@@ -12451,8 +13433,9 @@ def pharmacy_place_order():
             prescription_local_filename, overall_duration_days,
             customer_notes, requested_items_json, approved_items_json,
             subtotal, delivery_charge, total_amount, order_status,
-            delivery_otp, payment_method, payment_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'Bangladesh', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', 'pending', ?, ?)
+            delivery_otp, payment_method, payment_status,
+            customer_ip, ip_location, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'Bangladesh', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', 'pending', ?, ?, ?, ?)
     """, (
         order_number, customer_name, customer_phone, customer_email,
         district, area, delivery_address, determined_type,
@@ -12460,7 +13443,7 @@ def pharmacy_place_order():
         prescription_filename, overall_duration_days,
         customer_notes, json.dumps(processed_items, ensure_ascii=False), json.dumps(processed_items, ensure_ascii=False),
         subtotal, delivery_charge, total_amount, initial_status,
-        delivery_otp, now_iso, now_iso
+        delivery_otp, cust_ip, cust_loc, now_iso, now_iso
     ))
     pharm_order_id = cur.lastrowid
 
@@ -12472,13 +13455,13 @@ def pharmacy_place_order():
                 order_number, customer_name, customer_phone, customer_email,
                 country, district, area, address_details, payment_method,
                 payment_status, subtotal, delivery_charge, total_amount,
-                order_status, delivery_otp, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, 'Bangladesh', ?, ?, ?, 'cod', 'pending', ?, ?, ?, 'pending_confirmation', ?, ?, ?)
+                order_status, delivery_otp, customer_ip, ip_location, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'Bangladesh', ?, ?, ?, 'cod', 'pending', ?, ?, ?, 'pending_confirmation', ?, ?, ?, ?, ?)
         """, (
             order_number, customer_name, customer_phone, customer_email,
             district, area, delivery_address,
             subtotal, delivery_charge, total_amount,
-            delivery_otp, now_iso, now_iso
+            delivery_otp, cust_ip, cust_loc, now_iso, now_iso
         ))
         online_order_id = cur.lastrowid
         cur.execute("UPDATE pharmacy_orders SET online_order_id = ? WHERE id = ?", (online_order_id, pharm_order_id))
@@ -12508,6 +13491,8 @@ def pharmacy_place_order():
         remote_control.push_pharmacy_order_to_cloud(pharm_order_id)
         if online_order_id:
             remote_control.push_online_order_to_cloud(online_order_id)
+        if customer_phone:
+            remote_control.push_customer_user_to_cloud(normalize_phone(customer_phone) or customer_phone)
     except Exception:
         pass
 
@@ -13590,6 +14575,511 @@ def api_admin_pharmacy_pos_checkout():
         "rounded_total": rounded_total,
         "change_amount": change_amount,
     })
+
+
+def _authorize_staff_or_rider(conn, data=None):
+    """Validates either a logged-in web staff/rider session or an active rider/staff identity from mobile."""
+    if session.get("user_id"):
+        u = conn.execute(
+            "SELECT id, username, full_name, role FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1",
+            (session.get("user_id"),),
+        ).fetchone()
+        if u:
+            return dict(u)
+    payload = data if isinstance(data, dict) else {}
+    rider_id = payload.get("rider_id") or request.args.get("rider_id")
+    raw_phone = (payload.get("rider_phone") or request.args.get("rider_phone") or "").strip()
+    norm_p = normalize_phone(raw_phone) if raw_phone else ""
+    if rider_id:
+        try:
+            u = conn.execute(
+                "SELECT id, username, full_name, role FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1",
+                (int(rider_id),),
+            ).fetchone()
+            if u:
+                return dict(u)
+        except Exception:
+            pass
+    if raw_phone or norm_p:
+        candidates = list(set(filter(None, [raw_phone, norm_p, f"88{norm_p}" if norm_p else "", f"+88{norm_p}" if norm_p else ""])))
+        placeholders = ",".join("?" for _ in candidates)
+        u = conn.execute(
+            f"SELECT id, username, full_name, role FROM users WHERE COALESCE(is_active, 1) = 1 AND username IN ({placeholders}) LIMIT 1",
+            tuple(candidates),
+        ).fetchone()
+        if u:
+            return dict(u)
+    return None
+
+
+@app.route("/api/rider/catalog", methods=["GET"])
+def api_rider_catalog():
+    """Returns searchable regular products, combo packages, and pharmacy medicines for Rider mobile billing."""
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Unauthorized rider or staff session."}), 401
+
+    q = (request.args.get("q") or "").strip()
+    catalog_type = (request.args.get("type") or "all").strip().lower()
+    limit = min(80, max(10, request.args.get("limit", default=40, type=int)))
+    like = f"%{q}%"
+
+    shop_settings = get_all_settings(conn)
+    pharm_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    products_out = []
+    packages_out = []
+    medicines_out = []
+
+    if catalog_type in ("all", "regular", "products"):
+        if q:
+            prod_rows = conn.execute("""
+                SELECT p.id, p.name, p.sku, p.brand, p.sell_price, p.mrp, p.stock_qty, p.unit, p.image_url,
+                       COALESCE(c.name, 'General') AS category_name
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                WHERE COALESCE(p.stock_qty, 0) > 0
+                  AND (p.name LIKE ? OR p.sku LIKE ? OR p.brand LIKE ?)
+                ORDER BY CASE WHEN p.name LIKE ? THEN 0 ELSE 1 END, p.name ASC
+                LIMIT ?
+            """, (like, like, like, f"{q}%", limit)).fetchall()
+        else:
+            prod_rows = conn.execute("""
+                SELECT p.id, p.name, p.sku, p.brand, p.sell_price, p.mrp, p.stock_qty, p.unit, p.image_url,
+                       COALESCE(c.name, 'General') AS category_name
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                WHERE COALESCE(p.stock_qty, 0) > 0
+                ORDER BY p.id DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        for r in prod_rows:
+            imgs = split_image_urls(r["image_url"])
+            products_out.append({
+                "id": r["id"],
+                "item_type": "product",
+                "name": r["name"],
+                "sku": r["sku"] or "",
+                "category": r["category_name"] or "General",
+                "sell_price": float(r["sell_price"] or 0.0),
+                "mrp": float(r["mrp"] or r["sell_price"] or 0.0),
+                "stock_qty": int(r["stock_qty"] or 0),
+                "unit": r["unit"] or "Piece",
+                "image": imgs[0] if imgs else "/static/images/logo.png",
+            })
+
+        pkg_where = "WHERE is_active = 1" + (" AND name LIKE ?" if q else "")
+        pkg_params = [like] if q else []
+        for pk in conn.execute(f"SELECT id, name, package_price, image_url FROM packages {pkg_where} ORDER BY id DESC LIMIT 20", tuple(pkg_params)).fetchall():
+            packages_out.append({
+                "id": pk["id"],
+                "item_type": "package",
+                "name": f"📦 {pk['name']}",
+                "sell_price": float(pk["package_price"] or 0.0),
+                "mrp": float(pk["package_price"] or 0.0),
+                "stock_qty": 999,
+                "unit": "Combo Package",
+                "image": pk["image_url"] or "/static/images/logo.png",
+            })
+
+    if catalog_type in ("all", "pharmacy", "medicines"):
+        if q:
+            med_rows = conn.execute("""
+                SELECT * FROM pharmacy_medicines
+                WHERE COALESCE(stock_qty, 0) > 0
+                  AND (name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ?)
+                ORDER BY CASE WHEN name LIKE ? THEN 0 WHEN generic_name LIKE ? THEN 1 ELSE 2 END, name ASC
+                LIMIT ?
+            """, (like, like, like, f"{q}%", f"{q}%", limit)).fetchall()
+        else:
+            med_rows = conn.execute("""
+                SELECT * FROM pharmacy_medicines
+                WHERE COALESCE(stock_qty, 0) > 0
+                ORDER BY id DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        for mr in med_rows:
+            md = dict(mr)
+            mrp_val, sell_p, eff_disc = _calc_medicine_sell_price(md, pharm_disc)
+            medicines_out.append({
+                "id": md["id"],
+                "item_type": "medicine",
+                "name": md["name"] or "",
+                "generic_name": md.get("generic_name") or "",
+                "dosage_form": md.get("dosage_form") or "Tablet",
+                "strength": md.get("strength") or "",
+                "manufacturer": md.get("manufacturer") or "",
+                "sell_price": sell_p,
+                "mrp": mrp_val,
+                "discount_percent": eff_disc,
+                "stock_qty": int(md.get("stock_qty") or 0),
+                "unit": md.get("unit") or "পিস",
+            })
+
+    conn.close()
+    return jsonify({
+        "success": True,
+        "products": products_out,
+        "packages": packages_out,
+        "medicines": medicines_out,
+        "pharmacy_discount_percent": pharm_disc,
+    })
+
+
+@app.route("/api/rider/create-bill", methods=["POST"])
+def api_rider_create_bill():
+    """Creates a live POS/Rider bill for regular shop products, combo packages, pharmacy medicines, or mixed."""
+    data = request.get_json(silent=True) or {}
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Unauthorized rider or staff credentials."}), 401
+
+    items = data.get("items") or []
+    if not items or not isinstance(items, list):
+        conn.close()
+        return jsonify({"success": False, "message": "অনুগ্রহ করে বিলের জন্য অন্তত একটি পণ্য বা ঔষধ যোগ করুন।"}), 400
+
+    customer_name = (data.get("customer_name") or "").strip() or "Walk-in / Rider Customer"
+    raw_phone = (data.get("customer_phone") or data.get("customer_mobile") or "").strip()
+    customer_mobile = normalize_phone(raw_phone) or raw_phone
+    try:
+        extra_discount = max(0.0, float(data.get("extra_discount") or data.get("discount") or 0.0))
+    except Exception:
+        extra_discount = 0.0
+    try:
+        cash_amount = max(0.0, float(data.get("cash_amount") or 0.0))
+        card_amount = max(0.0, float(data.get("card_amount") or 0.0))
+    except Exception:
+        cash_amount, card_amount = 0.0, 0.0
+    print_to_pc = bool(data.get("print_to_pc"))
+
+    shop_settings = get_all_settings(conn)
+    overall_pharm_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    first_prod_row = conn.execute("SELECT id FROM products LIMIT 1").fetchone()
+    fk_pid = first_prod_row["id"] if first_prod_row else 1
+
+    sub_total = 0.0
+    mrp_total = 0.0
+    vat_total = 0.0
+    line_details = []
+    has_regular = False
+    has_medicine = False
+
+    for raw in items:
+        item_type = (raw.get("item_type") or data.get("bill_type") or "product").strip().lower()
+        try:
+            qty = int(raw.get("quantity") or raw.get("qty") or 1)
+        except Exception:
+            qty = 1
+        if qty <= 0:
+            qty = 1
+        item_id = raw.get("id") or raw.get("product_id") or raw.get("medicine_id")
+
+        if item_type in ("medicine", "pharmacy"):
+            med = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ?", (item_id,)).fetchone() if item_id else None
+            if not med and raw.get("name"):
+                med = conn.execute("SELECT * FROM pharmacy_medicines WHERE name = ? LIMIT 1", (raw.get("name"),)).fetchone()
+            if not med:
+                conn.close()
+                return jsonify({"success": False, "message": f"Medicine not found (ID: {item_id})."}), 404
+            m_dict = dict(med)
+            if int(m_dict.get("stock_qty") or 0) < qty:
+                conn.close()
+                return jsonify({"success": False, "message": f"{m_dict['name']} স্টকে পর্যাপ্ত নেই (বাকি: {m_dict.get('stock_qty', 0)})।"}), 400
+            mrp_val, sell_p, _ = _calc_medicine_sell_price(m_dict, overall_pharm_disc)
+            if raw.get("unit_price") is not None:
+                try:
+                    custom_p = float(raw.get("unit_price"))
+                    if custom_p > 0:
+                        sell_p = custom_p
+                except Exception:
+                    pass
+            has_medicine = True
+            line_sub = round(sell_p * qty, 2)
+            sub_total += line_sub
+            mrp_total += round(mrp_val * qty, 2)
+            strength = m_dict.get("strength") or m_dict.get("dosage_form") or ""
+            line_details.append({
+                "kind": "medicine",
+                "medicine_id": m_dict["id"],
+                "product_id": fk_pid,
+                "quantity": qty,
+                "unit_price": sell_p,
+                "mrp_price": mrp_val,
+                "vat_pct": 0.0,
+                "vat_amount": 0.0,
+                "cost_price": float(m_dict.get("cost_price") or 0.0),
+                "unit_serials": f"💊 {m_dict['name']}" + (f" ({strength})" if strength else ""),
+            })
+        elif item_type == "package":
+            pkg = conn.execute("SELECT * FROM packages WHERE id = ?", (item_id,)).fetchone()
+            if not pkg:
+                conn.close()
+                return jsonify({"success": False, "message": f"Package not found (ID: {item_id})."}), 404
+            has_regular = True
+            sell_p = float(pkg["package_price"] or 0.0)
+            pkg_items = conn.execute(
+                "SELECT pi.product_id, pi.quantity, COALESCE(p.cost_price, 0) AS cost_price FROM package_items pi JOIN products p ON pi.product_id = p.id WHERE pi.package_id = ?",
+                (pkg["id"],),
+            ).fetchall()
+            unit_cost = sum(float(pi["cost_price"] or 0.0) * float(pi["quantity"] or 1) for pi in pkg_items)
+            sub_total += round(sell_p * qty, 2)
+            mrp_total += round(sell_p * qty, 2)
+            line_details.append({
+                "kind": "package",
+                "package_id": pkg["id"],
+                "pkg_items": [dict(pi) for pi in pkg_items],
+                "product_id": fk_pid,
+                "quantity": qty,
+                "unit_price": sell_p,
+                "mrp_price": sell_p,
+                "vat_pct": 0.0,
+                "vat_amount": 0.0,
+                "cost_price": round(unit_cost, 2),
+                "unit_serials": f"📦 {pkg['name']}",
+            })
+        else:
+            prod = conn.execute("SELECT * FROM products WHERE id = ?", (item_id,)).fetchone()
+            if not prod:
+                conn.close()
+                return jsonify({"success": False, "message": f"Product not found (ID: {item_id})."}), 404
+            if float(prod["stock_qty"] or 0) < qty:
+                conn.close()
+                return jsonify({"success": False, "message": f"{prod['name']} স্টকে পর্যাপ্ত নেই (বাকি: {prod['stock_qty']})।"}), 400
+            has_regular = True
+            sell_p = float(prod["sell_price"] or 0.0)
+            mrp_val = float(prod["mrp"] or sell_p)
+            vat_pct = float(prod["vat_pct"] or 0.0)
+            line_sub = round(sell_p * qty, 2)
+            line_vat = round(line_sub * (vat_pct / 100.0), 2) if vat_pct > 0 else 0.0
+            sub_total += line_sub
+            mrp_total += round(mrp_val * qty, 2)
+            vat_total += line_vat
+            line_details.append({
+                "kind": "product",
+                "product_id": prod["id"],
+                "quantity": qty,
+                "unit_price": sell_p,
+                "mrp_price": mrp_val,
+                "vat_pct": vat_pct,
+                "vat_amount": line_vat,
+                "cost_price": float(prod["cost_price"] or 0.0),
+                "unit_serials": "",
+            })
+
+    if not line_details:
+        conn.close()
+        return jsonify({"success": False, "message": "No valid bill items provided."}), 400
+
+    grand_total = max(0.0, (sub_total + vat_total) - extra_discount)
+    rounded_total = round_to_whole(grand_total)
+    saved_amount = round(max(0.0, mrp_total - grand_total), 2)
+
+    if cash_amount == 0 and card_amount == 0:
+        cash_amount = rounded_total
+        change_amount = 0.0
+    else:
+        change_amount = round((cash_amount + card_amount) - rounded_total, 2)
+        if change_amount < 0:
+            conn.close()
+            return jsonify({"success": False, "message": f"টাকা কম পড়েছে: TK {abs(change_amount):.2f}"}), 400
+
+    channel = "Pharmacy POS" if (has_medicine and not has_regular) else "Rider POS"
+    invoice_number = generate_invoice_number()
+    now_iso = datetime.now().isoformat()
+    invoice_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur = conn.cursor()
+
+    cust_ip, cust_loc = _resolve_ip_and_location(conn)
+    if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
+        existing_cust = cur.execute("SELECT id, name FROM customer_users WHERE phone = ?", (customer_mobile,)).fetchone()
+        if not existing_cust:
+            name_to_use = customer_name if not customer_name.startswith("Walk-in") else f"Customer {customer_mobile[-4:]}"
+            cur.execute("""
+                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                VALUES (?, ?, '', ?, '123456', 1, ?)
+            """, (customer_mobile, name_to_use, generate_password_hash("123456"), now_iso))
+        elif customer_name and not customer_name.startswith("Walk-in") and (not existing_cust["name"] or existing_cust["name"].startswith("Customer ")):
+            cur.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (customer_name, customer_mobile))
+        cust_ip, cust_loc = _touch_customer_network_info(conn, customer_mobile, data=data)
+
+    cur.execute("""
+        INSERT INTO sales (
+            invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
+            total_amount, rounded_total, vat_amount, saved_amount, cash_amount, card_amount, change_amount,
+            customer_ip, ip_location, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        invoice_number, invoice_date, actor["id"], customer_name, customer_name, customer_mobile, channel,
+        round(sub_total, 2), rounded_total, round(vat_total, 2), saved_amount,
+        cash_amount, card_amount, change_amount, cust_ip, cust_loc, now_iso
+    ))
+    sale_id = cur.lastrowid
+
+    touched_products = []
+    touched_packages = False
+    for ld in line_details:
+        if ld["kind"] == "medicine":
+            cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld["quantity"], ld["medicine_id"]))
+        elif ld["kind"] == "package":
+            cur.execute("UPDATE packages SET sold_quantity = sold_quantity + ? WHERE id = ?", (ld["quantity"], ld["package_id"]))
+            touched_packages = True
+            for pi in ld["pkg_items"]:
+                cur.execute("UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (pi["quantity"] * ld["quantity"], pi["product_id"]))
+                touched_products.append(pi["product_id"])
+        else:
+            cur.execute("UPDATE products SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld["quantity"], ld["product_id"]))
+            touched_products.append(ld["product_id"])
+
+        cur.execute("""
+            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            sale_id, ld["product_id"], ld["quantity"], ld["unit_price"], ld["mrp_price"],
+            ld["vat_pct"], ld["vat_amount"], ld["cost_price"], ld["unit_serials"]
+        ))
+
+    conn.commit()
+    conn.close()
+
+    try:
+        remote_control.push_sale_to_cloud(sale_id)
+        for pid in set(touched_products):
+            remote_control.push_product_to_cloud(pid)
+        if touched_packages:
+            remote_control.push_packages_to_cloud()
+        if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
+            remote_control.push_customer_user_to_cloud(customer_mobile)
+    except Exception:
+        pass
+
+    thermal_res = None
+    if print_to_pc:
+        try:
+            thermal_res = thermal_printer.enqueue_or_print_receipt(
+                source_type="sale",
+                source_id=sale_id,
+                invoice_number=invoice_number,
+                requested_by=actor.get("full_name") or actor.get("username") or "Rider",
+                requested_from=data.get("requested_from") or "mobile_rider",
+            )
+            if thermal_res.get("job_uuid") and not thermal_res.get("printed_directly"):
+                remote_control.push_thermal_print_job_to_cloud(thermal_res["job_uuid"])
+        except Exception as e:
+            thermal_res = {"success": False, "message": str(e)}
+
+    return jsonify({
+        "success": True,
+        "sale_id": sale_id,
+        "invoice_number": invoice_number,
+        "channel": channel,
+        "receipt_url": f"/sales/{sale_id}",
+        "sub_total": round(sub_total, 2),
+        "rounded_total": rounded_total,
+        "saved_amount": saved_amount,
+        "change_amount": change_amount,
+        "thermal_print": thermal_res,
+        "message": f"বিল #{invoice_number} (TK {rounded_total:,.2f}) সফলভাবে তৈরি হয়েছে!",
+    })
+
+
+@app.route("/api/thermal/printers", methods=["GET"])
+@login_required
+def api_thermal_printers():
+    conn = get_connection()
+    resolved = thermal_printer.resolve_target_printer(conn)
+    reason = (
+        f"Active Windows Printer: {resolved}"
+        if resolved
+        else "No local Windows printer detected"
+    )
+    pending_cnt = conn.execute("SELECT COUNT(*) FROM thermal_print_jobs WHERE status = 'pending'").fetchone()[0]
+    conn.close()
+    printers = thermal_printer.list_windows_printers()
+    return jsonify({
+        "success": True,
+        "printers": printers,
+        "resolved_printer": resolved,
+        "reason": reason,
+        "pending_jobs": pending_cnt,
+    })
+
+
+@app.route("/api/thermal/jobs", methods=["GET"])
+@login_required
+def api_thermal_jobs():
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM thermal_print_jobs ORDER BY id DESC LIMIT 20").fetchall()
+    conn.close()
+    return jsonify({"success": True, "jobs": [dict(r) for r in rows]})
+
+
+@app.route("/api/thermal/process-pending", methods=["POST"])
+@login_required
+def api_thermal_process_pending():
+    res = thermal_printer.process_pending_pc_print_jobs(limit=15)
+    return jsonify({"success": True, **res})
+
+
+@app.route("/api/thermal/test-print", methods=["POST"])
+@login_required
+def api_thermal_test_print():
+    data = request.get_json(silent=True) or request.form or {}
+    printer_name = (data.get("printer_name") or "").strip() or None
+    paper_width = (data.get("paper_width") or "").strip() or None
+    res = thermal_printer.enqueue_or_print_receipt(
+        source_type="test",
+        source_id=0,
+        invoice_number=f"TEST-{datetime.now().strftime('%H%M%S')}",
+        printer_name=printer_name,
+        paper_width=paper_width,
+        requested_by=session.get("username") or "Admin",
+        requested_from="web_settings",
+    )
+    if res.get("job_uuid") and not res.get("printed_directly"):
+        try:
+            remote_control.push_thermal_print_job_to_cloud(res["job_uuid"])
+        except Exception:
+            pass
+    return jsonify(res), (200 if res.get("success") else 400)
+
+
+@app.route("/api/thermal/print-job", methods=["POST"])
+def api_thermal_print_job():
+    """Prints directly on PC thermal printer if running on Windows PC, or queues via Firestore for shop PC."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn, data)
+    conn.close()
+    if not actor:
+        return jsonify({"success": False, "message": "Unauthorized. Please log in as Staff or Rider."}), 401
+
+    source_type = (data.get("source_type") or "online_order").strip().lower()
+    source_id = data.get("source_id") or data.get("order_id") or data.get("sale_id") or 0
+    invoice_number = (data.get("invoice_number") or data.get("order_number") or "").strip()
+    printer_name = (data.get("printer_name") or "").strip() or None
+    paper_width = (data.get("paper_width") or "").strip() or None
+
+    res = thermal_printer.enqueue_or_print_receipt(
+        source_type=source_type,
+        source_id=int(source_id or 0),
+        invoice_number=invoice_number,
+        printer_name=printer_name,
+        paper_width=paper_width,
+        requested_by=actor.get("full_name") or actor.get("username") or "Staff",
+        requested_from=data.get("requested_from") or ("web" if session.get("user_id") else "mobile_rider"),
+    )
+    if res.get("job_uuid") and not res.get("printed_directly"):
+        try:
+            remote_control.push_thermal_print_job_to_cloud(res["job_uuid"])
+        except Exception:
+            pass
+    return jsonify(res), (200 if res.get("success") else 400)
 
 
 if __name__ == "__main__":

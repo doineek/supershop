@@ -482,7 +482,49 @@ def init_db():
         "ALTER TABLE product_units ADD COLUMN sell_price REAL NOT NULL DEFAULT 0",
         "ALTER TABLE product_units ADD COLUMN mrp REAL NOT NULL DEFAULT 0",
         "ALTER TABLE product_units ADD COLUMN batch_sl INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE customer_users ADD COLUMN registration_ip TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE customer_users ADD COLUMN registration_location TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE customer_users ADD COLUMN last_ip TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE customer_users ADD COLUMN last_location TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE customer_users ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE customer_users ADD COLUMN last_device TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN customer_ip TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE online_orders ADD COLUMN ip_location TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE pharmacy_orders ADD COLUMN customer_ip TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE pharmacy_orders ADD COLUMN ip_location TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sales ADD COLUMN customer_ip TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE sales ADD COLUMN ip_location TEXT NOT NULL DEFAULT ''",
     ]
+
+    cur.executescript("""
+    CREATE TABLE IF NOT EXISTS ip_geo_cache (
+        ip TEXT PRIMARY KEY,
+        location_label TEXT NOT NULL DEFAULT '',
+        city TEXT NOT NULL DEFAULT '',
+        region TEXT NOT NULL DEFAULT '',
+        country TEXT NOT NULL DEFAULT '',
+        isp TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS thermal_print_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_uuid TEXT UNIQUE NOT NULL,
+        job_type TEXT NOT NULL DEFAULT 'online_order',
+        ref_id INTEGER DEFAULT 0,
+        order_number TEXT NOT NULL DEFAULT '',
+        printer_name TEXT NOT NULL DEFAULT '',
+        paper_width TEXT NOT NULL DEFAULT '58mm',
+        raw_escpos_b64 TEXT NOT NULL DEFAULT '',
+        text_preview TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        requested_by TEXT NOT NULL DEFAULT '',
+        source_device TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        printed_at TEXT NOT NULL DEFAULT '',
+        error_msg TEXT NOT NULL DEFAULT ''
+    );
+    """)
     for statement in migrations:
         try:
             cur.execute(statement)
@@ -616,6 +658,9 @@ def init_db():
         "delivery_charge": "60",
         "product_image_bg_color": "#FFFFFF",
         "rider_delivery_fee": "50",
+        "thermal_printer_name": "",
+        "thermal_paper_width": "58mm",
+        "thermal_pc_auto_print": "1",
     }
     for key, value in default_settings.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))

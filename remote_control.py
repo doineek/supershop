@@ -530,6 +530,26 @@ def push_pharmacy_order_to_cloud(order_id):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def push_thermal_print_job_to_cloud(job_uuid):
+    """Upload thermal print job to Firestore in background so Windows PC printer picks it up."""
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            conn = get_connection()
+            job = conn.execute("SELECT * FROM thermal_print_jobs WHERE job_uuid = ?", (job_uuid,)).fetchone()
+            conn.close()
+            if job:
+                j_dict = dict(job)
+                j_dict.pop("id", None)
+                db.collection("thermal_print_jobs").document(str(job_uuid)).set(j_dict)
+                print(f"[remote_control] [OK] Thermal Print Job {job_uuid} ({j_dict.get('status')}) pushed to Firebase.")
+        except Exception as e:
+            print(f"[remote_control] thermal print job {job_uuid} push failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def delete_online_order_from_cloud(order_number, order_id=None):
     """Mirror local online order deletion into Firestore."""
     def _worker():
@@ -1001,8 +1021,9 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                                 order_status, delivery_otp, is_stock_deducted,
                                 assigned_rider_id, assigned_rider_name, assigned_rider_phone,
                                 confirmed_at, packed_at, on_the_way_at, delivered_at, cancelled_at,
+                                customer_ip, ip_location,
                                 created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_number,
                             c_name, c_phone,
@@ -1024,6 +1045,8 @@ def _on_online_orders_change(doc_snapshots, changes, read_time):
                             data.get("on_the_way_at", ""),
                             data.get("delivered_at", ""),
                             data.get("cancelled_at", ""),
+                            data.get("customer_ip", ""),
+                            data.get("ip_location", ""),
                             data.get("created_at", datetime.now().isoformat()),
                             data.get("updated_at", datetime.now().isoformat())
                         ))
@@ -1238,9 +1261,9 @@ def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
                                 overall_duration_days, customer_notes, requested_items_json, approved_items_json,
                                 subtotal, delivery_charge, total_amount, order_status, delivery_otp,
                                 payment_method, payment_status, assigned_rider_id, assigned_rider_name,
-                                assigned_rider_phone, rider_fee, admin_notes, created_at, updated_at,
+                                assigned_rider_phone, rider_fee, admin_notes, customer_ip, ip_location, created_at, updated_at,
                                 confirmed_at, packed_at, on_the_way_at, delivered_at, cancelled_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             order_num,
                             data.get("customer_name", ""),
@@ -1270,6 +1293,8 @@ def _on_pharmacy_orders_change(doc_snapshots, changes, read_time):
                             data.get("assigned_rider_phone"),
                             float(data.get("rider_fee") or 0.0),
                             data.get("admin_notes", ""),
+                            data.get("customer_ip", ""),
+                            data.get("ip_location", ""),
                             data.get("created_at", datetime.now().isoformat()),
                             data.get("updated_at", datetime.now().isoformat()),
                             data.get("confirmed_at", ""),
@@ -1647,6 +1672,13 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                     if addr in ("Delivery Address", "No detailed address recorded"):
                         addr = ""
 
+                    reg_ip = data.get("registration_ip", "")
+                    reg_loc = data.get("registration_location", "")
+                    last_ip = data.get("last_ip", "")
+                    last_loc = data.get("last_location", "")
+                    last_seen = data.get("last_seen_at", "")
+                    last_dev = data.get("last_device", "")
+
                     if existing:
                         conn.execute("""
                             UPDATE customer_users SET
@@ -1661,20 +1693,28 @@ def _on_customer_users_change(doc_snapshots, changes, read_time):
                                 block_reason = ?,
                                 profile_image = COALESCE(NULLIF(?, ''), profile_image),
                                 avatar_url = COALESCE(NULLIF(?, ''), avatar_url),
-                                avatar_base64 = COALESCE(NULLIF(?, ''), avatar_base64)
+                                avatar_base64 = COALESCE(NULLIF(?, ''), avatar_base64),
+                                registration_ip = COALESCE(NULLIF(registration_ip, ''), ?),
+                                registration_location = COALESCE(NULLIF(registration_location, ''), ?),
+                                last_ip = COALESCE(NULLIF(?, ''), last_ip),
+                                last_location = COALESCE(NULLIF(?, ''), last_location),
+                                last_seen_at = COALESCE(NULLIF(?, ''), last_seen_at),
+                                last_device = COALESCE(NULLIF(?, ''), last_device)
                             WHERE phone = ?
-                        """, (name, email, addr, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, phone))
+                        """, (name, email, addr, password_hash, plain_password, is_verified, is_blocked, blocked_until, block_reason, profile_image, avatar_url, avatar_base64, reg_ip, reg_loc, last_ip, last_loc, last_seen, last_dev, phone))
                     else:
                         conn.execute("""
                             INSERT INTO customer_users (
                                 phone, name, email, address, password_hash, plain_password,
                                 is_verified, is_blocked, blocked_until, block_reason, created_at,
-                                profile_image, avatar_url, avatar_base64
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                profile_image, avatar_url, avatar_base64,
+                                registration_ip, registration_location, last_ip, last_location, last_seen_at, last_device
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             phone, name or f"Customer {phone[-4:]}", email, addr, password_hash, plain_password,
                             is_verified, is_blocked, blocked_until, block_reason, created_at,
-                            profile_image, avatar_url, avatar_base64
+                            profile_image, avatar_url, avatar_base64,
+                            reg_ip, reg_loc, last_ip, last_loc, last_seen, last_dev
                         ))
                 elif change.type.name == "REMOVED":
                     conn.execute("DELETE FROM customer_users WHERE phone = ?", (phone,))
@@ -2457,6 +2497,71 @@ def pull_all_from_cloud(blocking=False):
         threading.Thread(target=_worker, daemon=True).start()
 
 
+def _on_thermal_print_jobs_change(doc_snapshots, changes, read_time):
+    """Receives queued thermal print jobs from Cloud Firestore and prints locally on Windows PC."""
+    def _do():
+        conn = get_connection()
+        new_pending = False
+        try:
+            for change in changes:
+                doc = change.document
+                data = doc.to_dict() or {}
+                j_uuid = data.get("job_uuid") or doc.id
+                if not j_uuid:
+                    continue
+                if change.type.name in ("ADDED", "MODIFIED"):
+                    existing = conn.execute("SELECT id, status FROM thermal_print_jobs WHERE job_uuid = ?", (j_uuid,)).fetchone()
+                    status = data.get("status", "pending")
+                    if existing:
+                        # Update status if completed remotely or printed elsewhere, don't overwrite printed -> pending
+                        if existing["status"] == "pending" and status != "pending":
+                            conn.execute(
+                                "UPDATE thermal_print_jobs SET status = ?, printed_at = ?, printer_name = ?, error_msg = ? WHERE job_uuid = ?",
+                                (status, data.get("printed_at", ""), data.get("printer_name", ""), data.get("error_msg", ""), j_uuid),
+                            )
+                    else:
+                        conn.execute("""
+                            INSERT INTO thermal_print_jobs (
+                                job_uuid, job_type, ref_id, order_number, printer_name, paper_width,
+                                raw_escpos_b64, text_preview, status, requested_by, source_device,
+                                created_at, printed_at, error_msg
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            j_uuid,
+                            data.get("job_type", "online_order"),
+                            int(data.get("ref_id") or 0),
+                            data.get("order_number", ""),
+                            data.get("printer_name", ""),
+                            data.get("paper_width", "58mm"),
+                            data.get("raw_escpos_b64", ""),
+                            data.get("text_preview", ""),
+                            status,
+                            data.get("requested_by", ""),
+                            data.get("source_device", ""),
+                            data.get("created_at", datetime.now().isoformat()),
+                            data.get("printed_at", ""),
+                            data.get("error_msg", ""),
+                        ))
+                        if status == "pending":
+                            new_pending = True
+            conn.commit()
+        finally:
+            conn.close()
+        return new_pending
+
+    try:
+        has_pending = execute_with_retry(_do)
+        if has_pending:
+            try:
+                import thermal_printer
+                import sys
+                thermal_printer.process_pending_pc_print_jobs(get_connection, remote_ctrl=sys.modules[__name__])
+            except Exception as pe:
+                print(f"[remote_control] PC auto-print notice: {pe}")
+    except Exception as e:
+        print(f"[remote_control] Thermal print jobs sync failed: {e}")
+
+
 def start():
     """Starts Firebase listeners and periodic backup thread."""
     db = _init_firebase()
@@ -2502,6 +2607,7 @@ def start():
         db.collection("config").document("delivery_areas").on_snapshot(_on_delivery_areas_change)
         db.collection("vouchers").on_snapshot(_on_vouchers_change)
         db.collection("customer_carts").on_snapshot(_on_customer_carts_change)
+        db.collection("thermal_print_jobs").on_snapshot(_on_thermal_print_jobs_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
         print("[remote_control] [OK] Firebase real-time two-way sync & remote control started successfully.", flush=True)

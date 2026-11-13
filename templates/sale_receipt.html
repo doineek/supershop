@@ -1,10 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Receipt #{{ sale.invoice_number or sale.id }}{% endblock %}
 {% block content %}
-<div style="text-align:center; margin-bottom:16px;">
+<div style="text-align:center; margin-bottom:16px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
   <button class="btn btn-outline" onclick="printReceipt()">🖨 Print receipt</button>
+  <button class="btn btn-primary" style="background:#0f172a; border-color:#0f172a; color:#fff;" onclick="printOnPcThermal({{ sale.id }}, '{{ sale.invoice_number or '' }}')">🖥️ Print on PC Thermal</button>
   <a class="btn btn-primary" href="{{ url_for('pos') }}">New sale</a>
 </div>
+<script>
+async function printOnPcThermal(saleId, invNum) {
+  try {
+    const res = await fetch('/api/thermal/print-job', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ source_type: 'sale', source_id: saleId, invoice_number: invNum, requested_from: 'sale_receipt' })
+    });
+    const d = await res.json();
+    alert(d.message || (d.success ? 'Printed / Queued for PC thermal printer!' : 'Failed to print'));
+  } catch (e) {
+    alert('Thermal print error: ' + e);
+  }
+}
+</script>
 
 <div class="receipt" id="receiptContent">
   <div style="text-align:center; margin-bottom:10px;">

@@ -162,6 +162,7 @@
           <th>Date</th>
           <th>Customer Name</th>
           <th>Mobile</th>
+          <th>IP & Location</th>
           <th style="text-align:center;">Channel</th>
           <th style="text-align:center;">Status</th>
           <th class="num">Total Paid</th>
@@ -175,6 +176,14 @@
           <td>{{ o.created_at[:16].replace('T', ' ') if o.created_at else '—' }}</td>
           <td>{{ o.customer_name or '—' }}</td>
           <td>{{ o.customer_mobile or '—' }}</td>
+          <td style="font-size:12px;">
+            {% if o.customer_ip %}
+              <div style="font-weight:700; color:#0f172a; font-family:monospace;">🌐 {{ o.customer_ip }}</div>
+              <div style="color:#475569; font-size:11px;">📍 {{ o.ip_location or 'Unknown Location' }}</div>
+            {% else %}
+              <span style="color:#94a3b8;">—</span>
+            {% endif %}
+          </td>
           <td style="text-align:center;">
             {% if 'Online' in o.channel %}
               <span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:600;">📱 Online App</span>
@@ -214,7 +223,7 @@
       <th>Password / Key</th>
       <th class="num">Visits / Orders</th>
       <th class="num">Total Spent</th>
-      <th>Last Activity</th>
+      <th>Joined & Network (IP / Loc)</th>
       <th style="text-align: center;">Channel</th>
       <th style="text-align: center;">Account Status</th>
       <th style="text-align: right;">Actions</th>
@@ -250,7 +259,16 @@
       <td><code style="background:#f1f5f9; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a; font-size:12px;">{{ c.password }}</code></td>
       <td class="num">{{ c.visit_count }}</td>
       <td class="num">TK {{ "%.2f"|format(c.total_spent) }}</td>
-      <td>{{ c.last_visit[:16].replace('T', ' ') if c.last_visit else '—' }}</td>
+      <td style="font-size:12px; line-height:1.45; min-width:190px;">
+        <div>🕒 Active: <b>{{ c.last_visit[:16].replace('T', ' ') if c.last_visit else '—' }}</b></div>
+        {% if c.created_at %}
+          <div style="color:#0369a1; font-size:11px;">📅 Joined: {{ c.created_at[:10] }} ({{ c.member_since }})</div>
+        {% endif %}
+        {% if c.last_ip or c.registration_ip %}
+          <div style="color:#1e293b; font-size:11px; font-family:monospace;">🌐 {{ c.last_ip or c.registration_ip }}</div>
+          <div style="color:#475569; font-size:11px;">📍 {{ c.last_location or c.registration_location or 'Location N/A' }}{% if c.last_device %} • 📱 {{ c.last_device }}{% endif %}</div>
+        {% endif %}
+      </td>
       <td style="text-align: center;">
         {% if c.channel_tag == 'Online & Offline' %}
           <span style="background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 11px;">
@@ -512,6 +530,22 @@
         <div style="color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase;">💰 Total Spent</div>
         <div id="cpTotalSpent" style="font-weight:800; color:#16a34a; font-size:16px; margin-top:2px;">TK 0.00</div>
       </div>
+      <div style="grid-column: span 2; border-top:1px dashed #cbd5e1; padding-top:8px; margin-top:4px;">
+        <div style="color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase;">🗓️ Member Since / Joined Date</div>
+        <div id="cpMemberSince" style="font-weight:700; color:#0f172a; margin-top:2px;">—</div>
+      </div>
+      <div>
+        <div style="color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase;">🌐 Registration IP &amp; Loc</div>
+        <div id="cpRegNetwork" style="font-weight:600; color:#1e293b; font-size:12px; margin-top:2px;">—</div>
+      </div>
+      <div>
+        <div style="color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase;">📡 Last Active IP / Device</div>
+        <div id="cpLastNetwork" style="font-weight:600; color:#0369a1; font-size:12px; margin-top:2px;">—</div>
+      </div>
+      <div style="grid-column: span 2;" id="cpOrderIpWrap">
+        <div style="color:#64748b; font-size:11px; font-weight:bold; text-transform:uppercase; margin-bottom:4px;">🛰️ Recent Orders IP &amp; Location Trail</div>
+        <div id="cpRecentOrderIps" style="max-height:110px; overflow-y:auto; font-size:11.5px; color:#334155;">—</div>
+      </div>
     </div>
 
     <div style="display:flex; justify-content:space-between; gap:10px;">
@@ -533,6 +567,10 @@ async function openCustomerProfileModal(phone) {
   document.getElementById('cpLocation').innerText = '—';
   document.getElementById('cpTotalOrders').innerText = '...';
   document.getElementById('cpTotalSpent').innerText = '...';
+  document.getElementById('cpMemberSince').innerText = 'Loading...';
+  document.getElementById('cpRegNetwork').innerText = '—';
+  document.getElementById('cpLastNetwork').innerText = '—';
+  document.getElementById('cpRecentOrderIps').innerHTML = '—';
   document.getElementById('cpAvatarImg').style.display = 'none';
   document.getElementById('cpNoImageBanner').style.display = 'flex';
 
@@ -552,6 +590,22 @@ async function openCustomerProfileModal(phone) {
 
       document.getElementById('cpTotalOrders').innerText = data.total_orders;
       document.getElementById('cpTotalSpent').innerText = 'TK ' + data.total_spent.toFixed(2);
+      document.getElementById('cpMemberSince').innerText = data.member_since || data.created_at || 'Unknown';
+      const regStr = [data.registration_ip, data.registration_location].filter(Boolean).join(' · ');
+      document.getElementById('cpRegNetwork').innerText = regStr || 'Not captured yet';
+      const lastStr = [data.last_ip, data.last_location, data.last_device].filter(Boolean).join(' · ');
+      document.getElementById('cpLastNetwork').innerText = lastStr || 'Not captured yet';
+      const recOrders = data.recent_orders || [];
+      if (recOrders.length) {
+        document.getElementById('cpRecentOrderIps').innerHTML = recOrders.map(ro =>
+          `<div style="padding:3px 0; border-bottom:1px dotted #e2e8f0;">
+            <b>#${ro.order_number}</b> (${(ro.created_at||'').substring(0,16).replace('T',' ')})
+            — 🌐 ${ro.customer_ip || 'N/A'} <span style="color:#0369a1;">(${ro.ip_location || ro.area || 'Unknown'})</span>
+          </div>`
+        ).join('');
+      } else {
+        document.getElementById('cpRecentOrderIps').innerText = 'No online order network logs yet.';
+      }
 
       const statusBadge = document.getElementById('cpStatusBadge');
       if (data.is_blocked) {
