@@ -186,9 +186,15 @@
               </td>
 
               <td style="padding: 14px 16px; vertical-align: top;">
+                {% if order.overall_duration_days and order.overall_duration_days > 0 %}
                 <div style="font-weight: 700; color: #059669; font-size: 0.85rem;">
                   ⏱️ {{ order.overall_duration_days }} Days Supply
                 </div>
+                {% else %}
+                <div style="font-weight: 700; color: #b45309; font-size: 0.85rem;">
+                  📝 নোটে উল্লিখিত (Custom Note)
+                </div>
+                {% endif %}
                 {% if order.customer_notes %}
                 <div style="font-size: 0.8rem; color: #334155; background: #f8fafc; border: 1px dashed #cbd5e1; padding: 4px 8px; border-radius: 6px; margin-top: 4px;">
                   💬 <em>"{{ order.customer_notes }}"</em>
@@ -561,7 +567,7 @@
 
         <!-- Customer Note & Duration Info Box -->
         <div style="margin-top: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px; font-size: 0.85rem;">
-          <div style="font-weight: 800; color: #92400e;" id="reviewCustDuration">⏱️ Customer Requirement: 7 Days Supply</div>
+          <div style="font-weight: 800; color: #92400e;" id="reviewCustDuration">⏱️ Customer Requirement: Loading...</div>
           <div style="color: #78350f; margin-top: 4px;" id="reviewCustNotes">💬 Note: -</div>
         </div>
       </div>
@@ -1200,7 +1206,10 @@
       document.getElementById("reviewCustName").innerText = `Name: ${o.customer_name}`;
       document.getElementById("reviewCustPhone").innerText = `Mobile: ${o.customer_phone}`;
       document.getElementById("reviewCustAddr").innerHTML = `Address: ${o.delivery_address}<br><small style="color:#64748b;">${o.area}, ${o.district}</small>`;
-      document.getElementById("reviewCustDuration").innerText = `⏱️ Customer Requirement: ${o.overall_duration_days || '7'} Days Supply`;
+      const durDays = parseInt(o.overall_duration_days !== undefined && o.overall_duration_days !== null ? o.overall_duration_days : 0, 10) || 0;
+      document.getElementById("reviewCustDuration").innerText = durDays > 0
+        ? `⏱️ Customer Requirement: ${durDays} Days Supply`
+        : `📝 Customer Requirement: নোটে উল্লিখিত (Customer Note অনুযায়ী)`;
       document.getElementById("reviewCustNotes").innerText = `💬 Notes: ${o.customer_notes || '(No customer notes)'}`;
       document.getElementById("billDeliveryChargeInput").value = o.delivery_charge || 50;
       document.getElementById("billAdminNotesInput").value = o.admin_notes || "";

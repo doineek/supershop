@@ -2932,8 +2932,11 @@
         </div>
       </div>
 
-      <a href="/download-apk" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin-bottom:10px; background:#0d9488;">
-        <span>📥</span> Download Android App ({{ settings.apk_filename or 'doineek_' ~ settings.app_version_short ~ '.apk' }})
+      <a href="/download-apk" class="btn-submit" style="display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin-bottom:6px; background:#0d9488;">
+        <span>📥</span> Download Android App (~19 MB • 64-bit)
+      </a>
+      <a href="/download-apk?arch=arm32" style="display:block; text-align:center; font-size:0.78rem; color:#0f766e; font-weight:700; text-decoration:underline; margin-bottom:10px;">
+        পুরোনো ৩২-বিট ফোনের জন্য ডাউনলোড করুন (32-bit Backup APK)
       </a>
 
       <button type="button" class="btn-outline" style="width:100%; padding:10px; font-weight:700; border-radius:8px; border:1px solid #cbd5e1; background:white; color:#64748b; cursor:pointer;" onclick="closeAboutAppModal()">

@@ -183,22 +183,33 @@ def main():
     print(f"  SuperShop Automated APK Releaser: {tag}")
     print("=" * 60)
 
-    # Locate APK file
+    # Locate APK file (Prefer compact arm64-v8a split APK + optional 32-bit backup)
+    apk_out_dir = os.path.join("supershop_flutter_app", "build", "app", "outputs", "flutter-apk")
     apk_path = os.path.join("static", "apk", "supershop_latest.apk")
-    flutter_apk = os.path.join("supershop_flutter_app", "build", "app", "outputs", "flutter-apk", "app-release.apk")
-    
+    flutter_apk_arm64 = os.path.join(apk_out_dir, "app-arm64-v8a-release.apk")
+    flutter_apk_arm32 = os.path.join(apk_out_dir, "app-armeabi-v7a-release.apk")
+    flutter_apk = os.path.join(apk_out_dir, "app-release.apk")
+    arm32_path = flutter_apk_arm32 if os.path.exists(flutter_apk_arm32) else None
+
     if args.local_build:
-        print("\nBuilding Flutter release APK locally...")
-        res = os.system("cd supershop_flutter_app && flutter build apk --release")
+        print("\nBuilding compact split-per-abi Flutter release APKs locally (arm64-v8a + armeabi-v7a)...")
+        res = os.system(
+            "cd supershop_flutter_app && flutter build apk --release --split-per-abi "
+            "--target-platform android-arm64,android-arm --split-debug-info=build/app/outputs/symbols"
+        )
         if res != 0:
             print("Flutter build failed!")
             sys.exit(1)
 
-    if os.path.exists(flutter_apk):
+    if os.path.exists(flutter_apk_arm64):
+        apk_path = flutter_apk_arm64
+    elif os.path.exists(flutter_apk):
         apk_path = flutter_apk
     elif not os.path.exists(apk_path):
-        print(f"Error: APK file not found at {apk_path} or {flutter_apk}")
+        print(f"Error: APK file not found at {flutter_apk_arm64}, {flutter_apk}, or {apk_path}")
         sys.exit(1)
+
+    arm32_path = flutter_apk_arm32 if os.path.exists(flutter_apk_arm32) else None
 
     # Retrieve GitHub Token
     token = get_token(args.token)
@@ -225,16 +236,22 @@ def main():
         shutil.copy2(apk_path, os.path.join(apk_dir, "doineek_latest.apk"))
         shutil.copy2(apk_path, os.path.join(apk_dir, f"doineek_{tag}.apk"))
         shutil.copy2(apk_path, os.path.join(apk_dir, f"supershop_{tag}.apk"))
+        if arm32_path and os.path.exists(arm32_path):
+            shutil.copy2(arm32_path, os.path.join(apk_dir, "doineek_latest_arm32.apk"))
+            shutil.copy2(arm32_path, os.path.join(apk_dir, f"doineek_{tag}_arm32.apk"))
         print("[OK] Synchronized all local static/apk files.")
     except Exception as e:
         print(f"Warning: could not copy local APKs: {e}")
 
-    # Upload APK as doineek_{tag}.apk, doineek_latest.apk, supershop_latest.apk, supershop_{tag}.apk
+    # Upload APK as doineek_{tag}.apk, doineek_latest.apk, supershop_latest.apk, supershop_{tag}.apk (+ optional 32-bit backup)
     success = upload_apk_to_github(token, tag, apk_path, f"doineek_{tag}.apk")
     if success:
         upload_apk_to_github(token, tag, apk_path, "doineek_latest.apk")
         upload_apk_to_github(token, tag, apk_path, "supershop_latest.apk")
         upload_apk_to_github(token, tag, apk_path, f"supershop_{tag}.apk")
+        if arm32_path and os.path.exists(arm32_path):
+            upload_apk_to_github(token, tag, arm32_path, f"doineek_{tag}_arm32.apk")
+            upload_apk_to_github(token, tag, arm32_path, "doineek_latest_arm32.apk")
 
         # Auto-update version.json and database settings
         try:

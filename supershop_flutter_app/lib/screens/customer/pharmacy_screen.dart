@@ -9,12 +9,19 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/delivery_area.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
+import '../../widgets/app_image_loader.dart';
+import '../../widgets/prescription_crop_scan_dialog.dart';
 import '../auth/login_screen.dart';
 
 class PharmacyScreen extends StatefulWidget {
   final VoidCallback? onBackToHome;
+  final String? initialSearchQuery;
 
-  const PharmacyScreen({Key? key, this.onBackToHome}) : super(key: key);
+  const PharmacyScreen({
+    Key? key,
+    this.onBackToHome,
+    this.initialSearchQuery,
+  }) : super(key: key);
 
   @override
   State<PharmacyScreen> createState() => _PharmacyScreenState();
@@ -22,6 +29,8 @@ class PharmacyScreen extends StatefulWidget {
 
 class _PharmacyScreenState extends State<PharmacyScreen> {
   final ImagePicker _picker = ImagePicker();
+  final ScrollController _pageScrollController = ScrollController();
+  final GlobalKey _medCatalogKey = GlobalKey();
   final TextEditingController _medSearchController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
@@ -37,13 +46,17 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
   String _selectedDistrict = "Tangail";
   String _selectedArea = "Tangail Sadar";
 
-  // Prescription Image State
+  // Prescription Image State (Original + Cropped/Scanned)
+  Uint8List? _rxOriginalBytes;
+  String? _rxOriginalBase64DataUri;
   Uint8List? _rxBytes;
   String? _rxBase64DataUri;
   String _rxFileName = "";
+  String _rxFilterName = "magic_color";
+  bool _rxWasCropped = false;
 
-  // Duration State
-  int _selectedDurationDays = 7;
+  // Duration State (Default: 0 -> "নোটে লিখবো")
+  int _selectedDurationDays = 0;
 
   // Medicines Catalog & Cart State
   List<dynamic> _medicines = [];
@@ -74,12 +87,31 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
   @override
   void initState() {
     super.initState();
+    final q = (widget.initialSearchQuery ?? '').trim();
+    if (q.isNotEmpty) {
+      _searchQuery = q;
+      _medSearchController.text = q;
+    }
     _initScreenData();
+  }
+
+  @override
+  void didUpdateWidget(covariant PharmacyScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final q = (widget.initialSearchQuery ?? '').trim();
+    if (q.isNotEmpty && q != (oldWidget.initialSearchQuery ?? '').trim()) {
+      setState(() {
+        _searchQuery = q;
+        _medSearchController.text = q;
+      });
+      _loadMedicines();
+    }
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _pageScrollController.dispose();
     _medSearchController.dispose();
     _notesController.dispose();
     _nameController.dispose();
@@ -94,6 +126,22 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       _loadDeliveryAreas(),
       _loadMedicines(),
     ]);
+    if ((widget.initialSearchQuery ?? '').trim().isNotEmpty && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToMedicineCatalog();
+      });
+    }
+  }
+
+  void _scrollToMedicineCatalog() {
+    final ctx = _medCatalogKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   Future<void> _loadCustomerAndSettings() async {
@@ -106,12 +154,8 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       if (mounted) {
         setState(() {
           _isLoggedIn = phone.isNotEmpty;
-          if (phone.isNotEmpty && _phoneController.text.isEmpty) {
-            _phoneController.text = phone;
-          }
-          if (name.isNotEmpty && _nameController.text.isEmpty) {
-            _nameController.text = name;
-          }
+          _phoneController.text = phone;
+          _nameController.text = name;
           if (addr.isNotEmpty && _addressController.text.isEmpty) {
             _addressController.text = addr;
           }
@@ -138,8 +182,11 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
             final cAddr = (cust['address'] ?? '').toString().trim();
             final cDist = (cust['district'] ?? '').toString().trim();
             final cArea = (cust['area'] ?? '').toString().trim();
-            if (cName.isNotEmpty) _nameController.text = cName;
-            if (cAddr.isNotEmpty) _addressController.text = cAddr;
+            if (cName.isNotEmpty) {
+              _nameController.text = cName;
+              prefs.setString('user_name', cName);
+            }
+            if (cAddr.isNotEmpty && _addressController.text.isEmpty) _addressController.text = cAddr;
             if (cDist.isNotEmpty) _selectedDistrict = cDist;
             if (cArea.isNotEmpty) _selectedArea = cArea;
           });
@@ -203,20 +250,34 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
     try {
       final XFile? file = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 86,
+        maxWidth: 1800,
+        maxHeight: 1800,
+        imageQuality: 90,
       );
       if (file == null) return;
-      final Uint8List bytes = await file.readAsBytes();
-      final String b64 = "data:image/jpeg;base64,${base64Encode(bytes)}";
+      final Uint8List origBytes = await file.readAsBytes();
+      final String origB64 = "data:image/jpeg;base64,${base64Encode(origBytes)}";
 
       if (!mounted) return;
       setState(() {
-        _rxBytes = bytes;
-        _rxBase64DataUri = b64;
+        _rxOriginalBytes = origBytes;
+        _rxOriginalBase64DataUri = origB64;
+        _rxBytes = origBytes;
+        _rxBase64DataUri = origB64;
         _rxFileName = file.name;
+        _rxFilterName = 'original';
+        _rxWasCropped = false;
       });
+
+      final edited = await PrescriptionCropScanDialog.show(context, origBytes);
+      if (edited != null && mounted) {
+        setState(() {
+          _rxBytes = edited.processedBytes;
+          _rxBase64DataUri = edited.processedDataUri;
+          _rxFilterName = edited.filterName;
+          _rxWasCropped = edited.isCropped;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -229,6 +290,20 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
           backgroundColor: Colors.red.shade700,
         ),
       );
+    }
+  }
+
+  Future<void> _editCurrentPrescription() async {
+    final src = _rxOriginalBytes ?? _rxBytes;
+    if (src == null) return;
+    final edited = await PrescriptionCropScanDialog.show(context, src);
+    if (edited != null && mounted) {
+      setState(() {
+        _rxBytes = edited.processedBytes;
+        _rxBase64DataUri = edited.processedDataUri;
+        _rxFilterName = edited.filterName;
+        _rxWasCropped = edited.isCropped;
+      });
     }
   }
 
@@ -358,8 +433,52 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
   }
 
   Future<void> _submitOrder() async {
-    final String phone = _phoneController.text.trim();
-    final String name = _nameController.text.trim();
+    final prefs = await SharedPreferences.getInstance();
+    final String savedPhoneRaw = (prefs.getString('user_phone') ?? '').trim();
+    final String savedNameRaw = (prefs.getString('user_name') ?? '').trim();
+
+    if (savedPhoneRaw.isEmpty) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: Color(0xFF047857)),
+              SizedBox(width: 8),
+              Text("লগইন প্রয়োজন"),
+            ],
+          ),
+          content: const Text("অর্ডার করতে অনুগ্রহ করে আপনার একাউন্টে লগইন বা রেজিস্ট্রেশন করুন। আপনার একাউন্টের নাম ও মোবাইল নম্বর স্বয়ংক্রিয়ভাবে ব্যবহৃত হবে।"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text("বাতিল"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+                _loadCustomerAndSettings();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF047857), foregroundColor: Colors.white),
+              child: const Text("লগইন / রেজিস্টার"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    String phone = savedPhoneRaw.replaceAll(RegExp(r'[^\d]'), '');
+    if (phone.startsWith('88') && phone.length == 13) {
+      phone = phone.substring(2);
+    }
+    final String name = savedNameRaw.isNotEmpty ? savedNameRaw : _nameController.text.trim();
     final String address = _addressController.text.trim();
     final String notes = _notesController.text.trim();
 
@@ -383,12 +502,11 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       return;
     }
 
-    final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
-    if (cleanDigits.length < 11) {
+    if (phone.length != 11 || !phone.startsWith('01')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text("অনুগ্রহ করে সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।"),
+          content: Text("আপনার লগইন করা মোবাইল নম্বরটি সঠিক ১১ ডিজিটের নয়।"),
         ),
       );
       return;
@@ -406,7 +524,6 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
 
     setState(() => _isSubmitting = true);
 
-    final prefs = await SharedPreferences.getInstance();
     final String email = prefs.getString('user_email') ?? '';
 
     final List<Map<String, dynamic>> orderItems = _selectedItems
@@ -419,7 +536,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
               'quantity': it['quantity'],
               'unit': it['unit'],
               'unit_price': it['unit_price'],
-              'duration_days': _selectedDurationDays > 0 ? '$_selectedDurationDays দিন' : '',
+              'duration_days': _selectedDurationDays > 0 ? '$_selectedDurationDays দিন' : 'নোটে উল্লিখিত',
             })
         .toList();
 
@@ -433,6 +550,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       overallDurationDays: _selectedDurationDays,
       customerNotes: notes,
       prescriptionBase64: _rxBase64DataUri,
+      prescriptionOriginalBase64: _rxOriginalBase64DataUri ?? _rxBase64DataUri,
       items: orderItems,
     );
 
@@ -444,9 +562,13 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       final String otp = res['delivery_otp']?.toString() ?? '';
 
       setState(() {
+        _rxOriginalBytes = null;
+        _rxOriginalBase64DataUri = null;
         _rxBytes = null;
         _rxBase64DataUri = null;
         _rxFileName = "";
+        _rxWasCropped = false;
+        _selectedDurationDays = 0;
         _selectedItems.clear();
         _notesController.clear();
       });
@@ -541,6 +663,21 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       builder: (_) => _PharmacyOrdersModal(
         initialPhone: phoneToUse,
         initialOrderNum: initialOrderNum,
+        onSelectMedicine: (medName) {
+          Navigator.pop(context);
+          final q = medName.trim();
+          if (q.isNotEmpty) {
+            setState(() {
+              _medSearchController.text = q;
+              _searchQuery = q;
+              _selectedDosage = 'all';
+            });
+            _loadMedicines();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _scrollToMedicineCatalog();
+            });
+          }
+        },
       ),
     );
   }
@@ -668,6 +805,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
           child: RefreshIndicator(
             onRefresh: _initScreenData,
             child: ListView(
+              controller: _pageScrollController,
               padding: const EdgeInsets.all(12),
               children: [
                 // STEP 1: PRESCRIPTION PHOTO CAPTURE & UPLOAD
@@ -714,42 +852,83 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                         const SizedBox(height: 12),
                         GestureDetector(
                           onTap: _showFullPrescriptionPreview,
-                          child: Container(
-                            width: double.infinity,
-                            constraints: const BoxConstraints(maxHeight: 260),
-                            decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF10B981), width: 1.5),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Image.memory(_rxBytes!, fit: BoxFit.contain),
-                            ),
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                constraints: const BoxConstraints(maxHeight: 260),
+                                decoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFF10B981), width: 1.5),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.memory(_rxBytes!, fit: BoxFit.contain),
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF34D399)),
+                                  ),
+                                  child: Text(
+                                    _rxFilterName == 'original' && !_rxWasCropped
+                                        ? "🖼️ অরিজিনাল"
+                                        : "✨ স্ক্যান${_rxWasCropped ? ' ও ক্রপড' : ''}",
+                                    style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Expanded(
-                              child: Text(
-                                "✅ $_rxFileName",
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF047857), fontWeight: FontWeight.w700),
+                            Text(
+                              "✅ $_rxFileName",
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11.5, color: Color(0xFF047857), fontWeight: FontWeight.w700),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _editCurrentPrescription,
+                              icon: const Icon(Icons.crop, size: 15),
+                              label: const Text("ক্রপ ও স্ক্যান", style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF047857),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                minimumSize: const Size(0, 32),
                               ),
                             ),
-                            TextButton.icon(
+                            OutlinedButton.icon(
                               onPressed: _showFullPrescriptionPreview,
-                              icon: const Icon(Icons.fullscreen, size: 16),
+                              icon: const Icon(Icons.fullscreen, size: 15),
                               label: const Text("ফুল সাইজ", style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF047857),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                minimumSize: const Size(0, 32),
+                              ),
                             ),
                             TextButton.icon(
                               onPressed: () {
                                 setState(() {
+                                  _rxOriginalBytes = null;
+                                  _rxOriginalBase64DataUri = null;
                                   _rxBytes = null;
                                   _rxBase64DataUri = null;
                                   _rxFileName = "";
+                                  _rxWasCropped = false;
                                 });
                               },
                               icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
@@ -769,41 +948,96 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                   isDark: isDark,
                   stepNum: "২",
                   title: "কয়দিনের ঔষধ ও অতিরিক্ত নির্দেশনা",
-                  subtitle: "সবগুলো ঔষধ সাধারণত কয়দিনের লাগবে তা সিলেক্ট করুন অথবা তালিকা থেকে ওষুধ বেছে নিন",
+                  subtitle: "সবগুলো ঔষধ সাধারণত কয়দিনের লাগবে তা সিলেক্ট করুন অথবা নিচে নোটে লিখে দিন",
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
-                        children: [3, 5, 7, 10, 14, 30, 0].map((days) {
+                        children: [0, 3, 5, 7, 10, 14, 30].map((days) {
                           final bool isSel = _selectedDurationDays == days;
-                          final String label = days == 0 ? "নোটে লিখব" : "$days দিন";
+                          final bool isNoteOption = days == 0;
+                          final String label = isNoteOption ? "📝 নোটে লিখবো" : "$days দিন";
+                          final Color activeBg = isNoteOption
+                              ? const Color(0xFFD97706)
+                              : const Color(0xFF047857);
+                          final Color idleBg = isNoteOption
+                              ? (isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7))
+                              : (isDark ? Colors.grey[800]! : const Color(0xFFF1F5F9));
                           return ChoiceChip(
                             label: Text(
-                              label,
+                              isNoteOption && isSel ? "$label ✓" : label,
                               style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                fontSize: isNoteOption ? 12 : 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: isSel
+                                    ? Colors.white
+                                    : (isNoteOption
+                                        ? (isDark ? const Color(0xFFFCD34D) : const Color(0xFF92400E))
+                                        : (isDark ? Colors.white70 : Colors.black87)),
                               ),
                             ),
                             selected: isSel,
-                            selectedColor: const Color(0xFF047857),
-                            backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF1F5F9),
+                            selectedColor: activeBg,
+                            backgroundColor: idleBg,
+                            side: isNoteOption
+                                ? BorderSide(
+                                    color: isSel ? const Color(0xFFB45309) : const Color(0xFFF59E0B),
+                                    width: isSel ? 1.8 : 1.2,
+                                  )
+                                : BorderSide(
+                                    color: isSel ? const Color(0xFF047857) : Colors.grey.shade300,
+                                  ),
                             onSelected: (_) => setState(() => _selectedDurationDays = days),
                           );
                         }).toList(),
                       ),
                       const SizedBox(height: 10),
-                      TextField(
-                        controller: _notesController,
-                        maxLines: 2,
-                        decoration: InputDecoration(
-                          hintText: "অতিরিক্ত নোট (যেমন: প্যারাসিটামল ২ পাতা, গ্যাস্ট্রিকের ১ পাতা)...",
-                          hintStyle: const TextStyle(fontSize: 12),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: _selectedDurationDays == 0 ? const EdgeInsets.all(8) : EdgeInsets.zero,
+                        decoration: _selectedDurationDays == 0
+                            ? BoxDecoration(
+                                color: isDark ? const Color(0xFF451A03).withValues(alpha: 0.4) : const Color(0xFFFFFBEB),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                              )
+                            : null,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_selectedDurationDays == 0)
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 6),
+                                child: Text(
+                                  "✏️ 'নোটে লিখবো' সিলেক্ট করা আছে — কয়দিনের ওষুধ বা পরিমাণ এখানে লিখুন:",
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFB45309),
+                                  ),
+                                ),
+                              ),
+                            TextField(
+                              controller: _notesController,
+                              maxLines: 2,
+                              decoration: InputDecoration(
+                                hintText: "অতিরিক্ত নোট (যেমন: প্যারাসিটামল ২ পাতা, গ্যাস্ট্রিকের ১ পাতা)...",
+                                hintStyle: const TextStyle(fontSize: 12),
+                                filled: true,
+                                fillColor: isDark ? Colors.grey[900] : Colors.white,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: _selectedDurationDays == 0 ? const Color(0xFFF59E0B) : Colors.grey.shade400,
+                                  ),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -818,95 +1052,136 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                 const SizedBox(height: 12),
 
                 // MEDICINE CATALOG SEARCH & BROWSE CARD
-                _buildStepCard(
-                  isDark: isDark,
-                  stepNum: "💊",
-                  title: "সরাসরি ঔষধের তালিকা থেকে বাছাই করুন",
-                  subtitle: "ওষুধের নাম, জেনেরিক বা কোম্পানি লিখে খুঁজুন",
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _medSearchController,
-                        onChanged: _onSearchChanged,
-                        decoration: InputDecoration(
-                          hintText: "ঔষধ খুঁজুন (যেমন: Napa, Seclo, Sergel)...",
-                          hintStyle: const TextStyle(fontSize: 12.5),
-                          prefixIcon: const Icon(Icons.search, color: Color(0xFF047857)),
-                          suffixIcon: _medSearchController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    _medSearchController.clear();
-                                    _onSearchChanged("");
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: isDark ? Colors.grey[850] : const Color(0xFFECFDF5),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFF10B981)),
+                Container(
+                  key: _medCatalogKey,
+                  child: _buildStepCard(
+                    isDark: isDark,
+                    stepNum: "💊",
+                    title: "সরাসরি ঔষধের তালিকা থেকে বাছাই করুন",
+                    subtitle: "ওষুধের নাম, জেনেরিক বা কোম্পানি লিখে খুঁজুন",
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _medSearchController,
+                          onChanged: _onSearchChanged,
+                          decoration: InputDecoration(
+                            hintText: "ঔষধ খুঁজুন (যেমন: Napa, Seclo, Sergel)...",
+                            hintStyle: const TextStyle(fontSize: 12.5),
+                            prefixIcon: const Icon(Icons.search, color: Color(0xFF047857)),
+                            suffixIcon: _medSearchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _medSearchController.clear();
+                                      _onSearchChanged("");
+                                    },
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: isDark ? Colors.grey[850] : const Color(0xFFECFDF5),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF10B981)),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: _dosageForms.map((d) {
-                            final bool isSel = _selectedDosage.toLowerCase() == d['val']!.toLowerCase();
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ChoiceChip(
-                                label: Text(
-                                  d['label']!,
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _dosageForms.map((d) {
+                              final bool isSel = _selectedDosage.toLowerCase() == d['val']!.toLowerCase();
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ChoiceChip(
+                                  label: Text(
+                                    d['label']!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                    ),
+                                  ),
+                                  selected: isSel,
+                                  selectedColor: const Color(0xFF047857),
+                                  backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                                  onSelected: (sel) {
+                                    if (sel) {
+                                      setState(() => _selectedDosage = d['val']!);
+                                      _loadMedicines();
+                                    }
+                                  },
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (_isLoadingMeds)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else if (_medicines.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 18),
+                            child: Text(
+                              "কোনো ওষুধ পাওয়া যায়নি। অন্য নাম লিখে খুঁজুন।",
+                              style: TextStyle(color: Colors.grey, fontSize: 12.5, fontWeight: FontWeight.w600),
+                            ),
+                          )
+                        else ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            margin: const EdgeInsets.only(bottom: 6),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "📋 ${_medicines.length}টি ঔষধ পাওয়া গেছে",
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46),
                                   ),
                                 ),
-                                selected: isSel,
-                                selectedColor: const Color(0xFF047857),
-                                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                                onSelected: (sel) {
-                                  if (sel) {
-                                    setState(() => _selectedDosage = d['val']!);
-                                    _loadMedicines();
-                                  }
+                                if (_medicines.length > 3)
+                                  Text(
+                                    "নিচে স্ক্রল করুন ↓",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? const Color(0xFFA7F3D0) : const Color(0xFF047857),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 335),
+                            child: Scrollbar(
+                              thumbVisibility: _medicines.length > 3,
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: _medicines.length,
+                                separatorBuilder: (_, __) => const Divider(height: 12),
+                                itemBuilder: (_, idx) {
+                                  final med = _medicines[idx] as Map<String, dynamic>;
+                                  return _buildMedicineRow(med, isDark);
                                 },
                               ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (_isLoadingMeds)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 20),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (_medicines.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 18),
-                          child: Text(
-                            "কোনো ওষুধ পাওয়া যায়নি। অন্য নাম লিখে খুঁজুন।",
-                            style: TextStyle(color: Colors.grey, fontSize: 12.5, fontWeight: FontWeight.w600),
+                            ),
                           ),
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _medicines.length > 15 ? 15 : _medicines.length,
-                          separatorBuilder: (_, __) => const Divider(height: 12),
-                          itemBuilder: (_, idx) {
-                            final med = _medicines[idx] as Map<String, dynamic>;
-                            return _buildMedicineRow(med, isDark);
-                          },
-                        ),
-                    ],
+                        ],
+                      ],
+                    ),
                   ),
                 ),
 
@@ -945,9 +1220,18 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                       ],
                       TextField(
                         controller: _nameController,
+                        readOnly: true,
+                        enabled: false,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
                         decoration: InputDecoration(
-                          labelText: "আপনার নাম",
+                          labelText: "আপনার নাম (একাউন্ট থেকে অটো-ফিল্ড • পরিবর্তনযোগ্য নয়)",
                           prefixIcon: const Icon(Icons.person_outline, size: 19),
+                          suffixIcon: const Icon(Icons.lock_outline, size: 17),
+                          filled: true,
+                          fillColor: isDark ? Colors.grey[850] : const Color(0xFFF1F5F9),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           isDense: true,
                         ),
@@ -955,10 +1239,19 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: _phoneController,
+                        readOnly: true,
+                        enabled: false,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
                         keyboardType: TextInputType.phone,
                         decoration: InputDecoration(
-                          labelText: "মোবাইল নম্বর (১১ ডিজিট) *",
+                          labelText: "মোবাইল নম্বর (একাউন্ট থেকে অটো-ফিল্ড • পরিবর্তনযোগ্য নয়)",
                           prefixIcon: const Icon(Icons.phone_outlined, size: 19),
+                          suffixIcon: const Icon(Icons.lock_outline, size: 17),
+                          filled: true,
+                          fillColor: isDark ? Colors.grey[850] : const Color(0xFFF1F5F9),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           isDense: true,
                         ),
@@ -1424,8 +1717,13 @@ class _SubstitutesModalState extends State<_SubstitutesModal> {
 class _PharmacyOrdersModal extends StatefulWidget {
   final String initialPhone;
   final String initialOrderNum;
+  final void Function(String medicineName)? onSelectMedicine;
 
-  const _PharmacyOrdersModal({required this.initialPhone, this.initialOrderNum = ""});
+  const _PharmacyOrdersModal({
+    required this.initialPhone,
+    this.initialOrderNum = "",
+    this.onSelectMedicine,
+  });
 
   @override
   State<_PharmacyOrdersModal> createState() => _PharmacyOrdersModalState();
@@ -1435,11 +1733,15 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
   final TextEditingController _phoneSearchCtrl = TextEditingController();
   List<dynamic> _orders = [];
   bool _loading = true;
+  final Set<String> _expandedOrders = {};
 
   @override
   void initState() {
     super.initState();
     _phoneSearchCtrl.text = widget.initialPhone;
+    if (widget.initialOrderNum.isNotEmpty) {
+      _expandedOrders.add(widget.initialOrderNum);
+    }
     _fetchOrders();
   }
 
@@ -1457,6 +1759,10 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
       setState(() {
         _orders = list;
         _loading = false;
+        if (_expandedOrders.isEmpty && list.isNotEmpty) {
+          final firstNum = (list.first as Map)['order_number']?.toString() ?? '';
+          if (firstNum.isNotEmpty) _expandedOrders.add(firstNum);
+        }
       });
     }
   }
@@ -1480,12 +1786,86 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
     }
   }
 
+  void _openPrescriptionZoom(String primaryUrl, String originalUrl) {
+    final bool isPdf = primaryUrl.toLowerCase().contains('.pdf') ||
+        primaryUrl.startsWith('data:application/pdf');
+    if (isPdf) {
+      final clean = AppImageLoader.cleanUrl(primaryUrl);
+      launchUrl(Uri.parse(clean), mode: LaunchMode.externalApplication);
+      return;
+    }
+    bool showOriginal = false;
+    final bool hasBoth = originalUrl.isNotEmpty && originalUrl != primaryUrl;
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          final activeUrl = (showOriginal && originalUrl.isNotEmpty) ? originalUrl : primaryUrl;
+          return Dialog(
+            backgroundColor: Colors.black,
+            insetPadding: const EdgeInsets.all(10),
+            child: Stack(
+              children: [
+                InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 5.0,
+                  child: Center(
+                    child: AppImageLoader(imageUrl: activeUrl, fit: BoxFit.contain),
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.black),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                ),
+                if (hasBoth)
+                  Positioned(
+                    bottom: 14,
+                    left: 14,
+                    right: 14,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ChoiceChip(
+                          label: const Text("✨ স্ক্যান / এডিটেড"),
+                          selected: !showOriginal,
+                          selectedColor: const Color(0xFF059669),
+                          labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          backgroundColor: Colors.grey.shade800,
+                          onSelected: (_) => setDlgState(() => showOriginal = false),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text("🖼️ অরিজিনাল ছবি"),
+                          selected: showOriginal,
+                          selectedColor: const Color(0xFF059669),
+                          labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          backgroundColor: Colors.grey.shade800,
+                          onSelected: (_) => setDlgState(() => showOriginal = true),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.75,
-      maxChildSize: 0.92,
+      initialChildSize: 0.82,
+      maxChildSize: 0.94,
       builder: (_, scrollCtrl) => Column(
         children: [
           Padding(
@@ -1538,45 +1918,228 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
                         itemCount: _orders.length,
                         itemBuilder: (_, idx) {
                           final o = _orders[idx] as Map<String, dynamic>;
+                          final String orderNum = (o['order_number'] ?? '').toString();
                           final String st = (o['order_status'] ?? 'reviewing').toString();
-                          final String rxUrl = (o['prescription_url'] ?? '').toString();
+                          final String rxUrl = (o['prescription_enhanced_url'] ?? o['prescription_url'] ?? '').toString();
+                          final String rxOrig = (o['prescription_original_url'] ?? o['prescription_url'] ?? '').toString();
+                          final double subtotal = double.tryParse(o['subtotal']?.toString() ?? '0') ?? 0.0;
+                          final double delChg = double.tryParse(o['delivery_charge']?.toString() ?? '50') ?? 50.0;
                           final double total = double.tryParse(o['total_amount']?.toString() ?? '0') ?? 0.0;
+                          final int durDays = int.tryParse(o['overall_duration_days']?.toString() ?? '0') ?? 0;
+                          final String custNotes = (o['customer_notes'] ?? '').toString().trim();
+                          final String adminNotes = (o['admin_notes'] ?? '').toString().trim();
+                          final List<dynamic> appItems = (o['approved_items'] is List && (o['approved_items'] as List).isNotEmpty)
+                              ? (o['approved_items'] as List)
+                              : ((o['requested_items'] is List) ? (o['requested_items'] as List) : const []);
+                          final bool isExpanded = _expandedOrders.contains(orderNum);
+                          final bool isPdf = rxUrl.toLowerCase().contains('.pdf') || rxUrl.startsWith('data:application/pdf');
+
                           return Card(
-                            margin: const EdgeInsets.only(bottom: 10),
+                            margin: const EdgeInsets.only(bottom: 12),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: Color(0xFFD1FAE5)),
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(color: isExpanded ? const Color(0xFF10B981) : const Color(0xFFD1FAE5), width: isExpanded ? 1.6 : 1.0),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(o['order_number']?.toString() ?? '',
-                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFECFDF5),
-                                          borderRadius: BorderRadius.circular(8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: () {
+                                    setState(() {
+                                      if (isExpanded) {
+                                        _expandedOrders.remove(orderNum);
+                                      } else {
+                                        _expandedOrders.add(orderNum);
+                                      }
+                                    });
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(orderNum, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFECFDF5),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(_translateStatus(st),
+                                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF047857))),
+                                            ),
+                                          ],
                                         ),
-                                        child: Text(_translateStatus(st),
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF047857))),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                "মোট বিল: ${total > 0 ? '৳ ${total.toStringAsFixed(2)}' : 'যাচাই চলছে'} • OTP: ${o['delivery_otp'] ?? ''}",
+                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                              ),
+                                            ),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  isExpanded ? "সংক্ষিপ্ত" : "বিস্তারিত",
+                                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF047857)),
+                                                ),
+                                                Icon(
+                                                  isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                                  size: 18,
+                                                  color: const Color(0xFF047857),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text("মোট বিল: ${total > 0 ? '৳ ${total.toStringAsFixed(2)}' : 'যাচাই চলছে'} • OTP: ${o['delivery_otp'] ?? ''}",
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                                  if ((o['customer_notes'] ?? '').toString().isNotEmpty)
-                                    Text("নোট: ${o['customer_notes']}", style: TextStyle(fontSize: 11.5, color: Colors.grey[700])),
-                                  if (rxUrl.isNotEmpty)
-                                    Text("📎 প্রেসক্রিপশন সংযুক্ত রয়েছে", style: TextStyle(fontSize: 11, color: Colors.teal[700])),
+                                ),
+
+                                if (isExpanded) ...[
+                                  const Divider(height: 1),
+                                  Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "👤 ${o['customer_name'] ?? ''} (${o['customer_phone'] ?? ''})",
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          "📍 ${o['delivery_address'] ?? ''}, ${o['area'] ?? ''}, ${o['district'] ?? ''}",
+                                          style: TextStyle(fontSize: 11.5, color: Colors.grey[700]),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: durDays > 0 ? const Color(0xFFECFDF5) : const Color(0xFFFEF3C7),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            durDays > 0 ? "⏱️ চাহিদা: $durDays দিনের ওষুধ" : "📝 চাহিদা: নোটে উল্লিখিত",
+                                            style: TextStyle(
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: durDays > 0 ? const Color(0xFF047857) : const Color(0xFF92400E),
+                                            ),
+                                          ),
+                                        ),
+                                        if (custNotes.isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text("💬 আপনার নোট: $custNotes", style: const TextStyle(fontSize: 12)),
+                                        ],
+                                        if (adminNotes.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Text("👨‍⚕️ ফার্মাসিস্ট নোট: $adminNotes",
+                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF047857))),
+                                        ],
+                                        if (rxUrl.isNotEmpty) ...[
+                                          const SizedBox(height: 10),
+                                          const Text("📄 আপলোডকৃত প্রেসক্রিপশন (বড় করে দেখতে ট্যাপ করুন):",
+                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF065F46))),
+                                          const SizedBox(height: 6),
+                                          InkWell(
+                                            onTap: () => _openPrescriptionZoom(rxUrl, rxOrig),
+                                            child: isPdf
+                                                ? Container(
+                                                    width: double.infinity,
+                                                    padding: const EdgeInsets.all(12),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red.shade50,
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(color: Colors.red.shade200),
+                                                    ),
+                                                    child: const Row(
+                                                      children: [
+                                                        Icon(Icons.picture_as_pdf, color: Colors.red, size: 28),
+                                                        SizedBox(width: 8),
+                                                        Expanded(child: Text("PDF প্রেসক্রিপশন দেখুন", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red))),
+                                                        Icon(Icons.open_in_new, color: Colors.red, size: 18),
+                                                      ],
+                                                    ),
+                                                  )
+                                                : ClipRRect(
+                                                    borderRadius: BorderRadius.circular(10),
+                                                    child: Container(
+                                                      width: double.infinity,
+                                                      height: 180,
+                                                      color: Colors.black87,
+                                                      child: AppImageLoader(imageUrl: rxUrl, fit: BoxFit.contain),
+                                                    ),
+                                                  ),
+                                          ),
+                                        ],
+                                        if (appItems.isNotEmpty) ...[
+                                          const SizedBox(height: 10),
+                                          const Text("💊 অর্ডারকৃত ঔষধসমূহ (ক্লিক করলে ঔষধে যাবে):",
+                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF065F46))),
+                                          const SizedBox(height: 6),
+                                          ...appItems.whereType<Map>().map((it) {
+                                            final mName = (it['name'] ?? it['product_name'] ?? 'Medicine').toString();
+                                            final mQty = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                            final mTotal = double.tryParse(it['total_price']?.toString() ?? '0') ?? 0.0;
+                                            return InkWell(
+                                              onTap: () {
+                                                if (widget.onSelectMedicine != null) {
+                                                  widget.onSelectMedicine!(mName);
+                                                }
+                                              },
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Container(
+                                                margin: const EdgeInsets.only(bottom: 5),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFF0FDF4),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    const Text("💊 ", style: TextStyle(fontSize: 13)),
+                                                    Expanded(
+                                                      child: Text(
+                                                        "$mName ${it['strength'] ?? ''} × $mQty",
+                                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                                                      ),
+                                                    ),
+                                                    if (mTotal > 0)
+                                                      Text("৳ ${mTotal.toStringAsFixed(0)}",
+                                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Color(0xFF047857))),
+                                                    const SizedBox(width: 4),
+                                                    const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF047857)),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        ],
+                                        const Divider(height: 16),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text("সাবটোটাল: ৳${subtotal.toStringAsFixed(0)} + ডেলিভারি: ৳${delChg.toStringAsFixed(0)}",
+                                                style: TextStyle(fontSize: 11.5, color: Colors.grey[700])),
+                                            Text("মোট: ${total > 0 ? '৳${total.toStringAsFixed(2)}' : 'যাচাই চলছে'}",
+                                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: Color(0xFF047857))),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
-                              ),
+                              ],
                             ),
                           );
                         },

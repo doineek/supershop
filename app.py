@@ -9631,10 +9631,42 @@ def api_my_orders():
         """, (ord_row["id"],)).fetchall()
 
         processed_items = []
-        for i in items:
+        base_host = request.host_url.rstrip("/")
+
+        def _abs_url(u):
+            s = (u or "").strip()
+            if s.startswith("/static/"):
+                return base_host + s
+            return s
+
+        pharm_row = conn.execute(
+            "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+            (ord_row["id"], ord_row["order_number"]),
+        ).fetchone()
+        pharm_items = []
+        if pharm_row:
+            try:
+                app_it = json.loads(pharm_row["approved_items_json"] or "[]")
+            except Exception:
+                app_it = []
+            try:
+                req_it = json.loads(pharm_row["requested_items_json"] or "[]")
+            except Exception:
+                req_it = []
+            pharm_items = app_it if app_it else req_it
+
+        for idx_it, i in enumerate(items):
             i_dict = dict(i)
             p_name = i_dict.get("product_name") or ""
-            if "📦" in p_name or "Package" in p_name or "Combo" in p_name or i_dict.get("product_id") == 0:
+            if i_dict.get("image_url"):
+                i_dict["image_url"] = _abs_url(i_dict["image_url"])
+
+            low_p_name = p_name.lower()
+            is_pkg_hint = ("📦" in p_name or "package" in low_p_name or "combo" in low_p_name)
+            is_pharm_ord = bool(pharm_row) or (ord_row["order_number"] or "").startswith("RX-")
+            is_med_hint = ("💊" in p_name) or (is_pharm_ord and not is_pkg_hint)
+
+            if is_pkg_hint or (not is_med_hint and (i_dict.get("product_id") or 0) == 0):
                 clean_pkg_name = p_name.replace("📦", "").split("(")[0].strip()
                 pkg = conn.execute(
                     "SELECT * FROM packages WHERE name = ? OR instr(?, name) > 0 OR instr(name, ?) > 0",
@@ -9645,7 +9677,7 @@ def api_my_orders():
                     i_dict["package_id"] = pkg["id"]
                     i_dict["package_name"] = pkg["name"]
                     i_dict["package_price"] = pkg["package_price"]
-                    i_dict["package_image"] = pkg["image_url"] or ""
+                    i_dict["package_image"] = _abs_url(pkg["image_url"] or "")
                     i_dict["package_description"] = pkg["description"] or ""
                     pkg_items = conn.execute("""
                         SELECT pi.quantity as item_qty, p.id as product_id, p.name as prod_name, p.sku, p.unit, p.sell_price, p.mrp, p.image_url, p.brand
@@ -9653,10 +9685,41 @@ def api_my_orders():
                         WHERE pi.package_id = ?
                     """, (pkg["id"],)).fetchall()
                     i_dict["package_items"] = [dict(pi) for pi in pkg_items]
+            elif is_med_hint:
+                i_dict["is_medicine"] = True
+                if idx_it < len(pharm_items) and isinstance(pharm_items[idx_it], dict):
+                    pm = pharm_items[idx_it]
+                    i_dict["medicine_id"] = int(pm.get("medicine_id") or 0)
+                    i_dict["generic_name"] = pm.get("generic_name") or ""
+                    i_dict["strength"] = pm.get("strength") or ""
+                    i_dict["dosage_form"] = pm.get("dosage_form") or ""
+                else:
+                    clean_med = p_name.replace("💊", "").split("(")[0].strip()
+                    if clean_med and "প্রেসক্রিপশন অর্ডার" not in clean_med:
+                        m_row = conn.execute(
+                            "SELECT id, generic_name, strength, dosage_form FROM pharmacy_medicines WHERE LOWER(name) = LOWER(?) LIMIT 1",
+                            (clean_med,),
+                        ).fetchone()
+                        if m_row:
+                            i_dict["medicine_id"] = int(m_row["id"])
+                            i_dict["generic_name"] = m_row["generic_name"] or ""
+                            i_dict["strength"] = m_row["strength"] or ""
+                            i_dict["dosage_form"] = m_row["dosage_form"] or ""
             processed_items.append(i_dict)
 
         o_dict = dict(ord_row)
         o_dict["items"] = processed_items
+        if pharm_row:
+            o_dict["is_pharmacy_order"] = True
+            o_dict["pharmacy_order_id"] = pharm_row["id"]
+            o_dict["pharmacy_order_type"] = pharm_row["order_type"] or ""
+            o_dict["prescription_url"] = _abs_url(pharm_row["prescription_url"] or "")
+            o_dict["prescription_original_url"] = _abs_url(pharm_row["prescription_original_url"] or pharm_row["prescription_url"] or "")
+            o_dict["prescription_enhanced_url"] = _abs_url(pharm_row["prescription_enhanced_url"] or pharm_row["prescription_url"] or "")
+            o_dict["overall_duration_days"] = int(pharm_row["overall_duration_days"] or 0)
+            o_dict["customer_notes"] = pharm_row["customer_notes"] or ""
+        elif (o_dict.get("order_number") or "").startswith("RX-"):
+            o_dict["is_pharmacy_order"] = True
 
         # Build delivery timeline with real timing
         created_dt = o_dict.get("created_at") or ""
@@ -11228,6 +11291,7 @@ def get_app_version():
 
 
 GITHUB_LATEST_APK_URL = "https://github.com/doineek/supershop/releases/latest/download/doineek_latest.apk"
+GITHUB_LATEST_ARM32_APK_URL = "https://github.com/doineek/supershop/releases/latest/download/doineek_latest_arm32.apk"
 
 
 @app.route("/download-apk")
@@ -11237,9 +11301,17 @@ def download_app_apk():
     """
     Direct 1-click APK download for Android users with 100% bandwidth offloading.
     Redirects to GitHub CDN releases so Render free bandwidth (5 GB) is 100% saved!
+    Supports ?arch=arm32 for older 32-bit Android phones.
     """
+    arch = (request.args.get("arch") or "").strip().lower()
     settings = get_all_settings()
     raw_ext_url = (os.environ.get("APK_DOWNLOAD_URL") or settings.get("apk_download_url") or "").strip()
+
+    if arch in ("arm32", "armeabi-v7a", "32", "32bit"):
+        if raw_ext_url and raw_ext_url.startswith("http") and "render.com" not in raw_ext_url and raw_ext_url.endswith(".apk") and "_arm32" not in raw_ext_url:
+            return redirect(raw_ext_url[:-4] + "_arm32.apk", code=302)
+        return redirect(GITHUB_LATEST_ARM32_APK_URL, code=302)
+
     if raw_ext_url and raw_ext_url.startswith("http") and "render.com" not in raw_ext_url:
         return redirect(raw_ext_url, code=302)
 
@@ -12041,21 +12113,29 @@ def pharmacy_place_order():
 def api_pharmacy_my_orders():
     """Returns JSON list of pharmacy orders for a customer phone number (for mobile app & web)."""
     raw_phone = (request.args.get("phone") or "").strip()
-    if not raw_phone:
-        return jsonify({"success": True, "orders": []})
-
-    p_clean = normalize_phone(raw_phone)
-    candidates = [p for p in dict.fromkeys([raw_phone, p_clean]) if p]
+    candidates = _phone_variants(raw_phone)
     if not candidates:
         return jsonify({"success": True, "orders": []})
 
     conn = get_connection()
     placeholders = ",".join("?" for _ in candidates)
+    norm_main = candidates[0]
     rows = conn.execute(
-        f"SELECT * FROM pharmacy_orders WHERE customer_phone IN ({placeholders}) ORDER BY id DESC LIMIT 50",
-        candidates
+        f"""SELECT * FROM pharmacy_orders
+            WHERE customer_phone IN ({placeholders})
+               OR REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+88', '') = ?
+            ORDER BY id DESC LIMIT 50""",
+        tuple(candidates) + (norm_main,),
     ).fetchall()
     conn.close()
+
+    base_host = request.host_url.rstrip("/")
+
+    def _abs_url(u):
+        s = (u or "").strip()
+        if s.startswith("/static/"):
+            return base_host + s
+        return s
 
     orders_out = []
     for r in rows:
@@ -12070,6 +12150,9 @@ def api_pharmacy_my_orders():
             d["approved_items"] = []
         d.pop("requested_items_json", None)
         d.pop("approved_items_json", None)
+        d["prescription_url"] = _abs_url(d.get("prescription_url"))
+        d["prescription_original_url"] = _abs_url(d.get("prescription_original_url") or d.get("prescription_url"))
+        d["prescription_enhanced_url"] = _abs_url(d.get("prescription_enhanced_url") or d.get("prescription_url"))
         orders_out.append(d)
 
     return jsonify({"success": True, "orders": orders_out})
@@ -12102,7 +12185,7 @@ def api_pharmacy_order_status(order_number):
             """, (
                 ol["order_number"], ol["id"], ol["customer_name"] or "", ol["customer_phone"] or "", ol["customer_email"] or "",
                 ol["country"] or "Bangladesh", ol["district"] or "Tangail", ol["area"] or "Tangail Sadar",
-                ol["address_details"] or "", 7, "", items_json, items_json,
+                ol["address_details"] or "", 0, "", items_json, items_json,
                 float(ol["subtotal"] or 0.0), float(ol["delivery_charge"] or 50.0), float(ol["total_amount"] or 0.0),
                 "reviewing" if ol["order_status"] in ("new", "pending", "pending_confirmation") else ol["order_status"],
                 ol["delivery_otp"] or "1234", ol["created_at"] or "", ol["updated_at"] or ""
@@ -12228,7 +12311,7 @@ def admin_pharmacy_orders():
             """, (
                 m["order_number"], m["id"], m["customer_name"] or "", m["customer_phone"] or "", m["customer_email"] or "",
                 m["country"] or "Bangladesh", m["district"] or "Tangail", m["area"] or "Tangail Sadar",
-                m["address_details"] or "", 7, "", items_json, items_json,
+                m["address_details"] or "", 0, "", items_json, items_json,
                 float(m["subtotal"] or 0.0), float(m["delivery_charge"] or 50.0), float(m["total_amount"] or 0.0),
                 "reviewing" if m["order_status"] in ("new", "pending", "pending_confirmation") else m["order_status"],
                 m["delivery_otp"] or "1234", m["created_at"] or "", m["updated_at"] or ""

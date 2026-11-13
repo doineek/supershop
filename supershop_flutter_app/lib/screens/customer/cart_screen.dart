@@ -633,6 +633,68 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   const Divider(thickness: 2),
 
+                  // Locked Customer Account Details (Auto-filled from Logged-in Account)
+                  Card(
+                    color: Colors.green.shade50,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: Colors.green.shade200),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.lock_outline, color: Colors.green, size: 18),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  "অর্ডারকারীর তথ্য (লগইন একাউন্ট থেকে অটো-ফিল্ড)",
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF166534)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _nameController,
+                            readOnly: true,
+                            enabled: false,
+                            style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w700, fontSize: 13.5),
+                            decoration: InputDecoration(
+                              labelText: "গ্রাহকের নাম (পরিবর্তনযোগ্য নয়)",
+                              prefixIcon: const Icon(Icons.person_outline, size: 18),
+                              suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              border: const OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _phoneController,
+                            readOnly: true,
+                            enabled: false,
+                            style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w700, fontSize: 13.5),
+                            decoration: InputDecoration(
+                              labelText: "মোবাইল নম্বর (পরিবর্তনযোগ্য নয়)",
+                              prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+                              suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              border: const OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
                   // Delivery Location Card
                   Card(
                     color: Colors.blue[50],

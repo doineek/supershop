@@ -834,6 +834,7 @@ class ApiService {
     required int overallDurationDays,
     required String customerNotes,
     String? prescriptionBase64,
+    String? prescriptionOriginalBase64,
     List<Map<String, dynamic>> items = const [],
   }) async {
     final String determinedType =
@@ -857,7 +858,10 @@ class ApiService {
     };
     if (prescriptionBase64 != null && prescriptionBase64.isNotEmpty) {
       payloadMap['prescription_base64'] = prescriptionBase64;
-      payloadMap['prescription_original_base64'] = prescriptionBase64;
+      payloadMap['prescription_original_base64'] =
+          (prescriptionOriginalBase64 != null && prescriptionOriginalBase64.isNotEmpty)
+              ? prescriptionOriginalBase64
+              : prescriptionBase64;
     }
 
     final payload = jsonEncode(payloadMap);

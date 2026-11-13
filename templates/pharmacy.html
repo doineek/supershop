@@ -2854,7 +2854,8 @@
         $("successOrderNumber").innerText = data.order_number;
         $("successDeliveryOtp").innerText = data.delivery_otp || "----";
         $("successStatusBadge").innerText = data.status_bn;
-        $("successDurationTxt").innerText = `মেয়াদ: ${data.overall_duration_days || '৭'} দিনের ওষুধ`;
+        const sDays = parseInt(data.overall_duration_days !== undefined && data.overall_duration_days !== null ? data.overall_duration_days : 0, 10) || 0;
+        $("successDurationTxt").innerText = sDays > 0 ? `মেয়াদ: ${sDays} দিনের ওষুধ` : "মেয়াদ: নোটে উল্লিখিত";
 
         lastSubmittedPrescriptionUrl = data.prescription_url || "";
         const displayImg = data.prescription_url;

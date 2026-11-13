@@ -387,7 +387,8 @@
       currentEnhRx = d.prescription_enhanced_url || d.prescription_url || "";
       if (currentOrigRx || currentEnhRx) {
         switchRxView('enhanced');
-        document.getElementById("dCustDuration").innerText = `মেয়াদ: ${d.overall_duration_days || '৭'} দিনের ওষুধ`;
+        const dDays = parseInt(d.overall_duration_days !== undefined && d.overall_duration_days !== null ? d.overall_duration_days : 0, 10) || 0;
+        document.getElementById("dCustDuration").innerText = dDays > 0 ? `মেয়াদ: ${dDays} দিনের ওষুধ` : "মেয়াদ: নোটে উল্লিখিত";
         document.getElementById("dCustNotes").innerText = d.customer_notes ? `নোট: "${d.customer_notes}"` : "কোনো অতিরিক্ত নোট নেই";
         document.getElementById("dPrescriptionBox").classList.remove("hidden");
       } else {

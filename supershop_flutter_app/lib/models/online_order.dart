@@ -32,6 +32,19 @@ class OrderItem {
   final double mrpPrice;
   final int quantity;
   final double totalPrice;
+  final bool isPackage;
+  final int packageId;
+  final String packageName;
+  final double packagePrice;
+  final String packageImage;
+  final String packageDescription;
+  final List<Map<String, dynamic>> packageItems;
+  final bool isMedicine;
+  final int medicineId;
+  final String genericName;
+  final String strength;
+  final String dosageForm;
+  final String imageUrl;
 
   OrderItem({
     required this.id,
@@ -41,17 +54,58 @@ class OrderItem {
     required this.mrpPrice,
     required this.quantity,
     required this.totalPrice,
+    this.isPackage = false,
+    this.packageId = 0,
+    this.packageName = '',
+    this.packagePrice = 0.0,
+    this.packageImage = '',
+    this.packageDescription = '',
+    this.packageItems = const [],
+    this.isMedicine = false,
+    this.medicineId = 0,
+    this.genericName = '',
+    this.strength = '',
+    this.dosageForm = '',
+    this.imageUrl = '',
   });
 
   factory OrderItem.fromJson(Map<String, dynamic> json) {
+    final pName = _asStr(json['product_name']);
+    final bool pkgFlag = _asBool(json['is_package']) ||
+        _asInt(json['package_id']) > 0 ||
+        pName.contains('📦');
+    final bool medFlag = _asBool(json['is_medicine']) ||
+        _asInt(json['medicine_id']) > 0 ||
+        pName.contains('💊');
+    final rawPkgItems = json['package_items'];
+    final List<Map<String, dynamic>> parsedPkgItems = rawPkgItems is List
+        ? rawPkgItems
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
+        : const [];
+
     return OrderItem(
       id: _asInt(json['id']),
       productId: _asInt(json['product_id']),
-      productName: _asStr(json['product_name']),
+      productName: pName,
       unitPrice: _asDouble(json['unit_price']),
       mrpPrice: _asDouble(json['mrp_price']),
       quantity: _asInt(json['quantity'], 1),
       totalPrice: _asDouble(json['total_price']),
+      isPackage: pkgFlag,
+      packageId: _asInt(json['package_id']),
+      packageName: _asStr(json['package_name']),
+      packagePrice: _asDouble(json['package_price']),
+      packageImage: _asStr(json['package_image']),
+      packageDescription: _asStr(json['package_description']),
+      packageItems: parsedPkgItems,
+      isMedicine: medFlag,
+      medicineId: _asInt(json['medicine_id']),
+      genericName: _asStr(json['generic_name']),
+      strength: _asStr(json['strength']),
+      dosageForm: _asStr(json['dosage_form']),
+      imageUrl: _asStr(json['image_url']),
     );
   }
 }
@@ -111,6 +165,13 @@ class OnlineOrder {
   final String onTheWayAt;
   final String deliveredAt;
   final String cancelledAt;
+  final bool isPharmacyOrder;
+  final String prescriptionUrl;
+  final String prescriptionOriginalUrl;
+  final String prescriptionEnhancedUrl;
+  final int overallDurationDays;
+  final String customerNotes;
+  final String pharmacyOrderType;
   final List<OrderTimelineStep> timeline;
   final List<OrderItem> items;
 
@@ -140,6 +201,13 @@ class OnlineOrder {
     this.onTheWayAt = '',
     this.deliveredAt = '',
     this.cancelledAt = '',
+    this.isPharmacyOrder = false,
+    this.prescriptionUrl = '',
+    this.prescriptionOriginalUrl = '',
+    this.prescriptionEnhancedUrl = '',
+    this.overallDurationDays = 0,
+    this.customerNotes = '',
+    this.pharmacyOrderType = '',
     this.timeline = const [],
     required this.items,
   });
@@ -157,9 +225,15 @@ class OnlineOrder {
         .map((t) => OrderTimelineStep.fromJson(Map<String, dynamic>.from(t)))
         .toList();
 
+    final ordNum = _asStr(json['order_number']);
+    final rxUrl = _asStr(json['prescription_url']);
+    final isPharm = _asBool(json['is_pharmacy_order']) ||
+        ordNum.startsWith('RX-') ||
+        rxUrl.isNotEmpty;
+
     return OnlineOrder(
       id: _asInt(json['id']),
-      orderNumber: _asStr(json['order_number']),
+      orderNumber: ordNum,
       customerName: _asStr(json['customer_name']),
       customerPhone: _asStr(json['customer_phone']),
       customerEmail: _asStr(json['customer_email']),
@@ -183,6 +257,13 @@ class OnlineOrder {
       onTheWayAt: _asStr(json['on_the_way_at']),
       deliveredAt: _asStr(json['delivered_at']),
       cancelledAt: _asStr(json['cancelled_at']),
+      isPharmacyOrder: isPharm,
+      prescriptionUrl: rxUrl,
+      prescriptionOriginalUrl: _asStr(json['prescription_original_url'], rxUrl),
+      prescriptionEnhancedUrl: _asStr(json['prescription_enhanced_url'], rxUrl),
+      overallDurationDays: _asInt(json['overall_duration_days']),
+      customerNotes: _asStr(json['customer_notes']),
+      pharmacyOrderType: _asStr(json['pharmacy_order_type']),
       timeline: timelineList,
       items: itemList,
     );

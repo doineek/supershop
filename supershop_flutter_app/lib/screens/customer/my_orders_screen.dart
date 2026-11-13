@@ -5,9 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../localization/app_localizations.dart';
 import '../../models/online_order.dart';
+import '../../models/product.dart';
 import '../../services/api_service.dart';
+import '../../widgets/app_image_loader.dart';
 import '../auth/login_screen.dart';
 import 'home_screen.dart';
+import 'package_detail_screen.dart';
+import 'pharmacy_screen.dart';
+import 'product_detail_screen.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   final String? targetOrderNumber;
@@ -26,12 +31,19 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
   Timer? _countdownTimer;
   Timer? _livePollTimer;
   String? _currentTargetOrder;
+  final Set<String> _expandedOrders = <String>{};
+  List<Product>? _cachedProducts;
+  List<dynamic>? _cachedPackages;
+  bool _isNavigatingItem = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentTargetOrder = widget.targetOrderNumber?.trim();
+    if (_currentTargetOrder != null && _currentTargetOrder!.isNotEmpty) {
+      _expandedOrders.add(_currentTargetOrder!);
+    }
     _loadUserPhone();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -64,6 +76,550 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
     _countdownTimer?.cancel();
     _livePollTimer?.cancel();
     super.dispose();
+  }
+
+  int _asIntVal(dynamic v, [int fb = 0]) {
+    if (v == null) return fb;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? fb;
+  }
+
+  String _cleanItemName(String raw) {
+    return raw
+        .replaceAll(
+          RegExp(r'^[\s📦💊🏥🛍️]+|\[(PHARMACY|COMBO|PACKAGE|RX)\]', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  Future<void> _openPharmacySearch([String query = '']) async {
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          body: SafeArea(
+            child: PharmacyScreen(
+              initialSearchQuery: query,
+              onBackToHome: () => Navigator.of(ctx).pop(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openOrderItem(OrderItem item, OnlineOrder order) async {
+    if (_isNavigatingItem) return;
+    setState(() => _isNavigatingItem = true);
+
+    try {
+      final cleanName = _cleanItemName(item.productName);
+      final lowerName = cleanName.toLowerCase();
+      final bool isPkg = item.isPackage ||
+          item.packageId > 0 ||
+          item.productName.contains('📦') ||
+          lowerName.contains('package') ||
+          lowerName.contains('combo');
+      final bool isMed = item.isMedicine ||
+          item.medicineId > 0 ||
+          item.productName.contains('💊') ||
+          (order.isPharmacyOrder && !isPkg && item.productId <= 0);
+
+      if (isMed) {
+        String medQuery = cleanName
+            .replaceAll(RegExp(r'\s*\([^)]*\)\s*'), ' ')
+            .replaceAll(
+              RegExp(r'\s+\d+(?:\.\d+)?\s*(?:mg|ml|mcg|gm|g|iu|%)\b', caseSensitive: false),
+              '',
+            )
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (medQuery.isEmpty) medQuery = cleanName;
+        if (medQuery.toLowerCase().contains('prescription order') ||
+            medQuery.contains('প্রেসক্রিপশন') ||
+            medQuery.contains('প্রেশক্রিপশন')) {
+          medQuery = '';
+        }
+        await _openPharmacySearch(medQuery);
+        return;
+      }
+
+      if (isPkg) {
+        _cachedPackages ??= await ApiService.getPackages();
+        final packages = _cachedPackages ?? [];
+        Map<String, dynamic>? matchedPkg;
+        final targetPkgName = (item.packageName.isNotEmpty ? item.packageName : cleanName).toLowerCase();
+
+        for (final rawPkg in packages) {
+          if (rawPkg is! Map) continue;
+          final pkg = Map<String, dynamic>.from(rawPkg);
+          final pid = _asIntVal(pkg['id']);
+          if ((item.packageId > 0 && pid == item.packageId) ||
+              (item.productId > 0 && pid == item.productId)) {
+            matchedPkg = pkg;
+            break;
+          }
+          final pName = (pkg['package_name'] ?? pkg['name'] ?? '').toString().trim().toLowerCase();
+          if (pName.isNotEmpty && pName == targetPkgName) {
+            matchedPkg = pkg;
+            break;
+          }
+        }
+        if (matchedPkg == null && targetPkgName.isNotEmpty) {
+          for (final rawPkg in packages) {
+            if (rawPkg is! Map) continue;
+            final pkg = Map<String, dynamic>.from(rawPkg);
+            final pName = (pkg['package_name'] ?? pkg['name'] ?? '').toString().trim().toLowerCase();
+            if (pName.isNotEmpty && (pName.contains(targetPkgName) || targetPkgName.contains(pName))) {
+              matchedPkg = pkg;
+              break;
+            }
+          }
+        }
+
+        if (matchedPkg == null && (item.packageItems.isNotEmpty || item.packageId > 0)) {
+          matchedPkg = <String, dynamic>{
+            'id': item.packageId > 0 ? item.packageId : item.productId,
+            'package_name': item.packageName.isNotEmpty ? item.packageName : cleanName,
+            'package_price': item.packagePrice > 0 ? item.packagePrice : item.unitPrice,
+            'image_url': item.packageImage.isNotEmpty ? item.packageImage : item.imageUrl,
+            'description': item.packageDescription,
+            'items': item.packageItems,
+          };
+        }
+
+        if (!mounted) return;
+        if (matchedPkg != null) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PackageDetailScreen(packageData: matchedPkg!),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('এই কম্বো প্যাকেজটি বর্তমানে পাওয়া যায়নি')),
+          );
+        }
+        return;
+      }
+
+      // Normal retail product
+      _cachedProducts ??= await ApiService.fetchProducts();
+      final products = _cachedProducts ?? [];
+      Product? matchedProduct;
+
+      if (item.productId > 0) {
+        for (final p in products) {
+          if (p.id == item.productId) {
+            matchedProduct = p;
+            break;
+          }
+        }
+      }
+      if (matchedProduct == null && lowerName.isNotEmpty) {
+        for (final p in products) {
+          if (p.name.trim().toLowerCase() == lowerName) {
+            matchedProduct = p;
+            break;
+          }
+        }
+      }
+      if (matchedProduct == null && lowerName.isNotEmpty) {
+        for (final p in products) {
+          final pn = p.name.trim().toLowerCase();
+          if (pn.isNotEmpty && (pn.contains(lowerName) || lowerName.contains(pn))) {
+            matchedProduct = p;
+            break;
+          }
+        }
+      }
+
+      if (!mounted) return;
+      if (matchedProduct != null) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProductDetailScreen(product: matchedProduct!),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('প্রোডাক্টটি বর্তমানে স্টকে বা ক্যাটালগে পাওয়া যায়নি')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('বিস্তারিত খোলা যায়নি: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isNavigatingItem = false);
+    }
+  }
+
+  bool _isPdfUrl(String url) {
+    final low = url.trim().toLowerCase();
+    return low.endsWith('.pdf') || low.contains('/pdf') || low.startsWith('data:application/pdf');
+  }
+
+  Future<void> _openPrescriptionZoom(String primaryUrl, {String originalUrl = ''}) async {
+    final cleanPrimary = AppImageLoader.cleanUrl(primaryUrl);
+    final cleanOriginal = originalUrl.trim().isNotEmpty ? AppImageLoader.cleanUrl(originalUrl) : '';
+    final target = cleanPrimary.isNotEmpty ? cleanPrimary : cleanOriginal;
+    if (target.isEmpty) return;
+
+    if (_isPdfUrl(target)) {
+      final uri = Uri.tryParse(target);
+      if (uri != null && await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final hasDual = cleanPrimary.isNotEmpty && cleanOriginal.isNotEmpty && cleanPrimary != cleanOriginal;
+    String activeUrl = target;
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Dialog(
+          backgroundColor: Colors.black,
+          insetPadding: const EdgeInsets.all(10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '📋 প্রেসক্রিপশন প্রিভিউ',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasDual)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('✨ স্ক্যান / এডিটেড'),
+                        selected: activeUrl == cleanPrimary,
+                        onSelected: (_) => setModalState(() => activeUrl = cleanPrimary),
+                      ),
+                      ChoiceChip(
+                        label: const Text('📷 অরিজিনাল ছবি'),
+                        selected: activeUrl == cleanOriginal,
+                        onSelected: (_) => setModalState(() => activeUrl = cleanOriginal),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 5.0,
+                    child: Center(
+                      child: AppImageLoader(
+                        imageUrl: activeUrl,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'দুই আঙুলে জুম করে প্রেসক্রিপশন ভালোভাবে দেখুন',
+                  style: TextStyle(color: Colors.white70, fontSize: 11.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrescriptionPreviewSection(OnlineOrder order) {
+    final primaryRx = order.prescriptionUrl.isNotEmpty
+        ? order.prescriptionUrl
+        : (order.prescriptionEnhancedUrl.isNotEmpty
+            ? order.prescriptionEnhancedUrl
+            : order.prescriptionOriginalUrl);
+    final originalRx = order.prescriptionOriginalUrl;
+    if (primaryRx.isEmpty && originalRx.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final displayUrl = primaryRx.isNotEmpty ? primaryRx : originalRx;
+    final isPdf = _isPdfUrl(displayUrl);
+    final hasOriginalSeparate =
+        originalRx.isNotEmpty && primaryRx.isNotEmpty && originalRx != primaryRx && !_isPdfUrl(originalRx);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDFA),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.teal.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.medical_information, size: 17, color: Color(0xFF0F766E)),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'সংযুক্ত প্রেসক্রিপশন',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.5,
+                    color: Color(0xFF0F766E),
+                  ),
+                ),
+              ),
+              if (hasOriginalSeparate)
+                InkWell(
+                  onTap: () => _openPrescriptionZoom(originalRx, originalUrl: originalRx),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.teal.shade300),
+                    ),
+                    child: const Text(
+                      '📷 অরিজিনাল',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF0F766E)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (isPdf)
+            InkWell(
+              onTap: () => _openPrescriptionZoom(displayUrl, originalUrl: originalRx),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.teal.shade200),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 22),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'প্রেসক্রিপশন PDF দেখুন / ডাউনলোড করুন',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      ),
+                    ),
+                    Icon(Icons.open_in_new, size: 16, color: Colors.teal),
+                  ],
+                ),
+              ),
+            )
+          else
+            InkWell(
+              onTap: () => _openPrescriptionZoom(displayUrl, originalUrl: originalRx),
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: AppImageLoader(
+                      imageUrl: displayUrl,
+                      height: 145,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'ট্যাপ করে বড় করুন',
+                            style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFullOrderDetailsSection(OnlineOrder order) {
+    final fullAddress = [
+      order.addressDetails,
+      order.area,
+      order.district,
+      order.country,
+    ].map((e) => e.trim()).where((e) => e.isNotEmpty).join(', ');
+    final computedSubtotal =
+        order.subtotal > 0 ? order.subtotal : (order.totalAmount - order.deliveryCharge);
+    final isExpanded = _expandedOrders.contains(order.orderNumber);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () {
+            setState(() {
+              if (isExpanded) {
+                _expandedOrders.remove(order.orderNumber);
+              } else {
+                _expandedOrders.add(order.orderNumber);
+              }
+            });
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '📋 সম্পূর্ণ অর্ডার বিবরণ (ঠিকানা ও বিল)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                ),
+                Icon(
+                  isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  size: 18,
+                  color: const Color(0xFF475569),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (order.customerName.isNotEmpty || order.customerPhone.isNotEmpty)
+                  Text(
+                    '👤 ${order.customerName} (${order.customerPhone})',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                  ),
+                if (fullAddress.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '📍 ঠিকানা: $fullAddress',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.35),
+                  ),
+                ],
+                if (order.isPharmacyOrder || order.overallDurationDays > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    order.overallDurationDays > 0
+                        ? '⏱️ কয়দিনের ঔষধ: ${order.overallDurationDays} দিন'
+                        : '⏱️ কয়দিনের ঔষধ: 📝 নোটে উল্লিখিত',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F766E)),
+                  ),
+                ],
+                if (order.customerNotes.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '📝 নোট: ${order.customerNotes}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.35),
+                  ),
+                ],
+                const Divider(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('আইটেম মূল্য (Subtotal):', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
+                    Text('TK ${computedSubtotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('ডেলিভারি চার্জ:', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
+                    Text('TK ${order.deliveryCharge.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('পেমেন্ট স্ট্যাটাস:', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
+                    Text(
+                      order.paymentStatus.isNotEmpty ? order.paymentStatus.toUpperCase() : 'PENDING',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                        color: order.paymentStatus.toLowerCase() == 'paid' ? Colors.green : Colors.orange.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   void _loadUserPhone() async {
@@ -137,6 +693,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
             'on_the_way_at': o.onTheWayAt,
             'delivered_at': o.deliveredAt,
             'cancelled_at': o.cancelledAt,
+            'is_pharmacy_order': o.isPharmacyOrder,
+            'prescription_url': o.prescriptionUrl,
+            'prescription_original_url': o.prescriptionOriginalUrl,
+            'prescription_enhanced_url': o.prescriptionEnhancedUrl,
+            'overall_duration_days': o.overallDurationDays,
+            'customer_notes': o.customerNotes,
+            'pharmacy_order_type': o.pharmacyOrderType,
             'timeline': o.timeline.map((t) => {
               'stage': t.stage,
               'title': t.title,
@@ -153,6 +716,19 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
               'mrp_price': it.mrpPrice,
               'quantity': it.quantity,
               'total_price': it.totalPrice,
+              'is_package': it.isPackage,
+              'package_id': it.packageId,
+              'package_name': it.packageName,
+              'package_price': it.packagePrice,
+              'package_image': it.packageImage,
+              'package_description': it.packageDescription,
+              'package_items': it.packageItems,
+              'is_medicine': it.isMedicine,
+              'medicine_id': it.medicineId,
+              'generic_name': it.genericName,
+              'strength': it.strength,
+              'dosage_form': it.dosageForm,
+              'image_url': it.imageUrl,
             }).toList(),
           }).toList();
           await prefs.setString('cached_my_orders_$_userPhone', jsonEncode(rawList));
@@ -735,57 +1311,183 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                                       // Real-time Delivery Timeline Stepper
                                       _buildDeliveryTimeline(order),
 
-                                      const Divider(),
+                                      // Attached Prescription Image / PDF Preview
+                                      _buildPrescriptionPreviewSection(order),
 
-                                // Order Items
-                                Column(
-                                  children: order.items.map((item) {
-                                    final isPkg = item.productName.contains('📦') ||
-                                        item.productName.toLowerCase().contains('package') ||
-                                        item.productName.toLowerCase().contains('combo');
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Row(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                if (isPkg)
-                                                  Container(
-                                                    margin: const EdgeInsets.only(right: 6, top: 2),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.amber.shade100,
-                                                      borderRadius: BorderRadius.circular(4),
-                                                      border: Border.all(color: Colors.amber.shade300),
-                                                    ),
-                                                    child: const Text(
-                                                      "COMBO",
-                                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.brown),
-                                                    ),
-                                                  ),
-                                                Expanded(
-                                                  child: Text(
-                                                    '${item.productName} × ${item.quantity}',
-                                                    style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF1E293B)),
-                                                    softWrap: true,
+                                      // Quick Pharmacy Requirement / Note summary pill
+                                      if (order.isPharmacyOrder || order.customerNotes.isNotEmpty)
+                                        Container(
+                                          width: double.infinity,
+                                          margin: const EdgeInsets.only(bottom: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFFBEB),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.amber.shade200),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                order.overallDurationDays > 0
+                                                    ? '⏱️ কয়দিনের ঔষধ: ${order.overallDurationDays} দিন'
+                                                    : '⏱️ কয়দিনের ঔষধ: 📝 নোটে উল্লিখিত',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF92400E),
+                                                ),
+                                              ),
+                                              if (order.customerNotes.isNotEmpty) ...[
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  '📝 নোট: ${order.customerNotes}',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Color(0xFF78350F),
+                                                    height: 1.3,
                                                   ),
                                                 ),
                                               ],
+                                            ],
+                                          ),
+                                        ),
+
+                                      const Divider(),
+
+                                // Order Items (Clickable -> Product / Combo / Medicine)
+                                if (order.items.isEmpty && order.isPharmacyOrder)
+                                  InkWell(
+                                    onTap: () => _openPharmacySearch(''),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF0FDFA),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.teal.shade200),
+                                      ),
+                                      child: const Row(
+                                        children: [
+                                          Text('💊', style: TextStyle(fontSize: 16)),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'প্রেসক্রিপশন অর্ডার (ফার্মেসি পেইজ দেখুন)',
+                                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F766E)),
                                             ),
                                           ),
-                                          const SizedBox(width: 12),
-                                          Text(
-                                            'TK ${item.totalPrice.toStringAsFixed(0)}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF0F172A)),
-                                          ),
+                                          Icon(Icons.chevron_right, size: 18, color: Color(0xFF0F766E)),
                                         ],
                                       ),
-                                    );
-                                  }).toList(),
-                                ),
+                                    ),
+                                  )
+                                else
+                                  Column(
+                                    children: order.items.map((item) {
+                                      final lowerName = item.productName.toLowerCase();
+                                      final isPkg = item.isPackage ||
+                                          item.packageId > 0 ||
+                                          item.productName.contains('📦') ||
+                                          lowerName.contains('package') ||
+                                          lowerName.contains('combo');
+                                      final isMed = item.isMedicine ||
+                                          item.medicineId > 0 ||
+                                          item.productName.contains('💊') ||
+                                          (order.isPharmacyOrder && !isPkg && item.productId <= 0);
+                                      final thumb = item.packageImage.isNotEmpty
+                                          ? item.packageImage
+                                          : item.imageUrl;
+
+                                      return Container(
+                                        margin: const EdgeInsets.symmetric(vertical: 3.5),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF8FAFC),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        ),
+                                        child: InkWell(
+                                          onTap: () => _openOrderItem(item, order),
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                if (thumb.isNotEmpty) ...[
+                                                  ClipRRect(
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    child: AppImageLoader(
+                                                      imageUrl: thumb,
+                                                      width: 34,
+                                                      height: 34,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                ],
+                                                Expanded(
+                                                  child: Row(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      if (isPkg)
+                                                        Container(
+                                                          margin: const EdgeInsets.only(right: 6, top: 2),
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.amber.shade100,
+                                                            borderRadius: BorderRadius.circular(4),
+                                                            border: Border.all(color: Colors.amber.shade300),
+                                                          ),
+                                                          child: const Text(
+                                                            "COMBO",
+                                                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.brown),
+                                                          ),
+                                                        )
+                                                      else if (isMed)
+                                                        Container(
+                                                          margin: const EdgeInsets.only(right: 6, top: 2),
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.teal.shade50,
+                                                            borderRadius: BorderRadius.circular(4),
+                                                            border: Border.all(color: Colors.teal.shade200),
+                                                          ),
+                                                          child: const Text(
+                                                            "💊 Rx",
+                                                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
+                                                          ),
+                                                        ),
+                                                      Expanded(
+                                                        child: Text(
+                                                          '${item.productName} × ${item.quantity}',
+                                                          style: const TextStyle(
+                                                            fontSize: 13,
+                                                            height: 1.35,
+                                                            color: Color(0xFF1E293B),
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                          softWrap: true,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'TK ${item.totalPrice.toStringAsFixed(0)}',
+                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                const Icon(Icons.chevron_right, size: 17, color: Color(0xFF64748B)),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
                                 const Divider(),
 
                                 Row(
@@ -798,6 +1500,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                                     ),
                                   ],
                                 ),
+
+                                _buildFullOrderDetailsSection(order),
 
                                 // Delivery Rider Info Box
                                 if (order.assignedRiderName.isNotEmpty || order.assignedRiderPhone.isNotEmpty)
