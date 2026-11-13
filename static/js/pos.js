@@ -20,6 +20,10 @@ if (savedCart) {
 // nothing crashes.
 Object.keys(cart).forEach(id => {
   const item = cart[id];
+  if (String(id).startsWith("med_") || (item && item.is_medicine)) {
+    delete cart[id];
+    return;
+  }
   if (!Array.isArray(item.serials)) {
     item.serials = new Array(item.quantity || 0).fill(null);
   }
@@ -43,25 +47,18 @@ const customerMobileInput = document.getElementById("customerMobileInput");
 
 const allTiles = Array.from(document.querySelectorAll(".pos-product"));
 
-let posMedsLoaded = false;
-let posMedSearchTimer = null;
-
 function switchPosCatalog(tab) {
   const prodList = document.getElementById("productList");
   const pkgList = document.getElementById("packageList");
-  const medList = document.getElementById("medicineList");
   const tabProdBtn = document.getElementById("posTabProducts");
   const tabPkgBtn = document.getElementById("posTabPackages");
-  const tabMedBtn = document.getElementById("posTabMedicines");
 
   // Reset tab button styles
   if (tabProdBtn) { tabProdBtn.style.background = "#f1f5f9"; tabProdBtn.style.color = "#475569"; tabProdBtn.style.borderColor = "#cbd5e1"; }
   if (tabPkgBtn) { tabPkgBtn.style.background = "#fff7ed"; tabPkgBtn.style.color = "#ea580c"; tabPkgBtn.style.borderColor = "#fed7aa"; }
-  if (tabMedBtn) { tabMedBtn.style.background = "#ecfdf5"; tabMedBtn.style.color = "#047857"; tabMedBtn.style.borderColor = "#a7f3d0"; }
 
   if (prodList) { prodList.classList.remove("active"); prodList.style.display = "none"; }
   if (pkgList) { pkgList.classList.remove("active"); pkgList.style.display = "none"; }
-  if (medList) { medList.classList.remove("active"); medList.style.display = "none"; }
 
   if (tab === "packages") {
     if (pkgList) {
@@ -70,13 +67,6 @@ function switchPosCatalog(tab) {
       pkgList.querySelectorAll(".pos-product").forEach(btn => { btn.style.display = ""; });
     }
     if (tabPkgBtn) { tabPkgBtn.style.background = "#ea580c"; tabPkgBtn.style.color = "#ffffff"; tabPkgBtn.style.borderColor = "#ea580c"; }
-  } else if (tab === "medicines") {
-    if (medList) {
-      medList.classList.add("active");
-      medList.style.display = "flex";
-    }
-    if (tabMedBtn) { tabMedBtn.style.background = "#059669"; tabMedBtn.style.color = "#ffffff"; tabMedBtn.style.borderColor = "#059669"; }
-    loadPosMedicines("");
   } else {
     if (prodList) {
       prodList.classList.add("active");
@@ -87,88 +77,6 @@ function switchPosCatalog(tab) {
   }
 }
 window.switchPosCatalog = switchPosCatalog;
-
-async function loadPosMedicines(q = "") {
-  const grid = document.getElementById("posMedGrid");
-  if (!grid) return;
-  grid.innerHTML = `<div style="text-align:center; padding:15px; color:#64748b; font-size:12px;">Loading medicines...</div>`;
-  try {
-    const res = await fetch("/api/pharmacy/medicines?q=" + encodeURIComponent(q));
-    const data = await res.json();
-    const list = data.medicines || [];
-    posMedsLoaded = true;
-
-    if (list.length === 0) {
-      grid.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8; font-size:12px;">No medicines found.</div>`;
-      return;
-    }
-
-    grid.innerHTML = "";
-    list.forEach(m => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pos-product pos-medicine-btn pos-row-item";
-      const medSku = m.sku || ('MED-' + m.id);
-
-      btn.style.cssText = "display:flex; align-items:center; justify-content:space-between; width:100%; padding:8px 12px; gap:10px; white-space:nowrap; overflow:hidden;";
-
-      btn.innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1; overflow:hidden; white-space:nowrap;">
-          <span style="background:#059669; color:white; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; flex-shrink:0;">
-            💊 ${m.dosage_form || 'Tablet'}
-          </span>
-          <strong style="color:#0f172a; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${m.name}</strong>
-          ${m.strength ? `<span style="font-size:11.5px; color:#475569; font-weight:600; flex-shrink:0;">(${m.strength})</span>` : ''}
-          ${m.generic_name ? `<span style="color:#64748b; font-size:11.5px; flex-shrink:0;">[${m.generic_name}]</span>` : ''}
-          ${m.manufacturer ? `<span style="color:#64748b; font-size:11.5px; flex-shrink:0;">• ${m.manufacturer}</span>` : ''}
-          <span style="font-family:monospace; font-weight:700; font-size:11px; background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; border:1px solid #bae6fd; flex-shrink:0;">
-            SKU: ${medSku}
-          </span>
-          <span style="font-size:11.5px; color:#64748b; flex-shrink:0;">
-            Stock: <strong>${m.stock_qty || 999}</strong>
-          </span>
-        </div>
-
-        <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
-          <div style="text-align:right; display:flex; align-items:baseline; gap:5px;">
-            <div style="font-size:14px; font-weight:800; color:#059669; font-family:var(--font-mono);">
-              TK ${(parseFloat(m.unit_price) || 0).toFixed(2)}
-            </div>
-            ${m.strip_price && parseFloat(m.strip_price) > 0 ? `<div style="font-size:10.5px; color:#64748b;">(Strip: TK ${parseFloat(m.strip_price).toFixed(2)})</div>` : ''}
-          </div>
-          <span style="background:#059669; color:white; padding:4px 10px; border-radius:6px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center;">
-            + Add
-          </span>
-        </div>
-      `;
-      btn.addEventListener("click", () => addToCart({
-        id: "med_" + m.id,
-        medicine_id: m.id,
-        name: `💊 ${m.name}` + (m.strength ? ` (${m.strength})` : ` (${m.dosage_form || 'Medicine'})`),
-        sku: medSku,
-        price: parseFloat(m.unit_price) || 0,
-        mrp: parseFloat(m.unit_price) || 0,
-        vat_pct: 0,
-        stock: parseInt(m.stock_qty || 999, 10),
-        is_medicine: true,
-        serial: null
-      }));
-      grid.appendChild(btn);
-    });
-  } catch (err) {
-    grid.innerHTML = `<div style="text-align:center; padding:15px; color:#ef4444; font-size:12px;">Server connection issue.</div>`;
-  }
-}
-window.loadPosMedicines = loadPosMedicines;
-
-function onPosMedSearchInput() {
-  clearTimeout(posMedSearchTimer);
-  posMedSearchTimer = setTimeout(() => {
-    const q = document.getElementById("posMedSearchInput")?.value.trim() || "";
-    loadPosMedicines(q);
-  }, 250);
-}
-window.onPosMedSearchInput = onPosMedSearchInput;
 
 const savedCustId = localStorage.getItem(CUSTOMER_ID_KEY);
 if (savedCustId) customerIdInput.value = savedCustId;
@@ -202,7 +110,7 @@ searchBox.addEventListener("input", () => {
   });
 
   if (!posSearchDropdown) return;
-  if (term.length < 2) {
+  if (term.length < 1) {
     posSearchDropdown.style.display = "none";
     return;
   }
@@ -214,25 +122,25 @@ searchBox.addEventListener("input", () => {
       const data = await res.json();
       const results = data.results || [];
       if (results.length === 0) {
-        posSearchDropdown.innerHTML = `<div style="padding:10px; text-align:center; color:#94a3b8; font-size:12px;">কোনো পণ্য বা ঔষধ পাওয়া যায়নি।</div>`;
+        posSearchDropdown.innerHTML = `<div style="padding:10px; text-align:center; color:#94a3b8; font-size:12px;">No matching product found.</div>`;
         posSearchDropdown.style.display = "block";
         return;
       }
 
-      let html = "";
+      let html = `<div style="padding:6px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:11px; font-weight:700; color:#475569; position:sticky; top:0;">Found ${results.length} matching item(s) — click to add to cart</div>`;
       results.forEach((item, idx) => {
         html += `
-          <div class="pos-dropdown-item" data-idx="${idx}" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
+          <div class="pos-dropdown-item" data-idx="${idx}" style="padding:8px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='white'">
             <div>
-              <span style="font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px; color:white; background:${item.badge_color || '#059669'}; margin-right:4px;">
+              <span style="font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px; color:white; background:${item.badge_color || '#0284c7'}; margin-right:4px;">
                 ${item.badge}
               </span>
               <strong style="font-size:13px; color:#0f172a;">${item.name}</strong>
-              ${item.generic_name ? `<div style="font-size:11px; color:#64748b;">${item.generic_name} ${item.manufacturer ? '· ' + item.manufacturer : ''}</div>` : ''}
+              ${item.sku ? `<span style="margin-left:6px; font-family:monospace; font-size:11px; background:#f1f5f9; color:#334155; padding:1px 5px; border-radius:4px;">SKU: ${item.sku}</span>` : ''}
             </div>
-            <div style="text-align:right;">
-              <strong style="color:#059669; font-size:13px;">৳${item.price.toFixed(2)}</strong>
-              <div style="font-size:10px; color:#64748b;">স্টক: ${item.stock_qty}</div>
+            <div style="text-align:right; flex-shrink:0; margin-left:10px;">
+              <strong style="color:#0284c7; font-size:13px;">TK ${Number(item.price || 0).toFixed(2)}</strong>
+              <div style="font-size:10px; color:#64748b;">Stock: ${item.stock_qty}</div>
             </div>
           </div>
         `;

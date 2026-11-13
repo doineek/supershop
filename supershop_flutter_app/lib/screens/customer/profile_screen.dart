@@ -15,6 +15,7 @@ import '../../widgets/location_selector_dialog.dart';
 import '../auth/login_screen.dart';
 import '../admin/admin_hub_screen.dart';
 import 'my_orders_screen.dart';
+import 'pharmacy_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -47,28 +48,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadAppVersion();
   }
 
-  Future<void> _openPharmacyPortal() async {
-    String baseUrl = ApiService.activeUrl.isNotEmpty ? ApiService.activeUrl : "https://doineek.onrender.com";
-    if (baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
-      baseUrl = "https://doineek.onrender.com";
-    }
-    String pharmacyUrl = "$baseUrl/pharmacy";
-    try {
-      final Uri uri = Uri.parse(pharmacyUrl);
-      final bool launched = await launchUrl(uri, mode: LaunchMode.inAppWebView);
-      if (!launched) {
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("ফার্মেসী সেবা খোলা যায়নি: $e"),
-            backgroundColor: Colors.red.shade700,
+  void _openPharmacyPortal() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          body: SafeArea(
+            child: PharmacyScreen(
+              onBackToHome: () => Navigator.pop(context),
+            ),
           ),
-        );
-      }
-    }
+        ),
+      ),
+    );
   }
 
   void _loadProfileData() {

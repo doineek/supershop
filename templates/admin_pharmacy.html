@@ -73,10 +73,13 @@
     </div>
   </div>
 
-  <!-- Top Navigation Tabs (Orders vs Medicines Catalog) -->
-  <div style="display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
+  <!-- Top Navigation Tabs (Orders vs POS Checkout vs Medicines Catalog) -->
+  <div style="display: flex; gap: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; flex-wrap: wrap;">
     <button id="tabBtnOrders" onclick="switchAdminTab('orders')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #059669; border-bottom: 3px solid #059669; margin-bottom: -2px;">
       📋 Prescription Orders (<span id="totalOrdersCount">{{ orders|length }}</span>)
+    </button>
+    <button id="tabBtnPosCheckout" onclick="switchAdminTab('pos')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #64748b;">
+      🛒 Pharmacy Checkout (POS)
     </button>
     <button id="tabBtnMedicines" onclick="switchAdminTab('medicines')" style="padding: 10px 20px; font-weight: 800; font-size: 1rem; border: none; background: none; cursor: pointer; color: #64748b;">
       💊 Medicine Catalog & Pricing (<span id="totalMedsCount">{{ total_medicines }}</span>)
@@ -323,6 +326,192 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ==================== TAB 3: PHARMACY POS CHECKOUT ==================== -->
+  <div id="tabContentPosCheckout" style="display: none;">
+    <style>
+      .pharm-pos-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(300px, 385px);
+        gap: 20px;
+        align-items: start;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      @media (max-width: 960px) {
+        .pharm-pos-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      .pharm-pos-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 9px 12px;
+        gap: 10px;
+        background: #ffffff;
+        border: 1.5px solid #a7f3d0;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: left;
+        box-sizing: border-box;
+        transition: all 0.15s ease;
+      }
+      .pharm-pos-row:hover {
+        border-color: #059669;
+        background: #f0fdf4;
+        box-shadow: 0 3px 8px rgba(5, 150, 105, 0.1);
+      }
+    </style>
+
+    <div class="pharm-pos-layout">
+      <!-- Left Column: Scanner / Search / Cart / Single-Line Medicines List -->
+      <div style="min-width: 0; max-width: 100%; box-sizing: border-box;">
+        <div style="position: relative; display: flex; gap: 8px; margin-bottom: 14px;">
+          <input type="text" id="pharmPosSearchBox"
+                 placeholder="Scan Medicine Barcode (Enter) or Type Name / Generic / Company / SKU..."
+                 style="flex: 1; padding: 12px 14px; font-size: 0.95rem; border-radius: 10px; border: 2px solid #059669; outline: none; background: white; font-weight: 600;">
+          <button type="button" id="pharmPosCameraBtn" onclick="openPharmBarcodeScanner()"
+                  title="Scan medicine barcode with phone/webcam camera"
+                  style="background: #f59e0b; color: #0f172a; border: none; padding: 0 16px; border-radius: 10px; font-weight: 800; font-size: 1.05rem; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+            <span>📷</span><span>Scan</span>
+          </button>
+
+          <!-- Live Search Dropdown (All Matched Medicines) -->
+          <div id="pharmPosDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 360px; overflow-y: auto; background: white; border: 2px solid #059669; border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,0.16); z-index: 9999; margin-top: 4px;"></div>
+        </div>
+
+        <!-- Lookup feedback banner -->
+        <div id="pharmPosAlert" style="display: none; padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: 0.88rem; font-weight: 700;"></div>
+
+        <!-- Pharmacy Cart Table -->
+        <div style="background: white; border-radius: 12px; border: 1.5px solid #cbd5e1; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); overflow-x: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h2 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #0f172a;">🛒 Medicine Cart Items</h2>
+            <button type="button" onclick="clearPharmPosCart()" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer;">
+              🗑️ Clear Cart
+            </button>
+          </div>
+          <table style="width: 100%; font-size: 0.88rem; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+                <th style="padding: 8px 6px;">SL</th>
+                <th style="padding: 8px 6px;">Medicine</th>
+                <th style="padding: 8px 6px; width: 110px; text-align: center;">Qty</th>
+                <th style="padding: 8px 6px; text-align: right;">Price</th>
+                <th style="padding: 8px 6px; text-align: right;">Total</th>
+                <th style="padding: 8px 6px; width: 32px;"></th>
+              </tr>
+            </thead>
+            <tbody id="pharmPosCartBody">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 22px; color: #94a3b8;">
+                  Cart is empty — scan medicine barcode, or search/click a medicine below.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Single-Row Medicines List -->
+        <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <strong style="font-size: 0.95rem; color: #047857;">💊 Select Medicine to Add (<span id="pharmPosMatchCount">0</span> shown)</strong>
+            <span style="font-size: 0.78rem; color: #64748b;">Type above to show ALL matching medicines instantly</span>
+          </div>
+          <div id="pharmPosCatalogList" style="display: flex; flex-direction: column; gap: 6px; max-height: 390px; overflow-y: auto; padding-right: 4px;">
+            <div style="text-align: center; padding: 24px; color: #64748b;">Loading medicines...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Payment Summary -->
+      <div style="background: white; border-radius: 14px; border: 2px solid #059669; padding: 20px; position: sticky; top: 18px; min-width: 0; max-width: 100%; box-sizing: border-box; box-shadow: 0 6px 18px rgba(5,150,105,0.08);">
+        <h2 style="margin: 0 0 14px 0; font-size: 1.15rem; font-weight: 800; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+          💳 Pharmacy Payment Summary
+        </h2>
+
+        <div style="background: #ecfdf5; padding: 16px; border-radius: 10px; text-align: center; margin-bottom: 16px; border: 1px solid #a7f3d0;">
+          <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 800; color: #047857; letter-spacing: 0.04em;">NET PAYABLE</div>
+          <div id="pharmPosTotal" style="font-family: monospace; font-size: 2.3rem; font-weight: 900; color: #047857; line-height: 1.15;">TK 0.00</div>
+          <div id="pharmPosSubtotalText" style="font-size: 0.8rem; color: #475569; margin-top: 4px;">Subtotal: TK 0.00</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; font-size: 0.86rem; color: #059669; font-weight: 700; margin-bottom: 12px;">
+          <span>Customer Savings (MRP Diff):</span>
+          <strong id="pharmPosSavedAmount">TK 0.00</strong>
+        </div>
+
+        <div style="margin-bottom: 10px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Extra Counter Discount (TK)</label>
+          <input type="number" min="0" step="1" id="pharmPosExtraDiscount" value="0" oninput="renderPharmPosTotals()" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 700; box-sizing: border-box;">
+        </div>
+
+        <div style="margin-bottom: 10px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Customer Name (optional)</label>
+          <input type="text" id="pharmPosCustName" placeholder="e.g. Rahim Uddin" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Customer Mobile (optional)</label>
+          <input type="tel" id="pharmPosCustMobile" inputmode="numeric" maxlength="11" placeholder="e.g. 01700000000" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; box-sizing: border-box;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Cash Received</label>
+            <input type="number" step="0.01" id="pharmPosCashInput" oninput="renderPharmPosTotals()" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Card / bKash</label>
+            <input type="number" step="0.01" id="pharmPosCardInput" oninput="renderPharmPosTotals()" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-weight: 800; font-size: 1rem; box-sizing: border-box;">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 2px dashed #cbd5e1; padding-top: 12px; margin-bottom: 16px;">
+          <span style="font-weight: 700; font-size: 0.95rem; color: #334155;">Change Due:</span>
+          <span id="pharmPosChangeDue" style="font-family: monospace; font-size: 1.35rem; font-weight: 800; color: #059669;">TK 0.00</span>
+        </div>
+
+        <button type="button" id="pharmPosCheckoutBtn" onclick="submitPharmPosCheckout()"
+                style="width: 100%; background: #059669; color: white; border: none; padding: 14px; border-radius: 10px; font-weight: 800; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span>✅</span><span>CHARGE CUSTOMER & PRINT</span>
+        </button>
+
+        <div id="pharmPosLastReceiptBox" style="display: none; margin-top: 12px; background: #f0fdf4; border: 1.5px solid #34d399; border-radius: 8px; padding: 10px; text-align: center;">
+          <div style="font-size: 0.8rem; font-weight: 700; color: #065f46; margin-bottom: 6px;" id="pharmPosLastReceiptLabel">Invoice Created!</div>
+          <a id="pharmPosLastReceiptLink" href="#" target="_blank" style="display: inline-block; background: #2563eb; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.82rem; text-decoration: none;">
+            🖨️ Open / Print Receipt
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera Barcode Scanner Modal for Pharmacy POS -->
+  <div id="pharmPosScannerModal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.92); z-index: 10050; align-items: center; justify-content: center; padding: 16px; flex-direction: column;">
+    <div style="background: #1e293b; border-radius: 16px; width: 100%; max-width: 480px; overflow: hidden; border: 1px solid #334155; box-shadow: 0 25px 50px rgba(0,0,0,0.5);">
+      <div style="background: #047857; color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong style="font-size: 1rem;">📷 Medicine Barcode Camera Scanner</strong>
+          <div id="pharmScannerStatus" style="font-size: 0.78rem; color: #d1fae5;">Point camera at medicine packet barcode</div>
+        </div>
+        <button type="button" onclick="closePharmBarcodeScanner()" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 34px; height: 34px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; font-weight: 800;">&times;</button>
+      </div>
+      <div style="position: relative; background: black; min-height: 290px; display: flex; align-items: center; justify-content: center;">
+        <div id="pharmQrReaderDiv" style="width: 100%; display: none;"></div>
+        <video id="pharmScannerVideo" autoplay playsinline muted style="width: 100%; max-height: 360px; object-fit: cover; display: block;"></video>
+        <div style="position: absolute; inset: 22% 10%; border: 2px solid #10b981; border-radius: 10px; pointer-events: none; box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);"></div>
+      </div>
+      <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <input type="text" id="pharmManualScanInput" placeholder="Or type barcode & Enter..." onkeydown="if(event.key==='Enter'){ event.preventDefault(); const v=this.value.trim(); if(v){ closePharmBarcodeScanner(); pharmPosLookupAndAdd(v); } }" style="flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: white; font-size: 0.85rem;">
+        <button type="button" onclick="flipPharmScannerCamera()" style="background: #334155; color: white; border: 1px solid #475569; padding: 8px 12px; border-radius: 8px; font-weight: 700; font-size: 0.82rem; cursor: pointer;">🔄 Flip Camera</button>
+        <button type="button" onclick="closePharmBarcodeScanner()" style="background: #dc2626; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Close</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -804,27 +993,32 @@
 
   function switchAdminTab(tab) {
     const ordersTabBtn = document.getElementById("tabBtnOrders");
+    const posTabBtn = document.getElementById("tabBtnPosCheckout");
     const medsTabBtn = document.getElementById("tabBtnMedicines");
     const ordersContent = document.getElementById("tabContentOrders");
+    const posContent = document.getElementById("tabContentPosCheckout");
     const medsContent = document.getElementById("tabContentMedicines");
 
-    if (tab === "orders") {
-      ordersTabBtn.style.color = "#059669";
-      ordersTabBtn.style.borderBottom = "3px solid #059669";
-      medsTabBtn.style.color = "#64748b";
-      medsTabBtn.style.borderBottom = "none";
-      ordersContent.style.display = "block";
-      medsContent.style.display = "none";
-    } else {
-      medsTabBtn.style.color = "#059669";
-      medsTabBtn.style.borderBottom = "3px solid #059669";
-      ordersTabBtn.style.color = "#64748b";
-      ordersTabBtn.style.borderBottom = "none";
-      medsContent.style.display = "block";
-      ordersContent.style.display = "none";
+    [ordersTabBtn, posTabBtn, medsTabBtn].forEach(b => {
+      if (b) { b.style.color = "#64748b"; b.style.borderBottom = "none"; }
+    });
+    if (ordersContent) ordersContent.style.display = "none";
+    if (posContent) posContent.style.display = "none";
+    if (medsContent) medsContent.style.display = "none";
+
+    if (tab === "pos") {
+      if (posTabBtn) { posTabBtn.style.color = "#059669"; posTabBtn.style.borderBottom = "3px solid #059669"; }
+      if (posContent) posContent.style.display = "block";
+      initPharmPosCheckout();
+    } else if (tab === "medicines") {
+      if (medsTabBtn) { medsTabBtn.style.color = "#059669"; medsTabBtn.style.borderBottom = "3px solid #059669"; }
+      if (medsContent) medsContent.style.display = "block";
       if (!adminMedsLoaded) {
         loadAdminMedsTable(1);
       }
+    } else {
+      if (ordersTabBtn) { ordersTabBtn.style.color = "#059669"; ordersTabBtn.style.borderBottom = "3px solid #059669"; }
+      if (ordersContent) ordersContent.style.display = "block";
     }
   }
 
@@ -2255,6 +2449,493 @@
 
   // Poll every 5 seconds for new pharmacy orders
   setInterval(checkLivePharmacyOrders, 5000);
+
+  // =========================================================================
+  // PHARMACY POS CHECKOUT LOGIC (Barcode Scanner + Camera + Search + Cart)
+  // =========================================================================
+  const PHARM_POS_CART_KEY = "supershop_pharm_pos_cart_v1";
+  let pharmPosCart = {};
+  let pharmPosInitialized = false;
+  let pharmPosSearchTimer = null;
+  let pharmScannerStream = null;
+  let pharmScannerActive = false;
+  let pharmScannerFacing = "environment";
+  let pharmHtml5QrInstance = null;
+
+  try {
+    const saved = localStorage.getItem(PHARM_POS_CART_KEY);
+    if (saved) pharmPosCart = JSON.parse(saved) || {};
+  } catch (e) { pharmPosCart = {}; }
+
+  function savePharmPosCart() {
+    try { localStorage.setItem(PHARM_POS_CART_KEY, JSON.stringify(pharmPosCart)); } catch (e) {}
+  }
+
+  function showPharmPosMsg(msg, isError = false) {
+    const box = document.getElementById("pharmPosAlert");
+    if (!box) return;
+    box.style.display = "block";
+    box.style.background = isError ? "#fef2f2" : "#ecfdf5";
+    box.style.color = isError ? "#b91c1c" : "#047857";
+    box.style.border = `1px solid ${isError ? '#fecaca' : '#a7f3d0'}`;
+    box.innerText = msg;
+    clearTimeout(box._t);
+    box._t = setTimeout(() => { box.style.display = "none"; }, 4000);
+  }
+
+  function playBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1100, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + 0.12);
+    } catch (e) {}
+  }
+
+  function pharmRoundWhole(amount) {
+    const frac = amount - Math.floor(amount);
+    return frac >= 0.5 ? Math.ceil(amount) : Math.floor(amount);
+  }
+
+  function initPharmPosCheckout() {
+    renderPharmPosCart();
+    if (!pharmPosInitialized) {
+      pharmPosInitialized = true;
+      loadPharmPosCatalog("");
+      const box = document.getElementById("pharmPosSearchBox");
+      const dd = document.getElementById("pharmPosDropdown");
+
+      if (box) {
+        box.addEventListener("input", () => {
+          const term = box.value.trim();
+          clearTimeout(pharmPosSearchTimer);
+          pharmPosSearchTimer = setTimeout(() => loadPharmPosCatalog(term, true), 200);
+        });
+
+        box.addEventListener("keydown", async (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const code = box.value.trim();
+          if (!code) return;
+          if (dd) dd.style.display = "none";
+          await pharmPosLookupAndAdd(code);
+        });
+      }
+
+      document.addEventListener("click", (e) => {
+        if (dd && box && !box.contains(e.target) && !dd.contains(e.target)) {
+          dd.style.display = "none";
+        }
+      });
+    }
+    setTimeout(() => { document.getElementById("pharmPosSearchBox")?.focus(); }, 100);
+  }
+
+  async function loadPharmPosCatalog(q = "", showDropdown = false) {
+    const listEl = document.getElementById("pharmPosCatalogList");
+    const countEl = document.getElementById("pharmPosMatchCount");
+    const dd = document.getElementById("pharmPosDropdown");
+    try {
+      const res = await fetch("/api/admin/pharmacy/pos/search?q=" + encodeURIComponent(q));
+      const data = await res.json();
+      const items = data.results || [];
+      if (countEl) countEl.innerText = items.length;
+
+      if (listEl) {
+        if (items.length === 0) {
+          listEl.innerHTML = `<div style="text-align:center; padding:24px; color:#94a3b8; font-size:0.88rem;">No matching medicines found.</div>`;
+        } else {
+          listEl.innerHTML = "";
+          items.forEach(m => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "pharm-pos-row";
+            const mrpBadge = (m.mrp > m.price) ? `<span style="text-decoration:line-through; color:#94a3b8; font-size:0.75rem;">TK ${m.mrp.toFixed(2)}</span>` : "";
+            btn.innerHTML = `
+              <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1; overflow:hidden; white-space:nowrap;">
+                <span style="background:#059669; color:white; font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:4px; flex-shrink:0;">💊 ${escapeHtml(m.dosage_form || 'Med')}</span>
+                <strong style="color:#0f172a; font-size:0.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.raw_name || m.name)}${m.strength ? ' (' + escapeHtml(m.strength) + ')' : ''}</strong>
+                ${m.generic_name ? `<span style="color:#64748b; font-size:0.76rem; flex-shrink:0;">[${escapeHtml(m.generic_name)}]</span>` : ''}
+                ${m.manufacturer ? `<span style="color:#64748b; font-size:0.76rem; flex-shrink:0;">• ${escapeHtml(m.manufacturer)}</span>` : ''}
+                <span style="font-family:monospace; font-weight:700; font-size:0.74rem; background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; flex-shrink:0;">SKU: ${escapeHtml(m.sku)}</span>
+                <span style="font-size:0.76rem; color:${m.stock_qty <= 0 ? '#dc2626' : '#475569'}; font-weight:700; flex-shrink:0;">Stock: ${m.stock_qty}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                <div style="text-align:right; display:flex; align-items:baseline; gap:6px;">
+                  ${mrpBadge}
+                  <strong style="font-family:monospace; font-size:0.92rem; color:#059669;">TK ${m.price.toFixed(2)}</strong>
+                </div>
+                <span style="background:${m.stock_qty > 0 ? '#059669' : '#94a3b8'}; color:white; padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:800;">
+                  ${m.stock_qty > 0 ? '+ Add' : 'Out'}
+                </span>
+              </div>
+            `;
+            btn.addEventListener("click", () => addMedToPharmPosCart(m));
+            listEl.appendChild(btn);
+          });
+        }
+      }
+
+      if (dd && showDropdown && q.trim().length > 0) {
+        if (items.length === 0) {
+          dd.innerHTML = `<div style="padding:12px; text-align:center; color:#94a3b8; font-size:0.85rem;">No matching medicines found.</div>`;
+        } else {
+          let html = `<div style="padding:6px 12px; background:#ecfdf5; border-bottom:1px solid #a7f3d0; font-size:0.75rem; font-weight:800; color:#065f46; position:sticky; top:0;">Found ${items.length} matching medicine(s)</div>`;
+          items.forEach((m, idx) => {
+            html += `
+              <div class="pharm-dd-item" data-idx="${idx}" style="padding:9px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
+                <div>
+                  <strong style="font-size:0.88rem; color:#0f172a;">${escapeHtml(m.name)}</strong>
+                  <span style="margin-left:6px; font-family:monospace; font-size:0.75rem; background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:4px;">${escapeHtml(m.sku)}</span>
+                  <div style="font-size:0.75rem; color:#64748b;">${escapeHtml(m.generic_name)} ${m.manufacturer ? '• ' + escapeHtml(m.manufacturer) : ''}</div>
+                </div>
+                <div style="text-align:right; flex-shrink:0; margin-left:10px;">
+                  <strong style="color:#059669; font-size:0.88rem;">TK ${m.price.toFixed(2)}</strong>
+                  <div style="font-size:0.72rem; color:#64748b;">Stock: ${m.stock_qty}</div>
+                </div>
+              </div>
+            `;
+          });
+          dd.innerHTML = html;
+          dd.querySelectorAll(".pharm-dd-item").forEach(el => {
+            el.addEventListener("click", () => {
+              const med = items[parseInt(el.dataset.idx, 10)];
+              if (med) {
+                addMedToPharmPosCart(med);
+                const box = document.getElementById("pharmPosSearchBox");
+                if (box) box.value = "";
+                dd.style.display = "none";
+                loadPharmPosCatalog("");
+              }
+            });
+          });
+        }
+        dd.style.display = "block";
+      } else if (dd && !q.trim()) {
+        dd.style.display = "none";
+      }
+    } catch (e) {
+      if (listEl) listEl.innerHTML = `<div style="text-align:center; padding:20px; color:#ef4444;">Failed to load medicines.</div>`;
+    }
+  }
+
+  async function pharmPosLookupAndAdd(code) {
+    try {
+      const res = await fetch("/api/admin/pharmacy/pos/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showPharmPosMsg(data.error || `Medicine not found for "${code}"`, true);
+        return;
+      }
+      addMedToPharmPosCart(data);
+      playBeep();
+      showPharmPosMsg(`Added: ${data.name} (TK ${Number(data.price).toFixed(2)})`);
+      const box = document.getElementById("pharmPosSearchBox");
+      if (box) { box.value = ""; box.focus(); }
+      loadPharmPosCatalog("");
+    } catch (e) {
+      showPharmPosMsg("Server error during lookup.", true);
+    }
+  }
+
+  function addMedToPharmPosCart(med) {
+    const stock = parseInt(med.stock_qty || 0, 10);
+    if (stock <= 0) {
+      showPharmPosMsg(`"${med.name}" is out of stock.`, true);
+      return;
+    }
+    const key = String(med.medicine_id || String(med.id).replace("med_", ""));
+    const cur = pharmPosCart[key] ? pharmPosCart[key].quantity : 0;
+    if (cur + 1 > stock) {
+      showPharmPosMsg(`Only ${stock} unit(s) available in stock for ${med.name}.`, true);
+      return;
+    }
+    if (pharmPosCart[key]) {
+      pharmPosCart[key].quantity += 1;
+    } else {
+      pharmPosCart[key] = {
+        medicine_id: parseInt(key, 10),
+        name: med.name,
+        sku: med.sku || ("MED-" + key),
+        price: parseFloat(med.price) || 0,
+        mrp: parseFloat(med.mrp) || parseFloat(med.price) || 0,
+        stock: stock,
+        quantity: 1
+      };
+    }
+    savePharmPosCart();
+    renderPharmPosCart();
+  }
+
+  function changePharmCartQty(key, deltaOrExact, isExact = false) {
+    const item = pharmPosCart[key];
+    if (!item) return;
+    let nextQty = isExact ? parseInt(deltaOrExact || 1, 10) : (item.quantity + deltaOrExact);
+    if (isNaN(nextQty) || nextQty <= 0) {
+      delete pharmPosCart[key];
+    } else if (nextQty > item.stock) {
+      showPharmPosMsg(`Only ${item.stock} available for ${item.name}.`, true);
+      item.quantity = item.stock;
+    } else {
+      item.quantity = nextQty;
+    }
+    savePharmPosCart();
+    renderPharmPosCart();
+  }
+
+  function clearPharmPosCart() {
+    pharmPosCart = {};
+    savePharmPosCart();
+    renderPharmPosCart();
+  }
+
+  function renderPharmPosCart() {
+    const tbody = document.getElementById("pharmPosCartBody");
+    if (!tbody) return;
+    const keys = Object.keys(pharmPosCart);
+    if (keys.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:22px; color:#94a3b8;">Cart is empty — scan medicine barcode, or search/click a medicine below.</td></tr>`;
+      renderPharmPosTotals();
+      return;
+    }
+
+    let html = "";
+    keys.forEach((key, idx) => {
+      const it = pharmPosCart[key];
+      const lineTotal = (it.price * it.quantity).toFixed(2);
+      html += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 6px; font-weight: 700; color: #64748b;">${idx + 1}</td>
+          <td style="padding: 8px 6px;">
+            <strong style="color: #0f172a;">${escapeHtml(it.name)}</strong>
+            <div style="font-size: 0.72rem; font-family: monospace; color: #0369a1;">SKU: ${escapeHtml(it.sku)} • Stock: ${it.stock}</div>
+          </td>
+          <td style="padding: 8px 6px; text-align: center;">
+            <div style="display: inline-flex; align-items: center; gap: 4px;">
+              <button type="button" onclick="changePharmCartQty('${key}', -1)" style="width:24px; height:24px; border:1px solid #cbd5e1; background:#f8fafc; border-radius:4px; cursor:pointer; font-weight:800;">-</button>
+              <input type="number" min="1" max="${it.stock}" value="${it.quantity}" onchange="changePharmCartQty('${key}', this.value, true)" style="width:44px; text-align:center; padding:3px; border:1px solid #cbd5e1; border-radius:4px; font-weight:700;">
+              <button type="button" onclick="changePharmCartQty('${key}', 1)" style="width:24px; height:24px; border:1px solid #cbd5e1; background:#f8fafc; border-radius:4px; cursor:pointer; font-weight:800;">+</button>
+            </div>
+          </td>
+          <td style="padding: 8px 6px; text-align: right; font-family: monospace;">${it.price.toFixed(2)}</td>
+          <td style="padding: 8px 6px; text-align: right; font-family: monospace; font-weight: 800; color: #059669;">${lineTotal}</td>
+          <td style="padding: 8px 6px; text-align: center;">
+            <button type="button" onclick="changePharmCartQty('${key}', 0, true)" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:800; font-size:1rem;">&times;</button>
+          </td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+    renderPharmPosTotals();
+  }
+
+  function renderPharmPosTotals() {
+    let subTotal = 0;
+    let mrpTotal = 0;
+    Object.values(pharmPosCart).forEach(it => {
+      subTotal += it.price * it.quantity;
+      mrpTotal += (it.mrp || it.price) * it.quantity;
+    });
+    const extraDisc = Math.max(0, parseFloat(document.getElementById("pharmPosExtraDiscount")?.value) || 0);
+    const grandTotal = Math.max(0, subTotal - extraDisc);
+    const roundedTotal = pharmRoundWhole(grandTotal);
+    const savedAmt = Math.max(0, mrpTotal - grandTotal);
+
+    const totalEl = document.getElementById("pharmPosTotal");
+    const subEl = document.getElementById("pharmPosSubtotalText");
+    const savedEl = document.getElementById("pharmPosSavedAmount");
+    if (totalEl) totalEl.innerText = `TK ${roundedTotal.toFixed(2)}`;
+    if (subEl) subEl.innerText = `Subtotal: TK ${subTotal.toFixed(2)}` + (extraDisc > 0 ? ` (Discount: -TK ${extraDisc.toFixed(2)})` : "");
+    if (savedEl) savedEl.innerText = `TK ${savedAmt.toFixed(2)}`;
+
+    const cash = parseFloat(document.getElementById("pharmPosCashInput")?.value) || 0;
+    const card = parseFloat(document.getElementById("pharmPosCardInput")?.value) || 0;
+    const tendered = cash + card;
+    const change = (cash === 0 && card === 0) ? 0 : (tendered - roundedTotal);
+    const changeEl = document.getElementById("pharmPosChangeDue");
+    if (changeEl) {
+      changeEl.innerText = `TK ${change.toFixed(2)}`;
+      changeEl.style.color = change < 0 ? "#dc2626" : "#059669";
+    }
+  }
+
+  async function submitPharmPosCheckout() {
+    const keys = Object.keys(pharmPosCart);
+    if (keys.length === 0) {
+      alert("Please add at least one medicine to cart first.");
+      return;
+    }
+
+    const items = keys.map(k => ({
+      medicine_id: pharmPosCart[k].medicine_id,
+      quantity: pharmPosCart[k].quantity
+    }));
+    const cash_amount = parseFloat(document.getElementById("pharmPosCashInput")?.value) || 0;
+    const card_amount = parseFloat(document.getElementById("pharmPosCardInput")?.value) || 0;
+    const extra_discount = parseFloat(document.getElementById("pharmPosExtraDiscount")?.value) || 0;
+    const customer_name = (document.getElementById("pharmPosCustName")?.value || "").trim();
+    const customer_mobile = (document.getElementById("pharmPosCustMobile")?.value || "").trim();
+
+    const btn = document.getElementById("pharmPosCheckoutBtn");
+    if (btn) { btn.disabled = true; btn.innerText = "Processing Sale..."; }
+
+    try {
+      const res = await fetch("/api/admin/pharmacy/pos/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items, cash_amount, card_amount, extra_discount, customer_name, customer_mobile
+        })
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) {
+        alert(d.error || "Checkout failed.");
+        return;
+      }
+
+      playBeep();
+      clearPharmPosCart();
+      document.getElementById("pharmPosCashInput").value = "";
+      document.getElementById("pharmPosCardInput").value = "";
+      document.getElementById("pharmPosExtraDiscount").value = "0";
+      renderPharmPosTotals();
+      loadPharmPosCatalog(document.getElementById("pharmPosSearchBox")?.value || "");
+
+      const rBox = document.getElementById("pharmPosLastReceiptBox");
+      const rLabel = document.getElementById("pharmPosLastReceiptLabel");
+      const rLink = document.getElementById("pharmPosLastReceiptLink");
+      if (rLabel) rLabel.innerText = `✅ Completed: ${d.invoice_number} (TK ${Number(d.rounded_total).toFixed(2)})`;
+      if (rLink) rLink.href = d.receipt_url || `/sales/${d.sale_id}`;
+      if (rBox) rBox.style.display = "block";
+
+      window.open(d.receipt_url || `/sales/${d.sale_id}`, "_blank");
+    } catch (e) {
+      alert("Network error during pharmacy checkout.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = "<span>✅</span><span>CHARGE CUSTOMER & PRINT</span>";
+      }
+    }
+  }
+
+  // Camera Barcode Scanner (Native BarcodeDetector + html5-qrcode fallback for Mobile Browsers)
+  function ensureHtml5QrScript() {
+    if (window.Html5Qrcode) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+      s.onload = () => resolve(Boolean(window.Html5Qrcode));
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  }
+
+  async function openPharmBarcodeScanner(facing = null) {
+    if (facing) pharmScannerFacing = facing;
+    const modal = document.getElementById("pharmPosScannerModal");
+    const statusEl = document.getElementById("pharmScannerStatus");
+    const videoEl = document.getElementById("pharmScannerVideo");
+    const qrDiv = document.getElementById("pharmQrReaderDiv");
+
+    await stopPharmScannerStreams();
+    if (modal) modal.style.display = "flex";
+    pharmScannerActive = true;
+
+    if ("BarcodeDetector" in window && navigator.mediaDevices?.getUserMedia) {
+      if (videoEl) videoEl.style.display = "block";
+      if (qrDiv) qrDiv.style.display = "none";
+      if (statusEl) statusEl.innerText = "Starting camera auto-barcode detector...";
+      try {
+        pharmScannerStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: pharmScannerFacing } },
+          audio: false
+        });
+        videoEl.srcObject = pharmScannerStream;
+        if (statusEl) statusEl.innerText = "Point camera at barcode (EAN-13 / Code-128 / QR)...";
+
+        const formats = ["code_128", "ean_13", "ean_8", "upc_a", "upc_e", "code_39", "qr_code"];
+        const detector = new BarcodeDetector({ formats });
+        const scanLoop = async () => {
+          if (!pharmScannerActive) return;
+          try {
+            if (videoEl.readyState >= 2) {
+              const codes = await detector.detect(videoEl);
+              if (codes && codes.length > 0 && codes[0].rawValue) {
+                const scanned = codes[0].rawValue.trim();
+                closePharmBarcodeScanner();
+                await pharmPosLookupAndAdd(scanned);
+                return;
+              }
+            }
+          } catch (e) {}
+          requestAnimationFrame(scanLoop);
+        };
+        requestAnimationFrame(scanLoop);
+        return;
+      } catch (err) {
+        if (statusEl) statusEl.innerText = "Camera fallback active or permission denied. Type code below if needed.";
+      }
+    }
+
+    // Fallback: Html5Qrcode for mobile Safari / Firefox
+    if (statusEl) statusEl.innerText = "Loading universal mobile barcode scanner...";
+    const loaded = await ensureHtml5QrScript();
+    if (loaded && window.Html5Qrcode && qrDiv && videoEl) {
+      videoEl.style.display = "none";
+      qrDiv.style.display = "block";
+      try {
+        pharmHtml5QrInstance = new Html5Qrcode("pharmQrReaderDiv");
+        await pharmHtml5QrInstance.start(
+          { facingMode: pharmScannerFacing },
+          { fps: 10, qrbox: { width: 260, height: 150 } },
+          async (decodedText) => {
+            if (!pharmScannerActive) return;
+            closePharmBarcodeScanner();
+            await pharmPosLookupAndAdd(decodedText.trim());
+          }
+        );
+        if (statusEl) statusEl.innerText = "Scanner ready — hold barcode inside frame";
+      } catch (e) {
+        if (statusEl) statusEl.innerText = "Camera blocked — type or scan barcode in input below.";
+      }
+    } else if (statusEl) {
+      statusEl.innerText = "Auto-scan unavailable in this browser — type barcode manually below.";
+    }
+  }
+
+  async function stopPharmScannerStreams() {
+    pharmScannerActive = false;
+    if (pharmScannerStream) {
+      pharmScannerStream.getTracks().forEach(t => t.stop());
+      pharmScannerStream = null;
+    }
+    if (pharmHtml5QrInstance) {
+      try { await pharmHtml5QrInstance.stop(); } catch (e) {}
+      try { pharmHtml5QrInstance.clear(); } catch (e) {}
+      pharmHtml5QrInstance = null;
+    }
+  }
+
+  function closePharmBarcodeScanner() {
+    stopPharmScannerStreams();
+    const modal = document.getElementById("pharmPosScannerModal");
+    if (modal) modal.style.display = "none";
+  }
+
+  function flipPharmScannerCamera() {
+    const next = pharmScannerFacing === "environment" ? "user" : "environment";
+    openPharmBarcodeScanner(next);
+  }
 </script>
 
 {% endblock %}

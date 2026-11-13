@@ -3614,46 +3614,9 @@ def pos_lookup():
     if not product:
         product = conn.execute("SELECT * FROM products WHERE sku = ? OR LOWER(name) = LOWER(?)", (code, code)).fetchone()
 
-    # 3. If not in regular products, check if it's a pharmacy medicine
-    if not product:
-        # Match by exact Barcode / SKU first! (e.g. Scanned Barcode from packet)
-        med_match = conn.execute(
-            "SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND (sku = ? OR UPPER(sku) = UPPER(?))",
-            (code, code)
-        ).fetchone()
-
-        if not med_match and (code.lower().startswith("med_") or code.lower().startswith("med-")):
-            try:
-                med_id = int(re.sub(r"\D", "", code))
-                med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ? AND is_active = 1", (med_id,)).fetchone()
-            except Exception:
-                med_match = None
-
-        if not med_match:
-            med_match = conn.execute("SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND (LOWER(name) = LOWER(?) OR LOWER(name) LIKE ?) ORDER BY name ASC LIMIT 1", (code, f"{code}%")).fetchone()
-
-        if med_match:
-            conn.close()
-            return jsonify({
-                "id": f"med_{med_match['id']}",
-                "medicine_id": med_match["id"],
-                "is_medicine": True,
-                "name": f"💊 {med_match['name']}" + (f" ({med_match['strength']})" if med_match["strength"] else f" ({med_match['dosage_form']})"),
-                "sku": med_match["sku"] or f"MED-{med_match['id']:05d}",
-                "price": float(med_match["unit_price"] or 0),
-                "mrp": float(med_match["unit_price"] or 0),
-                "vat_pct": 0,
-                "stock_qty": int(med_match["stock_qty"] or 999),
-                "is_offer": 0,
-                "offer_type": "",
-                "offer_value": "",
-                "offer_title": "",
-                "unit_serial": None
-            })
-
     if not product:
         conn.close()
-        return jsonify({"error": f'No product or medicine found for "{code}".'}), 404
+        return jsonify({"error": f'No product found for "{code}".'}), 404
 
     # Check if expired
     today_date = datetime.now().strftime("%Y-%m-%d")
@@ -3709,21 +3672,25 @@ def pos_lookup():
 @app.route("/api/pos/search")
 @login_required
 def api_pos_search():
-    """Unified fast search for POS: Products, Combo Packages, and Pharmacy Medicines"""
+    """Unified fast search for Shop POS: returns ALL matched Products and Combo Packages (medicines live in Pharmacy POS)."""
     q = (request.args.get("q") or "").strip()
     if not q:
         return jsonify({"results": []})
 
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    q_like = f"%{q.lower()}%"
     conn = get_connection()
     results = []
 
-    # 1. Search products (by SKU or Name)
+    # 1. Search ALL matched non-expired shop products (by SKU or Name)
     p_rows = conn.execute("""
         SELECT id, name, sku, sell_price, mrp, stock_qty, vat_pct, offer_type, offer_value, offer_title
         FROM products
-        WHERE (LOWER(name) LIKE ? OR LOWER(sku) LIKE ?) AND stock_qty > 0
-        ORDER BY name ASC LIMIT 8
-    """, (f"%{q.lower()}%", f"%{q.lower()}%")).fetchall()
+        WHERE (LOWER(name) LIKE ? OR LOWER(sku) LIKE ?)
+          AND stock_qty > 0
+          AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date > ?)
+        ORDER BY CASE WHEN LOWER(sku) = ? THEN 0 WHEN LOWER(name) LIKE ? THEN 1 ELSE 2 END, name ASC
+    """, (q_like, q_like, today_date, q.lower(), f"{q.lower()}%")).fetchall()
     for r in p_rows:
         results.append({
             "type": "product",
@@ -3741,39 +3708,13 @@ def api_pos_search():
             "offer_title": r["offer_title"] or ""
         })
 
-    # 2. Search pharmacy medicines (by Name or Generic or Barcode / SKU)
-    med_rows = conn.execute("""
-        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, strip_price, stock_qty
-        FROM pharmacy_medicines
-        WHERE is_active = 1 AND (LOWER(name) LIKE ? OR LOWER(generic_name) LIKE ? OR LOWER(sku) LIKE ?)
-        ORDER BY name ASC LIMIT 10
-    """, (f"%{q.lower()}%", f"%{q.lower()}%", f"%{q.lower()}%")).fetchall()
-    for r in med_rows:
-        results.append({
-            "type": "medicine",
-            "id": f"med_{r['id']}",
-            "medicine_id": r["id"],
-            "is_medicine": True,
-            "name": f"💊 {r['name']}" + (f" ({r['strength']})" if r["strength"] else f" ({r['dosage_form']})"),
-            "raw_name": r["name"],
-            "sku": r["sku"] or f"MED-{r['id']:05d}",
-            "price": float(r["unit_price"] or 0),
-            "mrp": float(r["unit_price"] or 0),
-            "vat_pct": 0,
-            "stock_qty": int(r["stock_qty"] or 999),
-            "badge": f"💊 {r['dosage_form'] or 'ঔষধ'}",
-            "badge_color": "#059669",
-            "generic_name": r["generic_name"] or "",
-            "manufacturer": r["manufacturer"] or ""
-        })
-
-    # 3. Search packages
+    # 2. Search ALL matched combo packages
     pkg_rows = conn.execute("""
         SELECT id, name, package_price
         FROM packages
         WHERE is_active = 1 AND LOWER(name) LIKE ?
-        ORDER BY name ASC LIMIT 4
-    """, (f"%{q.lower()}%",)).fetchall()
+        ORDER BY name ASC
+    """, (q_like,)).fetchall()
     for r in pkg_rows:
         results.append({
             "type": "package",
@@ -3825,12 +3766,9 @@ def pos():
         p_dict["combo_stock"] = max(0, min_stock)
         packages.append(p_dict)
 
-    med_row = conn.execute("SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE is_active = 1").fetchone()
-    total_medicines = med_row["c"] if med_row else 0
-
     shop_settings = get_all_settings(conn)
     conn.close()
-    return render_template("pos.html", products=all_products, packages=packages, settings=shop_settings, total_medicines=total_medicines)
+    return render_template("pos.html", products=all_products, packages=packages, settings=shop_settings)
 
 
 @app.route("/pos/checkout", methods=["POST"])
@@ -11718,7 +11656,7 @@ def pharmacy_place_order():
     conn.close()
 
     try:
-        remote_control.push_pharmacy_order_to_cloud(order_id)
+        remote_control.push_pharmacy_order_to_cloud(pharm_order_id)
     except Exception:
         pass
 
@@ -11729,6 +11667,45 @@ def pharmacy_place_order():
         "delivery_otp": delivery_otp,
         "message": "আপনার প্রেসক্রিপশন ও ওষুধ অর্ডার সফলভাবে সম্পন্ন হয়েছে! আমাদের ফার্মাসিস্ট যাচাই করে দ্রুত আপডেট জানাবেন।"
     })
+
+
+@app.route("/api/pharmacy/my-orders", methods=["GET"])
+@limiter.limit("60 per minute")
+def api_pharmacy_my_orders():
+    """Returns JSON list of pharmacy orders for a customer phone number (for mobile app & web)."""
+    raw_phone = (request.args.get("phone") or "").strip()
+    if not raw_phone:
+        return jsonify({"success": True, "orders": []})
+
+    p_clean = normalize_phone(raw_phone)
+    candidates = [p for p in dict.fromkeys([raw_phone, p_clean]) if p]
+    if not candidates:
+        return jsonify({"success": True, "orders": []})
+
+    conn = get_connection()
+    placeholders = ",".join("?" for _ in candidates)
+    rows = conn.execute(
+        f"SELECT * FROM pharmacy_orders WHERE customer_phone IN ({placeholders}) ORDER BY id DESC LIMIT 50",
+        candidates
+    ).fetchall()
+    conn.close()
+
+    orders_out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["requested_items"] = json.loads(d.get("requested_items_json") or "[]")
+        except Exception:
+            d["requested_items"] = []
+        try:
+            d["approved_items"] = json.loads(d.get("approved_items_json") or "[]")
+        except Exception:
+            d["approved_items"] = []
+        d.pop("requested_items_json", None)
+        d.pop("approved_items_json", None)
+        orders_out.append(d)
+
+    return jsonify({"success": True, "orders": orders_out})
 
 
 @app.route("/api/pharmacy/order-status/<order_number>", methods=["GET"])
@@ -12494,6 +12471,259 @@ def api_admin_pharmacy_delete_medicine(med_id):
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": "ঔষধটি সফলভাবে নিষ্ক্রিয় করা হয়েছে।"})
+
+
+def _calc_medicine_sell_price(med_row, overall_disc):
+    mrp_val = float(med_row["mrp"] or med_row["unit_price"] or 0.0)
+    if mrp_val <= 0:
+        mrp_val = float(med_row["unit_price"] or 0.0)
+    prod_disc = float(med_row["discount_percent"] or 0.0)
+    eff_disc = max(prod_disc, overall_disc)
+    if eff_disc > 0 and mrp_val > 0:
+        sell_p = round(mrp_val * (1.0 - eff_disc / 100.0), 2)
+    else:
+        sell_p = float(med_row["unit_price"] or mrp_val)
+    return round(mrp_val, 2), round(sell_p, 2), eff_disc
+
+
+def _format_pos_medicine_dict(r, overall_disc):
+    mrp_val, sell_p, eff_disc = _calc_medicine_sell_price(r, overall_disc)
+    return {
+        "type": "medicine",
+        "id": f"med_{r['id']}",
+        "medicine_id": r["id"],
+        "is_medicine": True,
+        "name": f"💊 {r['name']}" + (f" ({r['strength']})" if r["strength"] else (f" ({r['dosage_form']})" if r["dosage_form"] else "")),
+        "raw_name": r["name"],
+        "generic_name": r["generic_name"] or "",
+        "dosage_form": r["dosage_form"] or "Tablet",
+        "strength": r["strength"] or "",
+        "manufacturer": r["manufacturer"] or "",
+        "sku": r["sku"] or f"MED-{r['id']:05d}",
+        "price": sell_p,
+        "mrp": mrp_val,
+        "discount_percent": eff_disc,
+        "strip_price": float(r["strip_price"] or 0.0),
+        "strip_size": r["strip_size"] or "",
+        "stock_qty": int(r["stock_qty"] or 0),
+        "expiry_date": r["expiry_date"] or "",
+        "cost_price": float(r["cost_price"] or 0.0),
+    }
+
+
+@app.route("/api/admin/pharmacy/pos/search", methods=["GET"])
+@login_required
+def api_admin_pharmacy_pos_search():
+    """Search medicines for the Pharmacy Order POS Counter (returns ALL matched non-expired items when q is given)."""
+    q = (request.args.get("q") or "").strip()
+    today_date = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_connection()
+    shop_settings = get_all_settings(conn)
+    overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    if not q:
+        rows = conn.execute("""
+            SELECT * FROM pharmacy_medicines
+            WHERE is_active = 1
+              AND stock_qty > 0
+              AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date > ?)
+            ORDER BY stock_qty DESC, name ASC LIMIT 60
+        """, (today_date,)).fetchall()
+    else:
+        q_low = q.lower()
+        q_like = f"%{q_low}%"
+        rows = conn.execute("""
+            SELECT * FROM pharmacy_medicines
+            WHERE is_active = 1
+              AND (LOWER(name) LIKE ? OR LOWER(generic_name) LIKE ? OR LOWER(manufacturer) LIKE ? OR LOWER(sku) LIKE ?)
+            ORDER BY CASE WHEN LOWER(sku) = ? THEN 0 WHEN LOWER(name) LIKE ? THEN 1 ELSE 2 END, name ASC
+        """, (q_like, q_like, q_like, q_like, q_low, f"{q_low}%")).fetchall()
+
+    results = [_format_pos_medicine_dict(r, overall_disc) for r in rows]
+    conn.close()
+    return jsonify({"success": True, "count": len(results), "results": results})
+
+
+@app.route("/api/admin/pharmacy/pos/lookup", methods=["POST"])
+@login_required
+def api_admin_pharmacy_pos_lookup():
+    """Barcode / SKU / Name lookup specifically for Pharmacy POS Checkout."""
+    data = request.get_json(silent=True) or {}
+    code = (data.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "No barcode or medicine name provided."}), 400
+
+    conn = get_connection()
+    shop_settings = get_all_settings(conn)
+    overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+
+    med = conn.execute(
+        "SELECT * FROM pharmacy_medicines WHERE is_active = 1 AND (sku = ? OR UPPER(sku) = UPPER(?))",
+        (code, code)
+    ).fetchone()
+
+    if not med and (code.lower().startswith("med_") or code.lower().startswith("med-")):
+        try:
+            med_id = int(re.sub(r"\D", "", code))
+            med = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ? AND is_active = 1", (med_id,)).fetchone()
+        except Exception:
+            med = None
+
+    if not med:
+        med = conn.execute("""
+            SELECT * FROM pharmacy_medicines
+            WHERE is_active = 1 AND (LOWER(name) = LOWER(?) OR LOWER(name) LIKE ?)
+            ORDER BY CASE WHEN LOWER(name) = LOWER(?) THEN 0 ELSE 1 END, name ASC LIMIT 1
+        """, (code, f"{code}%", code)).fetchone()
+
+    if not med:
+        conn.close()
+        return jsonify({"error": f'No medicine found for "{code}".'}), 404
+
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    if med["expiry_date"] and med["expiry_date"] <= today_date:
+        conn.close()
+        return jsonify({"error": f'Medicine "{med["name"]}" expired on {med["expiry_date"]} and cannot be sold.'}), 400
+
+    res_obj = _format_pos_medicine_dict(med, overall_disc)
+    conn.close()
+    return jsonify(res_obj)
+
+
+@app.route("/api/admin/pharmacy/pos/checkout", methods=["POST"])
+@login_required
+def api_admin_pharmacy_pos_checkout():
+    """Complete an in-counter Pharmacy POS checkout (medicines only), deduct stock, and return receipt URL."""
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    cash_amount = float(data.get("cash_amount") or 0.0)
+    card_amount = float(data.get("card_amount") or 0.0)
+    extra_discount = max(0.0, float(data.get("extra_discount") or 0.0))
+    customer_name = (data.get("customer_name") or "").strip()
+    raw_mobile = re.sub(r"\D", "", data.get("customer_mobile") or "")
+    if raw_mobile.startswith("8801") and len(raw_mobile) == 13:
+        raw_mobile = raw_mobile[2:]
+    customer_mobile = raw_mobile
+
+    if not items:
+        return jsonify({"error": "Cart is empty."}), 400
+
+    conn = get_connection()
+    cur = conn.cursor()
+    shop_settings = get_all_settings(conn)
+    overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
+    today_date = datetime.now().strftime("%Y-%m-%d")
+
+    sub_total = 0.0
+    mrp_total = 0.0
+    line_details = []
+
+    for item in items:
+        raw_id = item.get("medicine_id") or item.get("id") or ""
+        try:
+            med_id = int(str(raw_id).replace("med_", ""))
+        except Exception:
+            conn.close()
+            return jsonify({"error": "Invalid medicine item in cart."}), 400
+
+        med = cur.execute("SELECT * FROM pharmacy_medicines WHERE id = ? AND is_active = 1", (med_id,)).fetchone()
+        if not med:
+            conn.close()
+            return jsonify({"error": "A selected medicine no longer exists."}), 400
+
+        if med["expiry_date"] and med["expiry_date"] <= today_date:
+            conn.close()
+            return jsonify({"error": f'Medicine "{med["name"]}" expired on {med["expiry_date"]}.'}), 400
+
+        quantity = max(1, int(item.get("quantity") or 1))
+        if med["stock_qty"] is not None and int(med["stock_qty"]) < quantity:
+            conn.close()
+            return jsonify({"error": f'Not enough stock for "{med["name"]}" ({med["stock_qty"]} available, {quantity} requested).'}), 400
+
+        mrp_val, sell_p, _ = _calc_medicine_sell_price(med, overall_disc)
+        line_subtotal = round(sell_p * quantity, 2)
+        sub_total += line_subtotal
+        mrp_total += round(mrp_val * quantity, 2)
+        line_details.append({
+            "medicine_id": med_id,
+            "medicine_name": med["name"],
+            "medicine_strength": med["strength"] or med["dosage_form"] or "",
+            "quantity": quantity,
+            "unit_price": sell_p,
+            "mrp_price": mrp_val,
+            "cost_price": float(med["cost_price"] or 0.0),
+        })
+
+    grand_total = max(0.0, sub_total - extra_discount)
+    rounded_total = round_to_whole(grand_total)
+    saved_amount = round(max(0.0, mrp_total - grand_total), 2)
+
+    if cash_amount == 0 and card_amount == 0:
+        cash_amount = rounded_total
+        change_amount = 0.0
+    else:
+        change_amount = round((cash_amount + card_amount) - rounded_total, 2)
+        if change_amount < 0:
+            conn.close()
+            return jsonify({"error": f"Amount tendered is short by {abs(change_amount):.2f}."}), 400
+
+    invoice_number = generate_invoice_number()
+    invoice_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
+        existing_cust = cur.execute("SELECT id, name FROM customer_users WHERE phone = ?", (customer_mobile,)).fetchone()
+        if not existing_cust:
+            pass_hash = generate_password_hash("123456")
+            name_to_use = customer_name if customer_name else f"Customer {customer_mobile[-4:]}"
+            cur.execute("""
+                INSERT INTO customer_users (phone, name, email, password_hash, plain_password, is_verified, created_at)
+                VALUES (?, ?, '', ?, '123456', 1, ?)
+            """, (customer_mobile, name_to_use, pass_hash, datetime.now().isoformat()))
+        elif customer_name and (not existing_cust["name"] or existing_cust["name"].startswith("Customer ")):
+            cur.execute("UPDATE customer_users SET name = ? WHERE phone = ?", (customer_name, customer_mobile))
+
+    cur.execute("""
+        INSERT INTO sales (invoice_number, invoice_date, cashier_id, customer_id, customer_name, customer_mobile, channel,
+                           total_amount, rounded_total, vat_amount, saved_amount,
+                           cash_amount, card_amount, change_amount, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'Pharmacy POS', ?, ?, 0, ?, ?, ?, ?, ?)
+    """, (
+        invoice_number, invoice_date, session.get("user_id", 1), customer_name, customer_name, customer_mobile,
+        round(sub_total, 2), rounded_total, saved_amount,
+        cash_amount, card_amount, change_amount, datetime.now().isoformat()
+    ))
+    sale_id = cur.lastrowid
+
+    first_p = cur.execute("SELECT id FROM products LIMIT 1").fetchone()
+    fk_pid = first_p["id"] if first_p else 1
+    for ld in line_details:
+        cur.execute("UPDATE pharmacy_medicines SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?", (ld["quantity"], ld["medicine_id"]))
+        med_title = f"💊 {ld['medicine_name']}" + (f" ({ld['medicine_strength']})" if ld["medicine_strength"] else "")
+        cur.execute("""
+            INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, mrp_price, vat_pct, vat_amount, cost_price, unit_serials)
+            VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
+        """, (sale_id, fk_pid, ld["quantity"], ld["unit_price"], ld["mrp_price"], ld["cost_price"], med_title))
+
+    conn.commit()
+    conn.close()
+
+    try:
+        remote_control.push_sale_to_cloud(sale_id)
+        if customer_mobile and len(customer_mobile) == 11 and customer_mobile.startswith("01"):
+            remote_control.push_customer_user_to_cloud(customer_mobile)
+    except Exception:
+        pass
+
+    return jsonify({
+        "success": True,
+        "sale_id": sale_id,
+        "invoice_number": invoice_number,
+        "receipt_url": f"/sales/{sale_id}",
+        "sub_total": round(sub_total, 2),
+        "rounded_total": rounded_total,
+        "change_amount": change_amount,
+    })
 
 
 if __name__ == "__main__":

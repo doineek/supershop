@@ -1269,8 +1269,19 @@
           notice.classList.add("hidden");
         };
       } catch (err) {
-        alert("ক্যামেরা চালু করা সম্ভব হয়নি। ক্যামেরার অনুমতি (Permission) চেক করুন অথবা ফাইল আপলোড অপশনটি ব্যবহার করুন।");
-        closeLaptopWebcamModal();
+        notice.classList.remove("hidden");
+        notice.innerHTML = `
+          <div class="flex flex-col items-center gap-2 p-2 text-center">
+            <span class="text-xs text-amber-200 font-semibold">লাইভ প্রিভিউ চালু করা যায়নি — নিচের বাটনে চাপ দিয়ে সরাসরি ফোনের ক্যামেরা ওপেন করুন</span>
+            <label for="rxCameraInput" onclick="setTimeout(closeLaptopWebcamModal, 200)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold cursor-pointer shadow">
+              📷 ফোনের ক্যামেরা চালু করুন
+            </label>
+          </div>
+        `;
+        const fallbackInput = $("rxCameraInput") || $("rxFileInput");
+        if (fallbackInput) {
+          try { fallbackInput.click(); } catch (_clickErr) {}
+        }
       }
     }
 

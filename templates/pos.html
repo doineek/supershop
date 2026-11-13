@@ -8,10 +8,10 @@
   
   <div class="left-panel" style="min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box;">
     <div class="pos-search" style="position:relative; display:flex; gap:8px; margin-bottom:14px;">
-      <input type="text" id="searchBox" placeholder="Scan Barcode (Enter) or Search Product/Medicine/SKU..." style="flex:1; padding:12px; font-size:15px; border-radius:8px; border:1.5px solid var(--line);">
+      <input type="text" id="searchBox" placeholder="Scan Barcode (Enter) or Search Product / Combo / SKU..." style="flex:1; padding:12px; font-size:15px; border-radius:8px; border:1.5px solid var(--line);">
       <button class="btn btn-gold" id="cameraBtn" title="Scan with camera">📷</button>
-      <!-- Autocomplete Dropdown for Products & Medicines -->
-      <div id="posSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:calc(100% - 50px); max-height:300px; overflow-y:auto; background:white; border:1.5px solid #059669; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.15); z-index:9999; margin-top:4px;"></div>
+      <!-- Autocomplete Dropdown for Products & Combo Packages -->
+      <div id="posSearchDropdown" style="display:none; position:absolute; top:100%; left:0; width:calc(100% - 50px); max-height:380px; overflow-y:auto; background:white; border:1.5px solid #0284c7; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.15); z-index:9999; margin-top:4px;"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px; padding:16px;">
@@ -81,14 +81,6 @@
         border-color: #ea580c;
         background: #fff7ed;
       }
-      .pos-row-item.pos-medicine-btn {
-        border-color: #a7f3d0;
-        background: #ffffff;
-      }
-      .pos-row-item.pos-medicine-btn:hover {
-        border-color: #059669;
-        background: #f0fdf4;
-      }
     </style>
 
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -98,9 +90,6 @@
         </button>
         <button type="button" id="posTabPackages" onclick="switchPosCatalog('packages')" style="padding:6px 14px; border-radius:6px; border:1px solid #ea580c; background:#fff7ed; color:#ea580c; font-weight:700; font-size:13px; cursor:pointer;">
           🎁 Combo Packages ({{ packages|length }})
-        </button>
-        <button type="button" id="posTabMedicines" onclick="switchPosCatalog('medicines')" style="padding:6px 14px; border-radius:6px; border:1px solid #059669; background:#ecfdf5; color:#047857; font-weight:700; font-size:13px; cursor:pointer;">
-          💊 Pharmacy / Medicines ({{ total_medicines }})
         </button>
       </div>
     </div>
@@ -190,18 +179,6 @@
       </button>
       {% endfor %}
     </div>
-
-    <!-- Pharmacy Medicines List (Row View) -->
-    <div class="pos-medicine-list pos-catalog-panel" id="medicineList">
-      <div style="display:flex; gap:8px; margin-bottom:8px;">
-        <input type="text" id="posMedSearchInput" oninput="onPosMedSearchInput()" placeholder="Search medicines by name, generic, company or SKU..." style="flex:1; padding:8px 12px; border:1.5px solid #059669; border-radius:6px; font-size:13px; outline:none;">
-      </div>
-      <div id="posMedGrid" style="display:flex; flex-direction:column; gap:6px; overflow-y:auto; max-height:330px; padding-right:4px;">
-        <div style="text-align:center; padding:20px; color:#64748b; font-size:13px;">
-          Loading medicines...
-        </div>
-      </div>
-    </div>
   </div>
 
   <div class="cart-panel card" style="position:sticky; top:20px; padding:20px; background:#fff; border:2px solid var(--green); min-width:0; max-width:100%; box-sizing:border-box;">
@@ -256,20 +233,16 @@
   function switchPosCatalog(tab) {
     var prodList = document.getElementById("productList");
     var pkgList = document.getElementById("packageList");
-    var medList = document.getElementById("medicineList");
     var tabProdBtn = document.getElementById("posTabProducts");
     var tabPkgBtn = document.getElementById("posTabPackages");
-    var tabMedBtn = document.getElementById("posTabMedicines");
 
-    // Hide all 3 panels cleanly
+    // Hide panels cleanly
     if (prodList) { prodList.classList.remove("active"); prodList.style.display = "none"; }
     if (pkgList) { pkgList.classList.remove("active"); pkgList.style.display = "none"; }
-    if (medList) { medList.classList.remove("active"); medList.style.display = "none"; }
 
     // Reset button appearances
     if (tabProdBtn) { tabProdBtn.style.background = "#f1f5f9"; tabProdBtn.style.color = "#475569"; tabProdBtn.style.borderColor = "#cbd5e1"; }
     if (tabPkgBtn) { tabPkgBtn.style.background = "#fff7ed"; tabPkgBtn.style.color = "#ea580c"; tabPkgBtn.style.borderColor = "#fed7aa"; }
-    if (tabMedBtn) { tabMedBtn.style.background = "#ecfdf5"; tabMedBtn.style.color = "#047857"; tabMedBtn.style.borderColor = "#a7f3d0"; }
 
     if (tab === "packages") {
       if (pkgList) {
@@ -278,15 +251,6 @@
         pkgList.querySelectorAll(".pos-product").forEach(function(btn) { btn.style.display = ""; });
       }
       if (tabPkgBtn) { tabPkgBtn.style.background = "#ea580c"; tabPkgBtn.style.color = "#ffffff"; tabPkgBtn.style.borderColor = "#ea580c"; }
-    } else if (tab === "medicines") {
-      if (medList) {
-        medList.classList.add("active");
-        medList.style.display = "flex";
-      }
-      if (tabMedBtn) { tabMedBtn.style.background = "#059669"; tabMedBtn.style.color = "#ffffff"; tabMedBtn.style.borderColor = "#059669"; }
-      if (typeof window.loadPosMedicines === "function") {
-        window.loadPosMedicines("");
-      }
     } else {
       if (prodList) {
         prodList.classList.add("active");
@@ -298,5 +262,5 @@
   }
   window.switchPosCatalog = switchPosCatalog;
 </script>
-<script src="{{ url_for('static', filename='js/pos.js') }}?v=20261111_v3"></script>
+<script src="{{ url_for('static', filename='js/pos.js') }}?v=20261113_v4"></script>
 {% endblock %}

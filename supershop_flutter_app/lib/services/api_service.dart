@@ -681,4 +681,125 @@ class ApiService {
     }
     return {'success': false, 'message': 'Network error'};
   }
+
+  static Future<List<dynamic>> fetchPharmacySubstitutes({
+    required String genericName,
+    int excludeId = 0,
+  }) async {
+    try {
+      final path =
+          '/api/pharmacy/substitutes?generic_name=${Uri.encodeComponent(genericName)}&exclude_id=$excludeId';
+      final res = await httpGet(path, timeout: const Duration(seconds: 10));
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map && data['substitutes'] is List) {
+          return data['substitutes'] as List<dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching pharmacy substitutes: $e");
+    }
+    return [];
+  }
+
+  static Future<List<dynamic>> fetchMyPharmacyOrders(String phone) async {
+    try {
+      if (phone.trim().isEmpty) return [];
+      final path = '/api/pharmacy/my-orders?phone=${Uri.encodeComponent(phone.trim())}';
+      final res = await httpGet(path, timeout: const Duration(seconds: 12));
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map && data['orders'] is List) {
+          return data['orders'] as List<dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching pharmacy orders: $e");
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>?> fetchPharmacyOrderStatus(String orderNumber) async {
+    try {
+      final res = await httpGet(
+        '/api/pharmacy/order-status/${Uri.encodeComponent(orderNumber)}',
+        timeout: const Duration(seconds: 10),
+      );
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (e) {
+      debugPrint("Error fetching pharmacy order status: $e");
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> placePharmacyOrder({
+    required String customerName,
+    required String customerPhone,
+    required String customerEmail,
+    required String district,
+    required String area,
+    required String deliveryAddress,
+    required int overallDurationDays,
+    required String customerNotes,
+    String? prescriptionBase64,
+    List<Map<String, dynamic>> items = const [],
+  }) async {
+    final String determinedType =
+        (prescriptionBase64 != null && prescriptionBase64.isNotEmpty && items.isNotEmpty)
+            ? 'both'
+            : (prescriptionBase64 != null && prescriptionBase64.isNotEmpty)
+                ? 'prescription_only'
+                : 'medicines_only';
+
+    final payloadMap = <String, dynamic>{
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'customer_email': customerEmail,
+      'district': district,
+      'area': area,
+      'delivery_address': deliveryAddress,
+      'order_type': determinedType,
+      'overall_duration_days': overallDurationDays,
+      'customer_notes': customerNotes,
+      'items': items,
+    };
+    if (prescriptionBase64 != null && prescriptionBase64.isNotEmpty) {
+      payloadMap['prescription_base64'] = prescriptionBase64;
+      payloadMap['prescription_original_base64'] = prescriptionBase64;
+    }
+
+    final payload = jsonEncode(payloadMap);
+    final List<String> urlsToTry = _activeUrl.isNotEmpty
+        ? [_activeUrl, ...candidateUrls.where((u) => u != _activeUrl)]
+        : candidateUrls;
+
+    for (final serverUrl in urlsToTry) {
+      try {
+        final res = await http
+            .post(
+              Uri.parse('$serverUrl/pharmacy/order'),
+              headers: {'Content-Type': 'application/json'},
+              body: payload,
+            )
+            .timeout(const Duration(seconds: 25));
+
+        final bodyTrim = res.body.trim();
+        if (bodyTrim.startsWith('{')) {
+          _activeUrl = serverUrl;
+          final parsed = jsonDecode(bodyTrim);
+          if (parsed is Map<String, dynamic>) {
+            return parsed;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return {
+      'success': false,
+      'message': 'সার্ভারের সাথে সংযোগ স্থাপন করা যাচ্ছে না। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করুন।',
+    };
+  }
 }
