@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
+import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../customer/home_screen.dart';
@@ -383,6 +385,12 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
       await prefs.setBool('is_logged_in', true);
+
+      if (!mounted) return;
+      if (!_isDeliveryMan) {
+        await Provider.of<CartProvider>(context, listen: false)
+            .onCustomerSessionChanged(phone: phoneKey);
+      }
 
       if (!mounted) return;
 

@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
 
@@ -121,6 +124,217 @@ class CartProvider extends ChangeNotifier {
 
   CartProvider() {
     refreshDeliveryCharge();
+    _initPersistenceAndSync();
+  }
+
+  String _activeCustomerPhone = '';
+  String _lastSyncedServerTs = '';
+  DateTime _lastLocalMutationAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _cartSyncTimer;
+  Timer? _pushDebounceTimer;
+  bool _isSyncing = false;
+
+  Future<void> _initPersistenceAndSync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedPhone = (prefs.getString('user_phone') ?? '').trim();
+      final isDeliveryMan = prefs.getBool('is_delivery_man') ?? false;
+      if (!isDeliveryMan) {
+        _activeCustomerPhone = savedPhone;
+      }
+      _lastSyncedServerTs = prefs.getString('cart_sync_ts_$_activeCustomerPhone') ?? '';
+      final rawCart = prefs.getString('local_cart_items') ?? '';
+      if (rawCart.isNotEmpty && _items.isEmpty) {
+        final decoded = jsonDecode(rawCart);
+        if (decoded is List) {
+          for (final entry in decoded) {
+            if (entry is Map) {
+              _items.add(_cartItemFromMap(Map<String, dynamic>.from(entry)));
+            }
+          }
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
+    if (_activeCustomerPhone.isNotEmpty) {
+      await syncWithServer();
+      _startPeriodicSync();
+    }
+  }
+
+  void _startPeriodicSync() {
+    _cartSyncTimer?.cancel();
+    if (_activeCustomerPhone.isEmpty) return;
+    _cartSyncTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      syncWithServer();
+    });
+  }
+
+  Future<void> onCustomerSessionChanged({String? phone}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDeliveryMan = prefs.getBool('is_delivery_man') ?? false;
+    final nextPhone = isDeliveryMan ? '' : (phone ?? prefs.getString('user_phone') ?? '').trim();
+    if (nextPhone == _activeCustomerPhone) {
+      if (nextPhone.isNotEmpty) {
+        await syncWithServer();
+        _startPeriodicSync();
+      }
+      return;
+    }
+    _activeCustomerPhone = nextPhone;
+    _lastSyncedServerTs = nextPhone.isNotEmpty
+        ? (prefs.getString('cart_sync_ts_$nextPhone') ?? '')
+        : '';
+    if (nextPhone.isEmpty) {
+      _cartSyncTimer?.cancel();
+      _pushDebounceTimer?.cancel();
+    } else {
+      await syncWithServer();
+      _startPeriodicSync();
+    }
+  }
+
+  static int _toInt(dynamic v, [int fb = 0]) {
+    if (v == null) return fb;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? fb;
+  }
+
+  static double _toDouble(dynamic v, [double fb = 0.0]) {
+    if (v == null) return fb;
+    if (v is double) return v;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? fb;
+  }
+
+  CartItem _cartItemFromMap(Map<String, dynamic> m) {
+    final bool isPkg = m['is_package'] == true || m['package_id'] != null;
+    final int rawId = _toInt(m['product_id'] ?? m['id']);
+    final int? pkgId = m['package_id'] != null ? _toInt(m['package_id']).abs() : (isPkg ? rawId.abs() : null);
+    final int prodId = isPkg ? -(pkgId ?? rawId.abs()).abs() : rawId;
+    final double price = _toDouble(m['price'] ?? m['sell_price'] ?? m['unit_price']);
+    final double mrp = _toDouble(m['mrp'], price);
+    final int stock = _toInt(m['stock_qty'], 99);
+    final int qty = _toInt(m['quantity'], 1);
+
+    final product = Product(
+      id: prodId,
+      packageId: pkgId,
+      sku: (m['sku'] ?? '').toString(),
+      name: (m['name'] ?? m['product_name'] ?? 'Item').toString(),
+      mrp: mrp > 0 ? mrp : price,
+      sellPrice: price,
+      stockQty: stock,
+      imageUrl: (m['image_url'] ?? m['img'] ?? '').toString(),
+      offerTitle: (m['offer_title'] ?? '').toString(),
+      offerType: (m['offer_type'] ?? '').toString(),
+      offerValue: (m['offer_value'] ?? '').toString(),
+      offerBase: (m['offer_base'] ?? 'mrp').toString(),
+    );
+    return CartItem(product: product, quantity: qty > 0 ? qty : 1);
+  }
+
+  List<Map<String, dynamic>> _serializeItems() {
+    return _items.map((it) {
+      final p = it.product;
+      final bool isPkg = p.isPackage;
+      final int? pkgId = p.packageId ?? (isPkg ? p.id.abs() : null);
+      return {
+        'id': isPkg ? -(pkgId ?? p.id.abs()) : p.id,
+        'product_id': isPkg ? -(pkgId ?? p.id.abs()) : p.id,
+        'package_id': pkgId,
+        'is_package': isPkg,
+        'sku': p.sku,
+        'name': p.name,
+        'price': p.sellPrice,
+        'mrp': p.mrp,
+        'quantity': it.quantity,
+        'stock_qty': p.stockQty,
+        'image_url': p.imageUrl,
+        'offer_type': p.offerType,
+        'offer_value': p.offerValue,
+        'offer_title': p.offerTitle,
+        'offer_base': p.offerBase,
+      };
+    }).toList();
+  }
+
+  Future<void> _saveLocalOnly() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('local_cart_items', jsonEncode(_serializeItems()));
+    } catch (_) {}
+  }
+
+  void _schedulePushToServer({bool immediate = false}) {
+    _lastLocalMutationAt = DateTime.now();
+    _saveLocalOnly();
+    if (_activeCustomerPhone.isEmpty) return;
+    _pushDebounceTimer?.cancel();
+    if (immediate) {
+      _pushToServerNow();
+    } else {
+      _pushDebounceTimer = Timer(const Duration(milliseconds: 150), _pushToServerNow);
+    }
+  }
+
+  Future<void> _pushToServerNow() async {
+    if (_activeCustomerPhone.isEmpty) return;
+    try {
+      final payload = _serializeItems();
+      final res = await ApiService.syncServerCart(_activeCustomerPhone, payload);
+      if (res != null && res['success'] == true) {
+        final ts = (res['updated_at'] ?? '').toString();
+        if (ts.isNotEmpty) {
+          _lastSyncedServerTs = ts;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cart_sync_ts_$_activeCustomerPhone', ts);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> syncWithServer() async {
+    if (_activeCustomerPhone.isEmpty || _isSyncing) return;
+    if (DateTime.now().difference(_lastLocalMutationAt).inMilliseconds < 1500) return;
+    _isSyncing = true;
+    try {
+      final data = await ApiService.fetchServerCart(_activeCustomerPhone);
+      if (data == null || data['success'] != true) return;
+      final String serverTs = (data['updated_at'] ?? '').toString();
+      final List<dynamic> serverItems = data['items'] as List<dynamic>? ?? [];
+
+      if (serverTs.isEmpty && _items.isNotEmpty) {
+        // First time syncing while app already holds local items
+        await _pushToServerNow();
+        return;
+      }
+
+      if (serverTs.isNotEmpty && serverTs != _lastSyncedServerTs) {
+        // Only apply server snapshot if another local edit did not start mid-request
+        if (DateTime.now().difference(_lastLocalMutationAt).inMilliseconds >= 1200) {
+          _items
+            ..clear()
+            ..addAll(serverItems.whereType<Map>().map((e) => _cartItemFromMap(Map<String, dynamic>.from(e))));
+          _lastSyncedServerTs = serverTs;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cart_sync_ts_$_activeCustomerPhone', serverTs);
+          await _saveLocalOnly();
+          notifyListeners();
+        }
+      }
+    } catch (_) {
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _cartSyncTimer?.cancel();
+    _pushDebounceTimer?.cancel();
+    super.dispose();
   }
 
   void refreshDeliveryCharge() async {
@@ -203,6 +417,7 @@ class CartProvider extends ChangeNotifier {
       _items.add(CartItem(product: product));
     }
     notifyListeners();
+    _schedulePushToServer();
     return true;
   }
 
@@ -218,6 +433,7 @@ class CartProvider extends ChangeNotifier {
       if (quantity <= 0) {
         _items.removeAt(index);
         notifyListeners();
+        _schedulePushToServer();
         return true;
       } else {
         final prod = _items[index].product;
@@ -236,14 +452,20 @@ class CartProvider extends ChangeNotifier {
         }
         _items[index].quantity = quantity;
         notifyListeners();
+        _schedulePushToServer();
         return true;
       }
     }
     return false;
   }
 
-  void clearCart() {
+  void clearCart({bool syncToServer = true}) {
     _items.clear();
     notifyListeners();
+    if (syncToServer) {
+      _schedulePushToServer(immediate: true);
+    } else {
+      _saveLocalOnly();
+    }
   }
 }

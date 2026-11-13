@@ -1,7 +1,6 @@
 import '../../widgets/quantity_limit_dialog.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
@@ -180,7 +179,9 @@ class _CartScreenState extends State<CartScreen> {
     super.initState();
     _loadUserData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<CartProvider>(context, listen: false).refreshDeliveryCharge();
+      final cartProv = Provider.of<CartProvider>(context, listen: false);
+      cartProv.refreshDeliveryCharge();
+      cartProv.onCustomerSessionChanged();
     });
   }
 
@@ -291,15 +292,9 @@ class _CartScreenState extends State<CartScreen> {
     }
 
     String savedName = prefs.getString('user_name') ?? '';
-    String custName = _nameController.text.trim().isNotEmpty 
-        ? _nameController.text.trim() 
-        : (savedName.isNotEmpty ? savedName : 'Customer User');
+    String custName = savedName.trim().isNotEmpty ? savedName.trim() : 'Customer User';
 
-    String custPhone = _phoneController.text.trim().isNotEmpty
-        ? _phoneController.text.trim()
-        : savedPhone;
-
-    custPhone = custPhone.replaceAll(RegExp(r'[^\d+]'), '');
+    String custPhone = savedPhone.replaceAll(RegExp(r'[^\d+]'), '');
     if (custPhone.startsWith('+88')) {
       custPhone = custPhone.substring(3);
     } else if (custPhone.startsWith('88') && custPhone.length == 13) {
@@ -309,7 +304,7 @@ class _CartScreenState extends State<CartScreen> {
     if (custPhone.isEmpty || custPhone.length != 11 || !custPhone.startsWith('01')) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Mobile number must start with '01' and be exactly 11 digits (e.g. 01700000000). Current: '$custPhone'"),
+          content: Text("Please sign in with a valid 11-digit mobile number starting with '01'. Current: '$custPhone'"),
           backgroundColor: Colors.red,
         ),
       );
@@ -685,36 +680,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Customer Details
-                  TextField(
-                    controller: _nameController,
-                    decoration: InputDecoration(
-                      labelText: loc.translate('name'),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    maxLength: 11,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(11),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: loc.translate('phone_number'),
-                      hintText: "01700000000",
-                      counterText: "",
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Payment Method Options
+                  // Payment Method Options (Logged-in account name & mobile used automatically)
                   Text(loc.translate('payment_method'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
 

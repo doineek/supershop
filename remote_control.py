@@ -216,6 +216,56 @@ def push_notification_to_cloud(notif_dict):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def push_customer_cart_to_cloud(phone, items_json, updated_at):
+    """Mirror a customer's synced shopping cart to Firestore in background."""
+    if not phone:
+        return
+    def _worker():
+        try:
+            db = _init_firebase()
+            if not db:
+                return
+            db.collection("customer_carts").document(str(phone)).set({
+                "customer_phone": str(phone),
+                "items_json": str(items_json or "[]"),
+                "updated_at": str(updated_at or datetime.now().isoformat()),
+            })
+        except Exception as e:
+            print(f"[remote_control] push_customer_cart_to_cloud failed: {e}")
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _on_customer_carts_change(doc_snapshots, changes, read_time):
+    """Live listener syncing `customer_carts` collection across servers."""
+    def _do():
+        conn = get_connection()
+        try:
+            for change in changes:
+                doc = change.document
+                phone = doc.id
+                if change.type.name == "REMOVED":
+                    conn.execute("DELETE FROM customer_carts WHERE customer_phone = ?", (phone,))
+                    continue
+                data = doc.to_dict() or {}
+                items_json = str(data.get("items_json") or "[]")
+                updated_at = str(data.get("updated_at") or "")
+                existing = conn.execute(
+                    "SELECT updated_at FROM customer_carts WHERE customer_phone = ?", (phone,)
+                ).fetchone()
+                if not existing or updated_at >= (existing["updated_at"] or ""):
+                    conn.execute(
+                        "INSERT OR REPLACE INTO customer_carts (customer_phone, items_json, updated_at) VALUES (?, ?, ?)",
+                        (phone, items_json, updated_at)
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        execute_with_retry(_do)
+    except Exception as e:
+        print(f"[remote_control] customer_carts sync failed: {e}")
+
+
 
 def _worker_push_product(product_id):
     try:
@@ -2358,6 +2408,7 @@ def start():
         db.collection("settings").on_snapshot(_on_shop_settings_change)
         db.collection("config").document("delivery_areas").on_snapshot(_on_delivery_areas_change)
         db.collection("vouchers").on_snapshot(_on_vouchers_change)
+        db.collection("customer_carts").on_snapshot(_on_customer_carts_change)
 
         threading.Thread(target=_safety_net_loop, daemon=True).start()
         print("[remote_control] [OK] Firebase real-time two-way sync & remote control started successfully.", flush=True)

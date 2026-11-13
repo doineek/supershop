@@ -1,3 +1,29 @@
+int _asInt(dynamic v, [int fallback = 0]) {
+  if (v == null) return fallback;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString()) ?? double.tryParse(v.toString())?.toInt() ?? fallback;
+}
+
+double _asDouble(dynamic v, [double fallback = 0.0]) {
+  if (v == null) return fallback;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString()) ?? fallback;
+}
+
+bool _asBool(dynamic v, [bool fallback = false]) {
+  if (v == null) return fallback;
+  if (v is bool) return v;
+  final s = v.toString().toLowerCase();
+  return s == 'true' || s == '1';
+}
+
+String _asStr(dynamic v, [String fallback = '']) {
+  if (v == null) return fallback;
+  return v.toString();
+}
+
 class OrderItem {
   final int id;
   final int productId;
@@ -19,13 +45,13 @@ class OrderItem {
 
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(
-      id: json['id'] ?? 0,
-      productId: json['product_id'] ?? 0,
-      productName: json['product_name'] ?? '',
-      unitPrice: (json['unit_price'] ?? 0).toDouble(),
-      mrpPrice: (json['mrp_price'] ?? 0).toDouble(),
-      quantity: json['quantity'] ?? 1,
-      totalPrice: (json['total_price'] ?? 0).toDouble(),
+      id: _asInt(json['id']),
+      productId: _asInt(json['product_id']),
+      productName: _asStr(json['product_name']),
+      unitPrice: _asDouble(json['unit_price']),
+      mrpPrice: _asDouble(json['mrp_price']),
+      quantity: _asInt(json['quantity'], 1),
+      totalPrice: _asDouble(json['total_price']),
     );
   }
 }
@@ -49,12 +75,12 @@ class OrderTimelineStep {
 
   factory OrderTimelineStep.fromJson(Map<String, dynamic> json) {
     return OrderTimelineStep(
-      stage: json['stage'] ?? json['key'] ?? '',
-      title: json['title'] ?? '',
-      time: json['time'] ?? '',
-      timeBd: json['time_bd'] ?? json['time_formatted'] ?? '',
-      done: json['done'] ?? json['is_done'] ?? false,
-      active: json['active'] ?? json['is_current'] ?? false,
+      stage: _asStr(json['stage'] ?? json['key']),
+      title: _asStr(json['title']),
+      time: _asStr(json['time']),
+      timeBd: _asStr(json['time_bd'] ?? json['time_formatted']),
+      done: _asBool(json['done'] ?? json['is_done']),
+      active: _asBool(json['active'] ?? json['is_current']),
     );
   }
 }
@@ -120,37 +146,43 @@ class OnlineOrder {
 
   factory OnlineOrder.fromJson(Map<String, dynamic> json) {
     var rawItems = json['items'] as List? ?? [];
-    List<OrderItem> itemList = rawItems.map((i) => OrderItem.fromJson(i)).toList();
+    List<OrderItem> itemList = rawItems
+        .whereType<Map>()
+        .map((i) => OrderItem.fromJson(Map<String, dynamic>.from(i)))
+        .toList();
 
     var rawTimeline = json['timeline'] as List? ?? [];
-    List<OrderTimelineStep> timelineList = rawTimeline.map((t) => OrderTimelineStep.fromJson(t)).toList();
+    List<OrderTimelineStep> timelineList = rawTimeline
+        .whereType<Map>()
+        .map((t) => OrderTimelineStep.fromJson(Map<String, dynamic>.from(t)))
+        .toList();
 
     return OnlineOrder(
-      id: json['id'] ?? 0,
-      orderNumber: json['order_number'] ?? '',
-      customerName: json['customer_name'] ?? '',
-      customerPhone: json['customer_phone'] ?? '',
-      customerEmail: json['customer_email'] ?? '',
-      country: json['country'] ?? 'Bangladesh',
-      district: json['district'] ?? '',
-      area: json['area'] ?? '',
-      addressDetails: json['address_details'] ?? '',
-      paymentMethod: json['payment_method'] ?? 'cod',
-      paymentStatus: json['payment_status'] ?? 'pending',
-      subtotal: (json['subtotal'] ?? 0).toDouble(),
-      deliveryCharge: (json['delivery_charge'] ?? 0).toDouble(),
-      totalAmount: (json['total_amount'] ?? 0).toDouble(),
-      orderStatus: json['order_status'] ?? 'new',
-      deliveryOtp: json['delivery_otp'] ?? '',
-      assignedRiderName: json['assigned_rider_name'] ?? '',
-      assignedRiderPhone: json['assigned_rider_phone'] ?? '',
-      createdAt: json['created_at'] ?? '',
-      createdAtBd: json['created_at_bd'] ?? '',
-      confirmedAt: json['confirmed_at'] ?? '',
-      packedAt: json['packed_at'] ?? '',
-      onTheWayAt: json['on_the_way_at'] ?? '',
-      deliveredAt: json['delivered_at'] ?? '',
-      cancelledAt: json['cancelled_at'] ?? '',
+      id: _asInt(json['id']),
+      orderNumber: _asStr(json['order_number']),
+      customerName: _asStr(json['customer_name']),
+      customerPhone: _asStr(json['customer_phone']),
+      customerEmail: _asStr(json['customer_email']),
+      country: _asStr(json['country'], 'Bangladesh'),
+      district: _asStr(json['district']),
+      area: _asStr(json['area']),
+      addressDetails: _asStr(json['address_details']),
+      paymentMethod: _asStr(json['payment_method'], 'cod'),
+      paymentStatus: _asStr(json['payment_status'], 'pending'),
+      subtotal: _asDouble(json['subtotal']),
+      deliveryCharge: _asDouble(json['delivery_charge']),
+      totalAmount: _asDouble(json['total_amount']),
+      orderStatus: _asStr(json['order_status'], 'new'),
+      deliveryOtp: _asStr(json['delivery_otp']),
+      assignedRiderName: _asStr(json['assigned_rider_name']),
+      assignedRiderPhone: _asStr(json['assigned_rider_phone']),
+      createdAt: _asStr(json['created_at']),
+      createdAtBd: _asStr(json['created_at_bd']),
+      confirmedAt: _asStr(json['confirmed_at']),
+      packedAt: _asStr(json['packed_at']),
+      onTheWayAt: _asStr(json['on_the_way_at']),
+      deliveredAt: _asStr(json['delivered_at']),
+      cancelledAt: _asStr(json['cancelled_at']),
       timeline: timelineList,
       items: itemList,
     );

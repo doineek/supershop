@@ -8912,6 +8912,13 @@ def api_place_order():
         conn=conn
     )
 
+    try:
+        if clean_phone:
+            conn.execute("DELETE FROM customer_carts WHERE customer_phone = ?", (clean_phone,))
+            remote_control.push_customer_cart_to_cloud(clean_phone, "[]", created_at)
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -9466,16 +9473,152 @@ def api_clear_notifications():
 
 
 
+def _phone_variants(phone_str):
+    raw = (phone_str or "").strip()
+    if not raw:
+        return []
+    variants = []
+    norm = normalize_phone(raw)
+    for cand in (norm, f"88{norm}" if norm.startswith("01") else "", f"+88{norm}" if norm.startswith("01") else "", raw):
+        if cand and cand not in variants:
+            variants.append(cand)
+    return variants
+
+
+def _enrich_cart_items(conn, raw_items):
+    """Enrich synced cart items with live DB price, stock, image_url, and offer metadata."""
+    enriched = []
+    if not isinstance(raw_items, list):
+        return enriched
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        qty = int(item.get("quantity") or item.get("qty") or 1)
+        if qty <= 0:
+            continue
+        is_pkg = bool(
+            item.get("is_package")
+            or item.get("is_pkg")
+            or item.get("package_id") is not None
+            or str(item.get("id") or "").upper().startswith("PKG_")
+        )
+        pid_raw = item.get("package_id") if is_pkg else (item.get("product_id") or item.get("id"))
+        try:
+            pid_int = abs(int(str(pid_raw).replace("PKG_", "").replace("pkg_", ""))) if pid_raw is not None else 0
+        except Exception:
+            pid_int = 0
+
+        if is_pkg and pid_int > 0:
+            pkg = conn.execute("SELECT * FROM packages WHERE id = ? AND is_active = 1", (pid_int,)).fetchone()
+            if pkg:
+                p_items = conn.execute("""
+                    SELECT pi.quantity, p.stock_qty, p.image_url, p.mrp, p.sell_price, p.sku, p.name AS product_name
+                    FROM package_items pi JOIN products p ON pi.product_id = p.id
+                    WHERE pi.package_id = ?
+                """, (pid_int,)).fetchall()
+                min_stock = 999999
+                reg_total = 0.0
+                fallback_img = ""
+                item_summaries = []
+                for pi in p_items:
+                    pq = int(pi["quantity"] or 1)
+                    st = int(pi["stock_qty"] or 0)
+                    possible = (st // pq) if st > 0 else 0
+                    if possible < min_stock:
+                        min_stock = possible
+                    p_mrp = float(pi["mrp"] or 0) or float(pi["sell_price"] or 0)
+                    reg_total += p_mrp * pq
+                    if not fallback_img and (pi["image_url"] or "").strip():
+                        fallback_img = (pi["image_url"] or "").strip()
+                    item_summaries.append(f"{pi['sku'] or 'SKU'} {pi['product_name']} (Qty:{pq})")
+                if min_stock == 999999 or not p_items:
+                    min_stock = 0
+                max_limit = int(pkg["max_sale_limit"] or 0) if "max_sale_limit" in pkg.keys() else 0
+                sold_qty = int(pkg["sold_quantity"] or 0) if "sold_quantity" in pkg.keys() else 0
+                if max_limit > 0:
+                    min_stock = min(min_stock, max(0, max_limit - sold_qty))
+                pkg_img = (pkg["image_url"] or "").strip() or fallback_img
+                price_val = float(pkg["package_price"] or 0)
+                mrp_val = reg_total if reg_total > price_val else price_val
+                pkg_name = pkg["name"] if str(pkg["name"]).startswith("📦") else f"📦 {pkg['name']}"
+                enriched.append({
+                    "id": -pid_int,
+                    "product_id": -pid_int,
+                    "package_id": pid_int,
+                    "is_package": True,
+                    "sku": f"{pkg['name']} ({', '.join(item_summaries)})" if item_summaries else (item.get("sku") or "COMBO"),
+                    "name": pkg_name,
+                    "price": price_val,
+                    "mrp": mrp_val,
+                    "quantity": qty,
+                    "stock_qty": max(0, min_stock),
+                    "image_url": pkg_img or item.get("image_url") or "",
+                    "offer_type": "",
+                    "offer_value": "",
+                    "offer_title": "",
+                    "offer_base": "mrp",
+                })
+                continue
+        elif not is_pkg and pid_int > 0:
+            prod = conn.execute("SELECT * FROM products WHERE id = ?", (pid_int,)).fetchone()
+            if prod:
+                enriched.append({
+                    "id": prod["id"],
+                    "product_id": prod["id"],
+                    "package_id": None,
+                    "is_package": False,
+                    "sku": prod["sku"] or "",
+                    "name": prod["name"] or "",
+                    "price": float(prod["sell_price"] or 0),
+                    "mrp": float(prod["mrp"] or 0),
+                    "quantity": qty,
+                    "stock_qty": int(prod["stock_qty"] or 0),
+                    "image_url": (prod["image_url"] or "").strip() or item.get("image_url") or "",
+                    "offer_type": prod["offer_type"] or "",
+                    "offer_value": prod["offer_value"] or "",
+                    "offer_title": prod["offer_title"] or "",
+                    "offer_base": (prod["offer_base"] if "offer_base" in prod.keys() else "mrp") or "mrp",
+                })
+                continue
+
+        enriched.append({
+            "id": -pid_int if is_pkg else pid_int,
+            "product_id": -pid_int if is_pkg else pid_int,
+            "package_id": pid_int if is_pkg else None,
+            "is_package": is_pkg,
+            "sku": item.get("sku") or "",
+            "name": item.get("name") or item.get("product_name") or "Item",
+            "price": float(item.get("price") or item.get("sell_price") or item.get("unit_price") or 0),
+            "mrp": float(item.get("mrp") or item.get("price") or 0),
+            "quantity": qty,
+            "stock_qty": int(item.get("stock_qty") or 99),
+            "image_url": (item.get("image_url") or item.get("img") or "").strip(),
+            "offer_type": item.get("offer_type") or "",
+            "offer_value": item.get("offer_value") or "",
+            "offer_title": item.get("offer_title") or "",
+            "offer_base": item.get("offer_base") or "mrp",
+        })
+    return enriched
+
+
 @app.route("/api/orders/my-orders", methods=["GET"])
 def api_my_orders():
     phone = request.args.get("phone", "").strip()
-    if not phone:
+    variants = _phone_variants(phone)
+    if not variants:
         return jsonify([])
 
     conn = get_connection()
+    placeholders = ",".join(["?"] * len(variants))
+    norm_main = variants[0]
     orders = conn.execute(
-        "SELECT * FROM online_orders WHERE customer_phone = ? ORDER BY id DESC",
-        (phone,)
+        f"""
+        SELECT * FROM online_orders
+        WHERE customer_phone IN ({placeholders})
+           OR REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+88', '') = ?
+        ORDER BY id DESC
+        """,
+        tuple(variants) + (norm_main,)
     ).fetchall()
 
     result = []
@@ -9634,6 +9777,58 @@ def api_my_orders():
     return jsonify(result)
 
 
+@app.route("/api/cart", methods=["GET"])
+def api_get_synced_cart():
+    phone = normalize_phone(request.args.get("phone", ""))
+    if not phone:
+        return jsonify({"success": False, "message": "Phone is required", "items": [], "updated_at": ""}), 400
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT items_json, updated_at FROM customer_carts WHERE customer_phone = ?",
+        (phone,)
+    ).fetchone()
+    raw_items = []
+    updated_at = ""
+    if row:
+        updated_at = row["updated_at"] or ""
+        try:
+            raw_items = json.loads(row["items_json"] or "[]")
+        except Exception:
+            raw_items = []
+    items = _enrich_cart_items(conn, raw_items)
+    conn.close()
+    return jsonify({"success": True, "phone": phone, "items": items, "updated_at": updated_at})
+
+
+@app.route("/api/cart/sync", methods=["POST"])
+def api_sync_cart():
+    data = request.get_json(silent=True) or {}
+    phone = normalize_phone(data.get("phone", ""))
+    if not phone:
+        return jsonify({"success": False, "message": "Phone is required"}), 400
+    raw_items = data.get("items")
+    if raw_items is None:
+        raw_items = []
+
+    now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    conn = get_connection()
+    canonical_items = _enrich_cart_items(conn, raw_items)
+    items_json = json.dumps(canonical_items, ensure_ascii=False)
+    conn.execute(
+        "INSERT OR REPLACE INTO customer_carts (customer_phone, items_json, updated_at) VALUES (?, ?, ?)",
+        (phone, items_json, now_iso)
+    )
+    conn.commit()
+    conn.close()
+
+    try:
+        remote_control.push_customer_cart_to_cloud(phone, items_json, now_iso)
+    except Exception:
+        pass
+
+    return jsonify({"success": True, "phone": phone, "items": canonical_items, "updated_at": now_iso})
+
+
 @app.route("/api/orders/cancel", methods=["POST"])
 def api_cancel_order():
     data = request.json or {}
@@ -9643,10 +9838,19 @@ def api_cancel_order():
     if not order_number or not phone:
         return jsonify({"success": False, "message": "Please enter Order Number and Phone Number."}), 400
 
+    variants = _phone_variants(phone)
+    norm_main = variants[0] if variants else phone
+    placeholders = ",".join(["?"] * max(1, len(variants)))
+
     conn = get_connection()
     order = conn.execute(
-        "SELECT * FROM online_orders WHERE order_number = ? AND customer_phone = ?",
-        (order_number, phone)
+        f"""
+        SELECT * FROM online_orders
+        WHERE order_number = ?
+          AND (customer_phone IN ({placeholders})
+               OR REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+88', '') = ?)
+        """,
+        (order_number,) + tuple(variants or [phone]) + (norm_main,)
     ).fetchone()
 
     if not order:
@@ -10155,16 +10359,16 @@ def api_auth_login():
         return jsonify({
             "success": False,
             "message": "এই মোবাইল নম্বরটি নিবন্ধিত কাস্টমার হিসেবে পাওয়া যায়নি। অনুগ্রহ করে আগে একাউন্ট তৈরি করুন।"
-        }), 400
-
-    if not check_password_hash(cust["password_hash"], password):
-        if not (cust.get("plain_password") and cust["plain_password"] == password):
-            return jsonify({"success": False, "message": "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে পুনরায় চেষ্টা করুন।"}), 400
-
-    if cust["is_verified"] != 1:
-        return jsonify({"success": False, "message": "একাউন্টটি যাচাইকৃত নয়। অনুগ্রহ করে OTP দিয়ে যাচাই করুন।"}), 400
+        }), 401
 
     c_dict = dict(cust)
+    if not check_password_hash(c_dict.get("password_hash") or "", password):
+        if not (c_dict.get("plain_password") and c_dict.get("plain_password") == password):
+            return jsonify({"success": False, "message": "পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে পুনরায় চেষ্টা করুন।"}), 401
+
+    if c_dict.get("is_verified") != 1:
+        return jsonify({"success": False, "message": "একাউন্টটি যাচাইকৃত নয়। অনুগ্রহ করে OTP দিয়ে যাচাই করুন।"}), 401
+
     raw_img = (c_dict.get("profile_image") or c_dict.get("avatar_url") or c_dict.get("avatar_base64") or "").strip()
     if raw_img and raw_img.startswith("/"):
         prof_img = request.host_url.rstrip("/") + raw_img
@@ -11345,36 +11549,199 @@ def pharmacy_my_orders():
     )
 
 
+def _word_starts_with(text_low, q_low):
+    """Fast contiguous word-boundary check without regex compilation overhead."""
+    if not text_low:
+        return False
+    if text_low.startswith(q_low):
+        return True
+    for sep in (" ", "-", "/", "(", "+"):
+        if f"{sep}{q_low}" in text_low:
+            return True
+    return False
+
+
+def _medicine_relevance_key(med_dict, q_low, tokens):
+    """Score contiguous word/substring medicine matches so best matches appear first and inner-word matches appear last."""
+    name_low = (med_dict.get("name") or "").strip().lower()
+    gen_low = (med_dict.get("generic_name") or "").strip().lower()
+    sku_low = (med_dict.get("sku") or "").strip().lower()
+    str_low = (med_dict.get("strength") or "").strip().lower()
+
+    if len(tokens) <= 1:
+        if name_low == q_low:
+            tier = 0
+        elif name_low.startswith(q_low + " ") or name_low.startswith(q_low + "-") or name_low.startswith(q_low + "/"):
+            tier = 1
+        elif name_low.startswith(q_low):
+            tier = 2
+        elif _word_starts_with(name_low, q_low):
+            tier = 3
+        elif sku_low == q_low or sku_low.startswith(q_low):
+            tier = 4
+        elif q_low in name_low:
+            # Inner-word contiguous substring in name (e.g. 'adnapara' for 'napa') goes near the end
+            tier = 5
+        elif gen_low == q_low or gen_low.startswith(q_low):
+            tier = 6
+        else:
+            tier = 7
+        return (tier, len(name_low), name_low)
+
+    # Multi-word search
+    name_str = f"{name_low} {str_low}".strip()
+    if name_low == q_low or name_str == q_low:
+        tier = 0
+    elif name_low.startswith(q_low) or name_str.startswith(q_low):
+        tier = 1
+    elif all(_word_starts_with(name_str, tok) for tok in tokens):
+        tier = 2
+    elif all(tok in name_str for tok in tokens):
+        tier = 3
+    else:
+        tier = 4
+    return (tier, len(name_low), name_low)
+
+
+def _search_pharmacy_medicines(
+    conn,
+    q="",
+    dosage="",
+    mfg="",
+    limit=60,
+    offset=0,
+    only_in_stock=False,
+    include_manufacturer=False,
+    select_cols="id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required",
+):
+    """Fast contiguous-match pharmacy search ranked best-match-first."""
+    q_clean = " ".join((q or "").strip().split())
+    q_low = q_clean.lower()
+    tokens = q_low.split() if q_low else []
+
+    where = ["is_active = 1"]
+    params = []
+
+    if dosage and dosage.lower() != "all":
+        where.append("(dosage_form = ? OR dosage_form LIKE ?)")
+        params.extend([dosage, f"%{dosage}%"])
+    if mfg and mfg.lower() != "all":
+        where.append("manufacturer = ?")
+        params.append(mfg)
+    if only_in_stock:
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        where.append("stock_qty > 0 AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date > ?)")
+        params.append(today_date)
+
+    if not q_low:
+        where_sql = " AND ".join(where)
+        count_row = conn.execute(f"SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE {where_sql}", params).fetchone()
+        total = count_row["c"] if count_row else 0
+        order_sql = "ORDER BY stock_qty DESC, name ASC" if only_in_stock else "ORDER BY name ASC"
+        sql = f"SELECT {select_cols} FROM pharmacy_medicines WHERE {where_sql} {order_sql}"
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        return rows, total
+
+    if len(q_low) == 1:
+        # Fast indexed prefix scan on single-character keystroke
+        where.append("(name LIKE ? OR sku LIKE ?)")
+        params.extend([f"{q_low}%", f"{q_low}%"])
+        where_sql = " AND ".join(where)
+        count_row = conn.execute(f"SELECT COUNT(*) AS c FROM pharmacy_medicines WHERE {where_sql}", params).fetchone()
+        total = count_row["c"] if count_row else 0
+        sql = f"SELECT {select_cols} FROM pharmacy_medicines WHERE {where_sql} ORDER BY name COLLATE NOCASE ASC"
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        return rows, total
+
+    if len(tokens) == 1:
+        word_fields = [
+            "name LIKE ?",
+            "sku LIKE ?",
+            "generic_name LIKE ?",
+            "generic_name LIKE ?",
+        ]
+        params.extend([f"%{q_low}%", f"{q_low}%", f"{q_low}%", f"% {q_low}%"])
+        if include_manufacturer:
+            word_fields.extend(["manufacturer LIKE ?", "manufacturer LIKE ?"])
+            params.extend([f"{q_low}%", f"% {q_low}%"])
+        where.append("(" + " OR ".join(word_fields) + ")")
+    else:
+        for tok in tokens:
+            searchable = "(name || ' ' || strength || ' ' || generic_name || ' ' || sku)"
+            if include_manufacturer:
+                searchable = "(name || ' ' || strength || ' ' || generic_name || ' ' || manufacturer || ' ' || sku)"
+            where.append(f"{searchable} LIKE ?")
+            params.append(f"%{tok}%")
+
+    where_sql = " AND ".join(where)
+    sql = f"""
+        SELECT {select_cols} FROM pharmacy_medicines
+        WHERE {where_sql}
+        ORDER BY
+            CASE
+                WHEN name LIKE ? THEN 0
+                WHEN name LIKE ? THEN 1
+                WHEN sku LIKE ? THEN 2
+                WHEN generic_name LIKE ? THEN 3
+                ELSE 4
+            END,
+            name COLLATE NOCASE ASC
+        LIMIT 600
+    """
+    order_params = [q_low, f"{q_low}%", f"{q_low}%", f"{q_low}%"]
+    rows = [dict(r) for r in conn.execute(sql, params + order_params).fetchall()]
+
+    filtered = []
+    for m in rows:
+        name_low = (m.get("name") or "").lower()
+        gen_low = (m.get("generic_name") or "").lower()
+        sku_low = (m.get("sku") or "").lower()
+        str_low = (m.get("strength") or "").lower()
+        mfg_low = (m.get("manufacturer") or "").lower()
+        if len(tokens) == 1:
+            gen_words = gen_low.split()
+            mfg_words = mfg_low.split() if include_manufacturer else []
+            if (
+                q_low in name_low
+                or sku_low.startswith(q_low)
+                or any(w.startswith(q_low) for w in gen_words)
+                or (include_manufacturer and any(w.startswith(q_low) for w in mfg_words))
+            ):
+                filtered.append(m)
+        else:
+            combined = f"{name_low} {str_low} {gen_low} {sku_low}" + (f" {mfg_low}" if include_manufacturer else "")
+            if all(tok in combined for tok in tokens):
+                filtered.append(m)
+
+    filtered.sort(key=lambda m: _medicine_relevance_key(m, q_low, tokens))
+    total = len(filtered)
+    if limit is not None:
+        filtered = filtered[offset:offset + limit]
+    return filtered, total
+
+
 @app.route("/api/pharmacy/medicines", methods=["GET"])
 @limiter.limit("120 per minute")
 def api_pharmacy_medicines():
-    """Lightweight autocomplete and catalog search for pharmacy medicines with discounts and substitutes count"""
+    """Fast contiguous-match autocomplete and catalog search for pharmacy medicines with best match first."""
     q = (request.args.get("q") or "").strip()
     dosage = (request.args.get("dosage") or request.args.get("cat") or "").strip()
-    
+
     conn = get_connection()
     shop_settings = get_all_settings(conn)
     overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
 
-    query = "SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required FROM pharmacy_medicines WHERE is_active = 1"
-    params = []
-
-    if dosage and dosage.lower() != "all":
-        query += " AND (dosage_form = ? OR dosage_form LIKE ?)"
-        params.extend([dosage, f"%{dosage}%"])
-
-    if q:
-        query += " AND (name LIKE ? OR generic_name LIKE ? OR strength LIKE ? OR sku LIKE ?)"
-        q_wild = f"%{q}%"
-        params.extend([q_wild, q_wild, q_wild, q_wild])
-
-    query += " ORDER BY name ASC LIMIT 60"
-    rows = conn.execute(query, params).fetchall()
+    rows, _ = _search_pharmacy_medicines(conn, q=q, dosage=dosage, limit=60)
     conn.close()
 
     medicines = []
-    for r in rows:
-        m = dict(r)
+    for m in rows:
         mrp_val = float(m.get("mrp") or m.get("unit_price") or 0.0)
         if mrp_val <= 0:
             mrp_val = float(m.get("unit_price") or 0.0)
@@ -11972,34 +12339,16 @@ def api_admin_pharmacy_medicines_list():
     offset = (page - 1) * per_page
 
     conn = get_connection()
-    where_clauses = ["is_active = 1"]
-    params = []
-
-    if dosage and dosage != "all":
-        where_clauses.append("dosage_form = ?")
-        params.append(dosage)
-
-    if mfg and mfg != "all":
-        where_clauses.append("manufacturer = ?")
-        params.append(mfg)
-
-    if q:
-        where_clauses.append("(name LIKE ? OR generic_name LIKE ? OR manufacturer LIKE ? OR sku LIKE ?)")
-        q_wild = f"%{q}%"
-        params.extend([q_wild, q_wild, q_wild, q_wild])
-
-    where_sql = " AND ".join(where_clauses)
-    count_sql = f"SELECT COUNT(*) AS total FROM pharmacy_medicines WHERE {where_sql}"
-    total = conn.execute(count_sql, params).fetchone()["total"]
-
-    data_sql = f"""
-        SELECT id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required, expiry_date, low_stock_threshold, cost_price
-        FROM pharmacy_medicines
-        WHERE {where_sql}
-        ORDER BY name ASC
-        LIMIT ? OFFSET ?
-    """
-    rows = conn.execute(data_sql, params + [per_page, offset]).fetchall()
+    rows, total = _search_pharmacy_medicines(
+        conn,
+        q=q,
+        dosage=dosage,
+        mfg=mfg,
+        limit=per_page,
+        offset=offset,
+        include_manufacturer=True,
+        select_cols="id, name, generic_name, dosage_form, strength, manufacturer, sku, unit_price, mrp, discount_percent, strip_price, strip_size, stock_qty, is_prescription_required, expiry_date, low_stock_threshold, cost_price",
+    )
     conn.close()
 
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -12009,7 +12358,7 @@ def api_admin_pharmacy_medicines_list():
         "page": page,
         "per_page": per_page,
         "total_pages": total_pages,
-        "medicines": [dict(r) for r in rows]
+        "medicines": rows
     })
 
 
@@ -12514,31 +12863,17 @@ def _format_pos_medicine_dict(r, overall_disc):
 @app.route("/api/admin/pharmacy/pos/search", methods=["GET"])
 @login_required
 def api_admin_pharmacy_pos_search():
-    """Search medicines for the Pharmacy Order POS Counter (returns ALL matched non-expired items when q is given)."""
+    """Search medicines for the Pharmacy Order POS Counter (returns ALL matched items ordered best-match-first when q is given)."""
     q = (request.args.get("q") or "").strip()
-    today_date = datetime.now().strftime("%Y-%m-%d")
 
     conn = get_connection()
     shop_settings = get_all_settings(conn)
     overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
 
     if not q:
-        rows = conn.execute("""
-            SELECT * FROM pharmacy_medicines
-            WHERE is_active = 1
-              AND stock_qty > 0
-              AND (expiry_date IS NULL OR expiry_date = '' OR expiry_date > ?)
-            ORDER BY stock_qty DESC, name ASC LIMIT 60
-        """, (today_date,)).fetchall()
+        rows, _ = _search_pharmacy_medicines(conn, q="", limit=60, only_in_stock=True, select_cols="*")
     else:
-        q_low = q.lower()
-        q_like = f"%{q_low}%"
-        rows = conn.execute("""
-            SELECT * FROM pharmacy_medicines
-            WHERE is_active = 1
-              AND (LOWER(name) LIKE ? OR LOWER(generic_name) LIKE ? OR LOWER(manufacturer) LIKE ? OR LOWER(sku) LIKE ?)
-            ORDER BY CASE WHEN LOWER(sku) = ? THEN 0 WHEN LOWER(name) LIKE ? THEN 1 ELSE 2 END, name ASC
-        """, (q_like, q_like, q_like, q_like, q_low, f"{q_low}%")).fetchall()
+        rows, _ = _search_pharmacy_medicines(conn, q=q, limit=250, include_manufacturer=True, select_cols="*")
 
     results = [_format_pos_medicine_dict(r, overall_disc) for r in rows]
     conn.close()

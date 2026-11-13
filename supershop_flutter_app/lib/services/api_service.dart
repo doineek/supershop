@@ -41,10 +41,24 @@ class ApiService {
   }
 
   static bool _isValidJsonResponse(http.Response res) {
-    if (res.statusCode < 200 || res.statusCode >= 300) return false;
+    // Any non-HTML JSON 2xx or 4xx response proves this server is reachable & active;
+    // returning 4xx JSON avoids looping dead LAN URLs and preserves exact server errors.
+    if (res.statusCode < 200 || res.statusCode >= 500) return false;
     String bodyTrim = res.body.trim();
     if (bodyTrim.startsWith('<')) return false;
     return bodyTrim.startsWith('{') || bodyTrim.startsWith('[');
+  }
+
+  static Duration _effectiveTimeout(String serverUrl, Duration requested) {
+    final lower = serverUrl.toLowerCase();
+    final isLocalLan = lower.contains('192.168.') ||
+        lower.contains('10.0.2.2') ||
+        lower.contains('127.0.0.1') ||
+        lower.contains('localhost');
+    if (isLocalLan && requested.inMilliseconds > 2500) {
+      return const Duration(milliseconds: 2500);
+    }
+    return requested;
   }
 
   /// Candidate server URLs in priority order for global & local connectivity
@@ -111,7 +125,7 @@ class ApiService {
     List<String> urlsToTry = _activeUrl.isNotEmpty ? [_activeUrl] : candidateUrls;
     for (String serverUrl in urlsToTry) {
       try {
-        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
+        final res = await http.get(Uri.parse('$serverUrl$path')).timeout(_effectiveTimeout(serverUrl, timeout));
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
           return res;
@@ -131,7 +145,7 @@ class ApiService {
     if (_activeUrl.isEmpty && urlsToTry.length == 1) {
       for (String serverUrl in candidateUrls) {
         try {
-          final res = await http.get(Uri.parse('$serverUrl$path')).timeout(timeout);
+          final res = await http.get(Uri.parse('$serverUrl$path')).timeout(_effectiveTimeout(serverUrl, timeout));
           if (_isValidJsonResponse(res)) {
             _activeUrl = serverUrl;
             return res;
@@ -150,7 +164,7 @@ class ApiService {
           Uri.parse('$serverUrl$path'),
           headers: headers ?? {'Content-Type': 'application/json'},
           body: body,
-        ).timeout(timeout);
+        ).timeout(_effectiveTimeout(serverUrl, timeout));
 
         if (_isValidJsonResponse(res)) {
           _activeUrl = serverUrl;
@@ -164,6 +178,23 @@ class ApiService {
         if (_activeUrl == serverUrl) {
           _activeUrl = "";
         }
+      }
+    }
+
+    // Fallback pass if _activeUrl was stale
+    if (_activeUrl.isEmpty && urlsToTry.length == 1) {
+      for (String serverUrl in candidateUrls) {
+        try {
+          final res = await http.post(
+            Uri.parse('$serverUrl$path'),
+            headers: headers ?? {'Content-Type': 'application/json'},
+            body: body,
+          ).timeout(_effectiveTimeout(serverUrl, timeout));
+          if (_isValidJsonResponse(res)) {
+            _activeUrl = serverUrl;
+            return res;
+          }
+        } catch (_) {}
       }
     }
     return null;
@@ -334,7 +365,7 @@ class ApiService {
       'cart_items': cartItems,
     });
 
-    final res = await httpPost('/api/orders/place', body: payload, timeout: const Duration(seconds: 12));
+    final res = await httpPost('/api/orders/place', body: payload, timeout: const Duration(seconds: 25));
     if (res != null) {
       try {
         final body = jsonDecode(res.body);
@@ -345,26 +376,31 @@ class ApiService {
         }
       } catch (_) {}
     }
-    return {'success': false, 'message': 'Network connection error: Unable to connect to server.'};
+    return {'success': false, 'message': 'Unable to reach server. Please check your internet connection and try again.'};
   }
 
-  static Future<List<OnlineOrder>> fetchMyOrders(String phone) async {
+  static Future<List<OnlineOrder>?> fetchMyOrdersNullable(String phone) async {
     try {
-      final res = await httpGet('/api/orders/my-orders?phone=$phone');
+      final cleanPhone = Uri.encodeComponent(phone.trim());
+      final res = await httpGet('/api/orders/my-orders?phone=$cleanPhone', timeout: const Duration(seconds: 12));
       if (res != null && res.statusCode == 200) {
         List<dynamic> data = jsonDecode(res.body);
-        return data.map((json) => OnlineOrder.fromJson(json)).toList();
+        return data.map((json) => OnlineOrder.fromJson(Map<String, dynamic>.from(json))).toList();
       }
     } catch (e) {
       debugPrint("Error fetching my orders: $e");
     }
-    return [];
+    return null;
+  }
+
+  static Future<List<OnlineOrder>> fetchMyOrders(String phone) async {
+    return (await fetchMyOrdersNullable(phone)) ?? [];
   }
 
   static Stream<List<OnlineOrder>> myOrdersStream(String phone) async* {
     while (true) {
       yield await fetchMyOrders(phone);
-      await Future.delayed(const Duration(seconds: 3));
+      await Future.delayed(const Duration(seconds: 4));
     }
   }
 
@@ -418,17 +454,70 @@ class ApiService {
     bool isAdmin = false,
   }) async {
     try {
-      final res = await httpPost('/api/auth/login', body: jsonEncode({
-        'phone': phone,
-        'password': password,
-        'is_delivery_man': isDeliveryMan,
-        'is_admin': isAdmin,
-      }));
-      if (res != null) return jsonDecode(res.body);
+      final res = await httpPost(
+        '/api/auth/login',
+        body: jsonEncode({
+          'phone': phone,
+          'password': password,
+          'is_delivery_man': isDeliveryMan,
+          'is_admin': isAdmin,
+        }),
+        timeout: const Duration(seconds: 8),
+      );
+      if (res != null) {
+        if (res.statusCode == 429) {
+          try {
+            final parsed = jsonDecode(res.body);
+            if (parsed is Map<String, dynamic>) return parsed;
+          } catch (_) {}
+          return {'success': false, 'message': 'Too many attempts. Please wait a minute and try again.'};
+        }
+        try {
+          final parsed = jsonDecode(res.body);
+          if (parsed is Map<String, dynamic>) return parsed;
+        } catch (_) {}
+        return {'success': false, 'message': 'Invalid phone number or password.'};
+      }
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
-    return {'success': false, 'message': 'Network error'};
+    return {'success': false, 'message': 'Unable to connect to server. Please check your internet.'};
+  }
+
+  static Future<Map<String, dynamic>?> fetchServerCart(String phone) async {
+    if (phone.trim().isEmpty) return null;
+    try {
+      final cleanPhone = Uri.encodeComponent(phone.trim());
+      final res = await httpGet('/api/cart?phone=$cleanPhone', timeout: const Duration(seconds: 8));
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (e) {
+      debugPrint("Error fetching synced cart: $e");
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> syncServerCart(String phone, List<Map<String, dynamic>> items) async {
+    if (phone.trim().isEmpty) return null;
+    try {
+      final res = await httpPost(
+        '/api/cart/sync',
+        body: jsonEncode({
+          'phone': phone.trim(),
+          'items': items,
+        }),
+        timeout: const Duration(seconds: 8),
+      );
+      if (res != null && res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (e) {
+      debugPrint("Error syncing cart to server: $e");
+    }
+    return null;
   }
 
   static Future<Map<String, dynamic>> register({

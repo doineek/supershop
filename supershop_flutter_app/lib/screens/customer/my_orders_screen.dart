@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,37 +17,154 @@ class MyOrdersScreen extends StatefulWidget {
   State<MyOrdersScreen> createState() => _MyOrdersScreenState();
 }
 
-class _MyOrdersScreenState extends State<MyOrdersScreen> {
+class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObserver {
   String _userPhone = '';
   bool _isLoadingPhone = true;
+  bool _isFetchingOrders = false;
+  bool _hasLoadedOrdersOnce = false;
+  List<OnlineOrder> _orders = [];
   Timer? _countdownTimer;
+  Timer? _livePollTimer;
   String? _currentTargetOrder;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentTargetOrder = widget.targetOrderNumber?.trim();
     _loadUserPhone();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
+      if (!mounted) return;
+      final hasActiveCancel = _orders.any((o) {
+        if (!['new', 'pending', 'verified'].contains(o.orderStatus)) return false;
+        final dt = DateTime.tryParse(o.createdAt);
+        return dt != null && DateTime.now().difference(dt).inSeconds < 600;
+      });
+      if (hasActiveCancel) {
         setState(() {});
+      }
+    });
+    _livePollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (_userPhone.isNotEmpty) {
+        _fetchOrders(silent: true);
       }
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _userPhone.isNotEmpty) {
+      _fetchOrders(silent: true);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
+    _livePollTimer?.cancel();
     super.dispose();
   }
 
   void _loadUserPhone() async {
     final prefs = await SharedPreferences.getInstance();
+    final phone = (prefs.getString('user_phone') ?? '').trim();
+    List<OnlineOrder> cachedOrders = [];
+    if (phone.isNotEmpty) {
+      final raw = prefs.getString('cached_my_orders_$phone') ?? '';
+      if (raw.isNotEmpty) {
+        try {
+          final list = jsonDecode(raw);
+          if (list is List) {
+            cachedOrders = list
+                .whereType<Map>()
+                .map((m) => OnlineOrder.fromJson(Map<String, dynamic>.from(m)))
+                .toList();
+          }
+        } catch (_) {}
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _userPhone = prefs.getString('user_phone') ?? '';
+      _userPhone = phone;
       _isLoadingPhone = false;
+      if (cachedOrders.isNotEmpty) {
+        _orders = cachedOrders;
+        _hasLoadedOrdersOnce = true;
+      }
     });
+    if (phone.isNotEmpty) {
+      await _fetchOrders(silent: cachedOrders.isNotEmpty);
+    }
+  }
+
+  Future<void> _fetchOrders({bool silent = false}) async {
+    if (_userPhone.isEmpty || _isFetchingOrders) return;
+    _isFetchingOrders = true;
+    try {
+      final res = await ApiService.fetchMyOrdersNullable(_userPhone);
+      if (!mounted) return;
+      if (res != null) {
+        setState(() {
+          _orders = res;
+          _hasLoadedOrdersOnce = true;
+        });
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final rawList = res.map((o) => {
+            'id': o.id,
+            'order_number': o.orderNumber,
+            'customer_name': o.customerName,
+            'customer_phone': o.customerPhone,
+            'customer_email': o.customerEmail,
+            'country': o.country,
+            'district': o.district,
+            'area': o.area,
+            'address_details': o.addressDetails,
+            'payment_method': o.paymentMethod,
+            'payment_status': o.paymentStatus,
+            'subtotal': o.subtotal,
+            'delivery_charge': o.deliveryCharge,
+            'total_amount': o.totalAmount,
+            'order_status': o.orderStatus,
+            'delivery_otp': o.deliveryOtp,
+            'assigned_rider_name': o.assignedRiderName,
+            'assigned_rider_phone': o.assignedRiderPhone,
+            'created_at': o.createdAt,
+            'created_at_bd': o.createdAtBd,
+            'confirmed_at': o.confirmedAt,
+            'packed_at': o.packedAt,
+            'on_the_way_at': o.onTheWayAt,
+            'delivered_at': o.deliveredAt,
+            'cancelled_at': o.cancelledAt,
+            'timeline': o.timeline.map((t) => {
+              'stage': t.stage,
+              'title': t.title,
+              'time': t.time,
+              'time_bd': t.timeBd,
+              'done': t.done,
+              'active': t.active,
+            }).toList(),
+            'items': o.items.map((it) => {
+              'id': it.id,
+              'product_id': it.productId,
+              'product_name': it.productName,
+              'unit_price': it.unitPrice,
+              'mrp_price': it.mrpPrice,
+              'quantity': it.quantity,
+              'total_price': it.totalPrice,
+            }).toList(),
+          }).toList();
+          await prefs.setString('cached_my_orders_$_userPhone', jsonEncode(rawList));
+        } catch (_) {}
+      } else if (!silent && mounted) {
+        setState(() {
+          _hasLoadedOrdersOnce = true;
+        });
+      }
+    } finally {
+      _isFetchingOrders = false;
+    }
   }
 
   Color _getStatusColor(String status) {
@@ -372,6 +490,14 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         ),
         title: Text(loc.translate('my_orders')),
         backgroundColor: Colors.green,
+        actions: [
+          if (_userPhone.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              tooltip: "Refresh Orders",
+              onPressed: () => _fetchOrders(silent: false),
+            ),
+        ],
       ),
       body: _isLoadingPhone
           ? const Center(child: CircularProgressIndicator())
@@ -411,39 +537,48 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                     ),
                   ),
                 )
-              : StreamBuilder<List<OnlineOrder>>(
-                  stream: ApiService.myOrdersStream(_userPhone),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+              : (!_hasLoadedOrdersOnce && _orders.isEmpty)
+                  ? const Center(child: CircularProgressIndicator())
+                  : _orders.isEmpty
+                      ? RefreshIndicator(
+                          onRefresh: () => _fetchOrders(silent: false),
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: const [
+                              SizedBox(height: 160),
+                              Center(
+                                child: Text(
+                                  "You have no previous orders",
+                                  style: TextStyle(fontSize: 15, color: Colors.grey),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Builder(
+                          builder: (context) {
+                            List<OnlineOrder> orders = List.from(_orders);
+                            if (_currentTargetOrder != null && _currentTargetOrder!.isNotEmpty) {
+                              int targetIdx = orders.indexWhere((o) {
+                                final t = _currentTargetOrder!.toLowerCase();
+                                return o.orderNumber.toLowerCase() == t ||
+                                    o.id.toString() == t ||
+                                    o.orderNumber.toLowerCase().contains(t) ||
+                                    t.contains(o.orderNumber.toLowerCase());
+                              });
+                              if (targetIdx > 0) {
+                                final targetOrder = orders.removeAt(targetIdx);
+                                orders.insert(0, targetOrder);
+                              }
+                            }
 
-                    final rawOrders = snapshot.data ?? [];
-
-                    if (rawOrders.isEmpty) {
-                      return const Center(child: Text("You have no previous orders"));
-                    }
-
-                    List<OnlineOrder> orders = List.from(rawOrders);
-                    if (_currentTargetOrder != null && _currentTargetOrder!.isNotEmpty) {
-                      int targetIdx = orders.indexWhere((o) {
-                        final t = _currentTargetOrder!.toLowerCase();
-                        return o.orderNumber.toLowerCase() == t ||
-                               o.id.toString() == t ||
-                               o.orderNumber.toLowerCase().contains(t) ||
-                               t.contains(o.orderNumber.toLowerCase());
-                      });
-                      if (targetIdx > 0) {
-                        final targetOrder = orders.removeAt(targetIdx);
-                        orders.insert(0, targetOrder);
-                      }
-                    }
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: orders.length,
-                      itemBuilder: (context, index) {
-                        final order = orders[index];
+                            return RefreshIndicator(
+                              onRefresh: () => _fetchOrders(silent: false),
+                              child: ListView.builder(
+                                padding: const EdgeInsets.all(12),
+                                itemCount: orders.length,
+                                itemBuilder: (context, index) {
+                                  final order = orders[index];
                         final bool isTargetOrder = _currentTargetOrder != null &&
                             _currentTargetOrder!.isNotEmpty &&
                             (order.orderNumber.toLowerCase() == _currentTargetOrder!.toLowerCase() ||
@@ -822,7 +957,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                     ),
                   );
                       },
-                    );
+                    ),
+                  );
                   },
                 ),
     );

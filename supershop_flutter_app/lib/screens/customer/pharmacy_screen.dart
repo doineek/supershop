@@ -51,6 +51,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
   String _searchQuery = "";
   String _selectedDosage = "all";
   Timer? _searchDebounce;
+  int _searchSeq = 0;
 
   // Selected medicines for pharmacy order: medId -> Map
   final List<Map<String, dynamic>> _selectedItems = [];
@@ -168,20 +169,21 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
 
   Future<void> _loadMedicines() async {
     if (!mounted) return;
+    final int seq = ++_searchSeq;
     setState(() => _isLoadingMeds = true);
     try {
       final meds = await ApiService.fetchPharmacyMedicines(
         query: _searchQuery,
         dosage: _selectedDosage,
       );
-      if (mounted) {
+      if (mounted && seq == _searchSeq) {
         setState(() {
           _medicines = meds;
           _isLoadingMeds = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && seq == _searchSeq) {
         setState(() => _isLoadingMeds = false);
       }
     }
@@ -189,7 +191,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
 
   void _onSearchChanged(String val) {
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+    _searchDebounce = Timer(const Duration(milliseconds: 140), () {
       if (mounted) {
         setState(() => _searchQuery = val);
         _loadMedicines();

@@ -345,6 +345,12 @@ def init_db():
         cleared_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS customer_carts (
+        customer_phone TEXT PRIMARY KEY,
+        items_json TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL DEFAULT ''
+    );
+
     CREATE TABLE IF NOT EXISTS pharmacy_medicines (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -626,8 +632,11 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_orders_phone ON pharmacy_orders(customer_phone)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_orders_num ON pharmacy_orders(order_number)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_name ON pharmacy_medicines(name)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_name_nocase ON pharmacy_medicines(name COLLATE NOCASE)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_generic_nocase ON pharmacy_medicines(generic_name COLLATE NOCASE)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_dosage ON pharmacy_medicines(dosage_form)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_sku ON pharmacy_medicines(sku)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_medicines_sku_nocase ON pharmacy_medicines(sku COLLATE NOCASE)")
 
         cur.execute("PRAGMA table_info(pharmacy_medicines)")
         med_col_names = [r["name"] for r in cur.fetchall()]

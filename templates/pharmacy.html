@@ -2176,13 +2176,16 @@
     }
 
     let searchDebounceTimer = null;
+    let medSearchAbortController = null;
+    let medSearchSeq = 0;
+
     function onMedicineSearchInput() {
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
         const activeBtn = document.querySelector(".dosage-filter-pill.bg-emerald-600");
         const dosage = activeBtn ? (activeBtn.getAttribute("data-dosage") || "all") : "all";
         renderMedicineSuggestions(dosage, $("medicineSearchInput").value.trim().toLowerCase());
-      }, 250);
+      }, 110);
     }
 
     function onMedicineSearchFocus() {
@@ -2207,10 +2210,17 @@
       if (q && q.length > 0) btnClear.classList.remove("hidden");
       else btnClear.classList.add("hidden");
 
+      const mySeq = ++medSearchSeq;
+      if (medSearchAbortController) {
+        try { medSearchAbortController.abort(); } catch (_) {}
+      }
+      medSearchAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+
       try {
         const url = `/api/pharmacy/medicines?q=${encodeURIComponent(q || '')}&dosage=${encodeURIComponent(dosage || 'all')}`;
-        const res = await fetch(url);
+        const res = await fetch(url, medSearchAbortController ? { signal: medSearchAbortController.signal } : undefined);
         const data = await res.json();
+        if (mySeq !== medSearchSeq) return;
         const matches = data.medicines || [];
 
         window._pharmacyMedsMap = window._pharmacyMedsMap || {};

@@ -4282,9 +4282,11 @@
 
         fetchMyOrdersHistory();
         fetchWebNotifications();
+        startCartLiveSync();
       } else {
         document.getElementById('loggedOutAuthArea').style.display = 'block';
         document.getElementById('loggedInProfileArea').style.display = 'none';
+        stopCartLiveSync();
         webNotifications = [];
         webUnreadNotifCount = 0;
         try { localStorage.removeItem('supershop_web_notifications'); } catch (e) {}
@@ -5303,9 +5305,125 @@
       }, 2500);
     }
 
-    function saveCart() {
+    let _cartSyncPollTimer = null;
+    let _cartPushTimer = null;
+    let _lastCartSyncTs = '';
+    let _lastLocalCartMutationMs = 0;
+
+    function _applyServerCartToWeb(serverItems, updatedAt) {
+      const nextCart = {};
+      (serverItems || []).forEach(it => {
+        const isPkg = Boolean(it.is_package || it.is_pkg || it.package_id != null);
+        const rawPid = isPkg ? Math.abs(parseInt(it.package_id || it.product_id || it.id || 0)) : parseInt(it.product_id || it.id || 0);
+        if (!rawPid) return;
+        const key = isPkg ? ('PKG_' + rawPid) : String(rawPid);
+        nextCart[key] = {
+          id: key,
+          raw_id: isPkg ? rawPid : undefined,
+          name: it.name || it.product_name || 'Item',
+          price: parseFloat(it.price || it.sell_price || it.unit_price || 0),
+          img: it.image_url || it.img || '/static/images/logo.png',
+          quantity: parseInt(it.quantity || 1),
+          is_pkg: isPkg,
+          offer_type: it.offer_type || '',
+          offer_value: it.offer_value || '',
+          offer_title: it.offer_title || ''
+        };
+      });
+      cart = nextCart;
+      if (updatedAt) _lastCartSyncTs = updatedAt;
+      saveCart({ skipServer: true });
+      if (document.getElementById('cartViewItemsContainer')) {
+        try { renderCartView(); } catch (_) {}
+      }
+    }
+
+    async function pushCartToServer(immediate = false) {
+      if (!currentCustomer || !currentCustomer.phone) return;
+      const execPush = async () => {
+        try {
+          const items = Object.values(cart).map(it => ({
+            id: it.is_pkg ? -Math.abs(parseInt(it.raw_id || String(it.id).replace('PKG_', '') || 0)) : parseInt(it.id),
+            product_id: it.is_pkg ? -Math.abs(parseInt(it.raw_id || String(it.id).replace('PKG_', '') || 0)) : parseInt(it.id),
+            package_id: it.is_pkg ? Math.abs(parseInt(it.raw_id || String(it.id).replace('PKG_', '') || 0)) : null,
+            is_package: Boolean(it.is_pkg),
+            name: it.name,
+            price: parseFloat(it.price || 0),
+            image_url: it.img || '',
+            quantity: parseInt(it.quantity || 1),
+            offer_type: it.offer_type || '',
+            offer_value: it.offer_value || '',
+            offer_title: it.offer_title || ''
+          }));
+          const res = await fetch('/api/cart/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify({ phone: currentCustomer.phone, items })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.updated_at) {
+              _lastCartSyncTs = data.updated_at;
+            }
+          }
+        } catch (_) {}
+      };
+      if (immediate) {
+        if (_cartPushTimer) clearTimeout(_cartPushTimer);
+        await execPush();
+      } else {
+        if (_cartPushTimer) clearTimeout(_cartPushTimer);
+        _cartPushTimer = setTimeout(execPush, 120);
+      }
+    }
+
+    async function pullCartFromServer() {
+      if (!currentCustomer || !currentCustomer.phone) return;
+      if (Date.now() - _lastLocalCartMutationMs < 1500) return;
+      try {
+        const res = await fetch('/api/cart?phone=' + encodeURIComponent(currentCustomer.phone) + '&_t=' + Date.now());
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || !data.success) return;
+        const serverTs = data.updated_at || '';
+        const serverItems = Array.isArray(data.items) ? data.items : [];
+        if (!serverTs && Object.keys(cart).length > 0) {
+          pushCartToServer(true);
+          return;
+        }
+        if (serverTs && serverTs !== _lastCartSyncTs) {
+          _applyServerCartToWeb(serverItems, serverTs);
+        }
+      } catch (_) {}
+    }
+
+    function startCartLiveSync() {
+      stopCartLiveSync();
+      if (!currentCustomer || !currentCustomer.phone) return;
+      pullCartFromServer();
+      _cartSyncPollTimer = setInterval(pullCartFromServer, 4000);
+    }
+
+    function stopCartLiveSync() {
+      if (_cartSyncPollTimer) {
+        clearInterval(_cartSyncPollTimer);
+        _cartSyncPollTimer = null;
+      }
+      _lastCartSyncTs = '';
+    }
+
+    window.addEventListener('focus', () => {
+      if (currentCustomer && currentCustomer.phone) pullCartFromServer();
+    });
+
+    function saveCart(opts = {}) {
       localStorage.setItem('supershop_cart_en', JSON.stringify(cart));
       refreshCartDisplay();
+      if (!opts || !opts.skipServer) {
+        _lastLocalCartMutationMs = Date.now();
+        pushCartToServer(false);
+      }
     }
 
     function showQtyLimitModal(message, title = 'Order Limit Reached') {
@@ -5471,10 +5589,12 @@
         }
       }
 
+      const pkgImg = pkg && pkg.image_url ? getFirstImageJS(pkg.image_url) : '';
       if (!cart[pkgKey]) {
-        cart[pkgKey] = { id: pkgKey, raw_id: id, name: '📦 ' + name, price: parseFloat(price), img: '', quantity: 1, is_pkg: true };
+        cart[pkgKey] = { id: pkgKey, raw_id: id, name: '📦 ' + name, price: parseFloat(price), img: pkgImg, quantity: 1, is_pkg: true };
       } else {
         cart[pkgKey].quantity += 1;
+        if (!cart[pkgKey].img && pkgImg) cart[pkgKey].img = pkgImg;
       }
       saveCart();
 
@@ -5646,6 +5766,9 @@
     }
 
     function openCartDrawer() {
+      if (typeof pullCartFromServer === 'function' && currentCustomer && currentCustomer.phone) {
+        pullCartFromServer();
+      }
       document.getElementById('drawerOverlay').style.display = 'block';
       setTimeout(() => {
         document.getElementById('drawerOverlay').style.opacity = '1';

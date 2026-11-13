@@ -69,6 +69,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadCachedDataInstantly();
     _loadUserProfile();
     _loadAllData(retryIfEmpty: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Provider.of<CartProvider>(context, listen: false).onCustomerSessionChanged();
+      }
+    });
   }
 
   @override
@@ -77,6 +82,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Automatically refresh data when app returns from background
       _loadAllData(retryIfEmpty: true);
       NotificationService.instance.fetchNotifications();
+      Provider.of<CartProvider>(context, listen: false).onCustomerSessionChanged();
     }
   }
 
@@ -1036,6 +1042,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           final desc = pkg['description'] ?? '';
                                           final price = double.tryParse(pkg['package_price']?.toString() ?? '0') ?? 0.0;
                                           final items = pkg['items'] as List<dynamic>? ?? [];
+                                          String pkgImg = (pkg['image_url'] ?? '').toString().trim();
+                                          if (pkgImg.isEmpty) {
+                                            for (final it in items) {
+                                              if (it is Map) {
+                                                final cand = (it['image_url'] ?? '').toString().trim();
+                                                if (cand.isNotEmpty) {
+                                                  pkgImg = cand;
+                                                  break;
+                                                }
+                                              }
+                                            }
+                                          }
 
                                           return Card(
                                           margin: const EdgeInsets.only(bottom: 12),
@@ -1045,6 +1063,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
+                                                Container(
+                                                  height: 155,
+                                                  width: double.infinity,
+                                                  margin: const EdgeInsets.only(bottom: 10),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFF8FAFC),
+                                                    borderRadius: BorderRadius.circular(10),
+                                                    border: Border.all(color: Colors.orange.shade100),
+                                                  ),
+                                                  clipBehavior: Clip.antiAlias,
+                                                  child: pkgImg.isNotEmpty
+                                                      ? AppImageLoader(
+                                                          imageUrl: pkgImg,
+                                                          width: double.infinity,
+                                                          height: 155,
+                                                          fit: BoxFit.contain,
+                                                        )
+                                                      : const Center(
+                                                          child: Column(
+                                                            mainAxisAlignment: MainAxisAlignment.center,
+                                                            children: [
+                                                              Text("🎁", style: TextStyle(fontSize: 38)),
+                                                              SizedBox(height: 4),
+                                                              Text("Special Combo Deal", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFEA580C))),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                ),
                                                 Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
@@ -1237,6 +1283,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                                sellPrice: price,
                                                                                mrp: regTotal > price ? regTotal : price,
                                                                                stockQty: comboStock,
+                                                                               imageUrl: pkgImg,
                                                                              );
 
                                                                              bool added = cartProv.addToCart(pkgProduct);
@@ -1299,6 +1346,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                                sellPrice: price,
                                                                                mrp: regTotal > price ? regTotal : price,
                                                                                stockQty: comboStock,
+                                                                               imageUrl: pkgImg,
                                                                              );
 
                                                                              bool added = cartProv.addToCart(pkgProduct);
