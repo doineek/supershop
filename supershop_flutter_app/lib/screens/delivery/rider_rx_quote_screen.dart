@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../widgets/rx_quote_builder_sheet.dart';
+import '../../widgets/thermal_print_helper.dart';
 
 /// Dedicated screen for Riders with Admin-granted `can_rx_quote_bill` permission
-/// to inspect Pharmacy prescriptions, scan barcodes / add items, and send quotations.
+/// to inspect Pharmacy prescriptions, search/scan medicines, prepare quotes,
+/// print receipts, and update Rx order status just like Admin.
 class RiderRxQuoteScreen extends StatefulWidget {
   final String riderPhone;
 
@@ -16,6 +18,7 @@ class RiderRxQuoteScreen extends StatefulWidget {
 class _RiderRxQuoteScreenState extends State<RiderRxQuoteScreen> {
   bool _loading = true;
   String _errorMsg = '';
+  String _statusFilter = '';
   List<Map<String, dynamic>> _orders = [];
 
   @override
@@ -26,7 +29,10 @@ class _RiderRxQuoteScreenState extends State<RiderRxQuoteScreen> {
 
   Future<void> _loadOrders() async {
     if (mounted) setState(() => _loading = true);
-    final res = await ApiService.fetchRiderRxQuoteOrders(riderPhone: widget.riderPhone);
+    final res = await ApiService.fetchRiderRxQuoteOrders(
+      riderPhone: widget.riderPhone,
+      status: _statusFilter,
+    );
     if (!mounted) return;
     setState(() {
       _loading = false;
@@ -43,13 +49,27 @@ class _RiderRxQuoteScreenState extends State<RiderRxQuoteScreen> {
     });
   }
 
+  Future<void> _openRiderStatusDialog(Map<String, dynamic> order) async {
+    final int orderId = ((order['id'] ?? 0) as num).toInt();
+    final updated = await RxQuoteBuilderSheet.showStatusUpdateDialog(
+      context,
+      orderId: orderId,
+      orderNumber: (order['order_number'] ?? '').toString(),
+      currentStatus: (order['order_status'] ?? 'pending').toString(),
+      customerConfirmed: order['customer_confirmed'] == true,
+      isAdmin: false,
+      riderPhone: widget.riderPhone,
+    );
+    if (updated) _loadOrders();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.teal.shade800,
         foregroundColor: Colors.white,
-        title: const Text('🔬 Rx প্রেসক্রিপশন কোটেশন', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('🔬 Rx প্রেসক্রিপশন ও বিল প্যানেল', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadOrders),
         ],
@@ -72,24 +92,55 @@ class _RiderRxQuoteScreenState extends State<RiderRxQuoteScreen> {
                       ),
                     ],
                   )
-                : _orders.isEmpty
-                    ? ListView(
-                        padding: const EdgeInsets.all(24),
-                        children: const [
-                          SizedBox(height: 80),
-                          Icon(Icons.medical_information_outlined, size: 54, color: Colors.grey),
-                          SizedBox(height: 10),
-                          Center(child: Text('বর্তমানে কোনো পেন্ডিং Rx অর্ডার নেই।', style: TextStyle(color: Colors.grey))),
-                        ],
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _orders.length,
-                        itemBuilder: (_, idx) {
-                          final o = _orders[idx];
+                : ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: [
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final pair in [
+                              {'k': '', 'label': 'সব Rx অর্ডার'},
+                              {'k': 'pending', 'label': 'নতুন (Pending)'},
+                              {'k': 'awaiting_customer_confirmation', 'label': 'কনফার্মেশন পেন্ডিং'},
+                              {'k': 'confirmed', 'label': 'Confirmed'},
+                              {'k': 'packed', 'label': 'Packed'},
+                              {'k': 'on_the_way', 'label': 'On The Way'},
+                            ])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ChoiceChip(
+                                  label: Text(pair['label']!, style: const TextStyle(fontSize: 11.5)),
+                                  selected: _statusFilter == pair['k'],
+                                  onSelected: (_) {
+                                    setState(() => _statusFilter = pair['k']!);
+                                    _loadOrders();
+                                  },
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_orders.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 64),
+                          child: Column(
+                            children: [
+                              Icon(Icons.medical_information_outlined, size: 54, color: Colors.grey),
+                              SizedBox(height: 10),
+                              Text('এই ফিল্টারে কোনো Rx অর্ডার নেই।', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        )
+                      else
+                        ..._orders.map((o) {
                           final String st = (o['order_status'] ?? 'pending').toString();
                           final bool awaiting = st == 'awaiting_customer_confirmation';
                           final bool confirmed = st == 'confirmed';
+                          final double total = ((o['total_amount'] ?? 0) as num).toDouble();
+                          final int orderId = ((o['id'] ?? 0) as num).toInt();
+
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
                             shape: RoundedRectangleBorder(
@@ -136,36 +187,58 @@ class _RiderRxQuoteScreenState extends State<RiderRxQuoteScreen> {
                                       padding: const EdgeInsets.only(top: 4),
                                       child: Text('📝 ${o['customer_notes']}', style: TextStyle(fontSize: 12, color: Colors.green.shade900)),
                                     ),
-                                  const SizedBox(height: 8),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () async {
-                                        final sent = await RxQuoteBuilderSheet.open(
-                                          context,
-                                          order: o,
-                                          isAdmin: false,
-                                          riderPhone: widget.riderPhone,
-                                        );
-                                        if (sent == true) _loadOrders();
-                                      },
-                                      icon: const Icon(Icons.qr_code_scanner, size: 18),
-                                      label: const Text(
-                                        'প্রেসক্রিপশন দেখুন • স্ক্যান / বিল তৈরি করুন',
-                                        style: TextStyle(fontWeight: FontWeight.bold),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.teal.shade700,
-                                        foregroundColor: Colors.white,
-                                      ),
+                                  if (total > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text('মোট বিল: ৳${total.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
                                     ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: () async {
+                                          final sent = await RxQuoteBuilderSheet.open(
+                                            context,
+                                            order: o,
+                                            isAdmin: false,
+                                            riderPhone: widget.riderPhone,
+                                          );
+                                          if (sent == true) _loadOrders();
+                                        },
+                                        icon: const Icon(Icons.edit_note, size: 16),
+                                        label: const Text('Rx ও বিল তৈরি', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.teal.shade700,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed: () => _openRiderStatusDialog(o),
+                                        icon: const Icon(Icons.sync_alt, size: 15),
+                                        label: const Text('স্ট্যাটাস আপডেট', style: TextStyle(fontSize: 11.5)),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed: () => ThermalPrintHelper.printAndConfirm(
+                                          context,
+                                          riderPhone: widget.riderPhone,
+                                          sourceType: 'pharmacy_order',
+                                          sourceId: orderId,
+                                          invoiceNumber: (o['order_number'] ?? '').toString(),
+                                        ),
+                                        icon: const Icon(Icons.print, size: 15),
+                                        label: const Text('PC প্রিন্ট', style: TextStyle(fontSize: 11.5)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
                           );
-                        },
-                      ),
+                        }),
+                    ],
+                  ),
       ),
     );
   }

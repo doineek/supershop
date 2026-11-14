@@ -36,6 +36,134 @@ class RxQuoteBuilderSheet extends StatefulWidget {
     );
   }
 
+  /// Shared Admin/Rider status update dialog for pharmacy Rx orders (respects confirmation lock & delivery OTP).
+  static Future<bool> showStatusUpdateDialog(
+    BuildContext context, {
+    required int orderId,
+    required String orderNumber,
+    required String currentStatus,
+    required bool customerConfirmed,
+    required bool isAdmin,
+    String riderPhone = '',
+  }) async {
+    if (orderId <= 0) return false;
+    const List<String> allowedStatuses = [
+      'reviewing',
+      'confirmed',
+      'packed',
+      'on_the_way',
+      'delivered',
+      'cancelled',
+    ];
+    String targetStatus = allowedStatuses.contains(currentStatus) ? currentStatus : 'confirmed';
+    final otpCtrl = TextEditingController();
+    bool saving = false;
+
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (_, setDlgState) => AlertDialog(
+          title: Text('স্ট্যাটাস পরিবর্তন • #$orderNumber'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (currentStatus == 'awaiting_customer_confirmation' && !customerConfirmed)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade400),
+                  ),
+                  child: const Text(
+                    '⚠️ কাস্টমার এখনও বিল কনফার্ম করেননি। কাস্টমার কনফার্ম করার আগে প্যাকড/ডেলিভারি করা যাবে না (প্রয়োজনে বাতিল করা যাবে)।',
+                    style: TextStyle(fontSize: 11.5, color: Colors.black87),
+                  ),
+                ),
+              DropdownButtonFormField<String>(
+                initialValue: targetStatus,
+                decoration: const InputDecoration(
+                  labelText: 'নতুন স্ট্যাটাস',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: allowedStatuses
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase())))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setDlgState(() => targetStatus = v);
+                },
+              ),
+              if (targetStatus == 'delivered') ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: otpCtrl,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'কাস্টমারের ৪-ডিজিট ডেলিভারি OTP',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.of(dlgCtx).pop(false),
+              child: const Text('বাতিল'),
+            ),
+            ElevatedButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDlgState(() => saving = true);
+                      final res = isAdmin
+                          ? await ApiService.updateAdminPharmacyOrderStatus(
+                              orderId: orderId,
+                              status: targetStatus,
+                              otp: otpCtrl.text.trim(),
+                            )
+                          : await ApiService.updateRiderPharmacyOrderStatus(
+                              orderId: orderId,
+                              status: targetStatus,
+                              riderPhone: riderPhone,
+                              otp: otpCtrl.text.trim(),
+                            );
+                      if (!dlgCtx.mounted) return;
+                      setDlgState(() => saving = false);
+                      if (res['success'] == true) {
+                        Navigator.of(dlgCtx).pop(true);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text((res['message'] ?? 'স্ট্যাটাস আপডেট হয়েছে।').toString()),
+                              backgroundColor: Colors.green.shade700,
+                            ),
+                          );
+                        }
+                      } else if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text((res['message'] ?? 'আপডেট করা যায়নি।').toString()),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: Text(saving ? 'সেভ হচ্ছে...' : 'আপডেট করুন'),
+            ),
+          ],
+        ),
+      ),
+    );
+    otpCtrl.dispose();
+    return updated == true;
+  }
+
   @override
   State<RxQuoteBuilderSheet> createState() => _RxQuoteBuilderSheetState();
 }
@@ -327,6 +455,131 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
     }
   }
 
+  Future<void> _openQuickStatusDialog() async {
+    final int orderId = ((widget.order['id'] ?? 0) as num).toInt();
+    if (orderId <= 0) return;
+
+    final String current = (widget.order['order_status'] ?? 'pending').toString();
+    final bool customerConfirmed = widget.order['customer_confirmed'] == true;
+    const List<String> allowed = [
+      'reviewing',
+      'confirmed',
+      'packed',
+      'on_the_way',
+      'delivered',
+      'cancelled',
+    ];
+    String targetStatus = allowed.contains(current) ? current : 'reviewing';
+    final otpCtrl = TextEditingController();
+    bool saving = false;
+
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (_, setDlgState) => AlertDialog(
+          title: Text('স্ট্যাটাস আপডেট • #${widget.order['order_number'] ?? ''}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (current == 'awaiting_customer_confirmation' && !customerConfirmed)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade400),
+                  ),
+                  child: const Text(
+                    '⚠️ কাস্টমার এখনও বিল কনফার্ম করেননি। কাস্টমার কনফার্ম করার আগে প্যাকড/ডেলিভারি করা যাবে না (প্রয়োজনে বাতিল করা যাবে)।',
+                    style: TextStyle(fontSize: 11.5, color: Colors.black87),
+                  ),
+                ),
+              DropdownButtonFormField<String>(
+                initialValue: targetStatus,
+                decoration: const InputDecoration(
+                  labelText: 'নতুন স্ট্যাটাস',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: allowed
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase())))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setDlgState(() => targetStatus = v);
+                },
+              ),
+              if (targetStatus == 'delivered') ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: otpCtrl,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'কাস্টমারের ডেলিভারি OTP',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.of(dlgCtx).pop(false),
+              child: const Text('বাতিল'),
+            ),
+            ElevatedButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDlgState(() => saving = true);
+                      final res = widget.isAdmin
+                          ? await ApiService.updateAdminPharmacyOrderStatus(
+                              orderId: orderId,
+                              status: targetStatus,
+                              otp: otpCtrl.text.trim(),
+                            )
+                          : await ApiService.updateRiderPharmacyOrderStatus(
+                              orderId: orderId,
+                              status: targetStatus,
+                              riderPhone: widget.riderPhone,
+                              otp: otpCtrl.text.trim(),
+                            );
+                      if (!dlgCtx.mounted) return;
+                      setDlgState(() => saving = false);
+                      if (res['success'] == true) {
+                        Navigator.of(dlgCtx).pop(true);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text((res['message'] ?? 'স্ট্যাটাস আপডেট হয়েছে।').toString()),
+                              backgroundColor: Colors.green.shade700,
+                            ),
+                          );
+                        }
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text((res['message'] ?? 'আপডেট করা যায়নি।').toString()),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: Text(saving ? 'সেভ হচ্ছে...' : 'আপডেট করুন'),
+            ),
+          ],
+        ),
+      ),
+    );
+    otpCtrl.dispose();
+    if (updated == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   void _openFullImage(String url) {
     showDialog(
       context: context,
@@ -398,6 +651,18 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
                     ],
                   ),
                 ),
+                if (((widget.order['id'] ?? 0) as num) > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: TextButton.icon(
+                      onPressed: _openQuickStatusDialog,
+                      icon: const Icon(Icons.sync_alt, size: 15, color: Colors.amberAccent),
+                      label: const Text(
+                        'স্ট্যাটাস',
+                        style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
+                  ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white),
                   onPressed: () => Navigator.of(context).pop(false),

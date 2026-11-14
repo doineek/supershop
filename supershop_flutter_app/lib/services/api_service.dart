@@ -1099,10 +1099,17 @@ class ApiService {
     return {'success': false, 'can_rx_quote_bill': false};
   }
 
-  static Future<Map<String, dynamic>> fetchRiderRxQuoteOrders({required String riderPhone}) async {
+  static Future<Map<String, dynamic>> fetchRiderRxQuoteOrders({
+    required String riderPhone,
+    String status = '',
+  }) async {
     try {
+      String path = '/api/rider/rx-quote-orders?rider_phone=${Uri.encodeComponent(riderPhone.trim())}';
+      if (status.trim().isNotEmpty) {
+        path += '&status=${Uri.encodeComponent(status.trim())}';
+      }
       final res = await httpGet(
-        '/api/rider/rx-quote-orders?rider_phone=${Uri.encodeComponent(riderPhone.trim())}',
+        path,
         timeout: const Duration(seconds: 12),
       );
       if (res != null) {
@@ -1113,6 +1120,51 @@ class ApiService {
       return {'success': false, 'message': '$e', 'orders': []};
     }
     return {'success': false, 'orders': []};
+  }
+
+  static Future<Map<String, dynamic>> fetchRiderPharmacyOrderDetail({
+    required int orderId,
+    required String riderPhone,
+  }) async {
+    try {
+      final res = await httpGet(
+        '/api/rider/pharmacy-orders/$orderId?rider_phone=${Uri.encodeComponent(riderPhone.trim())}',
+        timeout: const Duration(seconds: 12),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': '$e'};
+    }
+    return {'success': false, 'message': 'অর্ডার তথ্য লোড করা যায়নি।'};
+  }
+
+  static Future<Map<String, dynamic>> updateRiderPharmacyOrderStatus({
+    required int orderId,
+    required String status,
+    required String riderPhone,
+    String otp = '',
+  }) async {
+    try {
+      final res = await httpPost(
+        '/api/rider/pharmacy-orders/$orderId/update-status',
+        body: jsonEncode({
+          'rider_phone': riderPhone.trim(),
+          'status': status,
+          if (otp.isNotEmpty) 'otp': otp,
+        }),
+        timeout: const Duration(seconds: 15),
+      );
+      if (res != null) {
+        final parsed = jsonDecode(res.body);
+        if (parsed is Map<String, dynamic>) return parsed;
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'নেটওয়ার্ক সমস্যা: $e'};
+    }
+    return {'success': false, 'message': 'স্ট্যাটাস আপডেট করা যায়নি।'};
   }
 
   static Future<Map<String, dynamic>> submitRiderPharmacyQuote({

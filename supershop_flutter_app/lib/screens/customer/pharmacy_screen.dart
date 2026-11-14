@@ -822,7 +822,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                             child: ElevatedButton.icon(
                               onPressed: () => _pickPrescriptionImage(ImageSource.camera),
                               icon: const Icon(Icons.camera_alt, size: 18),
-                              label: const Text("📷 ক্যামেরা", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                              label: const Text("ক্যামেরা", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF047857),
                                 foregroundColor: Colors.white,
@@ -836,7 +836,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                             child: OutlinedButton.icon(
                               onPressed: () => _pickPrescriptionImage(ImageSource.gallery),
                               icon: const Icon(Icons.photo_library, size: 18),
-                              label: const Text("📁 গ্যালারি", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                              label: const Text("গ্যালারি", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: const Color(0xFF047857),
                                 side: const BorderSide(color: Color(0xFF059669), width: 1.5),
@@ -1209,7 +1209,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                               _loadCustomerAndSettings();
                             },
                             icon: const Icon(Icons.login, size: 16),
-                            label: const Text("🔐 একাউন্টে লগইন করে অটো-ফিল করুন"),
+                            label: const Text("একাউন্টে লগইন করে অটো-ফিল করুন"),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF047857),
                               side: const BorderSide(color: Color(0xFF10B981)),

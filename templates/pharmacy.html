@@ -246,19 +246,20 @@
         <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
           <label class="block text-xs font-bold text-slate-800 mb-1.5 flex items-center justify-between">
             <span>⏱️ সব ওষুধ কয়দিনের জন্য লাগবে?</span>
-            <span class="text-[11px] text-slate-500 font-normal">যেকোনো একটি নির্বাচন করুন</span>
+            <span class="text-[11px] text-amber-700 font-bold" id="durationSelectionHint">★ "নোটে লিখবো" নির্বাচিত আছে</span>
           </label>
-          <div class="grid grid-cols-3 sm:grid-cols-6 gap-1.5" id="durationPillsContainer">
-            <button type="button" onclick="selectDuration(3, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৩ দিন</button>
-            <button type="button" onclick="selectDuration(5, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৫ দিন</button>
-            <button type="button" onclick="selectDuration(7, this)" class="duration-pill py-1.5 px-2 bg-emerald-600 border border-emerald-600 rounded-lg text-xs font-bold text-white shadow-2xs transition text-center">৭ দিন</button>
-            <button type="button" onclick="selectDuration(10, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১০ দিন</button>
-            <button type="button" onclick="selectDuration(14, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১৪ দিন</button>
-            <button type="button" onclick="selectDuration(30, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১ মাস (৩০ দিন)</button>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5" id="durationPillsContainer">
+            <button type="button" data-days="0" onclick="selectDuration(0, this)" class="duration-pill col-span-2 sm:col-span-4 py-2 px-3 bg-amber-500 border-2 border-amber-600 rounded-lg text-xs sm:text-sm font-extrabold text-white shadow-sm ring-2 ring-amber-200 transition text-center">✍️ নোটে লিখবো (প্রস্তাবিত)</button>
+            <button type="button" data-days="3" onclick="selectDuration(3, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৩ দিন</button>
+            <button type="button" data-days="5" onclick="selectDuration(5, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৫ দিন</button>
+            <button type="button" data-days="7" onclick="selectDuration(7, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">৭ দিন</button>
+            <button type="button" data-days="10" onclick="selectDuration(10, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১০ দিন</button>
+            <button type="button" data-days="14" onclick="selectDuration(14, this)" class="duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১৪ দিন</button>
+            <button type="button" data-days="30" onclick="selectDuration(30, this)" class="duration-pill col-span-2 py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center">১ মাস (৩০ দিন)</button>
           </div>
-          <input type="hidden" id="overall_duration_days" name="overall_duration_days" value="7">
+          <input type="hidden" id="overall_duration_days" name="overall_duration_days" value="0">
           <p class="text-[10px] text-slate-500 mt-1.5">
-            * যদি একেক ওষুধের জন্য আলাদা পরিমাণ বা দিন লাগে, তবে নিচের তালিকা থেকে ওষুধ নির্বাচন করুন অথবা নোটে লিখে দিন।
+            * যদি একেক ওষুধের জন্য আলাদা পরিমাণ বা দিন লাগে, তবে নিচের নোট বক্সে লিখুন অথবা তালিকা থেকে ওষুধ নির্বাচন করুন।
           </p>
         </div>
 
@@ -341,13 +342,16 @@
           </div>
         </div>
 
-        <!-- Section 2C: Notes -->
-        <div class="bg-slate-50/70 p-3 rounded-xl border border-slate-200 space-y-1.5">
-          <label class="block text-xs font-bold text-slate-800 flex items-center justify-between">
-            <span>✍️ বিশেষ নির্দেশনা বা অতিরিক্ত নিয়মাবলী:</span>
-            <span class="text-[10px] text-slate-400">ঐচ্ছিক</span>
+        <!-- Section 2C: Notes (Highlighted automatically when "নোটে লিখবো" is selected) -->
+        <div id="customerNotesContainer" class="bg-amber-50 p-3.5 rounded-xl border-2 border-amber-400 shadow-xs space-y-1.5 transition">
+          <div id="notesHighlightBanner" class="flex items-center justify-between gap-2 bg-amber-100/90 border border-amber-300 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-amber-900">
+            <span>★ "নোটে লিখবো" সিলেক্ট করা আছে — কয়দিনের ওষুধ বা বিশেষ নিয়ম নিচে লিখুন</span>
+          </div>
+          <label class="block text-xs font-bold text-amber-950 flex items-center justify-between pt-0.5" id="notesLabelRow">
+            <span>✍️ কয়দিনের ওষুধ ও বিশেষ নির্দেশনা:</span>
+            <span class="text-[10px] text-amber-700 font-bold" id="notesRequiredTag">নোটে লিখুন</span>
           </label>
-          <textarea id="customer_notes" name="customer_notes" rows="2" placeholder="যেমন: প্রেসক্রিপশনের গ্যাস্ট্রিকের ওষুধ ৭ দিনের জন্য দিন, নাপা লাগবে না, অথবা নির্দিষ্ট কোনো নিয়ম থাকলে এখানে লিখে দিন..." class="w-full p-2.5 bg-white border border-slate-200 focus:border-emerald-500 rounded-xl text-xs outline-hidden transition resize-none"></textarea>
+          <textarea id="customer_notes" name="customer_notes" rows="2" placeholder="যেমন: সব ওষুধ ৭ দিনের জন্য দিন, শুধু গ্যাস্ট্রিকেরটা ১০ পিস, অথবা নির্দিষ্ট কোনো নির্দেশনা থাকলে এখানে লিখে দিন..." class="w-full p-2.5 bg-white border-2 border-amber-300 focus:border-amber-500 rounded-xl text-xs font-medium outline-hidden transition resize-none"></textarea>
         </div>
       </div>
 
@@ -2234,9 +2238,41 @@
     function selectDuration(days, btn) {
       $("overall_duration_days").value = days;
       document.querySelectorAll(".duration-pill").forEach(p => {
-        p.className = "duration-pill py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center";
+        const isNotePill = parseInt(p.getAttribute("data-days") || "-1", 10) === 0;
+        const spanCls = isNotePill ? "col-span-2 sm:col-span-4 py-2 px-3 " : (parseInt(p.getAttribute("data-days") || "0", 10) === 30 ? "col-span-2 py-1.5 px-2 " : "py-1.5 px-2 ");
+        p.className = "duration-pill " + spanCls + "bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition text-center";
       });
-      btn.className = "duration-pill py-1.5 px-2 bg-emerald-600 border border-emerald-600 rounded-lg text-xs font-bold text-white shadow-2xs transition text-center";
+      const isNoteSelected = parseInt(days, 10) === 0;
+      if (isNoteSelected) {
+        btn.className = "duration-pill col-span-2 sm:col-span-4 py-2 px-3 bg-amber-500 border-2 border-amber-600 rounded-lg text-xs sm:text-sm font-extrabold text-white shadow-sm ring-2 ring-amber-200 transition text-center";
+      } else {
+        const spanCls = parseInt(days, 10) === 30 ? "col-span-2 py-1.5 px-2 " : "py-1.5 px-2 ";
+        btn.className = "duration-pill " + spanCls + "bg-emerald-600 border border-emerald-600 rounded-lg text-xs font-bold text-white shadow-2xs transition text-center";
+      }
+      const hintEl = $("durationSelectionHint");
+      if (hintEl) {
+        hintEl.innerText = isNoteSelected ? '★ "নোটে লিখবো" নির্বাচিত আছে' : `${days} দিন নির্বাচিত`;
+        hintEl.className = isNoteSelected ? "text-[11px] text-amber-700 font-bold" : "text-[11px] text-emerald-700 font-bold";
+      }
+      const notesBox = $("customerNotesContainer");
+      const bannerEl = $("notesHighlightBanner");
+      const reqTag = $("notesRequiredTag");
+      const notesInput = $("customer_notes");
+      if (notesBox && bannerEl && reqTag && notesInput) {
+        if (isNoteSelected) {
+          notesBox.className = "bg-amber-50 p-3.5 rounded-xl border-2 border-amber-400 shadow-xs space-y-1.5 transition";
+          bannerEl.classList.remove("hidden");
+          reqTag.innerText = "নোটে লিখুন";
+          reqTag.className = "text-[10px] text-amber-700 font-bold";
+          notesInput.className = "w-full p-2.5 bg-white border-2 border-amber-300 focus:border-amber-500 rounded-xl text-xs font-medium outline-hidden transition resize-none";
+        } else {
+          notesBox.className = "bg-slate-50/70 p-3 rounded-xl border border-slate-200 space-y-1.5 transition";
+          bannerEl.classList.add("hidden");
+          reqTag.innerText = "ঐচ্ছিক";
+          reqTag.className = "text-[10px] text-slate-400";
+          notesInput.className = "w-full p-2.5 bg-white border border-slate-200 focus:border-emerald-500 rounded-xl text-xs outline-hidden transition resize-none";
+        }
+      }
     }
 
     async function fetchMedicinesCatalog() {
@@ -2514,7 +2550,7 @@
           strength: med.strength,
           quantity: 1,
           unit: (med.dosage_form && med.dosage_form.toLowerCase().includes('syrup')) ? "বোতল" : "পিস",
-          duration_days: $("overall_duration_days").value + " দিন",
+          duration_days: (parseInt($("overall_duration_days").value, 10) || 0) > 0 ? ($("overall_duration_days").value + " দিন") : "নোটে উল্লিখিত",
           unit_price: parseFloat(med.sell_price || med.unit_price),
           mrp: parseFloat(med.mrp || med.unit_price),
           discount_percent: parseFloat(med.discount_percent || 0),
@@ -2663,7 +2699,8 @@
       }
 
       if (hasPrescription && !hasMedicines && overallDuration <= 0 && notes.length < 2) {
-        alert("প্রেসক্রিপশন আপলোড করলে ওষুধ কয়দিনের লাগবে নির্বাচন করুন অথবা নোটে লিখে দিন।");
+        alert("আপনি 'নোটে লিখবো' নির্বাচন করেছেন। অনুগ্রহ করে বিশেষ নির্দেশনা/নোট বক্সে কয়দিনের ওষুধ লাগবে বা অতিরিক্ত নির্দেশনা লিখে দিন।");
+        $("customer_notes").focus();
         return;
       }
 

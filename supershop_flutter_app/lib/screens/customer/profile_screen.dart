@@ -15,7 +15,6 @@ import '../../widgets/location_selector_dialog.dart';
 import '../auth/login_screen.dart';
 import '../admin/admin_hub_screen.dart';
 import 'my_orders_screen.dart';
-import 'pharmacy_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -46,21 +45,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadLocalProfileImmediately();
     _loadProfileDataAsync();
     _loadAppVersion();
-  }
-
-  void _openPharmacyPortal() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          body: SafeArea(
-            child: PharmacyScreen(
-              onBackToHome: () => Navigator.pop(context),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   void _loadProfileData() {
@@ -113,9 +97,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       String imgB64 = prefs.getString('user_image_base64') ?? phoneImg;
       String av = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
 
+      final String role = (prefs.getString('user_role') ?? '').trim().toLowerCase();
+      final bool adminFlag = (prefs.getBool('is_admin_mode') ?? false) &&
+          (role == 'admin' || role == 'cashier');
       if (!mounted) return;
       setState(() {
-        _isAdminMode = prefs.getBool('is_admin_mode') ?? false;
+        _isAdminMode = adminFlag;
         _userName = prefs.getString('user_name') ?? 'Customer User';
         _userPhone = userPhone;
         _userEmail = prefs.getString('user_email') ?? '';
@@ -774,6 +761,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await prefs.remove('user_phone');
     await prefs.remove('user_email');
     await prefs.remove('customer_id');
+    await prefs.remove('is_admin_mode');
+    await prefs.remove('user_role');
+    await prefs.remove('is_delivery_man');
+    await prefs.remove('rider_can_rx_quote_bill');
+    await ApiService.setStaffToken('');
     NotificationService.instance.clearLocalState();
 
     if (!mounted) return;
@@ -995,14 +987,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               MaterialPageRoute(builder: (_) => const MyOrdersScreen()),
                             );
                           },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.local_pharmacy, color: Color(0xFF0D9488)),
-                          title: const Text('ফার্মেসী ও প্রেসক্রিপশন সেবা', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: const Text('প্রেসক্রিপশন আপলোড ও অনলাইনে ঔষধ অর্ডার'),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                          onTap: _openPharmacyPortal,
                         ),
                         const Divider(height: 1),
                         ListTile(

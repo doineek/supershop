@@ -175,6 +175,7 @@ class OnlineOrder {
   final int pharmacyOrderId;
   final String customerIp;
   final String ipLocation;
+  final Map<String, dynamic>? rxOrderData;
   final List<OrderTimelineStep> timeline;
   final List<OrderItem> items;
 
@@ -214,6 +215,7 @@ class OnlineOrder {
     this.pharmacyOrderId = 0,
     this.customerIp = '',
     this.ipLocation = '',
+    this.rxOrderData,
     this.timeline = const [],
     required this.items,
   });
@@ -273,6 +275,9 @@ class OnlineOrder {
       pharmacyOrderId: _asInt(json['pharmacy_order_id']),
       customerIp: _asStr(json['customer_ip']),
       ipLocation: _asStr(json['ip_location']),
+      rxOrderData: json['rx_order_data'] is Map
+          ? Map<String, dynamic>.from(json['rx_order_data'])
+          : null,
       timeline: timelineList,
       items: itemList,
     );

@@ -854,7 +854,7 @@ class _PrescriptionCropScanDialogState
                                 )
                               : const Icon(Icons.check_circle, size: 18),
                           label: Text(
-                            _isSaving ? "প্রসেস হচ্ছে..." : "✓ ক্রপ ও সোজা করে সেভ করুন",
+                            _isSaving ? "প্রসেস হচ্ছে..." : "ক্রপ ও সোজা করে সেভ করুন",
                             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/online_order.dart';
 import '../../services/api_service.dart';
+import '../../widgets/rx_quote_builder_sheet.dart';
 import '../../widgets/thermal_print_helper.dart';
 import '../auth/login_screen.dart';
 import 'rider_billing_sheet.dart';
@@ -132,7 +133,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                "🔔 New Online Order Received!",
+                "New Online Order Received!",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepOrange),
               ),
             ),
@@ -175,7 +176,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
               _acceptOrder(order);
             },
             icon: const Icon(Icons.delivery_dining, color: Colors.white),
-            label: const Text("🚀 ACCEPT DELIVERY", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            label: const Text("ACCEPT DELIVERY", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
           ),
         ],
@@ -564,6 +565,72 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
     );
   }
 
+  Map<String, dynamic> _buildRxOrderMap(OnlineOrder order) {
+    if (order.rxOrderData != null) {
+      return Map<String, dynamic>.from(order.rxOrderData!);
+    }
+    return {
+      'id': order.pharmacyOrderId,
+      'order_number': order.orderNumber,
+      'customer_name': order.customerName,
+      'customer_phone': order.customerPhone,
+      'delivery_address': order.addressDetails.isNotEmpty
+          ? '${order.addressDetails}, ${order.area}, ${order.district}'
+          : '${order.area}, ${order.district}',
+      'order_status': order.orderStatus,
+      'customer_notes': order.customerNotes,
+      'overall_duration_days': order.overallDurationDays,
+      'delivery_charge': order.deliveryCharge > 0 ? order.deliveryCharge : 50.0,
+      'subtotal': order.subtotal,
+      'total_amount': order.totalAmount,
+      'prescription_url': order.prescriptionUrl,
+      'prescription_original_url': order.prescriptionOriginalUrl,
+      'prescription_images': [
+        if (order.prescriptionUrl.isNotEmpty) order.prescriptionUrl,
+        if (order.prescriptionOriginalUrl.isNotEmpty &&
+            order.prescriptionOriginalUrl != order.prescriptionUrl)
+          order.prescriptionOriginalUrl,
+      ],
+      'requested_items': [],
+      'approved_items': [],
+    };
+  }
+
+  Future<void> _openRxQuoteForOrder(OnlineOrder order) async {
+    Map<String, dynamic> rxOrder = _buildRxOrderMap(order);
+    if (order.rxOrderData == null && order.pharmacyOrderId > 0) {
+      final res = await ApiService.fetchRiderPharmacyOrderDetail(
+        orderId: order.pharmacyOrderId,
+        riderPhone: _riderPhone,
+      );
+      if (res['success'] == true && res['order'] is Map) {
+        rxOrder = Map<String, dynamic>.from(res['order'] as Map);
+      }
+    }
+    if (!mounted) return;
+    final updated = await RxQuoteBuilderSheet.open(
+      context,
+      order: rxOrder,
+      isAdmin: false,
+      riderPhone: _riderPhone,
+    );
+    if (updated == true) _loadAllData(silent: false);
+  }
+
+  Future<void> _openRxStatusDialog(OnlineOrder order) async {
+    final rxData = order.rxOrderData ?? const <String, dynamic>{};
+    final updated = await RxQuoteBuilderSheet.showStatusUpdateDialog(
+      context,
+      orderId: order.pharmacyOrderId,
+      orderNumber: order.orderNumber,
+      currentStatus: (rxData['order_status'] ?? order.orderStatus).toString(),
+      customerConfirmed: rxData['customer_confirmed'] == true,
+      isAdmin: false,
+      riderPhone: _riderPhone,
+    );
+    if (updated) _loadAllData(silent: false);
+  }
+
   Future<void> _printOrderThermal(OnlineOrder order) async {
     final bool usePharm = order.isPharmacyOrder && order.pharmacyOrderId > 0;
     await ThermalPrintHelper.printAndConfirm(
@@ -898,7 +965,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                         child: TextButton.icon(
                           onPressed: () => _showPrescriptionModal(order),
                           icon: const Icon(Icons.image_search, size: 15),
-                          label: const Text('📄 প্রেসক্রিপশন দেখুন', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: const Text('প্রেসক্রিপশন দেখুন', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.green.shade800,
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -907,6 +974,37 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                           ),
                         ),
                       ),
+                    if (_canRxQuoteBill && order.pharmacyOrderId > 0) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () => _openRxQuoteForOrder(order),
+                            icon: const Icon(Icons.edit_note, size: 15),
+                            label: const Text('Rx ও বিল তৈরি', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal.shade700,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              minimumSize: Size.zero,
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => _openRxStatusDialog(order),
+                            icon: const Icon(Icons.sync_alt, size: 14),
+                            label: const Text('Rx স্ট্যাটাস', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.teal.shade900,
+                              side: BorderSide(color: Colors.teal.shade400),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              minimumSize: Size.zero,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -950,7 +1048,7 @@ class _DeliveryHomeScreenState extends State<DeliveryHomeScreen> {
                   onPressed: () => _printOrderThermal(order),
                   icon: const Icon(Icons.print, size: 15, color: Colors.white),
                   label: Text(
-                    isCompact ? "PC প্রিন্ট" : "🖨️ PC প্রিন্ট",
+                    "PC প্রিন্ট",
                     style: TextStyle(fontSize: isCompact ? 10 : 11, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(

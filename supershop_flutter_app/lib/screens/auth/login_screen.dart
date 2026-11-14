@@ -367,14 +367,17 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('user_name', user['name'] ?? (_isDeliveryMan ? 'Delivery Rider' : 'Customer User'));
       await prefs.setString('user_email', user['email'] ?? '');
       await prefs.setBool('is_delivery_man', _isDeliveryMan);
+      await prefs.setBool('is_admin_mode', false);
+      await prefs.setString('user_role', _isDeliveryMan ? 'delivery' : 'customer');
       await prefs.setBool('stay_signed_in', _staySignedIn);
       final staffTok = (res['token'] ?? user['token'] ?? '').toString().trim();
-      if (staffTok.isNotEmpty) {
-        await ApiService.setStaffToken(staffTok);
-      }
       if (_isDeliveryMan) {
+        if (staffTok.isNotEmpty) {
+          await ApiService.setStaffToken(staffTok);
+        }
         await prefs.setBool('rider_can_rx_quote_bill', user['can_rx_quote_bill'] == true || user['can_rx_quote_bill'] == 1);
       } else {
+        await ApiService.setStaffToken('');
         await prefs.remove('rider_can_rx_quote_bill');
       }
 

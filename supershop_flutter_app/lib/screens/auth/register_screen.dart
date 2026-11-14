@@ -417,6 +417,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await prefs.setString('user_name', name);
       await prefs.setString('user_email', email);
       await prefs.setBool('is_delivery_man', false);
+      await prefs.setBool('is_admin_mode', false);
+      await prefs.setString('user_role', 'customer');
+      await prefs.remove('rider_can_rx_quote_bill');
+      await ApiService.setStaffToken('');
 
       if (!mounted) return;
 

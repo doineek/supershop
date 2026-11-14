@@ -1070,12 +1070,39 @@ def get_categories_tree_data(conn):
     subs = conn.execute("SELECT * FROM sub_categories ORDER BY name").fetchall()
     subsubs = conn.execute("SELECT * FROM sub_sub_categories ORDER BY name").fetchall()
 
-    cat_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL GROUP BY category_id").fetchall())
-    cat_direct_counts = dict(conn.execute("SELECT category_id, COUNT(*) FROM products WHERE category_id IS NOT NULL AND (sub_category_id IS NULL OR sub_category_id = 0) GROUP BY category_id").fetchall())
-    sub_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL GROUP BY sub_category_id").fetchall())
-    sub_direct_counts = dict(conn.execute("SELECT sub_category_id, COUNT(*) FROM products WHERE sub_category_id IS NOT NULL AND (sub_sub_category_id IS NULL OR sub_sub_category_id = 0) GROUP BY sub_category_id").fetchall())
-    subsub_counts = dict(conn.execute("SELECT sub_sub_category_id, COUNT(*) FROM products WHERE sub_sub_category_id IS NOT NULL GROUP BY sub_sub_category_id").fetchall())
-    uncategorized_count = conn.execute("SELECT COUNT(*) FROM products WHERE category_id IS NULL OR category_id NOT IN (SELECT id FROM categories)").fetchone()[0]
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    raw_active_rows = conn.execute("""
+        SELECT id, sku, sl_number, sell_price, stock_qty,
+               category_id, sub_category_id, sub_sub_category_id
+        FROM products
+        WHERE (expiry_date IS NULL OR expiry_date = '' OR expiry_date >= ?)
+    """, (today_date,)).fetchall()
+    visible_rows = filter_online_products(raw_active_rows)
+
+    valid_cat_ids = {c["id"] for c in cats}
+    cat_counts = {}
+    cat_direct_counts = {}
+    sub_counts = {}
+    sub_direct_counts = {}
+    subsub_counts = {}
+    uncategorized_count = 0
+
+    for pr in visible_rows:
+        cid = pr.get("category_id")
+        sid = pr.get("sub_category_id")
+        ssid = pr.get("sub_sub_category_id")
+        if cid is not None and cid in valid_cat_ids:
+            cat_counts[cid] = cat_counts.get(cid, 0) + 1
+            if not sid:
+                cat_direct_counts[cid] = cat_direct_counts.get(cid, 0) + 1
+        else:
+            uncategorized_count += 1
+        if sid is not None and sid > 0:
+            sub_counts[sid] = sub_counts.get(sid, 0) + 1
+            if not ssid:
+                sub_direct_counts[sid] = sub_direct_counts.get(sid, 0) + 1
+        if ssid is not None and ssid > 0:
+            subsub_counts[ssid] = subsub_counts.get(ssid, 0) + 1
     
     cat_list = []
     for c in cats:
@@ -11405,15 +11432,30 @@ def api_delivery_orders():
     except Exception as e:
         print(f"[delivery_orders] Pharmacy sync notice: {e}")
 
+    rider_can_rx = False
     if raw_phone or norm_phone or rider_id:
         phone_patterns = list(set(filter(None, [raw_phone, norm_phone, f"88{norm_phone}" if norm_phone else "", f"+88{norm_phone}" if norm_phone else ""])))
-        if not rider_id and norm_phone:
-            u = conn.execute("SELECT id FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (norm_phone, raw_phone)).fetchone()
+        if norm_phone:
+            u = conn.execute("SELECT id, COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE role = 'delivery' AND (username = ? OR username = ?)", (norm_phone, raw_phone)).fetchone()
             if u:
-                rider_id = u["id"]
+                if not rider_id:
+                    rider_id = u["id"]
+                rider_can_rx = int(u["can_rx_quote_bill"] or 0) == 1
+        elif rider_id:
+            u = conn.execute("SELECT COALESCE(can_rx_quote_bill, 0) AS can_rx_quote_bill FROM users WHERE id = ?", (rider_id,)).fetchone()
+            if u:
+                rider_can_rx = int(u["can_rx_quote_bill"] or 0) == 1
 
         placeholders = ",".join("?" for _ in phone_patterns) if phone_patterns else "''"
         params = phone_patterns + [rider_id or 0]
+
+        rx_extra_clause = ""
+        if rider_can_rx:
+            rx_extra_clause = """
+                OR
+                (UPPER(COALESCE(order_number, '')) LIKE 'RX-%'
+                 AND order_status IN ('new', 'pending', 'pending_confirmation', 'reviewing', 'awaiting_customer_confirmation', 'verified', 'packed', 'on_the_way'))
+            """
 
         orders = conn.execute(f"""
             SELECT * FROM online_orders
@@ -11423,6 +11465,7 @@ def api_delivery_orders():
                 OR
                 ((assigned_rider_phone IN ({placeholders}) OR (assigned_rider_id IS NOT NULL AND assigned_rider_id = ?))
                  AND order_status IN ('new', 'verified', 'packed', 'on_the_way'))
+                {rx_extra_clause}
             )
             ORDER BY id DESC
         """, params).fetchall()
@@ -11461,6 +11504,7 @@ def api_delivery_orders():
             o_dict["customer_notes"] = pharm_row["customer_notes"] or ""
             o_dict["overall_duration_days"] = pharm_row["overall_duration_days"] or 0
             o_dict["order_type"] = pharm_row["order_type"] or ""
+            o_dict["rx_order_data"] = _serialize_pharmacy_order_for_mobile(pharm_row)
             if not o_dict.get("customer_ip") and "customer_ip" in pharm_row.keys():
                 o_dict["customer_ip"] = pharm_row["customer_ip"] or ""
             if not o_dict.get("ip_location") and "ip_location" in pharm_row.keys():
@@ -14676,42 +14720,27 @@ def api_admin_pharmacy_generate_bill(order_id):
     })
 
 
-@app.route("/api/admin/pharmacy/orders/<int:order_id>/update-status", methods=["POST"])
-@login_required
-def api_admin_pharmacy_update_status(order_id):
-    """
-    Updates the lifecycle status of a pharmacy order:
-    'packed' -> 'on_the_way' (with rider assignment) -> 'delivered' (with OTP check) -> 'cancelled'
-    """
-    order_id = request.view_args.get("order_id")
-    data = request.get_json(silent=True) or request.form or {}
-    new_status = (data.get("status") or "").strip()
-    rider_id = data.get("rider_id")
-    otp_code = (data.get("otp") or "").strip()
-
+def _execute_pharmacy_order_status_update(conn, order_id, new_status, rider_id=None, otp_code="",
+                                         assign_rider_fallback=None, require_otp=False):
+    """Shared validation, status transition, online_orders mirror sync, and push dispatch."""
     valid_statuses = ["reviewing", "awaiting_customer_confirmation", "confirmed", "packed", "on_the_way", "delivered", "cancelled"]
     if new_status not in valid_statuses:
-        return jsonify({"success": False, "message": "অবৈধ স্ট্যাটাস।"}), 400
+        return None, ("অবৈধ স্ট্যাটাস।", 400)
 
-    conn = get_connection()
     order = conn.execute("SELECT * FROM pharmacy_orders WHERE id = ?", (order_id,)).fetchone()
     if not order:
-        conn.close()
-        return jsonify({"success": False, "message": "অর্ডার পাওয়া যায়নি।"}), 404
+        return None, ("অর্ডার পাওয়া যায়নি।", 404)
 
     curr_st = (order["order_status"] or "").strip().lower()
     if curr_st == "awaiting_customer_confirmation" and new_status in ("confirmed", "packed", "on_the_way", "delivered"):
-        conn.close()
-        return jsonify({
-            "success": False,
-            "message": "গ্রাহক এখনো বিলের কোটেশন কনফার্ম করেননি! কাস্টমার কনফার্ম না করা পর্যন্ত অর্ডার সামনে এগানো যাবে না।"
-        }), 400
+        return None, ("গ্রাহক এখনো বিলের কোটেশন কনফার্ম করেননি! কাস্টমার কনফার্ম না করা পর্যন্ত অর্ডার সামনে এগানো যাবে না।", 400)
 
-    # OTP check if marking delivered
     if new_status == "delivered":
-        if otp_code and otp_code != order["delivery_otp"]:
-            conn.close()
-            return jsonify({"success": False, "message": "ভুল ডেলিভারি ওটিপি কোড! অনুগ্রহ করে গ্রাহকের ৪ ডিজিট কোড মিলিয়ে দিন।"}), 400
+        expected_otp = (order["delivery_otp"] or "").strip()
+        if require_otp and expected_otp and otp_code != expected_otp:
+            return None, ("ভুল ডেলিভারি ওটিপি কোড! অনুগ্রহ করে গ্রাহকের ৪ ডিজিট কোড মিলিয়ে দিন।", 400)
+        elif otp_code and expected_otp and otp_code != expected_otp:
+            return None, ("ভুল ডেলিভারি ওটিপি কোড! অনুগ্রহ করে গ্রাহকের ৪ ডিজিট কোড মিলিয়ে দিন।", 400)
 
     now_iso = get_bd_now_iso()
     rider_name = order["assigned_rider_name"]
@@ -14722,10 +14751,11 @@ def api_admin_pharmacy_update_status(order_id):
         if rider:
             rider_name = rider["full_name"] if rider["full_name"] else rider["username"]
             rider_phone = rider["username"]
+    elif assign_rider_fallback and not (rider_phone or "").strip():
+        rider_id = assign_rider_fallback.get("id")
+        rider_name = assign_rider_fallback.get("full_name") or assign_rider_fallback.get("username") or ""
+        rider_phone = assign_rider_fallback.get("username") or ""
 
-    cur = conn.cursor()
-    
-    # Update pharmacy_orders (with confirmed_at as well when marking confirmed)
     time_col = ""
     if new_status == "confirmed":
         time_col = ", confirmed_at = CASE WHEN COALESCE(confirmed_at, '') = '' THEN ? ELSE confirmed_at END"
@@ -14752,26 +14782,51 @@ def api_admin_pharmacy_update_status(order_id):
     if time_col:
         params.append(now_iso)
     params.append(order_id)
+    conn.execute(query, params)
 
-    cur.execute(query, params)
-
-    # Sync cleanly with online_orders (resolving by online_order_id or order_number, or creating if missing)
     ol_id = _ensure_online_order_for_pharmacy(conn, order_id, now_iso=now_iso)
     if ol_id:
+        if new_status == "delivered":
+            r_fee = get_rider_delivery_fee_setting(conn)
+            conn.execute(
+                "UPDATE online_orders SET payment_status = 'paid', rider_fee = CASE WHEN COALESCE(rider_fee, 0) <= 0 THEN ? ELSE rider_fee END WHERE id = ?",
+                (r_fee, ol_id),
+            )
         ol_row = conn.execute("SELECT * FROM online_orders WHERE id = ?", (ol_id,)).fetchone()
         if ol_row:
             target_ol_st = _PHARM_TO_OL_STATUS.get(new_status, new_status)
             notify_order_status_change(ol_row, target_ol_st, conn=conn)
 
     conn.commit()
-    conn.close()
-
     try:
         remote_control.push_pharmacy_order_to_cloud(order_id)
         if ol_id:
             remote_control.push_online_order_to_cloud(ol_id)
     except Exception:
         pass
+    return {"order_id": order_id, "online_order_id": ol_id, "status": new_status}, None
+
+
+@app.route("/api/admin/pharmacy/orders/<int:order_id>/update-status", methods=["POST"])
+@login_required
+def api_admin_pharmacy_update_status(order_id):
+    """
+    Updates the lifecycle status of a pharmacy order:
+    'packed' -> 'on_the_way' (with rider assignment) -> 'delivered' (with OTP check) -> 'cancelled'
+    """
+    order_id = request.view_args.get("order_id")
+    data = request.get_json(silent=True) or request.form or {}
+    new_status = (data.get("status") or "").strip()
+    rider_id = data.get("rider_id")
+    otp_code = (data.get("otp") or "").strip()
+
+    conn = get_connection()
+    _, err = _execute_pharmacy_order_status_update(
+        conn, order_id, new_status, rider_id=rider_id, otp_code=otp_code, require_otp=False
+    )
+    conn.close()
+    if err:
+        return jsonify({"success": False, "message": err[0]}), err[1]
 
     return jsonify({"success": True, "message": f"Order status updated to '{new_status}' successfully."})
 
@@ -16042,7 +16097,7 @@ def api_rider_permissions():
 
 @app.route("/api/rider/rx-quote-orders", methods=["GET"])
 def api_rider_rx_quote_orders():
-    """Returns pending/reviewing/awaiting-confirmation pharmacy orders for permitted Riders."""
+    """Returns active pharmacy orders (with optional ?status= filter) for permitted Riders."""
     conn = get_connection()
     actor = _authorize_staff_or_rider(conn)
     if not actor:
@@ -16054,25 +16109,99 @@ def api_rider_rx_quote_orders():
         conn.close()
         return jsonify({"success": False, "message": "আপনার প্রেসক্রিপশন কোটেশন তৈরি করার অনুমতি নেই। অ্যাডমিনের অনুমতি নিন।"}), 403
 
-    rows = conn.execute("""
+    status_filter = (request.args.get("status") or "").strip().lower()
+    sql = """
         SELECT po.*,
                COALESCE(oo.assigned_rider_id, 0) AS assigned_rider_id,
                COALESCE(oo.assigned_rider_name, '') AS assigned_rider_name
         FROM pharmacy_orders po
         LEFT JOIN online_orders oo ON oo.id = po.online_order_id OR oo.order_number = po.order_number
-        WHERE po.order_status IN ('pending', 'reviewing', 'awaiting_customer_confirmation', 'confirmed')
+    """
+    params = []
+    if status_filter:
+        sql += " WHERE LOWER(COALESCE(po.order_status, '')) = ? "
+        params.append(status_filter)
+    else:
+        sql += " WHERE LOWER(COALESCE(po.order_status, 'pending')) IN ('pending', 'reviewing', 'awaiting_customer_confirmation', 'confirmed', 'packed', 'on_the_way') "
+    sql += """
         ORDER BY CASE
             WHEN po.order_status IN ('pending', 'reviewing') THEN 0
             WHEN po.order_status = 'awaiting_customer_confirmation' THEN 1
-            ELSE 2
+            WHEN po.order_status IN ('confirmed', 'packed') THEN 2
+            ELSE 3
         END, po.id DESC
-        LIMIT 50
-    """).fetchall()
+        LIMIT 60
+    """
+    rows = conn.execute(sql, tuple(params)).fetchall()
     conn.close()
     return jsonify({
         "success": True,
         "orders": [_serialize_pharmacy_order_for_mobile(r) for r in rows],
     })
+
+
+@app.route("/api/rider/pharmacy-orders/<int:order_id>", methods=["GET"])
+def api_rider_pharmacy_order_detail(order_id):
+    """Returns serialized pharmacy order details for permitted Rider inspection/quote editing."""
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Unauthorized rider or staff session."}), 401
+
+    has_perm = (actor.get("role") in ("admin", "cashier")) or (int(actor.get("can_rx_quote_bill") or 0) == 1)
+    if not has_perm:
+        conn.close()
+        return jsonify({"success": False, "message": "আপনার ফার্মেসী অর্ডার দেখার অনুমতি নেই।"}), 403
+
+    row = conn.execute("""
+        SELECT po.*,
+               COALESCE(oo.assigned_rider_id, 0) AS assigned_rider_id,
+               COALESCE(oo.assigned_rider_name, '') AS assigned_rider_name
+        FROM pharmacy_orders po
+        LEFT JOIN online_orders oo ON oo.id = po.online_order_id OR oo.order_number = po.order_number
+        WHERE po.id = ?
+        LIMIT 1
+    """, (order_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"success": False, "message": "অর্ডার পাওয়া যায়নি।"}), 404
+    return jsonify({"success": True, "order": _serialize_pharmacy_order_for_mobile(row)})
+
+
+@app.route("/api/rider/pharmacy-orders/<int:order_id>/update-status", methods=["POST"])
+def api_rider_pharmacy_update_status(order_id):
+    """Allows permitted Rider (can_rx_quote_bill=1) or Admin/Cashier to update pharmacy order status just like Admin."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_staff_or_rider(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Unauthorized rider or staff session."}), 401
+
+    has_perm = (actor.get("role") in ("admin", "cashier")) or (int(actor.get("can_rx_quote_bill") or 0) == 1)
+    if not has_perm:
+        conn.close()
+        return jsonify({"success": False, "message": "আপনার ফার্মেসী অর্ডার স্ট্যাটাস আপডেট করার অনুমতি নেই।"}), 403
+
+    new_status = (data.get("status") or "").strip()
+    rider_id = data.get("rider_id")
+    otp_code = (data.get("otp") or "").strip()
+
+    _, err = _execute_pharmacy_order_status_update(
+        conn,
+        order_id,
+        new_status,
+        rider_id=rider_id,
+        otp_code=otp_code,
+        assign_rider_fallback=actor if actor.get("role") == "delivery" else None,
+        require_otp=(actor.get("role") == "delivery"),
+    )
+    conn.close()
+    if err:
+        return jsonify({"success": False, "message": err[0]}), err[1]
+
+    return jsonify({"success": True, "message": f"অর্ডার স্ট্যাটাস '{new_status.upper()}' এ আপডেট হয়েছে।"})
 
 
 @app.route("/api/rider/pharmacy-quote/<int:order_id>", methods=["POST"])

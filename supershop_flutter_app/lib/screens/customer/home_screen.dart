@@ -312,9 +312,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String phoneImg = userPhone.isNotEmpty ? (prefs.getString('saved_img_$userPhone') ?? '') : '';
     String phoneAv = userPhone.isNotEmpty ? (prefs.getString('saved_av_$userPhone') ?? '') : '';
 
+    final String role = (prefs.getString('user_role') ?? '').trim().toLowerCase();
+    final bool adminFlag = (prefs.getBool('is_admin_mode') ?? false) &&
+        (role == 'admin' || role == 'cashier');
+
     if (!mounted) return;
     setState(() {
-      _isAdminMode = prefs.getBool('is_admin_mode') ?? false;
+      _isAdminMode = adminFlag;
       _userAvatar = prefs.getString('user_avatar') ?? (phoneAv.isNotEmpty ? phoneAv : '👤');
       _userImageBase64 = prefs.getString('user_image_base64') ?? phoneImg;
     });
@@ -1995,7 +1999,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 onExpansionChanged: (expanded) {
                   if (subs.isEmpty) {
                     Navigator.of(context, rootNavigator: true).push(
-                      MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: cat["name"] ?? "Uncategorized")),
+                      MaterialPageRoute(
+                        builder: (_) => CategoryProductsScreen(
+                          categoryName: cat["name"] ?? "Uncategorized",
+                          categoryId: (cat["id"] as num?)?.toInt(),
+                        ),
+                      ),
                     );
                   }
                 },
@@ -2015,7 +2024,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       trailing: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF6B21A8)),
                       onTap: () {
                         Navigator.of(context, rootNavigator: true).push(
-                          MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: cat["name"] ?? "")),
+                          MaterialPageRoute(
+                            builder: (_) => CategoryProductsScreen(
+                              categoryName: cat["name"] ?? "",
+                              categoryId: (cat["id"] as num?)?.toInt(),
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -2052,7 +2066,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ),
                               onTap: () {
                                 Navigator.of(context, rootNavigator: true).push(
-                                  MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "")),
+                                  MaterialPageRoute(
+                                    builder: (_) => CategoryProductsScreen(
+                                      categoryName: sub["name"] ?? "",
+                                      subCategoryId: (sub["id"] as num?)?.toInt(),
+                                    ),
+                                  ),
                                 );
                               },
                             ),
@@ -2070,7 +2089,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ),
                               onTap: () {
                                 Navigator.of(context, rootNavigator: true).push(
-                                  MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "", directOnly: true)),
+                                  MaterialPageRoute(
+                                    builder: (_) => CategoryProductsScreen(
+                                      categoryName: sub["name"] ?? "",
+                                      subCategoryId: (sub["id"] as num?)?.toInt(),
+                                      directOnly: true,
+                                    ),
+                                  ),
                                 );
                               },
                             ),
@@ -2086,7 +2111,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               subtitle: Text("$ssFormattedCount Products", style: const TextStyle(fontSize: 10.5, color: Colors.grey)),
                               onTap: () {
                                 Navigator.of(context, rootNavigator: true).push(
-                                  MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: ss["name"] ?? "")),
+                                  MaterialPageRoute(
+                                    builder: (_) => CategoryProductsScreen(
+                                      categoryName: ss["name"] ?? "",
+                                      subSubCategoryId: (ss["id"] as num?)?.toInt(),
+                                    ),
+                                  ),
                                 );
                               },
                             );
@@ -2102,7 +2132,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       subtitle: Text("$subProdCount Products", style: const TextStyle(fontSize: 11, color: Colors.grey)),
                       onTap: () {
                         Navigator.of(context, rootNavigator: true).push(
-                          MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryName: sub["name"] ?? "")),
+                          MaterialPageRoute(
+                            builder: (_) => CategoryProductsScreen(
+                              categoryName: sub["name"] ?? "",
+                              subCategoryId: (sub["id"] as num?)?.toInt(),
+                            ),
+                          ),
                         );
                       },
                     );
@@ -2179,8 +2214,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 // Dedicated Category Products Screen (No Bottom Navigation Bar)
 class CategoryProductsScreen extends StatefulWidget {
   final String categoryName;
+  final int? categoryId;
+  final int? subCategoryId;
+  final int? subSubCategoryId;
   final bool directOnly;
-  const CategoryProductsScreen({Key? key, required this.categoryName, this.directOnly = false}) : super(key: key);
+  const CategoryProductsScreen({
+    Key? key,
+    required this.categoryName,
+    this.categoryId,
+    this.subCategoryId,
+    this.subSubCategoryId,
+    this.directOnly = false,
+  }) : super(key: key);
 
   @override
   State<CategoryProductsScreen> createState() => _CategoryProductsScreenState();
@@ -2199,8 +2244,21 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   List<Product> _filterCategoryProducts(List<Product> allProducts) {
     List<Product> list = allProducts;
     String q = widget.categoryName.trim().toLowerCase();
-    if (q == 'uncategorized') {
+    if (widget.categoryId == -1 || q == 'uncategorized') {
       list = list.where((p) => p.categoryId == null || p.categoryId == 0 || p.categoryName.trim().isEmpty || p.categoryName.trim().toLowerCase() == 'uncategorized').toList();
+    } else if (widget.subSubCategoryId != null && widget.subSubCategoryId! > 0) {
+      list = list.where((p) => p.subSubCategoryId == widget.subSubCategoryId).toList();
+    } else if (widget.subCategoryId != null && widget.subCategoryId! > 0) {
+      if (widget.directOnly) {
+        list = list.where((p) =>
+          p.subCategoryId == widget.subCategoryId &&
+          (p.subSubCategoryId == null || p.subSubCategoryId == 0)
+        ).toList();
+      } else {
+        list = list.where((p) => p.subCategoryId == widget.subCategoryId).toList();
+      }
+    } else if (widget.categoryId != null && widget.categoryId! > 0) {
+      list = list.where((p) => p.categoryId == widget.categoryId).toList();
     } else if (widget.directOnly) {
       list = list.where((p) =>
         p.subCategoryName.trim().toLowerCase() == q &&
