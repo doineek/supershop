@@ -38,6 +38,8 @@ class _AdminPharmacyPanelScreenState extends State<AdminPharmacyPanelScreen>
 
   final TextEditingController _medSearchCtrl = TextEditingController();
   Timer? _medDebounce;
+  Timer? _liveSyncTimer;
+  bool _isSilentSyncing = false;
 
   final TextEditingController _deliveryCtrl = TextEditingController(text: '50');
   final TextEditingController _discountCtrl = TextEditingController(text: '0');
@@ -47,10 +49,14 @@ class _AdminPharmacyPanelScreenState extends State<AdminPharmacyPanelScreen>
     super.initState();
     _tabCtrl = TabController(length: 3, vsync: this, initialIndex: widget.initialTab.clamp(0, 2));
     _initAndLoad();
+    _liveSyncTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _loadRxOrders(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _liveSyncTimer?.cancel();
     _medDebounce?.cancel();
     _medSearchCtrl.dispose();
     _deliveryCtrl.dispose();
@@ -86,17 +92,26 @@ class _AdminPharmacyPanelScreenState extends State<AdminPharmacyPanelScreen>
     });
   }
 
-  Future<void> _loadRxOrders() async {
-    if (mounted) setState(() => _loadingOrders = true);
-    final res = await ApiService.fetchAdminPharmacyOrders(status: _rxFilter);
-    if (!mounted) return;
-    setState(() {
-      _rxOrders = (res['orders'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-      _loadingOrders = false;
-    });
+  Future<void> _loadRxOrders({bool silent = false}) async {
+    if (silent && _isSilentSyncing) return;
+    if (silent) {
+      _isSilentSyncing = true;
+    } else if (mounted) {
+      setState(() => _loadingOrders = true);
+    }
+    try {
+      final res = await ApiService.fetchAdminPharmacyOrders(status: _rxFilter);
+      if (!mounted) return;
+      setState(() {
+        _rxOrders = (res['orders'] as List? ?? [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        _loadingOrders = false;
+      });
+    } finally {
+      _isSilentSyncing = false;
+    }
   }
 
   Future<void> _loadMedicines(String q) async {
@@ -271,6 +286,7 @@ class _AdminPharmacyPanelScreenState extends State<AdminPharmacyPanelScreen>
     final packetCostCtrl = TextEditingController(text: '${data['packet_cost_price'] ?? 0}');
 
     bool saving = false;
+    bool saved = false;
 
     void autoCalcFromPiece() {
       final double ps = double.tryParse(pieceSellCtrl.text) ?? 0;
@@ -407,7 +423,7 @@ class _AdminPharmacyPanelScreenState extends State<AdminPharmacyPanelScreen>
           actions: [
             TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('বাতিল')),
             ElevatedButton(
-              onPressed: saving
+              onPressed: (saving || saved)
                   ? null
                   : () async {
                       if (nameCtrl.text.trim().isEmpty) return;
@@ -433,18 +449,51 @@ class _AdminPharmacyPanelScreenState extends State<AdminPharmacyPanelScreen>
                       };
                       final res = await ApiService.saveAdminMedicine(payload);
                       if (!dlgCtx.mounted) return;
-                      Navigator.pop(dlgCtx);
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(res['success'] == true ? '✅ ঔষধ সংরক্ষিত হয়েছে' : (res['message']?.toString() ?? 'ব্যর্থ হয়েছে')),
-                          backgroundColor: res['success'] == true ? Colors.green.shade700 : Colors.red,
-                        ),
-                      );
-                      _loadMedicines(_medSearchCtrl.text);
+                      if (res['success'] == true) {
+                        setDlgState(() {
+                          saving = false;
+                          saved = true;
+                        });
+                        await Future.delayed(const Duration(milliseconds: 450));
+                        if (!dlgCtx.mounted) return;
+                        Navigator.pop(dlgCtx);
+                        if (!mounted) return;
+                        _loadMedicines(_medSearchCtrl.text);
+                        showDialog(
+                          context: context,
+                          builder: (okCtx) => AlertDialog(
+                            title: const Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green),
+                                SizedBox(width: 8),
+                                Text('Saved ✓'),
+                              ],
+                            ),
+                            content: Text('"${nameCtrl.text.trim()}" এর তথ্য ও স্টক সফলভাবে সংরক্ষিত হয়েছে।'),
+                            actions: [
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(okCtx),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white),
+                                child: const Text('ঠিক আছে'),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        setDlgState(() => saving = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(res['message']?.toString() ?? 'ব্যর্থ হয়েছে'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white),
-              child: Text(saving ? 'সেভ হচ্ছে...' : 'সংরক্ষণ'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: saved ? Colors.green.shade700 : Colors.teal.shade700,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(saved ? '✅ Saved' : (saving ? 'Saving...' : 'সংরক্ষণ')),
             ),
           ],
         ),

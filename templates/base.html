@@ -198,6 +198,7 @@
   (function() {
     let globalAudioCtx = null;
     let lastSeenOrderId = null;
+    let lastSeenConfirmedSig = null;
 
     function initGlobalAudio() {
       if (!globalAudioCtx) {
@@ -237,14 +238,21 @@
       } catch(e) {}
     }
 
-    function triggerGlobalAlert(ordNum, ordName, ordAmount) {
+    function triggerGlobalAlert(ordNum, ordName, ordAmount, isCustomerConfirmed) {
       playGlobalChime();
+
+      const notifTitle = isCustomerConfirmed
+        ? "✅ Customer Confirmed Order!"
+        : "🔔 New Online Order Received!";
+      const notifBody = isCustomerConfirmed
+        ? `Confirmed: #${ordNum} (${ordName} - TK ${ordAmount})`
+        : `Order # ${ordNum} (${ordName} - TK ${ordAmount})`;
 
       // Desktop Notification
       if ("Notification" in window) {
         if (Notification.permission === "granted") {
-          new Notification("🔔 New Online Order Received!", {
-            body: `Order # ${ordNum} (${ordName} - TK ${ordAmount})`,
+          new Notification(notifTitle, {
+            body: notifBody,
             icon: "/static/images/logo.png"
           });
         } else if (Notification.permission === "default") {
@@ -256,7 +264,9 @@
       let banner = document.getElementById('globalOrderToastBanner');
       let textDiv = document.getElementById('globalOrderToastText');
       if (banner && textDiv) {
-        textDiv.innerHTML = `Order #${ordNum} (${ordName} - TK ${ordAmount})`;
+        textDiv.innerHTML = isCustomerConfirmed
+          ? `✅ Confirmed #${ordNum} (${ordName} - TK ${ordAmount})`
+          : `Order #${ordNum} (${ordName} - TK ${ordAmount})`;
         banner.style.display = 'block';
         setTimeout(function() {
           banner.style.display = 'none';
@@ -265,13 +275,6 @@
 
       // Refresh portal notifications
       fetchPortalNotifications();
-
-      // If currently on online_orders or admin/pharmacy page, reload table immediately
-      if (window.location.pathname.includes('/online_orders') || window.location.pathname.includes('/admin/pharmacy')) {
-        setTimeout(function() {
-          window.location.reload();
-        }, 800);
-      }
     }
 
     let portalAlertsData = null;
@@ -686,7 +689,22 @@
               lastSeenOrderId = data.latest_id;
             } else if (data.latest_id > lastSeenOrderId) {
               lastSeenOrderId = data.latest_id;
-              triggerGlobalAlert(data.latest_num, data.latest_name, data.latest_amount);
+              triggerGlobalAlert(data.latest_num, data.latest_name, data.latest_amount, false);
+            }
+          }
+          if (data && data.confirmed_sig) {
+            if (lastSeenConfirmedSig === null) {
+              lastSeenConfirmedSig = data.confirmed_sig;
+            } else if (data.confirmed_sig !== lastSeenConfirmedSig) {
+              lastSeenConfirmedSig = data.confirmed_sig;
+              if (data.latest_confirmed_num) {
+                triggerGlobalAlert(
+                  data.latest_confirmed_num,
+                  data.latest_confirmed_name || 'Customer',
+                  data.latest_confirmed_amount || 0,
+                  true
+                );
+              }
             }
           }
         })

@@ -304,6 +304,9 @@
 
 <script>
   let initialTotalCount = null;
+  let initialVerifiedCount = null;
+  let initialSyncSignature = null;
+  let pendingOnlineOrdersReload = false;
   let audioContext = null;
   let soundEnabled = true; // Enabled by default!
 
@@ -389,15 +392,28 @@
     } catch(e) {}
   }
 
-  function triggerOrderAlert() {
+  function hasOpenOnlineOrdersModal() {
+    const ids = ['custModal', 'editAddrModal', 'deployRiderModal', 'riderBillingModal'];
+    return ids.some(id => {
+      const el = document.getElementById(id);
+      return el && el.style.display && el.style.display !== 'none';
+    });
+  }
+
+  function triggerOrderAlert(customTitle, customBody) {
     if (soundEnabled) {
       playChimeBeep();
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("🔔 New Order Received!", {
-          body: "A new order arrived. Updating page...",
+        new Notification(customTitle || "🔔 New Order Received!", {
+          body: customBody || "An order update arrived. Updating page...",
           icon: "/static/images/logo.png"
         });
       }
+    }
+    if (hasOpenOnlineOrdersModal()) {
+      pendingOnlineOrdersReload = true;
+      showThermalToast(customBody || "🔄 Order updated — will refresh when popup closes.", "info");
+      return;
     }
     setTimeout(function() {
       window.location.reload();
@@ -737,6 +753,10 @@
 
   function closeCustModal() {
     document.getElementById('custModal').style.display = 'none';
+    if (pendingOnlineOrdersReload) {
+      pendingOnlineOrdersReload = false;
+      window.location.reload();
+    }
   }
 
   function openEditAddrModal(orderId, orderNumber, currentAddr) {
@@ -748,21 +768,50 @@
 
   function closeEditAddrModal() {
     document.getElementById('editAddrModal').style.display = 'none';
+    if (pendingOnlineOrdersReload) {
+      pendingOnlineOrdersReload = false;
+      window.location.reload();
+    }
   }
 
   setInterval(function() {
     fetch('/api/online_orders/unread_count')
       .then(res => res.json())
       .then(data => {
+        const nextTotal = Number(data.total_count || 0);
+        const nextVerified = Number(data.verified_count || 0);
+        const nextSig = String(data.sync_signature || '');
         if (initialTotalCount === null) {
-          initialTotalCount = data.total_count;
-        } else if (data.total_count > initialTotalCount) {
-          initialTotalCount = data.total_count;
-          triggerOrderAlert();
+          initialTotalCount = nextTotal;
+          initialVerifiedCount = nextVerified;
+          initialSyncSignature = nextSig;
+        } else if (nextTotal > initialTotalCount) {
+          initialTotalCount = nextTotal;
+          initialVerifiedCount = nextVerified;
+          initialSyncSignature = nextSig;
+          triggerOrderAlert("🔔 New Order Received!", "A new order arrived. Updating orders...");
+        } else if (nextVerified > initialVerifiedCount) {
+          initialVerifiedCount = nextVerified;
+          initialSyncSignature = nextSig;
+          const confNum = data.latest_confirmed_num ? `#${data.latest_confirmed_num}` : '';
+          const confName = data.latest_confirmed_name ? ` (${data.latest_confirmed_name})` : '';
+          triggerOrderAlert(
+            "✅ Customer Confirmed Order!",
+            `Customer confirmed ${confNum}${confName}. Updating orders...`
+          );
+        } else if (nextSig && nextSig !== initialSyncSignature) {
+          initialTotalCount = nextTotal;
+          initialVerifiedCount = nextVerified;
+          initialSyncSignature = nextSig;
+          if (!hasOpenOnlineOrdersModal()) {
+            window.location.reload();
+          } else {
+            pendingOnlineOrdersReload = true;
+          }
         }
       })
       .catch(err => {});
-  }, 4000);
+  }, 3000);
 
   function showThermalToast(msg, tone = 'info') {
     let el = document.getElementById('thermalStatusToast');

@@ -42,6 +42,8 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
 
   final TextEditingController _medSearchCtrl = TextEditingController();
   Timer? _medDebounce;
+  Timer? _liveSyncTimer;
+  bool _isSilentSyncing = false;
   String _rxFilter = '';
 
   @override
@@ -50,14 +52,31 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
     _tabCtrl = TabController(length: 3, vsync: this);
     _loadIdentity();
     _refreshAll();
+    _liveSyncTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _silentSyncOrders();
+    });
   }
 
   @override
   void dispose() {
+    _liveSyncTimer?.cancel();
     _medDebounce?.cancel();
     _medSearchCtrl.dispose();
     _tabCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _silentSyncOrders() async {
+    if (_isSilentSyncing || !mounted) return;
+    _isSilentSyncing = true;
+    try {
+      await Future.wait([
+        _loadDashboard(silent: true),
+        _loadPharmacyOrders(silent: true),
+      ]);
+    } finally {
+      _isSilentSyncing = false;
+    }
   }
 
   Future<void> _loadIdentity() async {
@@ -79,8 +98,8 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
     ]);
   }
 
-  Future<void> _loadDashboard() async {
-    if (mounted) setState(() => _loadingDashboard = true);
+  Future<void> _loadDashboard({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loadingDashboard = true);
     final res = await ApiService.fetchAdminMobileDashboard();
     if (!mounted) return;
     setState(() {
@@ -93,8 +112,8 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
     });
   }
 
-  Future<void> _loadPharmacyOrders() async {
-    if (mounted) setState(() => _loadingRxOrders = true);
+  Future<void> _loadPharmacyOrders({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loadingRxOrders = true);
     final res = await ApiService.fetchAdminPharmacyOrders(status: _rxFilter);
     if (!mounted) return;
     setState(() {
@@ -171,6 +190,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
     final packetCostCtrl = TextEditingController(text: '${med['packet_cost_price'] ?? 0}');
 
     bool saving = false;
+    bool saved = false;
 
     void autoCalcFromPiece() {
       final double ps = double.tryParse(pieceSellCtrl.text) ?? 0;
@@ -351,7 +371,7 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
               child: const Text('বাতিল'),
             ),
             ElevatedButton(
-              onPressed: saving
+              onPressed: (saving || saved)
                   ? null
                   : () async {
                       setDlgState(() => saving = true);
@@ -376,20 +396,51 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
                       };
                       final res = await ApiService.saveAdminMedicine(payload);
                       if (!dlgCtx.mounted) return;
-                      Navigator.of(dlgCtx).pop();
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(res['success'] == true
-                              ? '✅ ঔষধের ক্রয়-বিক্রয় মূল্য আপডেট হয়েছে'
-                              : (res['message']?.toString() ?? 'সংরক্ষণ ব্যর্থ হয়েছে')),
-                          backgroundColor: res['success'] == true ? Colors.green.shade700 : Colors.red,
-                        ),
-                      );
-                      _loadMedicines(_medSearchCtrl.text);
+                      if (res['success'] == true) {
+                        setDlgState(() {
+                          saving = false;
+                          saved = true;
+                        });
+                        await Future.delayed(const Duration(milliseconds: 450));
+                        if (!dlgCtx.mounted) return;
+                        Navigator.of(dlgCtx).pop();
+                        if (!mounted) return;
+                        _loadMedicines(_medSearchCtrl.text);
+                        showDialog(
+                          context: context,
+                          builder: (okCtx) => AlertDialog(
+                            title: const Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green),
+                                SizedBox(width: 8),
+                                Text('Saved ✓'),
+                              ],
+                            ),
+                            content: Text('"${nameCtrl.text.trim()}" এর তথ্য ও স্টক সফলভাবে সংরক্ষিত হয়েছে।'),
+                            actions: [
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(okCtx).pop(),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white),
+                                child: const Text('ঠিক আছে'),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        setDlgState(() => saving = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(res['message']?.toString() ?? 'সংরক্ষণ ব্যর্থ হয়েছে'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white),
-              child: Text(saving ? 'সেভ হচ্ছে...' : 'সংরক্ষণ'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: saved ? Colors.green.shade700 : Colors.teal.shade700,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(saved ? '✅ Saved' : (saving ? 'Saving...' : 'সংরক্ষণ')),
             ),
           ],
         ),

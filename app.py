@@ -9038,10 +9038,50 @@ def api_rider_earnings():
 @app.route("/api/online_orders/unread_count", methods=["GET"])
 def api_online_orders_count():
     conn = get_connection()
-    new_count = conn.execute("SELECT COUNT(*) AS c FROM online_orders WHERE order_status = 'new'").fetchone()["c"]
-    total_count = conn.execute("SELECT COUNT(*) AS c FROM online_orders").fetchone()["c"]
+    row = conn.execute("""
+        SELECT
+            COUNT(*) AS total_count,
+            COALESCE(SUM(CASE WHEN order_status = 'new' THEN 1 ELSE 0 END), 0) AS new_count,
+            COALESCE(SUM(CASE WHEN order_status = 'verified' THEN 1 ELSE 0 END), 0) AS verified_count,
+            COALESCE(SUM(CASE WHEN order_status = 'awaiting_customer_confirmation' THEN 1 ELSE 0 END), 0) AS awaiting_count,
+            COALESCE(SUM(CASE WHEN order_status = 'packed' THEN 1 ELSE 0 END), 0) AS packed_count,
+            COALESCE(SUM(CASE WHEN order_status = 'on_the_way' THEN 1 ELSE 0 END), 0) AS on_the_way_count,
+            COALESCE(SUM(CASE WHEN order_status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered_count,
+            COALESCE(SUM(CASE WHEN order_status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_count,
+            COALESCE(MAX(id), 0) AS max_id,
+            COALESCE(MAX(updated_at), '') AS max_updated_at,
+            COALESCE(MAX(confirmed_at), '') AS max_confirmed_at
+        FROM online_orders
+    """).fetchone()
+    latest_conf = conn.execute("""
+        SELECT id, order_number, customer_name, total_amount, confirmed_at
+        FROM online_orders
+        WHERE order_status = 'verified' AND COALESCE(confirmed_at, '') != ''
+        ORDER BY confirmed_at DESC, id DESC
+        LIMIT 1
+    """).fetchone()
     conn.close()
-    return jsonify({"new_count": new_count, "total_count": total_count})
+    total_count = int(row["total_count"] or 0) if row else 0
+    new_count = int(row["new_count"] or 0) if row else 0
+    verified_count = int(row["verified_count"] or 0) if row else 0
+    awaiting_count = int(row["awaiting_count"] or 0) if row else 0
+    packed_count = int(row["packed_count"] or 0) if row else 0
+    on_the_way_count = int(row["on_the_way_count"] or 0) if row else 0
+    delivered_count = int(row["delivered_count"] or 0) if row else 0
+    cancelled_count = int(row["cancelled_count"] or 0) if row else 0
+    max_id = int(row["max_id"] or 0) if row else 0
+    max_upd = (row["max_updated_at"] or "") if row else ""
+    max_conf = (row["max_confirmed_at"] or "") if row else ""
+    sync_signature = f"{total_count}|{new_count}|{verified_count}|{awaiting_count}|{packed_count}|{on_the_way_count}|{delivered_count}|{cancelled_count}|{max_id}|{max_upd}|{max_conf}"
+    return jsonify({
+        "new_count": new_count,
+        "total_count": total_count,
+        "verified_count": verified_count,
+        "sync_signature": sync_signature,
+        "latest_confirmed_num": latest_conf["order_number"] if latest_conf else "",
+        "latest_confirmed_name": latest_conf["customer_name"] if latest_conf else "",
+        "latest_confirmed_amount": float(latest_conf["total_amount"] or 0.0) if latest_conf else 0.0,
+    })
 
 
 def _resolve_online_item_cost(conn, item):
@@ -10331,6 +10371,22 @@ def api_pending_orders_count():
     rx_count_row = conn.execute("SELECT COUNT(*) FROM pharmacy_orders WHERE order_status = 'reviewing'").fetchone()
     rx_count = rx_count_row[0] if rx_count_row else 0
     rx_latest = conn.execute("SELECT id, order_number, total_amount, customer_name, created_at FROM pharmacy_orders WHERE order_status = 'reviewing' ORDER BY id DESC LIMIT 1").fetchone()
+    rx_conf_stats = conn.execute("""
+        SELECT COUNT(*) AS cnt, COALESCE(MAX(id), 0) AS max_id,
+               COALESCE(MAX(COALESCE(confirmed_at, updated_at)), '') AS max_ts
+        FROM pharmacy_orders
+        WHERE order_status = 'confirmed' AND COALESCE(customer_confirmed, 0) = 1
+    """).fetchone()
+    rx_conf_latest = conn.execute("""
+        SELECT id, order_number, customer_name, total_amount, confirmed_at
+        FROM pharmacy_orders
+        WHERE order_status = 'confirmed' AND COALESCE(customer_confirmed, 0) = 1
+        ORDER BY COALESCE(confirmed_at, updated_at, created_at) DESC, id DESC
+        LIMIT 1
+    """).fetchone()
+    ol_stats = conn.execute(
+        "SELECT COUNT(*) AS cnt, COALESCE(MAX(updated_at), '') AS max_ts FROM online_orders"
+    ).fetchone()
     conn.close()
 
     total_pending = count + rx_count
@@ -10368,13 +10424,21 @@ def api_pending_orders_count():
         latest_amount = latest["total_amount"]
         order_type = "general"
 
+    confirmed_sig = f"{int(rx_conf_stats['cnt'] or 0) if rx_conf_stats else 0}|{int(rx_conf_stats['max_id'] or 0) if rx_conf_stats else 0}|{(rx_conf_stats['max_ts'] or '') if rx_conf_stats else ''}"
+    sync_sig = f"{total_pending}|{latest_id}|{confirmed_sig}|{int(ol_stats['cnt'] or 0) if ol_stats else 0}|{(ol_stats['max_ts'] or '') if ol_stats else ''}"
+
     return jsonify({
         "pending_count": total_pending,
         "latest_id": latest_id,
         "latest_num": latest_num,
         "latest_name": latest_name,
         "latest_amount": latest_amount,
-        "order_type": order_type
+        "order_type": order_type,
+        "confirmed_sig": confirmed_sig,
+        "latest_confirmed_num": rx_conf_latest["order_number"] if rx_conf_latest else "",
+        "latest_confirmed_name": rx_conf_latest["customer_name"] if rx_conf_latest else "",
+        "latest_confirmed_amount": float(rx_conf_latest["total_amount"] or 0.0) if rx_conf_latest else 0.0,
+        "sync_sig": sync_sig,
     })
 
 
@@ -14446,18 +14510,61 @@ def admin_pharmacy_orders():
 @app.route("/api/admin/pharmacy/orders/latest-check", methods=["GET"])
 @login_required
 def api_admin_pharmacy_latest_check():
-    """Lightweight real-time check for incoming pharmacy prescription orders."""
+    """Lightweight real-time check for incoming pharmacy prescription orders and customer confirmations."""
     conn = get_connection()
-    row = conn.execute("SELECT MAX(id) AS max_id, COUNT(*) AS c FROM pharmacy_orders WHERE order_status = 'reviewing'").fetchone()
-    latest = conn.execute("SELECT id, order_number, customer_name, total_amount FROM pharmacy_orders WHERE order_status = 'reviewing' ORDER BY id DESC LIMIT 1").fetchone()
+    stats = conn.execute("""
+        SELECT
+            COALESCE(MAX(id), 0) AS max_id,
+            COUNT(*) AS total_count,
+            COALESCE(SUM(CASE WHEN order_status = 'reviewing' THEN 1 ELSE 0 END), 0) AS reviewing_count,
+            COALESCE(SUM(CASE WHEN order_status = 'awaiting_customer_confirmation' THEN 1 ELSE 0 END), 0) AS awaiting_count,
+            COALESCE(SUM(CASE WHEN order_status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmed_count,
+            COALESCE(SUM(CASE WHEN order_status = 'packed' THEN 1 ELSE 0 END), 0) AS packed_count,
+            COALESCE(SUM(CASE WHEN order_status = 'on_the_way' THEN 1 ELSE 0 END), 0) AS on_the_way_count,
+            COALESCE(SUM(CASE WHEN order_status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered_count,
+            COALESCE(SUM(CASE WHEN order_status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_count,
+            COALESCE(MAX(updated_at), '') AS max_updated_at,
+            COALESCE(MAX(confirmed_at), '') AS max_confirmed_at
+        FROM pharmacy_orders
+    """).fetchone()
+    latest = conn.execute(
+        "SELECT id, order_number, customer_name, total_amount FROM pharmacy_orders WHERE order_status = 'reviewing' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    latest_confirmed = conn.execute("""
+        SELECT id, order_number, customer_name, total_amount
+        FROM pharmacy_orders
+        WHERE order_status = 'confirmed' AND COALESCE(customer_confirmed, 0) = 1
+        ORDER BY COALESCE(confirmed_at, updated_at, created_at) DESC, id DESC
+        LIMIT 1
+    """).fetchone()
     conn.close()
+
+    max_id = int(stats["max_id"] or 0) if stats else 0
+    total_count = int(stats["total_count"] or 0) if stats else 0
+    reviewing_count = int(stats["reviewing_count"] or 0) if stats else 0
+    awaiting_count = int(stats["awaiting_count"] or 0) if stats else 0
+    confirmed_count = int(stats["confirmed_count"] or 0) if stats else 0
+    packed_count = int(stats["packed_count"] or 0) if stats else 0
+    on_the_way_count = int(stats["on_the_way_count"] or 0) if stats else 0
+    delivered_count = int(stats["delivered_count"] or 0) if stats else 0
+    cancelled_count = int(stats["cancelled_count"] or 0) if stats else 0
+    max_updated_at = (stats["max_updated_at"] or "") if stats else ""
+    max_confirmed_at = (stats["max_confirmed_at"] or "") if stats else ""
+    sync_signature = f"{max_id}|{total_count}|{reviewing_count}|{awaiting_count}|{confirmed_count}|{packed_count}|{on_the_way_count}|{delivered_count}|{cancelled_count}|{max_updated_at}|{max_confirmed_at}"
+
     return jsonify({
         "success": True,
-        "latest_id": row["max_id"] if row and row["max_id"] else 0,
-        "pending_count": row["c"] if row and row["c"] else 0,
+        "latest_id": latest["id"] if latest else max_id,
+        "pending_count": reviewing_count,
+        "confirmed_count": confirmed_count,
+        "sync_signature": sync_signature,
         "latest_order_number": latest["order_number"] if latest else "",
         "latest_customer_name": latest["customer_name"] if latest else "",
-        "latest_total": latest["total_amount"] if latest else 0.0
+        "latest_total": float(latest["total_amount"] or 0.0) if latest else 0.0,
+        "latest_confirmed_id": int(latest_confirmed["id"] or 0) if latest_confirmed else 0,
+        "latest_confirmed_order_number": latest_confirmed["order_number"] if latest_confirmed else "",
+        "latest_confirmed_customer_name": latest_confirmed["customer_name"] if latest_confirmed else "",
+        "latest_confirmed_total": float(latest_confirmed["total_amount"] or 0.0) if latest_confirmed else 0.0,
     })
 
 

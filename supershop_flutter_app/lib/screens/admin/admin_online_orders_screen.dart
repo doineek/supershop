@@ -27,6 +27,8 @@ class _AdminOnlineOrdersScreenState extends State<AdminOnlineOrdersScreen> {
   String _statusFilter = 'all';
   final TextEditingController _searchCtrl = TextEditingController();
   Timer? _debounce;
+  Timer? _liveSyncTimer;
+  bool _isSilentSyncing = false;
 
   bool _loading = true;
   List<Map<String, dynamic>> _orders = [];
@@ -38,10 +40,14 @@ class _AdminOnlineOrdersScreenState extends State<AdminOnlineOrdersScreen> {
     super.initState();
     _deptFilter = widget.initialDept;
     _initAndLoad();
+    _liveSyncTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _loadOrders(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _liveSyncTimer?.cancel();
     _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
@@ -59,28 +65,37 @@ class _AdminOnlineOrdersScreenState extends State<AdminOnlineOrdersScreen> {
     await _loadOrders();
   }
 
-  Future<void> _loadOrders() async {
-    if (mounted) setState(() => _loading = true);
-    final res = await AdminApiService.fetchOnlineOrders(
-      dept: _deptFilter,
-      status: _statusFilter,
-      query: _searchCtrl.text,
-    );
-    if (!mounted) return;
-    setState(() {
-      _orders = (res['orders'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-      _riders = (res['riders'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-      _counts = res['counts'] is Map
-          ? Map<String, dynamic>.from(res['counts'] as Map)
-          : {};
-      _loading = false;
-    });
+  Future<void> _loadOrders({bool silent = false}) async {
+    if (silent && _isSilentSyncing) return;
+    if (silent) {
+      _isSilentSyncing = true;
+    } else if (mounted) {
+      setState(() => _loading = true);
+    }
+    try {
+      final res = await AdminApiService.fetchOnlineOrders(
+        dept: _deptFilter,
+        status: _statusFilter,
+        query: _searchCtrl.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _orders = (res['orders'] as List? ?? [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        _riders = (res['riders'] as List? ?? [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        _counts = res['counts'] is Map
+            ? Map<String, dynamic>.from(res['counts'] as Map)
+            : {};
+        _loading = false;
+      });
+    } finally {
+      _isSilentSyncing = false;
+    }
   }
 
   Color _statusColor(String status) {
