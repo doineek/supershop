@@ -3095,9 +3095,12 @@
           <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px;">Pay safely upon receiving parcel.</div>
         </div>
 
-        <!-- Terms & Conditions Disclaimer -->
-        <div class="terms-notice">
-          By clicking 'Confirm Order', you have to agree to our terms and conditions
+        <!-- Terms & Conditions Agreement -->
+        <div style="display:flex; align-items:flex-start; gap:8px; background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:10px 12px; margin:10px 0 8px 0;">
+          <input type="checkbox" id="chkAgreeStoreTerms" checked style="margin-top:2px; width:16px; height:16px; accent-color:#059669; cursor:pointer;">
+          <label for="chkAgreeStoreTerms" style="font-size:0.84rem; font-weight:700; color:#065F46; cursor:pointer; line-height:1.4; flex:1;">
+            Agreed to <a href="javascript:void(0)" onclick="event.preventDefault(); event.stopPropagation(); openPolicyModal('terms_conditions', 'Terms &amp; Conditions');" style="color:#047857; text-decoration:underline; font-weight:800;">terms and conditions</a>
+          </label>
         </div>
 
         <button type="submit" class="btn-checkout" id="btnPlaceOrder" style="margin-top:6px;">
@@ -3188,8 +3191,42 @@
     </div>
   </footer>
 
+  <!-- Delivery Address Availability Confirmation Modal -->
+  <div class="modal-backdrop" id="addressConfirmModal" style="z-index:450;">
+    <div class="modal-box" style="max-width:430px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <div style="width:40px; height:40px; border-radius:12px; background:#FEF3C7; color:#D97706; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0;">📍</div>
+        <div>
+          <h3 style="font-size:1.05rem; font-weight:800; color:var(--text-main); margin:0;">এই ঠিকানায় কি আপনাকে পাওয়া যাবে?</h3>
+          <div style="font-size:0.78rem; color:#B45309; font-weight:600; margin-top:2px;">অর্ডার পাঠানোর আগে ডেলিভারি ঠিকানা যাচাই করুন</div>
+        </div>
+      </div>
+
+      <p style="font-size:0.84rem; color:#475569; line-height:1.5; margin:0 0 12px 0;">
+        আমাদের ডেলিভারি ম্যান নিচের ঠিকানায় গেলে আপনাকে বা আপনার প্রতিনিধিকে পাবেন এবং ফোনে যোগাযোগ করা যাবে তো?
+      </p>
+
+      <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:12px; font-size:0.85rem; line-height:1.65; margin-bottom:14px;">
+        <div><strong>জেলা:</strong> <span id="confStoreDist">-</span></div>
+        <div><strong>এলাকা / থানা:</strong> <span id="confStoreArea">-</span></div>
+        <div><strong>বিস্তারিত ঠিকানা:</strong> <span id="confStoreAddr" style="color:#0F172A; font-weight:700;">-</span></div>
+        <div><strong>মোবাইল:</strong> <span id="confStorePhone">-</span></div>
+        <div style="margin-top:4px; padding-top:6px; border-top:1px dashed #CBD5E1;"><strong>সর্বমোট বিল:</strong> <span id="confStoreTotal" style="color:#059669; font-weight:800;">-</span></div>
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button type="button" onclick="resolveStoreAddressConfirm(false)" style="flex:1; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; background:#fff; color:#334155; font-weight:700; font-size:0.84rem; cursor:pointer;">
+          ঠিকানা পরিবর্তন করুন
+        </button>
+        <button type="button" onclick="resolveStoreAddressConfirm(true)" style="flex:1.4; padding:10px 12px; border-radius:10px; border:none; background:#059669; color:#fff; font-weight:800; font-size:0.84rem; cursor:pointer;">
+          হ্যাঁ, এই ঠিকানায় পাওয়া যাবে
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Policy Information Modal -->
-  <div class="modal-backdrop" id="policyModal">
+  <div class="modal-backdrop" id="policyModal" style="z-index:460;">
     <div class="modal-box">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px;">
         <h3 style="font-size:1.15rem; font-weight:800; color:var(--primary);" id="policyModalTitle">Policy Information</h3>
@@ -4062,11 +4099,61 @@
       const areaSelect = document.getElementById('orderDeliveryArea');
       if (!areaSelect) return;
 
-      const filtered = allDeliveryAreas.filter(a => (a.district || '').trim().toLowerCase() === selectedDistrict.trim().toLowerCase());
+      const filtered = (allDeliveryAreas || []).filter(a => (a.district || '').trim().toLowerCase() === (selectedDistrict || '').trim().toLowerCase());
       if (filtered.length > 0) {
         areaSelect.innerHTML = filtered.map(a => `<option value="${a.id}" data-zone="${a.area}">${a.area}</option>`).join('');
       } else {
-        areaSelect.innerHTML = `<option value="1" data-zone="Main Town">Main Town Area</option>`;
+        areaSelect.innerHTML = `<option value="" data-zone="">— এই জেলায় এখনো ডেলিভারি সার্ভিস চালু হয়নি —</option>`;
+      }
+    }
+
+    const _ADDR_PLACEHOLDER_WORDS = new Set([
+      'test', 'testing', 'asdf', 'qwer', 'qwerty', 'fake', 'demo', 'sample',
+      'none', 'null', 'na', 'ok', 'okay', 'abc', 'xyz', 'aaa', 'bbb',
+      'home', 'house', 'office', 'address', 'bd', 'tangail', 'dhaka', 'bangladesh',
+      'ঠিকানা', 'বাসা', 'বাড়ি', 'বাড়ি'
+    ]);
+
+    function isValidDetailedAddressInput(addr) {
+      const clean = (addr || '').trim().replace(/\s+/g, ' ');
+      if (clean.length < 8) return false;
+      const tokens = clean.match(/[A-Za-z0-9\u0980-\u09FF]+/g) || [];
+      const alphaTokens = clean.match(/[A-Za-z\u0980-\u09FF]{2,}/g) || [];
+      const uniqueChars = new Set(clean.toLowerCase().replace(/\s+/g, ''));
+      const realWords = alphaTokens.filter(t => !_ADDR_PLACEHOLDER_WORDS.has(t.toLowerCase()));
+      return tokens.length >= 2 && alphaTokens.length > 0 && uniqueChars.size > 2 && realWords.length > 0;
+    }
+
+    function isActiveDeliveryAreaSelected(district, areaName) {
+      const d = (district || '').trim().toLowerCase();
+      const a = (areaName || '').trim().toLowerCase();
+      if (!d || !a || !Array.isArray(allDeliveryAreas) || allDeliveryAreas.length === 0) return false;
+      return allDeliveryAreas.some(item =>
+        (item.district || '').trim().toLowerCase() === d &&
+        (item.area || '').trim().toLowerCase() === a &&
+        (item.is_active === undefined || Number(item.is_active) === 1)
+      );
+    }
+
+    let _storeAddrConfirmResolver = null;
+    function askStoreAddressConfirmation(info) {
+      document.getElementById('confStoreDist').textContent = info.district || '-';
+      document.getElementById('confStoreArea').textContent = info.area || '-';
+      document.getElementById('confStoreAddr').textContent = info.address || '-';
+      document.getElementById('confStorePhone').textContent = info.phone || '-';
+      document.getElementById('confStoreTotal').textContent = info.totalText || '-';
+      document.getElementById('addressConfirmModal').style.display = 'flex';
+      return new Promise(resolve => {
+        _storeAddrConfirmResolver = resolve;
+      });
+    }
+
+    function resolveStoreAddressConfirm(confirmed) {
+      document.getElementById('addressConfirmModal').style.display = 'none';
+      if (_storeAddrConfirmResolver) {
+        const res = _storeAddrConfirmResolver;
+        _storeAddrConfirmResolver = null;
+        res(Boolean(confirmed));
       }
     }
 
@@ -5879,6 +5966,10 @@
         handleDistrictChange(distSelect.value);
       }
 
+      const chkTerms = document.getElementById('chkAgreeStoreTerms');
+      if (chkTerms) chkTerms.checked = true;
+      resolveStoreAddressConfirm(false);
+
       const btn = document.getElementById('btnPlaceOrder');
       if (btn) {
         btn.disabled = false;
@@ -5889,6 +5980,7 @@
     }
 
     function closeCheckoutModal() {
+      resolveStoreAddressConfirm(false);
       const btn = document.getElementById('btnPlaceOrder');
       if (btn) {
         btn.disabled = false;
@@ -5995,18 +6087,60 @@
         return;
       }
 
-      const btn = document.getElementById('btnPlaceOrder');
-      btn.disabled = true;
-      btn.textContent = 'Processing Order...';
+      const chkTerms = document.getElementById('chkAgreeStoreTerms');
+      if (chkTerms && !chkTerms.checked) {
+        alert('অর্ডার কনফার্ম করতে "Agreed to terms and conditions" চেকবক্সে টিক দিন।');
+        chkTerms.focus();
+        return;
+      }
 
       const custName = document.getElementById('orderCustName').value.trim();
       const custPhone = document.getElementById('orderCustPhone').value.trim();
       const custAddress = document.getElementById('orderCustAddress').value.trim();
+      const distSelect = document.getElementById('orderDistrictSelect');
+      const districtVal = distSelect ? distSelect.value.trim() : 'Tangail';
       const areaSelect = document.getElementById('orderDeliveryArea');
-      const selectedOption = areaSelect.options[areaSelect.selectedIndex];
-      const areaId = areaSelect.value;
-      const areaZone = selectedOption ? selectedOption.dataset.zone : 'Main Town';
+      const selectedOption = areaSelect && areaSelect.selectedIndex >= 0 ? areaSelect.options[areaSelect.selectedIndex] : null;
+      const areaId = areaSelect ? areaSelect.value : '';
+      const areaZone = selectedOption ? (selectedOption.dataset.zone || '').trim() : '';
       const paymentMethod = document.getElementById('orderPaymentMethod').value;
+
+      if (!isActiveDeliveryAreaSelected(districtVal, areaZone)) {
+        alert('দুঃখিত! আপনার নির্বাচিত জেলা বা ডেলিভারি এলাকায় এখনো আমাদের ডেলিভারি সার্ভিস চালু নেই। তালিকা থেকে সক্রিয় ডেলিভারি এলাকা নির্বাচন করুন।');
+        if (areaSelect) areaSelect.focus();
+        return;
+      }
+
+      if (!isValidDetailedAddressInput(custAddress)) {
+        alert('অনুগ্রহ করে বাসা/হোল্ডিং নম্বর, রোড/পাড়া ও পরিচিত ল্যান্ডমার্কসহ সঠিক বিস্তারিত ডেলিভারি ঠিকানা লিখুন (কমপক্ষে ৮ অক্ষর ও ২টি শব্দ)।');
+        document.getElementById('orderCustAddress').focus();
+        return;
+      }
+
+      let subtotal = 0;
+      Object.values(cart).forEach(it => {
+        const stats = getBuyXGetYStats(it);
+        subtotal += it.price * stats.paidQty;
+      });
+      const isFreeDelivery = FREE_DELIVERY_ACTIVE && subtotal >= FREE_DELIVERY_MIN_AMOUNT;
+      const orderDeliveryCharge = isFreeDelivery ? 0 : DEFAULT_DELIVERY_CHARGE;
+      const grandTotalPreview = subtotal + orderDeliveryCharge;
+
+      const confirmed = await askStoreAddressConfirmation({
+        district: districtVal,
+        area: areaZone,
+        address: custAddress,
+        phone: custPhone,
+        totalText: `TK ${grandTotalPreview.toFixed(2)}`
+      });
+      if (!confirmed) {
+        document.getElementById('orderCustAddress').focus();
+        return;
+      }
+
+      const btn = document.getElementById('btnPlaceOrder');
+      btn.disabled = true;
+      btn.textContent = 'Processing Order...';
 
       localStorage.setItem('cust_address', custAddress);
 
@@ -6017,20 +6151,13 @@
         price: it.price
       }));
 
-      let subtotal = 0;
-      Object.values(cart).forEach(it => {
-        const stats = getBuyXGetYStats(it);
-        subtotal += it.price * stats.paidQty;
-      });
-      const isFreeDelivery = FREE_DELIVERY_ACTIVE && subtotal >= FREE_DELIVERY_MIN_AMOUNT;
-      const orderDeliveryCharge = isFreeDelivery ? 0 : DEFAULT_DELIVERY_CHARGE;
-
       const payload = {
         customer_name: custName,
         customer_phone: custPhone,
         shipping_address: custAddress,
         address_details: custAddress,
         address: custAddress,
+        district: districtVal,
         delivery_area_id: areaId,
         area: areaZone,
         payment_method: paymentMethod,

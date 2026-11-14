@@ -9701,6 +9701,77 @@ def api_delivery_areas():
     return jsonify([dict(r) for r in rows])
 
 
+_ADDRESS_PLACEHOLDER_WORDS = frozenset({
+    "test", "testing", "asdf", "qwer", "qwerty", "fake", "demo", "sample",
+    "none", "null", "na", "ok", "okay", "abc", "xyz", "aaa", "bbb",
+    "home", "house", "office", "address", "bd", "tangail", "dhaka", "bangladesh",
+    "ঠিকানা", "বাসা", "বাড়ি", "বাড়ি",
+})
+
+
+def _validate_delivery_geofence_and_address(conn, district, area, address_text, delivery_area_id=None):
+    """Validate that the delivery district/area is active and the detailed address is meaningful."""
+    active_rows = conn.execute(
+        "SELECT id, district, area FROM delivery_areas WHERE is_active = 1"
+    ).fetchall()
+    if not active_rows:
+        return (
+            False,
+            "বর্তমানে কোনো ডেলিভারি এলাকা সক্রিয় নেই। অনুগ্রহ করে পরে চেষ্টা করুন অথবা শপ হেল্পলাইনে যোগাযোগ করুন।",
+            district,
+            area,
+        )
+
+    dist_clean = (district or "").strip()
+    area_clean = (area or "").strip()
+    matched_row = None
+
+    if dist_clean and area_clean:
+        d_low = dist_clean.lower()
+        a_low = area_clean.lower()
+        for r in active_rows:
+            if (r["district"] or "").strip().lower() == d_low and (r["area"] or "").strip().lower() == a_low:
+                matched_row = r
+                break
+
+    if matched_row is None and delivery_area_id is not None and str(delivery_area_id).strip().isdigit():
+        try:
+            aid = int(str(delivery_area_id).strip())
+            for r in active_rows:
+                if int(r["id"]) == aid:
+                    r_area = (r["area"] or "").strip().lower()
+                    r_dist = (r["district"] or "").strip().lower()
+                    if (not area_clean or area_clean.lower() == r_area) and (not dist_clean or dist_clean.lower() == r_dist):
+                        matched_row = r
+                    break
+        except Exception:
+            pass
+
+    if matched_row is None:
+        return (
+            False,
+            "দুঃখিত! আপনার নির্বাচিত জেলা বা ডেলিভারি এলাকায় এখনো আমাদের ডেলিভারি সার্ভিস চালু নেই। অনুগ্রহ করে তালিকা থেকে সক্রিয় ডেলিভারি এলাকা বেছে নিন।",
+            dist_clean,
+            area_clean,
+        )
+
+    clean_addr = re.sub(r"\s+", " ", (address_text or "").strip())
+    tokens = re.findall(r"[A-Za-z0-9\u0980-\u09FF]+", clean_addr)
+    alpha_tokens = re.findall(r"[A-Za-z\u0980-\u09FF]{2,}", clean_addr)
+    unique_chars = set(re.sub(r"\s+", "", clean_addr.lower()))
+    non_placeholder = [t for t in alpha_tokens if t.lower() not in _ADDRESS_PLACEHOLDER_WORDS]
+
+    if len(clean_addr) < 8 or len(tokens) < 2 or not alpha_tokens or len(unique_chars) <= 2 or not non_placeholder:
+        return (
+            False,
+            "অনুগ্রহ করে বাসা/হোল্ডিং নম্বর, রোড/পাড়া ও পরিচিত ল্যান্ডমার্কসহ সঠিক বিস্তারিত ডেলিভারি ঠিকানা লিখুন (কমপক্ষে ৮ অক্ষর ও ২টি শব্দ)।",
+            matched_row["district"],
+            matched_row["area"],
+        )
+
+    return True, "", matched_row["district"], matched_row["area"]
+
+
 @app.route("/api/orders/place", methods=["POST"])
 @limiter.limit("20 per minute")
 def api_place_order():
@@ -9735,17 +9806,13 @@ def api_place_order():
         conn.close()
         return jsonify({"success": False, "message": block_msg}), 403
 
-    # Location Area Verification (Auto-register active area if new)
-    if country and district and area:
-        try:
-            conn.execute(
-                "INSERT OR IGNORE INTO delivery_areas (country, district, area, is_active, created_at) VALUES (?, ?, ?, 1, ?)",
-                (country, district, area, datetime.now().isoformat())
-            )
-            conn.commit()
-        except Exception:
-            pass
-    conn.commit()
+    # Strict Service-Area Geofencing & Detailed Address Validation
+    is_addr_valid, addr_err, district, area = _validate_delivery_geofence_and_address(
+        conn, district, area, address_details, data.get("delivery_area_id")
+    )
+    if not is_addr_valid:
+        conn.close()
+        return jsonify({"success": False, "message": addr_err}), 400
 
     # =========================================================================
     # 🚨 STRICT STOCK & MAXIMUM ORDER QUANTITY VALIDATION:
@@ -13719,6 +13786,14 @@ def pharmacy_place_order():
     if is_blocked:
         conn.close()
         return jsonify({"success": False, "message": block_msg}), 403
+
+    # Strict Service-Area Geofencing & Detailed Address Validation
+    is_addr_valid, addr_err, district, area = _validate_delivery_geofence_and_address(
+        conn, district, area, delivery_address, data.get("delivery_area_id")
+    )
+    if not is_addr_valid:
+        conn.close()
+        return jsonify({"success": False, "message": addr_err}), 400
 
     # Rule 1 Requirement: Must provide prescription OR select medicines (or both)
     has_prescription = bool(prescription_url)

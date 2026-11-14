@@ -9,6 +9,7 @@ import '../../models/product.dart';
 import '../../services/api_service.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/app_image_loader.dart';
+import '../../widgets/order_safety_helpers.dart';
 import '../auth/login_screen.dart';
 import 'home_screen.dart';
 import 'package_detail_screen.dart';
@@ -37,6 +38,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
   List<Product>? _cachedProducts;
   List<dynamic>? _cachedPackages;
   bool _isNavigatingItem = false;
+  bool _agreedQuoteTerms = true;
 
   @override
   void initState() {
@@ -1733,12 +1735,36 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                                           'মোট প্রদেয় বিল: ৳${order.totalAmount.toStringAsFixed(2)}। আপনি কনফার্ম করলে প্যাকিং ও ডেলিভারি শুরু হবে।',
                                           style: const TextStyle(fontSize: 11.5, color: Color(0xFF78350F)),
                                         ),
+                                        const SizedBox(height: 8),
+                                        TermsAgreementRow(
+                                          agreed: _agreedQuoteTerms,
+                                          compact: true,
+                                          onChanged: (v) => setState(() => _agreedQuoteTerms = v),
+                                        ),
                                         const SizedBox(height: 10),
                                         Row(
                                           children: [
                                             Expanded(
                                               child: ElevatedButton.icon(
                                                 onPressed: () async {
+                                                  if (!_agreedQuoteTerms) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(
+                                                        backgroundColor: Colors.red,
+                                                        content: Text('কনফার্ম করতে "Agreed to terms and conditions" এ টিক দিন।'),
+                                                      ),
+                                                    );
+                                                    return;
+                                                  }
+                                                  final bool okAddr = await showAddressAvailabilityConfirmationDialog(
+                                                    context,
+                                                    district: order.district.isNotEmpty ? order.district : 'Tangail',
+                                                    area: order.area,
+                                                    address: order.addressDetails,
+                                                    phone: order.customerPhone,
+                                                    totalLabel: '৳${order.totalAmount.toStringAsFixed(2)}',
+                                                  );
+                                                  if (!okAddr || !mounted) return;
                                                   final r = await ApiService.confirmPharmacyQuote(
                                                     orderNumber: order.orderNumber,
                                                     customerPhone: order.customerPhone,

@@ -10,6 +10,7 @@ import '../../models/delivery_area.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_image_loader.dart';
+import '../../widgets/order_safety_helpers.dart';
 import '../../widgets/prescription_crop_scan_dialog.dart';
 import '../auth/login_screen.dart';
 
@@ -70,6 +71,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
   final List<Map<String, dynamic>> _selectedItems = [];
   bool _isSubmitting = false;
   bool _isLoggedIn = false;
+  bool _agreedToTerms = true;
 
   static const List<Map<String, String>> _dosageForms = [
     {'label': 'সব ঔষধ', 'val': 'all'},
@@ -204,11 +206,30 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       final cartProv = Provider.of<CartProvider>(context, listen: false);
       setState(() {
         _deliveryAreas = areas;
-        if (cartProv.selectedDistrict.isNotEmpty) {
-          _selectedDistrict = cartProv.selectedDistrict;
+        final validDistricts = areas
+            .map((e) => e.district.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet();
+        if (validDistricts.isNotEmpty) {
+          if (cartProv.selectedDistrict.isNotEmpty &&
+              validDistricts.contains(cartProv.selectedDistrict.trim())) {
+            _selectedDistrict = cartProv.selectedDistrict.trim();
+          } else if (!validDistricts.contains(_selectedDistrict.trim())) {
+            _selectedDistrict = validDistricts.first;
+          }
         }
-        if (cartProv.selectedArea.isNotEmpty) {
-          _selectedArea = cartProv.selectedArea;
+        final validAreas = areas
+            .where((e) => e.district.trim() == _selectedDistrict.trim())
+            .map((e) => e.area.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet();
+        if (validAreas.isNotEmpty) {
+          if (cartProv.selectedArea.isNotEmpty &&
+              validAreas.contains(cartProv.selectedArea.trim())) {
+            _selectedArea = cartProv.selectedArea.trim();
+          } else if (!validAreas.contains(_selectedArea.trim())) {
+            _selectedArea = validAreas.first;
+          }
         }
       });
     } catch (_) {}
@@ -526,15 +547,60 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
       return;
     }
 
-    if (address.isEmpty) {
+    if (!_agreedToTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Colors.red,
-          content: Text("অনুগ্রহ করে আপনার সম্পূর্ণ ডেলিভারি ঠিকানা লিখুন।"),
+          content: Text('অর্ডার কনফার্ম করতে "Agreed to terms and conditions" এ টিক দিন।'),
         ),
       );
       return;
     }
+
+    if (_deliveryAreas.isEmpty) {
+      await _loadDeliveryAreas();
+      if (!mounted) return;
+    }
+
+    final String? areaErr = OrderAddressValidation.validateServiceArea(
+      district: _selectedDistrict,
+      area: _selectedArea,
+      activeAreas: _deliveryAreas,
+    );
+    if (areaErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text(areaErr),
+        ),
+      );
+      return;
+    }
+
+    final String? addrErr = OrderAddressValidation.validateDetailedAddress(address);
+    if (addrErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text(addrErr),
+        ),
+      );
+      return;
+    }
+
+    final double medEst = _itemsSubtotal;
+    final String totalPreview = (_selectedItems.isEmpty && _rxBytes != null)
+        ? "৳${_pharmacyDeliveryCharge.toStringAsFixed(2)} + ঔষধের বিল (যাচাইয়ের পর)"
+        : "৳${(medEst + _pharmacyDeliveryCharge).toStringAsFixed(2)}";
+    final bool confirmedAddr = await showAddressAvailabilityConfirmationDialog(
+      context,
+      district: _selectedDistrict,
+      area: _selectedArea,
+      address: address,
+      phone: phone,
+      totalLabel: totalPreview,
+    );
+    if (!confirmedAddr || !mounted) return;
 
     setState(() => _isSubmitting = true);
 
@@ -1380,7 +1446,12 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
+                      TermsAgreementRow(
+                        agreed: _agreedToTerms,
+                        onChanged: (v) => setState(() => _agreedToTerms = v),
+                      ),
+                      const SizedBox(height: 10),
 
                       SizedBox(
                         width: double.infinity,
@@ -1770,6 +1841,7 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
   List<dynamic> _orders = [];
   bool _loading = true;
   bool _isRefreshing = false;
+  bool _agreedToTerms = true;
   final Set<String> _expandedOrders = {};
   Timer? _livePollTimer;
 
@@ -2244,11 +2316,35 @@ class _PharmacyOrdersModalState extends State<_PharmacyOrdersModal> {
                                                   style: const TextStyle(fontSize: 11.5, color: Color(0xFF78350F)),
                                                 ),
                                                 const SizedBox(height: 8),
+                                                TermsAgreementRow(
+                                                  agreed: _agreedToTerms,
+                                                  compact: true,
+                                                  onChanged: (v) => setState(() => _agreedToTerms = v),
+                                                ),
+                                                const SizedBox(height: 8),
                                                 Row(
                                                   children: [
                                                     Expanded(
                                                       child: ElevatedButton.icon(
                                                         onPressed: () async {
+                                                          if (!_agreedToTerms) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              const SnackBar(
+                                                                backgroundColor: Colors.red,
+                                                                content: Text('কনফার্ম করতে "Agreed to terms and conditions" এ টিক দিন।'),
+                                                              ),
+                                                            );
+                                                            return;
+                                                          }
+                                                          final bool okAddr = await showAddressAvailabilityConfirmationDialog(
+                                                            context,
+                                                            district: (o['district'] ?? 'Tangail').toString(),
+                                                            area: (o['area'] ?? '').toString(),
+                                                            address: (o['delivery_address'] ?? '').toString(),
+                                                            phone: (o['customer_phone'] ?? '').toString(),
+                                                            totalLabel: '৳${total.toStringAsFixed(2)}',
+                                                          );
+                                                          if (!okAddr || !mounted) return;
                                                           final res = await ApiService.confirmPharmacyQuote(
                                                             orderNumber: orderNum,
                                                             customerPhone: (o['customer_phone'] ?? '').toString(),

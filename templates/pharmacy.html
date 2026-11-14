@@ -421,6 +421,7 @@
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">সম্পূর্ণ ডেলিভারি ঠিকানা <span class="text-red-500">*</span></label>
           <input type="text" id="delivery_address" name="delivery_address" required placeholder="বাসা নম্বর, রোড নম্বর, এলাকার নাম বা ল্যান্ডমার্ক..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-medium outline-hidden transition">
+          <p class="text-[11px] text-slate-500 mt-1">বাসা/হোল্ডিং নম্বর, রোড/পাড়া ও পরিচিত ল্যান্ডমার্কসহ লিখুন (যেমন: বাসা ১২, রোড ৫, কলেজ পাড়া)</p>
         </div>
 
         <!-- Bill Estimate Card -->
@@ -440,6 +441,14 @@
           <p class="text-[10px] text-emerald-800 leading-tight pt-1">
             * প্রেসক্রিপশন আপলোড করা হলে আমাদের রেজিস্টার্ড ফার্মাসিস্ট প্রতিটি ওষুধের সঠিক দাম হিসাব করে চূড়ান্ত বিল তৈরি করবেন এবং তা আপনার অর্ডারে যুক্ত হবে।
           </p>
+        </div>
+
+        <!-- Terms & Conditions Agreement -->
+        <div class="flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+          <input type="checkbox" id="chkAgreePharmacyTerms" checked class="mt-0.5 h-4 w-4 accent-emerald-600 cursor-pointer rounded">
+          <label for="chkAgreePharmacyTerms" class="text-xs font-bold text-emerald-900 cursor-pointer leading-snug">
+            Agreed to <button type="button" onclick="openRxTermsModal()" class="text-emerald-700 underline font-extrabold hover:text-emerald-900">terms and conditions</button>
+          </label>
         </div>
 
         <!-- Submit Button -->
@@ -716,6 +725,60 @@
           </button>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL: ADDRESS AVAILABILITY CONFIRMATION ==================== -->
+  <div id="rxAddressConfirmModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white max-w-md w-full rounded-3xl shadow-2xl overflow-hidden border border-emerald-200 p-5 space-y-3.5">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl shrink-0">📍</div>
+        <div>
+          <h3 class="text-base font-extrabold text-slate-900">এই ঠিকানায় কি আপনাকে পাওয়া যাবে?</h3>
+          <p class="text-xs font-semibold text-amber-700">অর্ডার পাঠানোর আগে ডেলিভারি ঠিকানা যাচাই করুন</p>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-600 leading-relaxed">
+        আমাদের ডেলিভারি ম্যান নিচের ঠিকানায় গেলে আপনাকে বা আপনার প্রতিনিধিকে পাবেন এবং ফোনে যোগাযোগ করা যাবে তো?
+      </p>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs space-y-1.5 text-slate-700">
+        <div><span class="font-bold text-slate-900">জেলা:</span> <span id="confRxDist">-</span></div>
+        <div><span class="font-bold text-slate-900">এলাকা / থানা:</span> <span id="confRxArea">-</span></div>
+        <div><span class="font-bold text-slate-900">বিস্তারিত ঠিকানা:</span> <span id="confRxAddr" class="font-bold text-slate-900">-</span></div>
+        <div><span class="font-bold text-slate-900">মোবাইল নম্বর:</span> <span id="confRxPhone">-</span></div>
+        <div class="pt-1 border-t border-dashed border-slate-300"><span class="font-bold text-slate-900">সম্ভাব্য মোট বিল:</span> <span id="confRxTotal" class="font-black text-emerald-700">-</span></div>
+      </div>
+
+      <div class="flex gap-2.5 pt-1">
+        <button type="button" onclick="resolveRxAddressConfirm(false)" class="flex-1 py-2.5 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition">
+          ঠিকানা পরিবর্তন করুন
+        </button>
+        <button type="button" onclick="resolveRxAddressConfirm(true)" class="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition shadow-sm">
+          হ্যাঁ, এই ঠিকানায় পাওয়া যাবে
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL: PHARMACY TERMS & CONDITIONS ==================== -->
+  <div id="rxTermsModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white max-w-md w-full rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+      <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
+        <span class="text-sm font-bold">📜 Terms &amp; Conditions</span>
+        <button type="button" onclick="closeRxTermsModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+      </div>
+      <div id="rxTermsBody" class="p-4 text-xs text-slate-700 leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto">
+        Loading terms and conditions...
+      </div>
+      <div class="px-4 pb-4 text-right">
+        <button type="button" onclick="closeRxTermsModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold">
+          বন্ধ করুন
+        </button>
       </div>
     </div>
   </div>
@@ -1173,14 +1236,13 @@
       });
       
       let uniqueAreas = Array.from(new Set(filtered.map(item => item.area).filter(Boolean)));
-      
-      // Fallback if no specific areas found in DB for this district
+
       if (uniqueAreas.length === 0) {
-        if (selDistLower === "tangail") {
-          uniqueAreas = ["Tangail Sadar", "Mirzapur", "Delduar", "Nagarpur", "Basail", "Kalihati", "Ghatail", "Bhuapur", "Gopalpur", "Madhupur", "Dhanbari", "Shakhipur"];
-        } else {
-          uniqueAreas = ["Sadar / Main Town", "Sub-district Area 1", "Sub-district Area 2"];
-        }
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "— এই জেলায় এখনো ডেলিভারি সার্ভিস চালু হয়নি —";
+        areaSelect.appendChild(opt);
+        return;
       }
 
       uniqueAreas.forEach(a => {
@@ -2693,6 +2755,85 @@
       $("billEstimateGrandTotal").innerText = `৳${grandTotal.toFixed(2)}`;
     }
 
+    const _RX_ADDR_PLACEHOLDER_WORDS = new Set([
+      "test", "testing", "asdf", "qwer", "qwerty", "fake", "demo", "sample",
+      "none", "null", "na", "ok", "okay", "abc", "xyz", "aaa", "bbb",
+      "home", "house", "office", "address", "bd", "tangail", "dhaka", "bangladesh",
+      "ঠিকানা", "বাসা", "বাড়ি", "বাড়ি"
+    ]);
+
+    function isValidDetailedAddressRx(addr) {
+      const clean = (addr || "").trim().replace(/\s+/g, " ");
+      if (clean.length < 8) return false;
+      const tokens = clean.match(/[A-Za-z0-9\u0980-\u09FF]+/g) || [];
+      const alphaTokens = clean.match(/[A-Za-z\u0980-\u09FF]{2,}/g) || [];
+      const uniqueChars = new Set(clean.toLowerCase().replace(/\s+/g, ""));
+      const realWords = alphaTokens.filter(t => !_RX_ADDR_PLACEHOLDER_WORDS.has(t.toLowerCase()));
+      return tokens.length >= 2 && alphaTokens.length > 0 && uniqueChars.size > 2 && realWords.length > 0;
+    }
+
+    function isActiveDeliveryAreaRx(district, areaName) {
+      const d = (district || "").trim().toLowerCase();
+      const a = (areaName || "").trim().toLowerCase();
+      if (!d || !a || !Array.isArray(allDeliveryAreas) || allDeliveryAreas.length === 0) return false;
+      return allDeliveryAreas.some(item =>
+        (item.district || "").trim().toLowerCase() === d &&
+        (item.area || "").trim().toLowerCase() === a
+      );
+    }
+
+    let _rxPoliciesCache = null;
+    async function openRxTermsModal() {
+      const modal = $("rxTermsModal");
+      const body = $("rxTermsBody");
+      if (!modal || !body) return;
+      modal.classList.remove("hidden");
+      if (_rxPoliciesCache && _rxPoliciesCache.terms_conditions) {
+        body.innerText = _rxPoliciesCache.terms_conditions;
+        return;
+      }
+      body.innerText = "Loading terms and conditions...";
+      try {
+        const res = await fetch("/api/settings/policies");
+        if (res.ok) {
+          _rxPoliciesCache = await res.json();
+          body.innerText = _rxPoliciesCache.terms_conditions || "By placing an order, you agree to our standard terms of online delivery.";
+        } else {
+          body.innerText = "By placing an order, you agree to our standard terms of online delivery.";
+        }
+      } catch (_) {
+        body.innerText = "By placing an order, you agree to our standard terms of online delivery.";
+      }
+    }
+
+    function closeRxTermsModal() {
+      const modal = $("rxTermsModal");
+      if (modal) modal.classList.add("hidden");
+    }
+
+    let _rxAddrConfirmResolver = null;
+    function askRxAddressConfirmation(info) {
+      $("confRxDist").innerText = info.district || "-";
+      $("confRxArea").innerText = info.area || "-";
+      $("confRxAddr").innerText = info.address || "-";
+      $("confRxPhone").innerText = info.phone || "-";
+      $("confRxTotal").innerText = info.totalText || "-";
+      $("rxAddressConfirmModal").classList.remove("hidden");
+      return new Promise(resolve => {
+        _rxAddrConfirmResolver = resolve;
+      });
+    }
+
+    function resolveRxAddressConfirm(confirmed) {
+      const modal = $("rxAddressConfirmModal");
+      if (modal) modal.classList.add("hidden");
+      if (_rxAddrConfirmResolver) {
+        const r = _rxAddrConfirmResolver;
+        _rxAddrConfirmResolver = null;
+        r(Boolean(confirmed));
+      }
+    }
+
     // Submit Order Form
     async function submitPharmacyOrder(event) {
       if (event) event.preventDefault();
@@ -2702,6 +2843,13 @@
         pendingOrderSubmit = true;
         alert("🔒 অর্ডার সম্পন্ন করতে কাস্টমার একাউন্টে লগইন থাকা বাধ্যতামূলক। অনুগ্রহ করে আপনার মোবাইল নম্বর ও পাসওয়ার্ড দিয়ে সাইন-ইন করুন (বা নতুন একাউন্ট রেজিস্টার করুন)।");
         openCustomerAuthModal('login', true);
+        return;
+      }
+
+      const chkTerms = $("chkAgreePharmacyTerms");
+      if (chkTerms && !chkTerms.checked) {
+        alert('অর্ডার কনফার্ম করতে "Agreed to terms and conditions" চেকবক্সে টিক দিন।');
+        chkTerms.focus();
         return;
       }
 
@@ -2722,8 +2870,14 @@
         return;
       }
 
-      if (!deliveryAddr) {
-        alert("অনুগ্রহ করে সম্পূর্ণ ডেলিভারি ঠিকানা প্রদান করুন।");
+      if (!isActiveDeliveryAreaRx(district, area)) {
+        alert("দুঃখিত! আপনার নির্বাচিত জেলা বা ডেলিভারি এলাকায় এখনো আমাদের ডেলিভারি সার্ভিস চালু নেই। তালিকা থেকে সক্রিয় ডেলিভারি এলাকা নির্বাচন করুন।");
+        $("area").focus();
+        return;
+      }
+
+      if (!isValidDetailedAddressRx(deliveryAddr)) {
+        alert("অনুগ্রহ করে বাসা/হোল্ডিং নম্বর, রোড/পাড়া ও পরিচিত ল্যান্ডমার্কসহ সঠিক বিস্তারিত ডেলিভারি ঠিকানা লিখুন (কমপক্ষে ৮ অক্ষর ও ২টি শব্দ)।");
         $("delivery_address").focus();
         return;
       }
@@ -2741,6 +2895,19 @@
       if (hasPrescription && !hasMedicines && overallDuration <= 0 && notes.length < 2) {
         alert("আপনি 'নোটে লিখবো' নির্বাচন করেছেন। অনুগ্রহ করে বিশেষ নির্দেশনা/নোট বক্সে কয়দিনের ওষুধ লাগবে বা অতিরিক্ত নির্দেশনা লিখে দিন।");
         $("customer_notes").focus();
+        return;
+      }
+
+      const estTotalText = ($("billEstimateGrandTotal")?.innerText || "").trim() || ("৳" + DELIVERY_CHARGE);
+      const userConfirmedAddress = await askRxAddressConfirmation({
+        district: district,
+        area: area,
+        address: deliveryAddr,
+        phone: custPhone,
+        totalText: hasMedicines ? estTotalText : `${estTotalText} (ওষুধের দাম ছাড়া)`
+      });
+      if (!userConfirmedAddress) {
+        $("delivery_address").focus();
         return;
       }
 

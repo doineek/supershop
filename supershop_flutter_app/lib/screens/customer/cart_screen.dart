@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../localization/app_localizations.dart';
+import '../../models/delivery_area.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_image_loader.dart';
 import '../../widgets/location_selector_dialog.dart';
+import '../../widgets/order_safety_helpers.dart';
 import 'home_screen.dart';
 import 'my_orders_screen.dart';
 import '../auth/login_screen.dart';
@@ -34,6 +36,8 @@ class _CartScreenState extends State<CartScreen> {
   String _appliedVoucherType = '';
   bool _isVerifyingVoucher = false;
   bool _isVoucherExpanded = false;
+  bool _agreedToTerms = true;
+  List<DeliveryArea> _activeDeliveryAreas = [];
 
   void _applyVoucher() async {
     String code = _voucherController.text.trim().toUpperCase();
@@ -178,11 +182,23 @@ class _CartScreenState extends State<CartScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadDeliveryAreas();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final cartProv = Provider.of<CartProvider>(context, listen: false);
       cartProv.refreshDeliveryCharge();
       cartProv.onCustomerSessionChanged();
     });
+  }
+
+  Future<void> _loadDeliveryAreas() async {
+    try {
+      final areas = await ApiService.fetchDeliveryAreas();
+      if (mounted) {
+        setState(() {
+          _activeDeliveryAreas = areas;
+        });
+      }
+    } catch (_) {}
   }
 
   void _loadUserData() async {
@@ -325,6 +341,57 @@ class _CartScreenState extends State<CartScreen> {
     String address = detailAddress.isNotEmpty
         ? detailAddress
         : cartProv.addressDetails;
+
+    if (!_agreedToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text('অর্ডার কনফার্ম করতে "Agreed to terms and conditions" এ টিক দিন।'),
+        ),
+      );
+      return;
+    }
+
+    if (_activeDeliveryAreas.isEmpty) {
+      await _loadDeliveryAreas();
+      if (!mounted) return;
+    }
+
+    final String? areaErr = OrderAddressValidation.validateServiceArea(
+      district: cartProv.selectedDistrict,
+      area: cartProv.selectedArea,
+      activeAreas: _activeDeliveryAreas,
+    );
+    if (areaErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: Colors.red, content: Text(areaErr)),
+      );
+      return;
+    }
+
+    final String? addrErr = OrderAddressValidation.validateDetailedAddress(address);
+    if (addrErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: Colors.red, content: Text(addrErr)),
+      );
+      return;
+    }
+
+    final double payable =
+        (((cartProv.subtotal - _productVoucherDiscount) +
+                (cartProv.deliveryCharge - _deliveryVoucherDiscount))
+            .clamp(0, double.infinity))
+            .toDouble();
+
+    final bool confirmedAddr = await showAddressAvailabilityConfirmationDialog(
+      context,
+      district: cartProv.selectedDistrict,
+      area: cartProv.selectedArea,
+      address: address,
+      phone: custPhone,
+      totalLabel: 'TK ${payable.toStringAsFixed(2)}',
+    );
+    if (!confirmedAddr || !mounted) return;
 
     setState(() {
       _isSubmitting = true;
@@ -726,6 +793,20 @@ class _CartScreenState extends State<CartScreen> {
                             ],
                           ),
                           Text('📍 ${cartProv.selectedArea}, ${cartProv.selectedDistrict}, ${cartProv.selectedCountry}'),
+                          if (_activeDeliveryAreas.isNotEmpty &&
+                              OrderAddressValidation.validateServiceArea(
+                                    district: cartProv.selectedDistrict,
+                                    area: cartProv.selectedArea,
+                                    activeAreas: _activeDeliveryAreas,
+                                  ) !=
+                                  null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                '⚠️ এই এলাকায় বর্তমানে ডেলিভারি চালু নেই — অনুগ্রহ করে Change চেপে সক্রিয় এলাকা বেছে নিন।',
+                                style: TextStyle(fontSize: 11.5, color: Colors.red.shade700, fontWeight: FontWeight.w700),
+                              ),
+                            ),
                           const SizedBox(height: 8),
                           TextField(
                             controller: _addressController,
@@ -939,12 +1020,9 @@ class _CartScreenState extends State<CartScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Center(
-                    child: Text(
-                      "By clicking 'Confirm Order', you agree to our Terms and Conditions",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500),
-                    ),
+                  TermsAgreementRow(
+                    agreed: _agreedToTerms,
+                    onChanged: (v) => setState(() => _agreedToTerms = v),
                   ),
                   const SizedBox(height: 8),
 
