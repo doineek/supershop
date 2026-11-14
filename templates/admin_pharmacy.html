@@ -695,6 +695,31 @@
 </div>
 
 
+<!-- ==================== MODAL 1B: ZERO / INSUFFICIENT STOCK POP-UP ==================== -->
+<div id="zeroStockAlertModal" style="display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.72); z-index: 10050; align-items: center; justify-content: center; padding: 16px;">
+  <div style="background: white; border-radius: 16px; max-width: 420px; width: 100%; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); border: 2px solid #fecaca;">
+    <div style="background: #dc2626; color: white; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1rem;">
+        <span>🚫</span>
+        <span id="zeroStockModalTitle">স্টক শূন্য (Zero Stock)</span>
+      </div>
+      <button type="button" onclick="closeZeroStockPopup()" style="background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.25rem; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; line-height: 1;">&times;</button>
+    </div>
+    <div style="padding: 18px;">
+      <div id="zeroStockModalMedName" style="font-weight: 800; color: #991b1b; font-size: 0.96rem; margin-bottom: 8px;"></div>
+      <p id="zeroStockModalMessage" style="margin: 0 0 16px 0; color: #334155; font-size: 0.88rem; line-height: 1.55;">
+        এই ঔষধের স্টক শূন্য (0)! স্টক না থাকায় এটি বিলে যোগ করা যাবে না।
+      </p>
+      <div style="text-align: right;">
+        <button type="button" onclick="closeZeroStockPopup()" style="background: #dc2626; color: white; border: none; padding: 9px 22px; border-radius: 8px; font-weight: 800; font-size: 0.88rem; cursor: pointer;">
+          ঠিক আছে
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <!-- ==================== MODAL 2: STATUS & RIDER ASSIGNMENT ==================== -->
 <div id="statusModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 16px;">
   <div style="background: white; border-radius: 14px; max-width: 450px; width: 100%; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
@@ -2288,14 +2313,22 @@
         let html = "";
         matches.slice(0, 15).forEach(m => {
           window._searchedMeds[m.id] = m;
+          const stockQty = parseInt(m.stock_qty || 0, 10) || 0;
+          const isZeroStock = stockQty <= 0;
+          const stockBadge = isZeroStock
+            ? `<span style="font-size: 0.7rem; background: #fee2e2; color: #dc2626; padding: 1px 6px; border-radius: 4px; font-weight: 800; margin-left: 4px;">❌ স্টক: 0 (যোগ হবে না)</span>`
+            : `<span style="font-size: 0.7rem; background: #dcfce7; color: #166534; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 4px;">স্টক: ${stockQty}</span>`;
+          const baseBg = isZeroStock ? "#fff5f5" : "white";
+          const hoverBg = isZeroStock ? "#fee2e2" : "#f0fdf4";
           html += `
-            <div onclick="addMedToActiveBill(${m.id})" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='white'">
+            <div onclick="addMedToActiveBill(${m.id})" style="padding: 8px 12px; cursor: ${isZeroStock ? 'not-allowed' : 'pointer'}; background: ${baseBg}; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='${hoverBg}'" onmouseout="this.style.background='${baseBg}'">
               <div>
-                <strong style="color: #0f172a; font-size: 0.85rem;">${escapeHtml(m.name)}</strong>
+                <strong style="color: ${isZeroStock ? '#991b1b' : '#0f172a'}; font-size: 0.85rem;">${escapeHtml(m.name)}</strong>
                 <span style="font-size: 0.72rem; background: #ecfdf5; color: #047857; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">${escapeHtml(m.dosage_form || 'Tablet')}</span>
+                ${stockBadge}
                 <div style="font-size: 0.75rem; color: #64748b;">${escapeHtml(m.generic_name || '')} (${escapeHtml(m.strength || '')})</div>
               </div>
-              <div style="font-weight: 800; color: #059669; font-size: 0.85rem;">TK ${parseFloat(m.unit_price).toFixed(2)}</div>
+              <div style="font-weight: 800; color: ${isZeroStock ? '#dc2626' : '#059669'}; font-size: 0.85rem;">${isZeroStock ? 'স্টক শূন্য' : 'TK ' + parseFloat(m.unit_price).toFixed(2)}</div>
             </div>
           `;
         });
@@ -2308,10 +2341,68 @@
     }, 200);
   }
 
+  function showZeroStockPopup(medName, customMessage = "", title = "স্টক শূন্য (Zero Stock)") {
+    const modal = document.getElementById("zeroStockAlertModal");
+    if (!modal) {
+      alert(customMessage || `"${medName}" এর স্টক শূন্য (0)! এটি বিলে যোগ করা যাবে না।`);
+      return;
+    }
+    document.getElementById("zeroStockModalTitle").innerText = title;
+    document.getElementById("zeroStockModalMedName").innerText = medName ? `💊 ${medName}` : "";
+    document.getElementById("zeroStockModalMessage").innerText =
+      customMessage ||
+      `"${medName}"-এর বর্তমান স্টক শূন্য (0)! স্টক শূন্য থাকায় এই ঔষধ বিলে যোগ করা যাবে না। অনুগ্রহ করে আগে স্টক আপডেট করুন।`;
+    modal.style.display = "flex";
+  }
+
+  function closeZeroStockPopup() {
+    const modal = document.getElementById("zeroStockAlertModal");
+    if (modal) modal.style.display = "none";
+  }
+
+  function _getBillItemMultiplier(it, modeOverride) {
+    const mode = modeOverride || it.unit_mode || "piece";
+    if (mode === "strip") return Math.max(1, parseInt(it.strip_size || 10, 10) || 10);
+    if (mode === "packet") return Math.max(1, parseInt(it.packet_size || 30, 10) || 30);
+    return 1;
+  }
+
+  function _getBillUsedPiecesForMed(medId, excludeIdx = -1) {
+    let used = 0;
+    (activeBillItems || []).forEach((it, i) => {
+      if (i === excludeIdx) return;
+      if (parseInt(it.medicine_id || 0, 10) === parseInt(medId || 0, 10)) {
+        const q = Math.max(1, parseInt(it.quantity || 1, 10) || 1);
+        used += q * _getBillItemMultiplier(it);
+      }
+    });
+    return used;
+  }
+
   function addMedToActiveBill(medId) {
     const med = (window._searchedMeds && window._searchedMeds[medId]) || adminMedsCache.find(x => x.id === medId);
     if (!med) return;
 
+    const stockQty = parseInt(med.stock_qty || 0, 10) || 0;
+    if (stockQty <= 0) {
+      document.getElementById("billMedDropdown").style.display = "none";
+      showZeroStockPopup(med.name);
+      return;
+    }
+
+    const usedPieces = _getBillUsedPiecesForMed(med.id);
+    const remainingPieces = stockQty - usedPieces;
+    if (remainingPieces <= 0) {
+      document.getElementById("billMedDropdown").style.display = "none";
+      showZeroStockPopup(
+        med.name,
+        `"${med.name}"-এর সর্বোচ্চ স্টক (${stockQty} পিস) ইতোমধ্যে বিলে যোগ করা হয়েছে। এর বেশি যোগ করা যাবে না।`,
+        "স্টক সীমা পূর্ণ"
+      );
+      return;
+    }
+
+    const initialQty = Math.min(10, remainingPieces);
     const unitSell = parseFloat(med.unit_price) || 0;
     const stripSell = parseFloat(med.strip_price || 0) || (unitSell * (parseInt(med.strip_size || 10, 10) || 10));
     const pktSell = parseFloat(med.packet_price || 0) || (unitSell * (parseInt(med.packet_size || 30, 10) || 30));
@@ -2323,15 +2414,16 @@
       generic_name: med.generic_name,
       dosage_form: med.dosage_form,
       strength: med.strength,
+      stock_qty: stockQty,
       unit_mode: "piece",
       strip_size: parseInt(med.strip_size || 10, 10) || 10,
       packet_size: parseInt(med.packet_size || 30, 10) || 30,
       price_piece: unitSell,
       price_strip: stripSell,
       price_packet: pktSell,
-      quantity: 10,
+      quantity: initialQty,
       unit_price: unitSell,
-      total_price: Math.round(10 * unitSell * 100) / 100
+      total_price: Math.round(initialQty * unitSell * 100) / 100
     });
 
     document.getElementById("billMedSearchInput").value = "";
@@ -2342,6 +2434,21 @@
   function onBillUnitModeChange(idx, mode) {
     const it = activeBillItems[idx];
     if (!it) return;
+    if (it.stock_qty !== undefined && it.stock_qty !== null && it.medicine_id) {
+      const avail = parseInt(it.stock_qty, 10) || 0;
+      const otherUsed = _getBillUsedPiecesForMed(it.medicine_id, idx);
+      const nextPieces = (parseInt(it.quantity || 1, 10) || 1) * _getBillItemMultiplier(it, mode);
+      if (avail <= 0 || otherUsed + nextPieces > avail) {
+        showZeroStockPopup(
+          it.name,
+          avail <= 0
+            ? `"${it.name}"-এর স্টক শূন্য (0)! স্টক না থাকায় বিল করা যাবে না।`
+            : `"${it.name}"-এর পর্যাপ্ত স্টক নেই (মোট স্টক: ${avail} পিস)।`
+        );
+        renderBillTable();
+        return;
+      }
+    }
     it.unit_mode = mode;
     if (mode === "strip") {
       it.unit = `পাতা (${it.strip_size || 10} পিস)`;
@@ -2363,9 +2470,27 @@
   }
 
   function onBillQtyChange(idx, val) {
-    const qty = parseInt(val) || 1;
-    activeBillItems[idx].quantity = qty;
-    activeBillItems[idx].total_price = Math.round(qty * activeBillItems[idx].unit_price * 100) / 100;
+    const it = activeBillItems[idx];
+    if (!it) return;
+    const qty = Math.max(1, parseInt(val) || 1);
+    if (it.stock_qty !== undefined && it.stock_qty !== null && it.medicine_id) {
+      const avail = parseInt(it.stock_qty, 10) || 0;
+      const otherUsed = _getBillUsedPiecesForMed(it.medicine_id, idx);
+      const nextPieces = qty * _getBillItemMultiplier(it);
+      if (avail <= 0 || otherUsed + nextPieces > avail) {
+        showZeroStockPopup(
+          it.name,
+          avail <= 0
+            ? `"${it.name}"-এর স্টক শূন্য (0)! স্টক শূন্য থাকা ঔষধ বিলে রাখা যাবে না।`
+            : `"${it.name}"-এর সর্বোচ্চ স্টক ${avail} পিস! এর বেশি পরিমাণ দেওয়া যাবে না।`,
+          avail <= 0 ? "স্টক শূন্য (Zero Stock)" : "স্টক সীমা অতিক্রম"
+        );
+        renderBillTable();
+        return;
+      }
+    }
+    it.quantity = qty;
+    it.total_price = Math.round(qty * it.unit_price * 100) / 100;
     renderBillTable();
   }
 
@@ -2439,6 +2564,13 @@
       return;
     }
 
+    for (const it of activeBillItems) {
+      if (it.medicine_id && it.stock_qty !== undefined && it.stock_qty !== null && parseInt(it.stock_qty, 10) <= 0) {
+        showZeroStockPopup(it.name || "ঔষধ");
+        return;
+      }
+    }
+
     const delCharge = parseFloat(document.getElementById("billDeliveryChargeInput").value) || 50;
     const notes = document.getElementById("billAdminNotesInput").value.trim();
 
@@ -2466,7 +2598,12 @@
         closeReviewModal();
         location.reload();
       } else {
-        alert("Error: " + data.message);
+        const msg = data.message || "বিল তৈরি করা যায়নি।";
+        if (msg.includes("স্টক") || msg.toLowerCase().includes("stock")) {
+          showZeroStockPopup("", msg, "স্টক শূন্য / অপ্রতুল স্টক");
+        } else {
+          alert("Error: " + msg);
+        }
       }
     } catch (err) {
       alert("Server connection error.");

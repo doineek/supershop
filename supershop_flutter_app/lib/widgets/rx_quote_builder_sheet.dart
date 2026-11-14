@@ -219,6 +219,7 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
         'unit_mode': unitMode,
         'sell_unit': unitMode,
         'quantity': qty,
+        if (it['stock_qty'] != null) 'stock_qty': it['stock_qty'],
         'unit_price': unitP,
         'piece_price': unitP,
         'strip_price': ((it['strip_price'] ?? 0) as num).toDouble(),
@@ -280,14 +281,16 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
       );
       if ((exact['sku'] ?? '').toString().trim().toLowerCase() == q.trim().toLowerCase() ||
           combined.length == 1) {
-        _addCatalogItem(exact);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ স্ক্যান করা আইটেম যোগ হয়েছে: ${exact['name']}'),
-            backgroundColor: Colors.teal.shade700,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        final bool added = _addCatalogItem(exact);
+        if (added) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ স্ক্যান করা আইটেম যোগ হয়েছে: ${exact['name']}'),
+              backgroundColor: Colors.teal.shade700,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
     }
   }
@@ -330,23 +333,46 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
   }
 
   void _showStockError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.inventory_2_outlined, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'স্টক শূন্য / অপ্রতুল স্টক',
+                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        content: Text(msg, style: const TextStyle(fontSize: 13.5, height: 1.45)),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('ঠিক আছে', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 
-  void _addCatalogItem(Map<String, dynamic> item) {
+  bool _addCatalogItem(Map<String, dynamic> item) {
     final String type = (item['item_type'] ?? 'medicine').toString();
     final int id = (item['id'] as num?)?.toInt() ?? 0;
     final int stockQty = ((item['stock_qty'] ?? 0) as num).toInt();
     if (stockQty <= 0) {
       _showStockError('❌ "${item['name']}" এর স্টক শূন্য (0)! স্টক না থাকায় কোটেশন/অর্ডার করা যাবে না।');
-      return;
+      return false;
     }
     final int alreadyRequested = _totalPiecesRequestedForItem(type, id);
     if (alreadyRequested + 1 > stockQty) {
       _showStockError('❌ "${item['name']}" এর সর্বোচ্চ স্টক $stockQty পিস!');
-      return;
+      return false;
     }
 
     final int stripSize = ((item['strip_size'] ?? 10) as num).toInt().clamp(1, 500);
@@ -388,6 +414,7 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
         });
       }
     });
+    return true;
   }
 
   void _changeCartUnit(int idx, String nextMode) {

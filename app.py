@@ -14482,6 +14482,14 @@ def api_admin_pharmacy_review(order_id):
     except Exception:
         data["approved_items"] = []
 
+    for item_list in (data["requested_items"], data["approved_items"]):
+        for it in item_list:
+            mid = it.get("medicine_id")
+            if mid:
+                m_row = conn.execute("SELECT stock_qty FROM pharmacy_medicines WHERE id = ?", (mid,)).fetchone()
+                if m_row:
+                    it["stock_qty"] = int(m_row["stock_qty"] or 0)
+
     ol_id = data.get("online_order_id")
     data["invoice_url"] = f"/online_orders/{ol_id}/invoice" if ol_id else ""
 
@@ -14723,6 +14731,16 @@ def _save_and_send_pharmacy_quote(conn, order_id, items, delivery_charge=50.0, a
         med_id = it.get("medicine_id") or (it.get("id") if it_type == "medicine" else None)
         prod_id = it.get("product_id") or (it.get("id") if it_type in ("product", "package") else None)
         custom_price = it.get("unit_price")
+
+        if it_type == "medicine" and not med_id:
+            raw_mname = (it.get("name") or "").strip()
+            if raw_mname:
+                by_name = conn.execute(
+                    "SELECT id FROM pharmacy_medicines WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+                    (raw_mname,),
+                ).fetchone()
+                if by_name:
+                    med_id = by_name["id"]
 
         if it_type == "medicine" and med_id:
             med = conn.execute("SELECT * FROM pharmacy_medicines WHERE id = ?", (med_id,)).fetchone()
