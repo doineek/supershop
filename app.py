@@ -823,7 +823,7 @@ def handle_cors_options():
     if request.method == "OPTIONS":
         response = app.make_default_options_response()
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, X-Staff-Token'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         return response
 
@@ -913,7 +913,7 @@ def calculate_paid_and_free_qty(quantity, offer_type, offer_value, offer_title, 
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, X-Staff-Token'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     return response
 
@@ -942,15 +942,6 @@ def check_remote_control():
         <p style="color:#888;">This page will refresh automatically.</p>
         </body></html>
         """, 503
-
-
-@app.after_request
-def add_cors_headers(response):
-    """Add CORS headers to allow Web/Chrome/Flutter requests."""
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    return response
 
 
 @app.context_processor
