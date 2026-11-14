@@ -7,6 +7,7 @@ import '../../localization/app_localizations.dart';
 import '../../models/online_order.dart';
 import '../../models/product.dart';
 import '../../services/api_service.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/app_image_loader.dart';
 import '../auth/login_screen.dart';
 import 'home_screen.dart';
@@ -31,6 +32,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
   Timer? _countdownTimer;
   Timer? _livePollTimer;
   String? _currentTargetOrder;
+  String _deptFilter = 'all'; // 'all', 'regular', 'pharmacy', 'confirm'
   final Set<String> _expandedOrders = <String>{};
   List<Product>? _cachedProducts;
   List<dynamic>? _cachedPackages;
@@ -40,7 +42,10 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _currentTargetOrder = widget.targetOrderNumber?.trim();
+    final rawTarget = widget.targetOrderNumber?.trim() ?? '';
+    _currentTargetOrder = rawTarget.isEmpty
+        ? null
+        : NotificationService.instance.normalizeOrderRef(rawTarget);
     if (_currentTargetOrder != null && _currentTargetOrder!.isNotEmpty) {
       _expandedOrders.add(_currentTargetOrder!);
     }
@@ -1036,6 +1041,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
 
               nav.pop();
               if (res['success'] == true) {
+                _fetchOrders(silent: true);
+                NotificationService.instance.fetchNotifications();
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(res['message'] ?? "Order cancelled successfully."),
@@ -1149,160 +1156,288 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                         )
                       : Builder(
                           builder: (context) {
-                            List<OnlineOrder> orders = List.from(_orders);
+                            final int regCount = _orders.where((o) => !o.isPharmacyOrder).length;
+                            final int pharmCount = _orders.where((o) => o.isPharmacyOrder).length;
+                            final int confirmCount = _orders
+                                .where((o) => o.orderStatus.trim().toLowerCase() == 'awaiting_customer_confirmation')
+                                .length;
+
+                            bool matchesTarget(OnlineOrder o) {
+                              if (_currentTargetOrder == null || _currentTargetOrder!.isEmpty) return false;
+                              final t = NotificationService.instance.normalizeOrderRef(_currentTargetOrder!).toLowerCase();
+                              final ordNorm = NotificationService.instance.normalizeOrderRef(o.orderNumber).toLowerCase();
+                              return ordNorm == t ||
+                                  o.id.toString() == t ||
+                                  ordNorm.contains(t) ||
+                                  t.contains(ordNorm);
+                            }
+
+                            List<OnlineOrder> orders = _orders.where((o) {
+                              if (_deptFilter == 'regular') return !o.isPharmacyOrder;
+                              if (_deptFilter == 'pharmacy') return o.isPharmacyOrder;
+                              if (_deptFilter == 'confirm') {
+                                return o.orderStatus.trim().toLowerCase() == 'awaiting_customer_confirmation';
+                              }
+                              return true;
+                            }).toList();
+
                             if (_currentTargetOrder != null && _currentTargetOrder!.isNotEmpty) {
-                              int targetIdx = orders.indexWhere((o) {
-                                final t = _currentTargetOrder!.toLowerCase();
-                                return o.orderNumber.toLowerCase() == t ||
-                                    o.id.toString() == t ||
-                                    o.orderNumber.toLowerCase().contains(t) ||
-                                    t.contains(o.orderNumber.toLowerCase());
-                              });
+                              int targetIdx = orders.indexWhere(matchesTarget);
+                              if (targetIdx < 0 && _deptFilter != 'all') {
+                                final fallback = _orders.where(matchesTarget).toList();
+                                if (fallback.isNotEmpty) {
+                                  orders = fallback;
+                                  targetIdx = 0;
+                                }
+                              }
                               if (targetIdx > 0) {
                                 final targetOrder = orders.removeAt(targetIdx);
                                 orders.insert(0, targetOrder);
                               }
                             }
 
-                            return RefreshIndicator(
-                              onRefresh: () => _fetchOrders(silent: false),
-                              child: ListView.builder(
-                                padding: const EdgeInsets.all(12),
-                                itemCount: orders.length,
-                                itemBuilder: (context, index) {
-                                  final order = orders[index];
-                        final bool isTargetOrder = _currentTargetOrder != null &&
-                            _currentTargetOrder!.isNotEmpty &&
-                            (order.orderNumber.toLowerCase() == _currentTargetOrder!.toLowerCase() ||
-                             order.id.toString() == _currentTargetOrder!.toLowerCase() ||
-                             order.orderNumber.toLowerCase().contains(_currentTargetOrder!.toLowerCase()) ||
-                             _currentTargetOrder!.toLowerCase().contains(order.orderNumber.toLowerCase()));
-
-                        Color statusColor = _getStatusColor(order.orderStatus);
-
-                        DateTime createdDt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
-                        int elapsedSeconds = DateTime.now().difference(createdDt).inSeconds;
-                        int remainingSeconds = 600 - elapsedSeconds;
-                        bool canCancel = remainingSeconds > 0 &&
-                            (order.orderStatus == 'new' || order.orderStatus == 'pending' || order.orderStatus == 'verified');
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isTargetOrder ? Colors.blue.shade600 : Colors.grey.shade300,
-                              width: isTargetOrder ? 2.5 : 1.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: isTargetOrder
-                                    ? Colors.blue.withValues(alpha: 0.18)
-                                    : Colors.black.withValues(alpha: 0.04),
-                                blurRadius: isTargetOrder ? 12 : 8,
-                                spreadRadius: isTargetOrder ? 2 : 0,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (isTargetOrder)
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            Widget buildFilterPill(String key, String label, Color accent) {
+                              final selected = _deptFilter == key;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: InkWell(
+                                  onTap: () => setState(() => _deptFilter = key),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.shade50,
-                                      border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+                                      color: selected ? accent : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: selected ? accent : Colors.grey.shade300,
+                                      ),
                                     ),
+                                    child: Text(
+                                      label,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: selected ? Colors.white : const Color(0xFF334155),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return Column(
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+                                  ),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.notifications_active, color: Colors.blue, size: 16),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              "Viewing Order: #${order.orderNumber}",
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
-                                            ),
-                                          ],
-                                        ),
-                                        InkWell(
-                                          onTap: () {
-                                            setState(() {
-                                              _currentTargetOrder = null;
-                                            });
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: Colors.blue.shade300),
-                                            ),
-                                            child: const Text(
-                                              "Show All Orders",
-                                              style: TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold),
-                                            ),
-                                          ),
-                                        ),
+                                        buildFilterPill('all', 'সব অর্ডার (${_orders.length})', const Color(0xFF1E293B)),
+                                        buildFilterPill('regular', '🛒 সুপারশপ ($regCount)', const Color(0xFF6B21A8)),
+                                        buildFilterPill('pharmacy', '💊 ফার্মেসী / Rx ($pharmCount)', const Color(0xFF0F766E)),
+                                        if (confirmCount > 0 || _deptFilter == 'confirm')
+                                          buildFilterPill('confirm', '🔔 কনফার্ম বাকি ($confirmCount)', const Color(0xFFD97706)),
                                       ],
                                     ),
                                   ),
-
-                                // Distinct Header Band with Left Stripe & Status Tone
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: statusColor.withValues(alpha: 0.08),
-                                    border: Border(
-                                      left: BorderSide(color: statusColor, width: 6),
-                                      bottom: BorderSide(color: Colors.grey.shade200),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: Colors.grey.shade300),
-                                            ),
-                                            child: Text(
-                                              "#${orders.length - index}",
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            order.orderNumber,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B)),
-                                          ),
-                                        ],
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: statusColor,
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        child: Text(
-                                          _getStatusText(order.orderStatus).toUpperCase(),
-                                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
                                 ),
+                                Expanded(
+                                  child: orders.isEmpty
+                                      ? Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.filter_list_off, size: 48, color: Colors.grey.shade400),
+                                              const SizedBox(height: 10),
+                                              const Text('এই ক্যাটাগরিতে কোনো অর্ডার নেই', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                                              const SizedBox(height: 10),
+                                              TextButton(
+                                                onPressed: () => setState(() => _deptFilter = 'all'),
+                                                child: const Text('সব অর্ডার দেখুন'),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : RefreshIndicator(
+                                          onRefresh: () => _fetchOrders(silent: false),
+                                          child: ListView.builder(
+                                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                                            itemCount: orders.length,
+                                            itemBuilder: (context, index) {
+                                              final order = orders[index];
+                                              final bool isTargetOrder = matchesTarget(order);
+                                              final bool isAwaitingConfirm =
+                                                  order.orderStatus.trim().toLowerCase() == 'awaiting_customer_confirmation';
+                                              final bool isRx = order.isPharmacyOrder;
+
+                                              Color statusColor = _getStatusColor(order.orderStatus);
+                                              final Color deptColor = isAwaitingConfirm
+                                                  ? const Color(0xFFD97706)
+                                                  : (isRx ? const Color(0xFF0F766E) : const Color(0xFF6B21A8));
+
+                                              DateTime createdDt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
+                                              int elapsedSeconds = DateTime.now().difference(createdDt).inSeconds;
+                                              int remainingSeconds = 600 - elapsedSeconds;
+                                              bool canCancel = remainingSeconds > 0 &&
+                                                  (order.orderStatus == 'new' || order.orderStatus == 'pending' || order.orderStatus == 'verified');
+
+                                              return Container(
+                                                margin: const EdgeInsets.only(bottom: 18),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius: BorderRadius.circular(14),
+                                                  border: Border.all(
+                                                    color: isTargetOrder
+                                                        ? Colors.blue.shade600
+                                                        : (isAwaitingConfirm
+                                                            ? const Color(0xFFF59E0B)
+                                                            : deptColor.withValues(alpha: 0.35)),
+                                                    width: (isTargetOrder || isAwaitingConfirm) ? 2.2 : 1.2,
+                                                  ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: isTargetOrder
+                                                          ? Colors.blue.withValues(alpha: 0.18)
+                                                          : (isAwaitingConfirm
+                                                              ? Colors.amber.withValues(alpha: 0.16)
+                                                              : Colors.black.withValues(alpha: 0.05)),
+                                                      blurRadius: (isTargetOrder || isAwaitingConfirm) ? 12 : 8,
+                                                      spreadRadius: isTargetOrder ? 2 : 0,
+                                                      offset: const Offset(0, 3),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: ClipRRect(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      if (isTargetOrder)
+                                                        Container(
+                                                          width: double.infinity,
+                                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.blue.shade50,
+                                                            border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                            children: [
+                                                              Row(
+                                                                children: [
+                                                                  const Icon(Icons.notifications_active, color: Colors.blue, size: 16),
+                                                                  const SizedBox(width: 6),
+                                                                  Text(
+                                                                    "Viewing Order: #${order.orderNumber}",
+                                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                              InkWell(
+                                                                onTap: () {
+                                                                  setState(() {
+                                                                    _currentTargetOrder = null;
+                                                                  });
+                                                                },
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.white,
+                                                                    borderRadius: BorderRadius.circular(4),
+                                                                    border: Border.all(color: Colors.blue.shade300),
+                                                                  ),
+                                                                  child: const Text(
+                                                                    "Show All Orders",
+                                                                    style: TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+
+                                                      // Distinct Header Band with Department Accent + Left Stripe + Status Pill
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                                        decoration: BoxDecoration(
+                                                          color: isAwaitingConfirm
+                                                              ? const Color(0xFFFFFBEB)
+                                                              : deptColor.withValues(alpha: 0.08),
+                                                          border: Border(
+                                                            left: BorderSide(color: deptColor, width: 6),
+                                                            bottom: BorderSide(color: Colors.grey.shade200),
+                                                          ),
+                                                        ),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Row(
+                                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                              children: [
+                                                                Expanded(
+                                                                  child: Wrap(
+                                                                    spacing: 6,
+                                                                    runSpacing: 4,
+                                                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                                                    children: [
+                                                                      Container(
+                                                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                                        decoration: BoxDecoration(
+                                                                          color: deptColor,
+                                                                          borderRadius: BorderRadius.circular(6),
+                                                                        ),
+                                                                        child: Text(
+                                                                          isRx ? "💊 ফার্মেসী / Rx" : "🛒 সুপারশপ",
+                                                                          style: const TextStyle(
+                                                                            fontWeight: FontWeight.w800,
+                                                                            fontSize: 10.5,
+                                                                            color: Colors.white,
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                      Text(
+                                                                        '#${order.orderNumber}',
+                                                                        style: const TextStyle(
+                                                                          fontWeight: FontWeight.w900,
+                                                                          fontSize: 14.5,
+                                                                          color: Color(0xFF0F172A),
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(width: 6),
+                                                                Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                                  decoration: BoxDecoration(
+                                                                    color: statusColor,
+                                                                    borderRadius: BorderRadius.circular(16),
+                                                                  ),
+                                                                  child: Text(
+                                                                    _getStatusText(order.orderStatus).toUpperCase(),
+                                                                    style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            const SizedBox(height: 4),
+                                                            Text(
+                                                              'ক্রম #${orders.length - index} • ${order.items.isNotEmpty ? '${order.items.length}টি আইটেম' : (isRx ? 'প্রেসক্রিপশন অর্ডার' : 'অর্ডার')} • মোট ৳${order.totalAmount.toStringAsFixed(2)}',
+                                                              style: TextStyle(
+                                                                fontSize: 11.5,
+                                                                fontWeight: FontWeight.w600,
+                                                                color: Colors.blueGrey.shade700,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
 
                                 Padding(
                                   padding: const EdgeInsets.all(14.0),
@@ -1616,7 +1751,10 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                                                       backgroundColor: r['success'] == true ? Colors.green : Colors.red,
                                                     ),
                                                   );
-                                                  if (r['success'] == true) _fetchOrders();
+                                                  if (r['success'] == true) {
+                                                    _fetchOrders();
+                                                    NotificationService.instance.fetchNotifications();
+                                                  }
                                                 },
                                                 icon: const Icon(Icons.check_circle, size: 16, color: Colors.white),
                                                 label: const Text('কনফার্ম করুন', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -1639,7 +1777,10 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                                                       backgroundColor: r['success'] == true ? Colors.orange : Colors.red,
                                                     ),
                                                   );
-                                                  if (r['success'] == true) _fetchOrders();
+                                                  if (r['success'] == true) {
+                                                    _fetchOrders();
+                                                    NotificationService.instance.fetchNotifications();
+                                                  }
                                                 },
                                                 icon: const Icon(Icons.cancel, size: 16, color: Colors.red),
                                                 label: const Text('বাতিল', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -1759,11 +1900,14 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> with WidgetsBindingObse
                       ),
                     ),
                   );
-                      },
-                    ),
-                  );
-                  },
-                ),
+                                            },
+                                          ),
+                                        ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
     );
   }
 }

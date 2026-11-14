@@ -17,6 +17,7 @@ import '../../widgets/quantity_limit_dialog.dart';
 import 'product_detail_screen.dart';
 import 'profile_screen.dart';
 import 'pharmacy_screen.dart';
+import 'my_orders_screen.dart';
 import '../delivery/delivery_home_screen.dart';
 import '../admin/admin_hub_screen.dart';
 import '../auth/login_screen.dart';
@@ -72,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         Provider.of<CartProvider>(context, listen: false).onCustomerSessionChanged();
+        NotificationService.instance.flushPendingTap();
       }
     });
   }
@@ -690,6 +692,95 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             ],
                           ),
                         ),
+                      ValueListenableBuilder<List<Map<String, dynamic>>>(
+                        valueListenable: NotificationService.instance.pendingConfirmationsNotifier,
+                        builder: (context, pendingList, _) {
+                          if (pendingList.isEmpty) return const SizedBox.shrink();
+                          final first = pendingList.first;
+                          final String ref = NotificationService.instance.normalizeOrderRef(
+                            (first['order_number'] ?? first['id'] ?? '').toString(),
+                          );
+                          final double amt = ((first['total_amount'] ?? 0) as num).toDouble();
+                          return Material(
+                            color: const Color(0xFFFFFBEB),
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MyOrdersScreen(
+                                      targetOrderNumber: ref.isNotEmpty ? ref : null,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(color: Color(0xFFF59E0B), width: 1.5),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(7),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFD97706),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.notifications_active, color: Colors.white, size: 17),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            pendingList.length == 1
+                                                ? '⚠️ জরুরি: প্রেসক্রিপশন বিল কনফার্ম করুন (#$ref)'
+                                                : '⚠️ জরুরি: ${pendingList.length}টি অর্ডারের কনফার্মেশন বাকি!',
+                                            style: const TextStyle(
+                                              color: Color(0xFF92400E),
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 12.5,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'মোট বিল: ৳${amt.toStringAsFixed(2)} • ট্যাপ করে অর্ডারটি কনফার্ম করুন',
+                                            style: const TextStyle(
+                                              color: Color(0xFFB45309),
+                                              fontSize: 11.2,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFD97706),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'দেখুন →',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                       // Persistent Top Search Bar
                       Container(
                         color: const Color(0xFF6B21A8),

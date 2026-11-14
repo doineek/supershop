@@ -307,9 +307,48 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
     await _searchCatalog(code, autoAddExact: true);
   }
 
+  int _unitMultiplier(Map<String, dynamic> item, String mode) {
+    final int sSize = ((item['strip_size'] ?? 10) as num).toInt().clamp(1, 500);
+    final int pSize = ((item['packet_size'] ?? 30) as num).toInt().clamp(1, 5000);
+    if (mode == 'strip') return sSize;
+    if (mode == 'packet') return pSize;
+    return 1;
+  }
+
+  int _totalPiecesRequestedForItem(String type, int id, {int? excludeIdx}) {
+    int total = 0;
+    for (int i = 0; i < _cart.length; i++) {
+      if (excludeIdx != null && i == excludeIdx) continue;
+      final c = _cart[i];
+      if (c['item_type'] == type && c['id'] == id) {
+        final int qty = ((c['quantity'] ?? 1) as num).toInt();
+        final String m = (c['sell_unit'] ?? 'piece').toString();
+        total += qty * _unitMultiplier(c, m);
+      }
+    }
+    return total;
+  }
+
+  void _showStockError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
+    );
+  }
+
   void _addCatalogItem(Map<String, dynamic> item) {
     final String type = (item['item_type'] ?? 'medicine').toString();
     final int id = (item['id'] as num?)?.toInt() ?? 0;
+    final int stockQty = ((item['stock_qty'] ?? 0) as num).toInt();
+    if (stockQty <= 0) {
+      _showStockError('❌ "${item['name']}" এর স্টক শূন্য (0)! স্টক না থাকায় কোটেশন/অর্ডার করা যাবে না।');
+      return;
+    }
+    final int alreadyRequested = _totalPiecesRequestedForItem(type, id);
+    if (alreadyRequested + 1 > stockQty) {
+      _showStockError('❌ "${item['name']}" এর সর্বোচ্চ স্টক $stockQty পিস!');
+      return;
+    }
+
     final int stripSize = ((item['strip_size'] ?? 10) as num).toInt().clamp(1, 500);
     final int packetSize = ((item['packet_size'] ?? 30) as num).toInt().clamp(1, 5000);
     final double piecePrice = ((item['sell_price'] ?? item['unit_price'] ?? 0) as num).toDouble();
@@ -324,6 +363,7 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
       );
       if (idx >= 0) {
         _cart[idx]['quantity'] = (_cart[idx]['quantity'] as int) + 1;
+        _cart[idx]['stock_qty'] = stockQty;
       } else {
         _cart.add({
           'id': id,
@@ -337,6 +377,7 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
           'unit_mode': 'piece',
           'sell_unit': 'piece',
           'quantity': 1,
+          'stock_qty': stockQty,
           'unit_price': piecePrice,
           'piece_price': piecePrice,
           'strip_price': stripPrice,
@@ -350,8 +391,21 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
   }
 
   void _changeCartUnit(int idx, String nextMode) {
+    final c = _cart[idx];
+    final int stockQty = ((c['stock_qty'] ?? 0) as num).toInt();
+    final int qty = ((c['quantity'] ?? 1) as num).toInt();
+    final int nextNeed = qty * _unitMultiplier(c, nextMode);
+    final int otherNeed = _totalPiecesRequestedForItem(
+      (c['item_type'] ?? 'medicine').toString(),
+      ((c['id'] ?? 0) as num).toInt(),
+      excludeIdx: idx,
+    );
+    if (stockQty <= 0 || otherNeed + nextNeed > stockQty) {
+      _showStockError('❌ "${c['name']}" এর পর্যাপ্ত স্টক নেই (স্টক: $stockQty পিস)।');
+      return;
+    }
+
     setState(() {
-      final c = _cart[idx];
       final double pieceP = ((c['piece_price'] ?? c['unit_price'] ?? 0) as num).toDouble();
       final int sSize = ((c['strip_size'] ?? 10) as num).toInt().clamp(1, 500);
       final int pSize = ((c['packet_size'] ?? 30) as num).toInt().clamp(1, 5000);
@@ -394,6 +448,13 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
         const SnackBar(content: Text('অন্তত ১টি ঔষধ বা পণ্য যোগ করুন।'), backgroundColor: Colors.red),
       );
       return;
+    }
+    for (final c in _cart) {
+      final int st = ((c['stock_qty'] ?? -1) as num).toInt();
+      if (st == 0) {
+        _showStockError('❌ "${c['name']}" এর স্টক শূন্য (0)! স্টক ছাড়া কোটেশন পাঠানো যাবে না।');
+        return;
+      }
     }
     setState(() => _submitting = true);
     final int orderId = ((widget.order['id'] ?? 0) as num).toInt();
@@ -838,23 +899,32 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
                               final bool isMed = it['item_type'] == 'medicine';
                               final double p = ((it['sell_price'] ?? 0) as num).toDouble();
                               final int st = ((it['stock_qty'] ?? 0) as num).toInt();
+                              final bool inStock = st > 0;
                               return ListTile(
                                 dense: true,
                                 leading: Text(isMed ? '💊' : '🛒', style: const TextStyle(fontSize: 18)),
                                 title: Text((it['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
                                 subtitle: Text(
-                                  'TK ${p.toStringAsFixed(1)} • স্টক: $st${isMed && (it['strip_price'] ?? 0) > 0 ? ' • পাতা ৳${((it['strip_price'] ?? 0) as num).toStringAsFixed(0)}' : ''}',
-                                  style: const TextStyle(fontSize: 11),
+                                  inStock
+                                      ? 'TK ${p.toStringAsFixed(1)} • স্টক: $st${isMed && (it['strip_price'] ?? 0) > 0 ? ' • পাতা ৳${((it['strip_price'] ?? 0) as num).toStringAsFixed(0)}' : ''}'
+                                      : 'TK ${p.toStringAsFixed(1)} • ❌ স্টক নেই (0)',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: inStock ? null : Colors.red.shade700,
+                                    fontWeight: inStock ? FontWeight.normal : FontWeight.w700,
+                                  ),
                                 ),
                                 trailing: ElevatedButton(
-                                  onPressed: () => _addCatalogItem(it),
+                                  onPressed: inStock
+                                      ? () => _addCatalogItem(it)
+                                      : () => _showStockError('❌ "${it['name']}" এর স্টক শূন্য (0)! স্টক ছাড়া যোগ করা যাবে না।'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal.shade700,
+                                    backgroundColor: inStock ? Colors.teal.shade700 : Colors.grey.shade400,
                                     foregroundColor: Colors.white,
                                     minimumSize: const Size(0, 28),
                                     padding: const EdgeInsets.symmetric(horizontal: 10),
                                   ),
-                                  child: const Text('+ যোগ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                  child: Text(inStock ? '+ যোগ' : 'স্টক নেই', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
                               );
                             },
@@ -933,7 +1003,23 @@ class _RxQuoteBuilderSheetState extends State<RxQuoteBuilderSheet> {
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   icon: const Icon(Icons.add_circle_outline, size: 18),
-                                  onPressed: () => setState(() => c['quantity'] = qty + 1),
+                                  onPressed: () {
+                                    final int stockQty = ((c['stock_qty'] ?? -1) as num).toInt();
+                                    if (stockQty >= 0) {
+                                      final int mult = _unitMultiplier(c, unitMode);
+                                      final int nextNeed = (qty + 1) * mult;
+                                      final int otherNeed = _totalPiecesRequestedForItem(
+                                        (c['item_type'] ?? 'medicine').toString(),
+                                        ((c['id'] ?? 0) as num).toInt(),
+                                        excludeIdx: idx,
+                                      );
+                                      if (stockQty <= 0 || otherNeed + nextNeed > stockQty) {
+                                        _showStockError('❌ "${c['name']}" এর সর্বোচ্চ স্টক $stockQty পিস!');
+                                        return;
+                                      }
+                                    }
+                                    setState(() => c['quantity'] = qty + 1);
+                                  },
                                 ),
                                 const SizedBox(width: 6),
                                 Text('৳${(up * qty).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),

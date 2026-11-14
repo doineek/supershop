@@ -53,32 +53,40 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
   }
 
   IconData _getIconForType(String type, String title) {
-    if (type == 'order') {
+    final lowT = type.toLowerCase();
+    if (lowT == 'pharmacy_quote' || lowT == 'pharmacy' || lowT == 'order_confirmation') {
+      return Icons.notification_important;
+    }
+    if (lowT == 'order') {
       if (title.contains('Delivered')) return Icons.task_alt;
       if (title.contains('Way')) return Icons.delivery_dining;
       if (title.contains('Packed')) return Icons.inventory_2;
       if (title.contains('Confirmed')) return Icons.check_circle;
       if (title.contains('Cancelled')) return Icons.cancel;
       return Icons.shopping_bag;
-    } else if (type == 'offer') {
+    } else if (lowT == 'offer') {
       return Icons.local_offer;
-    } else if (type == 'suggestion') {
+    } else if (lowT == 'suggestion') {
       return Icons.lightbulb;
     }
     return Icons.notifications;
   }
 
   Color _getColorForType(String type, String title) {
-    if (type == 'order') {
+    final lowT = type.toLowerCase();
+    if (lowT == 'pharmacy_quote' || lowT == 'pharmacy' || lowT == 'order_confirmation') {
+      return const Color(0xFFD97706);
+    }
+    if (lowT == 'order') {
       if (title.contains('Delivered')) return const Color(0xFF059669);
       if (title.contains('Way')) return const Color(0xFF2563EB);
       if (title.contains('Packed')) return const Color(0xFFD97706);
       if (title.contains('Confirmed')) return const Color(0xFF16A34A);
       if (title.contains('Cancelled')) return const Color(0xFFDC2626);
       return const Color(0xFF6B21A8);
-    } else if (type == 'offer') {
+    } else if (lowT == 'offer') {
       return const Color(0xFF9333EA);
-    } else if (type == 'suggestion') {
+    } else if (lowT == 'suggestion') {
       return const Color(0xFFEA580C);
     }
     return const Color(0xFF6B21A8);
@@ -96,13 +104,20 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
     // 1. Mark as read in background (non-blocking for instant UI response)
     NotificationService.instance.markAsRead(notif.id);
 
-    // 2. Action based on type
-    if (notif.type == 'order') {
+    final extractedRef = NotificationService.instance.normalizeOrderRef(
+      notif.referenceId.isNotEmpty ? notif.referenceId : '${notif.title} ${notif.message}',
+    );
+    final bool hasOrdRef = extractedRef.startsWith('RX-') || extractedRef.startsWith('ORD-');
+
+    // 2. Action based on type (includes 'pharmacy_quote', 'pharmacy', 'order_confirmation', 'order')
+    if (notif.isOrderRelated || hasOrdRef) {
       Navigator.pop(context);
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => MyOrdersScreen(targetOrderNumber: notif.referenceId),
+          builder: (_) => MyOrdersScreen(
+            targetOrderNumber: extractedRef.isNotEmpty ? extractedRef : null,
+          ),
         ),
       );
     } else if (notif.type == 'offer') {
@@ -281,6 +296,7 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
               builder: (context, allNotifs, _) {
                 final filtered = allNotifs.where((n) {
                   if (_selectedFilter == 'all') return true;
+                  if (_selectedFilter == 'order') return n.isOrderRelated;
                   return n.type == _selectedFilter;
                 }).toList();
 
@@ -362,8 +378,13 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                   itemBuilder: (context, index) {
                     final notif = filtered[index];
                     final isUnread = !notif.isRead;
+                    final isUrgent = notif.isImportant ||
+                        notif.type == 'pharmacy_quote' ||
+                        notif.type == 'order_confirmation';
                     final icon = _getIconForType(notif.type, notif.title);
-                    final color = _getColorForType(notif.type, notif.title);
+                    final color = isUrgent
+                        ? const Color(0xFFD97706)
+                        : _getColorForType(notif.type, notif.title);
                     final timeAgo = _formatTimeAgo(notif.createdAt);
 
                     return InkWell(
@@ -372,17 +393,24 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          // Highlighted state: soft purple/indigo background + border
-                          color: isUnread ? const Color(0xFFFAF5FF) : Colors.white,
+                          color: isUrgent
+                              ? const Color(0xFFFFFBEB)
+                              : (isUnread ? const Color(0xFFFAF5FF) : Colors.white),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: isUnread ? const Color(0xFFD8B4FE) : const Color(0xFFE2E8F0),
-                            width: isUnread ? 1.5 : 1.0,
+                            color: isUrgent
+                                ? const Color(0xFFF59E0B)
+                                : (isUnread ? const Color(0xFFD8B4FE) : const Color(0xFFE2E8F0)),
+                            width: isUrgent ? 1.8 : (isUnread ? 1.5 : 1.0),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: isUnread ? Colors.purple.withOpacity(0.06) : Colors.black.withOpacity(0.02),
-                              blurRadius: 6,
+                              color: isUrgent
+                                  ? Colors.amber.withValues(alpha: 0.14)
+                                  : (isUnread
+                                      ? Colors.purple.withValues(alpha: 0.06)
+                                      : Colors.black.withValues(alpha: 0.02)),
+                              blurRadius: isUrgent ? 8 : 6,
                               offset: const Offset(0, 2),
                             ),
                           ],
@@ -394,7 +422,7 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                             Container(
                               padding: const EdgeInsets.all(9),
                               decoration: BoxDecoration(
-                                color: color.withOpacity(isUnread ? 0.15 : 0.08),
+                                color: color.withValues(alpha: (isUrgent || isUnread) ? 0.16 : 0.08),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(icon, color: color, size: 22),
@@ -406,6 +434,24 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  if (isUrgent)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFEF3C7),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: const Color(0xFFF59E0B)),
+                                      ),
+                                      child: const Text(
+                                        '⚠️ জরুরি • কনফার্মেশন বাকি',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFFB45309),
+                                        ),
+                                      ),
+                                    ),
                                   Row(
                                     children: [
                                       Expanded(
@@ -413,8 +459,14 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                                           _cleanTitle(notif.title),
                                           style: TextStyle(
                                             fontSize: 14,
-                                            fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
-                                            color: isUnread ? const Color(0xFF0F172A) : const Color(0xFF334155),
+                                            fontWeight: (isUrgent || isUnread)
+                                                ? FontWeight.w800
+                                                : FontWeight.w600,
+                                            color: isUrgent
+                                                ? const Color(0xFF92400E)
+                                                : (isUnread
+                                                    ? const Color(0xFF0F172A)
+                                                    : const Color(0xFF334155)),
                                           ),
                                         ),
                                       ),
@@ -423,8 +475,10 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                                         Container(
                                           width: 8,
                                           height: 8,
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFF6B21A8),
+                                          decoration: BoxDecoration(
+                                            color: isUrgent
+                                                ? const Color(0xFFD97706)
+                                                : const Color(0xFF6B21A8),
                                             shape: BoxShape.circle,
                                           ),
                                         ),
@@ -436,7 +490,9 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                                     notif.message,
                                     style: TextStyle(
                                       fontSize: 12.5,
-                                      color: isUnread ? const Color(0xFF475569) : Colors.grey[600],
+                                      color: (isUrgent || isUnread)
+                                          ? const Color(0xFF475569)
+                                          : Colors.grey[600],
                                       height: 1.35,
                                     ),
                                   ),
@@ -453,11 +509,13 @@ class _NotificationDropdownDialogState extends State<NotificationDropdownDialog>
                                         ),
                                       ),
                                       Text(
-                                        "Tap to view →",
+                                        isUrgent
+                                            ? "ট্যাপ করে কনফার্ম করুন →"
+                                            : "Tap to view →",
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: color,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ],

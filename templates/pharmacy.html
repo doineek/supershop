@@ -2354,15 +2354,18 @@
         matches.slice(0, 20).forEach(m => {
           const hasDiscount = (m.discount_percent && m.discount_percent > 0) || (m.mrp && m.mrp > m.unit_price);
           const hasGeneric = Boolean(m.generic_name && m.generic_name.trim().length > 1);
+          const stk = Number(m.stock_qty ?? 0);
+          const isOut = stk <= 0;
 
           html += `
-            <div class="p-2.5 hover:bg-emerald-50/50 transition border-b border-slate-100 last:border-b-0">
+            <div class="p-2.5 ${isOut ? 'bg-slate-50/70 opacity-85' : 'hover:bg-emerald-50/50'} transition border-b border-slate-100 last:border-b-0">
               <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0 flex-1 cursor-pointer" onclick="addMedicineItem(${m.id})">
+                <div class="min-w-0 flex-1 ${isOut ? 'cursor-not-allowed' : 'cursor-pointer'}" onclick="${isOut ? '' : `addMedicineItem(${m.id})`}">
                   <div class="flex items-center gap-1.5 flex-wrap">
-                    <span class="text-xs font-bold text-slate-900 hover:text-emerald-700">${escapeHtml(m.name)}</span>
+                    <span class="text-xs font-bold text-slate-900 ${isOut ? '' : 'hover:text-emerald-700'}">${escapeHtml(m.name)}</span>
                     <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(m.dosage_form || 'Tablet')}</span>
                     ${m.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(m.strength)})</span>` : ''}
+                    ${isOut ? `<span class="px-1.5 py-0.2 bg-red-100 text-red-700 border border-red-200 rounded-md text-[9.5px] font-extrabold">স্টক নেই (0)</span>` : `<span class="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[9.5px] font-bold">স্টক: ${stk}</span>`}
                   </div>
                   <p class="text-[10px] text-slate-500 truncate mt-0.5">${escapeHtml(m.generic_name ? (m.generic_name + (m.manufacturer ? ' • ' + m.manufacturer : '')) : (m.manufacturer || ''))}</p>
                 </div>
@@ -2383,9 +2386,15 @@
                   </button>
                 ` : '<span></span>'}
 
-                <button type="button" onclick="event.stopPropagation(); addMedicineItem(${m.id})" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer">
-                  <span>+</span> <span>যোগ করুন</span>
-                </button>
+                ${isOut ? `
+                  <button type="button" disabled class="px-3 py-1 bg-slate-300 text-slate-600 rounded-lg text-xs font-bold flex items-center gap-1 cursor-not-allowed">
+                    <span>🚫</span> <span>স্টক নেই</span>
+                  </button>
+                ` : `
+                  <button type="button" onclick="event.stopPropagation(); addMedicineItem(${m.id})" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer">
+                    <span>+</span> <span>যোগ করুন</span>
+                  </button>
+                `}
               </div>
             </div>
           `;
@@ -2426,14 +2435,17 @@
         window._pharmacyMedsMap = window._pharmacyMedsMap || {};
         window._pharmacyMedsMap[s.id] = s;
         const hasDiscount = (s.discount_percent && s.discount_percent > 0) || (s.mrp && s.mrp > s.sell_price);
+        const stk = Number(s.stock_qty ?? 0);
+        const isOut = stk <= 0;
 
         html += `
-          <div class="pt-2 pb-1 flex items-center justify-between gap-2 transition hover:bg-emerald-50/40 p-2 rounded-xl">
+          <div class="pt-2 pb-1 flex items-center justify-between gap-2 transition ${isOut ? 'opacity-75' : 'hover:bg-emerald-50/40'} p-2 rounded-xl">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <strong class="text-xs font-extrabold text-slate-900">${escapeHtml(s.name)}</strong>
                 <span class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">${escapeHtml(s.dosage_form || 'Tablet')}</span>
                 ${s.strength ? `<span class="text-[10px] text-slate-500 font-medium">(${escapeHtml(s.strength)})</span>` : ''}
+                ${isOut ? `<span class="px-1.5 py-0.2 bg-red-100 text-red-700 rounded-md text-[9.5px] font-extrabold">স্টক নেই</span>` : ''}
               </div>
               <p class="text-[10px] text-slate-500 truncate mt-0.5 font-medium">🏢 ${escapeHtml(s.manufacturer || 'স্বীকৃত কোম্পানি')}</p>
             </div>
@@ -2447,9 +2459,15 @@
                 ${hasDiscount ? `<span class="px-1.5 py-0.2 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[9px] font-extrabold block text-right">${s.discount_percent}% OFF</span>` : `<span class="text-[10px] text-slate-400 block text-right">প্রতি পিস/বোতল</span>`}
               </div>
               
-              <button type="button" onclick="selectSubstituteItem(${s.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer">
-                + সিলেক্ট
-              </button>
+              ${isOut ? `
+                <button type="button" disabled class="px-3 py-1.5 bg-slate-300 text-slate-600 rounded-xl text-xs font-bold cursor-not-allowed">
+                  স্টক নেই
+                </button>
+              ` : `
+                <button type="button" onclick="selectSubstituteItem(${s.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer">
+                  + সিলেক্ট
+                </button>
+              `}
             </div>
           </div>
         `;
@@ -2537,8 +2555,18 @@
       const med = (window._pharmacyMedsMap && window._pharmacyMedsMap[medId]) || catalogMedicines.find(x => x.id === medId);
       if (!med) return;
 
+      const stk = Number(med.stock_qty ?? 0);
+      if (stk <= 0) {
+        alert(`দুঃখিত, "${med.name}" বর্তমানে স্টকে নেই (পরিমাণ ০)। স্টক শূন্য থাকা ঔষধ অর্ডার বা চেকআউট করা যাবে না।`);
+        return;
+      }
+
       const existing = selectedMedicines.find(x => x.id === medId);
       if (existing) {
+        if (existing.quantity >= stk) {
+          alert(`"${med.name}" এর সর্বোচ্চ ${stk} পিস স্টকে রয়েছে।`);
+          return;
+        }
         existing.quantity += 1;
         existing.total_price = Math.round(existing.quantity * existing.unit_price * 100) / 100;
       } else {
@@ -2548,6 +2576,7 @@
           generic_name: med.generic_name,
           dosage_form: med.dosage_form || 'Tablet',
           strength: med.strength,
+          stock_qty: stk,
           quantity: 1,
           unit: (med.dosage_form && med.dosage_form.toLowerCase().includes('syrup')) ? "বোতল" : "পিস",
           duration_days: (parseInt($("overall_duration_days").value, 10) || 0) > 0 ? ($("overall_duration_days").value + " দিন") : "নোটে উল্লিখিত",
@@ -2565,7 +2594,13 @@
 
     function changeMedicineQty(idx, delta) {
       if (!selectedMedicines[idx]) return;
-      selectedMedicines[idx].quantity += delta;
+      const nxt = selectedMedicines[idx].quantity + delta;
+      const stk = Number(selectedMedicines[idx].stock_qty ?? 0);
+      if (delta > 0 && nxt > stk) {
+        alert(`"${selectedMedicines[idx].name}" এর সর্বোচ্চ ${stk} পিস স্টকে রয়েছে।`);
+        return;
+      }
+      selectedMedicines[idx].quantity = nxt;
       if (selectedMedicines[idx].quantity <= 0) {
         selectedMedicines.splice(idx, 1);
       } else {
@@ -2695,6 +2730,11 @@
 
       if (!hasPrescription && !hasMedicines) {
         alert("অনুগ্রহ করে প্রেসক্রিপশন আপলোড করুন অথবা যেকোনো ঔষধ নির্বাচন করুন (বা উভয়ই একসাথে করতে পারেন)।");
+        return;
+      }
+
+      if (hasMedicines && selectedMedicines.some(m => Number(m.stock_qty ?? 0) <= 0)) {
+        alert("তালিকায় স্টক শূন্য (0) থাকা ঔষধ রয়েছে। স্টক শূন্য থাকা ঔষধ অর্ডার বা চেকআউট করা যাবে না।");
         return;
       }
 

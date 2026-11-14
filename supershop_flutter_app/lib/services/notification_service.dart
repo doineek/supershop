@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/notification_model.dart';
@@ -13,20 +14,50 @@ class NotificationService {
 
   final ValueNotifier<List<AppNotification>> notificationsNotifier = ValueNotifier<List<AppNotification>>([]);
   final ValueNotifier<int> unreadCountNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<List<Map<String, dynamic>>> pendingConfirmationsNotifier = ValueNotifier<List<Map<String, dynamic>>>([]);
 
   final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
   final Set<int> _seenIds = <int>{};
   final Set<int> _systemNotifiedIds = <int>{};
+  final Map<String, DateTime> _lastReminderAt = <String, DateTime>{};
+  final Map<String, int> _activeReminderNotifIds = <String, int>{};
   Timer? _pollingTimer;
   bool _isFetching = false;
   bool _localInitDone = false;
   String _currentPhone = '';
+  String _pendingTapPayload = '';
 
   void Function(String payload)? onNotificationTap;
 
   String get currentPhone => _currentPhone;
   List<AppNotification> get notifications => notificationsNotifier.value;
   int get unreadCount => unreadCountNotifier.value;
+
+  String normalizeOrderRef(String raw) {
+    String s = raw.trim();
+    if (s.startsWith('#')) s = s.substring(1).trim();
+    final m = RegExp(r'(RX-[A-Za-z0-9-]+|ORD-[A-Za-z0-9-]+)', caseSensitive: false).firstMatch(s);
+    if (m != null) return m.group(1)!.toUpperCase();
+    return s;
+  }
+
+  void _dispatchTapPayload(String rawPayload) {
+    final cleaned = normalizeOrderRef(rawPayload);
+    if (cleaned.isEmpty) return;
+    if (onNotificationTap != null) {
+      onNotificationTap!(cleaned);
+    } else {
+      _pendingTapPayload = cleaned;
+    }
+  }
+
+  void flushPendingTap() {
+    if (_pendingTapPayload.isNotEmpty && onNotificationTap != null) {
+      final p = _pendingTapPayload;
+      _pendingTapPayload = '';
+      onNotificationTap!(p);
+    }
+  }
 
   Future<void> init() async {
     await _initLocalNotifications();
@@ -45,10 +76,17 @@ class NotificationService {
         onDidReceiveNotificationResponse: (NotificationResponse resp) {
           final p = (resp.payload ?? '').trim();
           if (p.isNotEmpty) {
-            onNotificationTap?.call(p);
+            _dispatchTapPayload(p);
           }
         },
       );
+      final launchDetails = await _localPlugin.getNotificationAppLaunchDetails();
+      if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+        final p = (launchDetails.notificationResponse?.payload ?? '').trim();
+        if (p.isNotEmpty) {
+          _pendingTapPayload = normalizeOrderRef(p);
+        }
+      }
       final androidImpl = _localPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await androidImpl?.requestNotificationsPermission();
       await androidImpl?.createNotificationChannel(
@@ -56,6 +94,16 @@ class NotificationService {
           'doineek_pharmacy_alerts',
           'DOINEEK Order & Pharmacy Alerts',
           description: 'Instant pharmacy bill confirmation and order status updates',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+      await androidImpl?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'doineek_urgent_confirmations',
+          'Urgent Order Confirmation Reminders',
+          description: 'Critical reminders for pharmacy prescription bills awaiting customer confirmation',
           importance: Importance.max,
           playSound: true,
           enableVibration: true,
@@ -81,8 +129,10 @@ class NotificationService {
     _currentPhone = '';
     _seenIds.clear();
     _systemNotifiedIds.clear();
+    _lastReminderAt.clear();
     notificationsNotifier.value = [];
     unreadCountNotifier.value = 0;
+    pendingConfirmationsNotifier.value = [];
   }
 
   Future<void> _loadFromCache() async {
@@ -164,6 +214,7 @@ class NotificationService {
       if (userPhone.isEmpty) {
         notificationsNotifier.value = [];
         unreadCountNotifier.value = 0;
+        pendingConfirmationsNotifier.value = [];
         try {
           await prefs.remove('cached_app_notifications');
         } catch (_) {}
@@ -188,9 +239,17 @@ class NotificationService {
             return notif;
           }).toList();
 
+          final List<dynamic> rawPending = data['pending_confirmations'] ?? [];
+          final pendingList = rawPending
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          pendingConfirmationsNotifier.value = pendingList;
+
           notificationsNotifier.value = freshList;
           _recalculateUnread();
-          await _showNewSystemNotifications(freshList);
+          final newlyShownRefs = await _showNewSystemNotifications(freshList);
+          await _handlePendingConfirmationReminders(pendingList, newlyShownRefs);
           await _saveToCache();
         }
       }
@@ -201,35 +260,126 @@ class NotificationService {
     }
   }
 
-  Future<void> _showNewSystemNotifications(List<AppNotification> list) async {
-    if (kIsWeb) return;
+  Future<Set<String>> _showNewSystemNotifications(List<AppNotification> list) async {
+    final shownRefs = <String>{};
+    if (kIsWeb) return shownRefs;
     if (!_localInitDone) await _initLocalNotifications();
     for (final n in list) {
       if (n.isRead || _seenIds.contains(n.id) || _systemNotifiedIds.contains(n.id)) {
         continue;
       }
       _systemNotifiedIds.add(n.id);
+      final bool isUrgent = n.isImportant ||
+          n.type == 'pharmacy_quote' ||
+          n.type == 'order_confirmation';
+      final rawRef = n.referenceId.isNotEmpty ? n.referenceId : n.title;
+      final normalized = normalizeOrderRef(rawRef);
+      if (normalized.isNotEmpty) {
+        shownRefs.add(normalized);
+        if (isUrgent) {
+          _lastReminderAt[normalized] = DateTime.now();
+        }
+      }
+      final payload = normalized.isNotEmpty ? normalized : n.type;
       try {
         await _localPlugin.show(
           id: n.id,
-          title: n.title,
-          body: n.message,
+          title: isUrgent ? '⚠️ জরুরি: ${n.title}' : n.title,
+          body: isUrgent
+              ? '${n.message}\n👉 Tap to view করে অর্ডারটি কনফার্ম বা বাতিল করুন।'
+              : n.message,
+          notificationDetails: NotificationDetails(
+            android: AndroidNotificationDetails(
+              isUrgent ? 'doineek_urgent_confirmations' : 'doineek_pharmacy_alerts',
+              isUrgent ? 'Urgent Order Confirmation Reminders' : 'DOINEEK Order & Pharmacy Alerts',
+              channelDescription: isUrgent
+                  ? 'Critical reminders for pharmacy prescription bills awaiting customer confirmation'
+                  : 'Instant pharmacy bill confirmation and order status updates',
+              importance: Importance.max,
+              priority: isUrgent ? Priority.max : Priority.high,
+              color: isUrgent ? const Color(0xFFD97706) : const Color(0xFF6B21A8),
+              onlyAlertOnce: false,
+              enableVibration: true,
+              playSound: true,
+              styleInformation: const BigTextStyleInformation(''),
+            ),
+          ),
+          payload: payload,
+        );
+      } catch (e) {
+        debugPrint('[NotificationService] show tray notif error: $e');
+      }
+    }
+    return shownRefs;
+  }
+
+  Future<void> _handlePendingConfirmationReminders(
+    List<Map<String, dynamic>> pendingList,
+    Set<String> justNotifiedRefs,
+  ) async {
+    final activeRefs = <String>{};
+    for (final p in pendingList) {
+      final ref = normalizeOrderRef((p['order_number'] ?? p['id'] ?? '').toString());
+      if (ref.isNotEmpty) activeRefs.add(ref);
+    }
+
+    // Stop reminders automatically once confirmed or cancelled
+    for (final existingRef in _activeReminderNotifIds.keys.toList()) {
+      if (!activeRefs.contains(existingRef)) {
+        final rid = _activeReminderNotifIds.remove(existingRef);
+        _lastReminderAt.remove(existingRef);
+        if (rid != null && !kIsWeb) {
+          try {
+            await _localPlugin.cancel(id: rid);
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (kIsWeb || pendingList.isEmpty) return;
+    if (!_localInitDone) await _initLocalNotifications();
+
+    final now = DateTime.now();
+    for (final p in pendingList) {
+      final ref = normalizeOrderRef((p['order_number'] ?? p['id'] ?? '').toString());
+      if (ref.isEmpty) continue;
+      if (justNotifiedRefs.contains(ref)) {
+        _lastReminderAt[ref] = now;
+        continue;
+      }
+      final prev = _lastReminderAt[ref];
+      if (prev != null && now.difference(prev).inSeconds < 120) {
+        continue;
+      }
+      _lastReminderAt[ref] = now;
+      final int rid = 900000 + (ref.hashCode.abs() % 90000);
+      _activeReminderNotifIds[ref] = rid;
+      final double amt = ((p['total_amount'] ?? 0) as num).toDouble();
+      try {
+        await _localPlugin.show(
+          id: rid,
+          title: '🔔 জরুরি: অর্ডার #$ref কনফার্ম করুন!',
+          body:
+              'আপনার প্রেসক্রিপশন অর্ডারের বিল (৳${amt.toStringAsFixed(2)}) প্রস্তুত — Tap to view করে Confirm দিন, নাহলে ডেলিভারি শুরু হবে না।',
           notificationDetails: const NotificationDetails(
             android: AndroidNotificationDetails(
-              'doineek_pharmacy_alerts',
-              'DOINEEK Order & Pharmacy Alerts',
-              channelDescription: 'Instant pharmacy bill confirmation and order status updates',
+              'doineek_urgent_confirmations',
+              'Urgent Order Confirmation Reminders',
+              channelDescription:
+                  'Critical reminders for pharmacy prescription bills awaiting customer confirmation',
               importance: Importance.max,
-              priority: Priority.high,
+              priority: Priority.max,
+              color: Color(0xFFD97706),
+              onlyAlertOnce: false,
               enableVibration: true,
               playSound: true,
               styleInformation: BigTextStyleInformation(''),
             ),
           ),
-          payload: n.referenceId.isNotEmpty ? n.referenceId : n.type,
+          payload: ref,
         );
       } catch (e) {
-        debugPrint('[NotificationService] show tray notif error: $e');
+        debugPrint('[NotificationService] reminder error: $e');
       }
     }
   }

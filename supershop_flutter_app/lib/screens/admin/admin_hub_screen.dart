@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../widgets/rx_quote_builder_sheet.dart';
 import '../../widgets/thermal_print_helper.dart';
 import '../auth/login_screen.dart';
 import '../customer/home_screen.dart';
+import 'admin_online_orders_screen.dart';
+import 'admin_pharmacy_panel_screen.dart';
+import 'admin_reports_screen.dart';
+import 'admin_riders_screen.dart';
+import 'admin_settings_screen.dart';
 
 class AdminHubScreen extends StatefulWidget {
   final String? username;
@@ -128,15 +132,10 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
     });
   }
 
-  Future<void> _openWebSso(String nextPath) async {
-    final ssoUrl = await ApiService.buildAdminSsoUrl(nextPath);
-    final uri = Uri.parse(ssoUrl);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('ব্রাউজারে খোলা যায়নি: $ssoUrl'), backgroundColor: Colors.red),
-        );
-      }
+  Future<void> _openInAppScreen(Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    if (mounted) {
+      _refreshAll();
     }
   }
 
@@ -496,30 +495,34 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
     );
   }
 
-  Widget _statTile(String label, String val, IconData icon, Color color) {
+  Widget _statTile(String label, String val, IconData icon, Color color, {VoidCallback? onTap}) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(11),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 18),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(val, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color)),
-          ],
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(val, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color)),
+            ],
+          ),
         ),
       ),
     );
@@ -537,25 +540,61 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
         children: [
           Row(
             children: [
-              _statTile('আজকের বিক্রি', '৳${((_dash['sales_today'] ?? 0) as num).toStringAsFixed(0)}', Icons.point_of_sale, Colors.teal.shade800),
+              _statTile(
+                'আজকের বিক্রি',
+                '৳${((_dash['sales_today'] ?? 0) as num).toStringAsFixed(0)}',
+                Icons.point_of_sale,
+                Colors.teal.shade800,
+                onTap: () => _openInAppScreen(const AdminReportsScreen()),
+              ),
               const SizedBox(width: 8),
-              _statTile('আজকের লাভ', '৳${((_dash['profit_today'] ?? 0) as num).toStringAsFixed(0)}', Icons.trending_up, Colors.green.shade800),
+              _statTile(
+                'আজকের লাভ',
+                '৳${((_dash['profit_today'] ?? 0) as num).toStringAsFixed(0)}',
+                Icons.trending_up,
+                Colors.green.shade800,
+                onTap: () => _openInAppScreen(const AdminReportsScreen()),
+              ),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              _statTile('পেন্ডিং অনলাইন', '${_dash['pending_online_orders'] ?? 0} টি', Icons.shopping_bag, Colors.orange.shade800),
+              _statTile(
+                'পেন্ডিং অনলাইন',
+                '${_dash['pending_online_orders'] ?? 0} টি',
+                Icons.shopping_bag,
+                Colors.orange.shade800,
+                onTap: () => _openInAppScreen(AdminOnlineOrdersScreen(staffPhone: _staffPhone)),
+              ),
               const SizedBox(width: 8),
-              _statTile('পেন্ডিং Rx', '${_dash['pending_rx_orders'] ?? 0} টি', Icons.medical_services, Colors.indigo.shade800),
+              _statTile(
+                'পেন্ডিং Rx',
+                '${_dash['pending_rx_orders'] ?? 0} টি',
+                Icons.medical_services,
+                Colors.indigo.shade800,
+                onTap: () => _openInAppScreen(AdminPharmacyPanelScreen(initialTab: 0, staffPhone: _staffPhone)),
+              ),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              _statTile('মোট পণ্য / ঔষধ', '${_dash['products_count'] ?? 0} / ${_dash['medicines_count'] ?? 0}', Icons.inventory_2, Colors.blue.shade800),
+              _statTile(
+                'মোট পণ্য / ঔষধ',
+                '${_dash['products_count'] ?? 0} / ${_dash['medicines_count'] ?? 0}',
+                Icons.inventory_2,
+                Colors.blue.shade800,
+                onTap: () => _openInAppScreen(AdminPharmacyPanelScreen(initialTab: 1, staffPhone: _staffPhone)),
+              ),
               const SizedBox(width: 8),
-              _statTile('কাস্টমার / লো স্টক', '${_dash['customers_count'] ?? 0} / ${_dash['low_stock_medicines'] ?? 0}', Icons.people, Colors.deepPurple.shade800),
+              _statTile(
+                'কাস্টমার / লো স্টক',
+                '${_dash['customers_count'] ?? 0} / ${_dash['low_stock_medicines'] ?? 0}',
+                Icons.people,
+                Colors.deepPurple.shade800,
+                onTap: () => _openInAppScreen(AdminOnlineOrdersScreen(staffPhone: _staffPhone)),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -599,8 +638,8 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
           ),
           const SizedBox(height: 16),
 
-          // Signed Web Admin Shortcuts (Fixes old broken /orders route)
-          const Text('🌐 ওয়েব অ্যাডমিন প্যানেল শর্টকাট (অটো-লগইন)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+          // Native In-App Admin Modules (Opens inside the App — never external browser)
+          const Text('📱 অ্যাপ অ্যাডমিন প্যানেল মডিউলসমূহ (অ্যাপের ভেতরেই)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -609,27 +648,27 @@ class _AdminHubScreenState extends State<AdminHubScreen> with SingleTickerProvid
               ActionChip(
                 avatar: const Icon(Icons.shopping_cart, size: 17),
                 label: const Text('অনলাইন অর্ডার্স'),
-                onPressed: () => _openWebSso('/online_orders'),
+                onPressed: () => _openInAppScreen(AdminOnlineOrdersScreen(staffPhone: _staffPhone)),
               ),
               ActionChip(
                 avatar: const Icon(Icons.local_pharmacy, size: 17),
                 label: const Text('ফার্মেসী প্যানেল'),
-                onPressed: () => _openWebSso('/admin/pharmacy'),
+                onPressed: () => _openInAppScreen(AdminPharmacyPanelScreen(staffPhone: _staffPhone)),
               ),
               ActionChip(
                 avatar: const Icon(Icons.bar_chart, size: 17),
                 label: const Text('রিপোর্ট ও লাভ-লস'),
-                onPressed: () => _openWebSso('/reports'),
+                onPressed: () => _openInAppScreen(const AdminReportsScreen()),
               ),
               ActionChip(
                 avatar: const Icon(Icons.delivery_dining, size: 17),
                 label: const Text('রাইডার্স ও পেআউট'),
-                onPressed: () => _openWebSso('/riders'),
+                onPressed: () => _openInAppScreen(const AdminRidersScreen()),
               ),
               ActionChip(
                 avatar: const Icon(Icons.settings, size: 17),
                 label: const Text('সেটিংস ও প্রিন্টার'),
-                onPressed: () => _openWebSso('/admin/settings'),
+                onPressed: () => _openInAppScreen(const AdminSettingsScreen()),
               ),
             ],
           ),

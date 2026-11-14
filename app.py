@@ -960,8 +960,8 @@ def inject_shop_settings():
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if "user_id" not in session:
-            tok = _get_bearer_or_param_token()
+        tok = _get_bearer_or_param_token()
+        if tok:
             parsed = _verify_staff_token(tok)
             if parsed:
                 conn_tmp = get_connection()
@@ -974,10 +974,10 @@ def login_required(view):
                     session["user_id"] = u["id"]
                     session["username"] = u["username"]
                     session["role"] = u["role"]
-            if "user_id" not in session:
-                if request.path.startswith("/api/"):
-                    return jsonify({"success": False, "message": "Authentication required."}), 401
-                return redirect(url_for("login"))
+        if "user_id" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"success": False, "message": "Authentication required."}), 401
+            return redirect(url_for("login"))
         return view(*args, **kwargs)
     return wrapped
 
@@ -10727,15 +10727,36 @@ def api_get_notifications():
     conn = get_connection()
     try:
         ensure_daily_suggestions_and_offers(conn)
+        pending_confirmations = []
         if is_portal and not phone:
             notifs = get_portal_notifications(limit=60, conn=conn)
         else:
             notifs = get_customer_notifications(phone, limit=60, conn=conn)
+            p_vars = _phone_variants(phone)
+            if p_vars:
+                ph = ",".join("?" for _ in p_vars)
+                norm_p = p_vars[0]
+                pend_rows = conn.execute(
+                    f"""SELECT id, order_number, subtotal, delivery_charge, total_amount, quote_sent_at, admin_notes
+                        FROM pharmacy_orders
+                        WHERE order_status = 'awaiting_customer_confirmation'
+                          AND (customer_phone IN ({ph}) OR REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+88', '') = ?)
+                        ORDER BY id DESC LIMIT 10""",
+                    tuple(p_vars) + (norm_p,),
+                ).fetchall()
+                pending_confirmations = [dict(pr) for pr in pend_rows]
+                pend_nums = {str(pr["order_number"]).strip() for pr in pend_rows if pr["order_number"]}
+                for n in notifs:
+                    n_ref = str(n.get("reference_id") or "").strip()
+                    n_type = str(n.get("type") or "").strip().lower()
+                    if n_type == "pharmacy_quote" and (not pend_nums or n_ref in pend_nums):
+                        n["is_important"] = True
         unread_count = sum(1 for n in notifs if n.get("is_read") == 0)
         return jsonify({
             "success": True,
             "unread_count": unread_count,
-            "notifications": notifs
+            "notifications": notifs,
+            "pending_confirmations": pending_confirmations,
         })
     finally:
         conn.close()
@@ -11045,11 +11066,12 @@ def api_my_orders():
 
     _STAGE_RANK = {
         "new": 0, "pending": 0, "pending_confirmation": 0, "reviewing": 0,
-        "verified": 1, "confirmed": 1,
-        "packed": 2,
-        "on_the_way": 3,
-        "delivered": 4,
-        "cancelled": 5,
+        "awaiting_customer_confirmation": 1,
+        "verified": 2, "confirmed": 2,
+        "packed": 3,
+        "on_the_way": 4,
+        "delivered": 5,
+        "cancelled": 6,
     }
 
     result = []
@@ -11919,20 +11941,21 @@ def _get_bearer_or_param_token(data=None):
 
 
 def _authorize_admin_or_cashier(conn, data=None):
-    """Validates an active Admin or Cashier via Flask session or signed mobile token."""
+    """Validates an active Admin or Cashier via signed mobile token or Flask session."""
+    tok = _get_bearer_or_param_token(data)
+    if tok:
+        parsed = _verify_staff_token(tok)
+        if parsed and parsed.get("role") in ("admin", "cashier"):
+            u = conn.execute(
+                "SELECT * FROM users WHERE id = ? AND username = ? AND COALESCE(is_active, 1) = 1 AND role IN ('admin', 'cashier')",
+                (parsed["id"], parsed["username"]),
+            ).fetchone()
+            if u:
+                return dict(u)
     if session.get("user_id"):
         u = conn.execute(
             "SELECT * FROM users WHERE id = ? AND COALESCE(is_active, 1) = 1 AND role IN ('admin', 'cashier')",
             (session.get("user_id"),),
-        ).fetchone()
-        if u:
-            return dict(u)
-    tok = _get_bearer_or_param_token(data)
-    parsed = _verify_staff_token(tok)
-    if parsed and parsed.get("role") in ("admin", "cashier"):
-        u = conn.execute(
-            "SELECT * FROM users WHERE id = ? AND username = ? AND COALESCE(is_active, 1) = 1 AND role IN ('admin', 'cashier')",
-            (parsed["id"], parsed["username"]),
         ).fetchone()
         if u:
             return dict(u)
@@ -13719,6 +13742,7 @@ def pharmacy_place_order():
             }), 400
 
     processed_items = []
+    med_demands = {}
     subtotal = 0.0
     for it in raw_items:
         med_name = (it.get("name") or it.get("product_name") or it.get("medicine_name") or "").strip()
@@ -13731,13 +13755,49 @@ def pharmacy_place_order():
         if qty <= 0:
             qty = 1
 
-        unit_price = float(it.get("unit_price") or it.get("price") or 0.0)
+        raw_med_id = it.get("medicine_id") or it.get("id")
+        med_row = None
+        if raw_med_id not in (None, "", 0, "0"):
+            try:
+                med_row = conn.execute(
+                    "SELECT id, name, stock_qty, unit_price, mrp, discount_percent, is_active FROM pharmacy_medicines WHERE id = ?",
+                    (int(raw_med_id),),
+                ).fetchone()
+            except Exception:
+                med_row = None
+        if not med_row:
+            med_row = conn.execute(
+                "SELECT id, name, stock_qty, unit_price, mrp, discount_percent, is_active FROM pharmacy_medicines WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+                (med_name,),
+            ).fetchone()
+
+        if med_row:
+            if int(med_row["is_active"] or 0) != 1:
+                conn.close()
+                return jsonify({"success": False, "message": f'দুঃখিত, "{med_row["name"]}" বর্তমানে নিষ্ক্রিয় রয়েছে।'}), 400
+            avail_stk = int(med_row["stock_qty"] or 0)
+            mid_int = int(med_row["id"])
+            med_demands[mid_int] = med_demands.get(mid_int, 0) + qty
+            if avail_stk <= 0:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'দুঃখিত, "{med_row["name"]}" বর্তমানে স্টকে নেই (পরিমাণ ০)। স্টক শূন্য থাকা ঔষধ অর্ডার বা চেকআউট করা যাবে না।',
+                }), 400
+            if med_demands[mid_int] > avail_stk:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'"{med_row["name"]}" এর পর্যাপ্ত স্টক নেই (স্টক: {avail_stk} পিস, অর্ডার: {med_demands[mid_int]} পিস)।',
+                }), 400
+
+        unit_price = float(it.get("unit_price") or it.get("price") or (med_row["unit_price"] if med_row else 0.0) or 0.0)
         item_total = round(unit_price * qty, 2)
         subtotal += item_total
 
         processed_items.append({
-            "medicine_id": it.get("medicine_id") or it.get("id"),
-            "name": med_name,
+            "medicine_id": int(med_row["id"]) if med_row else (it.get("medicine_id") or it.get("id")),
+            "name": med_row["name"] if med_row else med_name,
             "generic_name": it.get("generic_name") or "",
             "dosage_form": it.get("dosage_form") or "Tablet",
             "strength": it.get("strength") or "",
@@ -13881,8 +13941,9 @@ def api_pharmacy_my_orders():
 
     _STAGE_RANK = {
         "reviewing": 0, "new": 0, "pending": 0, "pending_confirmation": 0,
-        "confirmed": 1, "verified": 1,
-        "packed": 2, "on_the_way": 3, "delivered": 4, "cancelled": 5,
+        "awaiting_customer_confirmation": 1,
+        "confirmed": 2, "verified": 2,
+        "packed": 3, "on_the_way": 4, "delivered": 5, "cancelled": 6,
     }
 
     orders_out = []
@@ -14133,6 +14194,39 @@ def api_pharmacy_customer_confirm_quote():
     ol_id = _ensure_online_order_for_pharmacy(conn, order["id"], now_iso=now_iso)
 
     if action == "confirm":
+        # Strictly prevent checking out / confirming any medicine with 0 or insufficient stock
+        try:
+            approved_list = json.loads(order["approved_items_json"] or "[]")
+        except Exception:
+            approved_list = []
+        med_demands = {}
+        for it in approved_list:
+            if not isinstance(it, dict):
+                continue
+            mid = it.get("medicine_id")
+            it_type = (it.get("item_type") or ("medicine" if mid else "product")).strip().lower()
+            if it_type == "medicine" and mid:
+                q_it = max(1, int(it.get("quantity") or 1))
+                u_cnt = max(1, int(it.get("unit_count") or 1))
+                base_pcs = int(it.get("base_pieces") or (q_it * u_cnt))
+                mid_int = int(mid)
+                med_demands[mid_int] = med_demands.get(mid_int, 0) + base_pcs
+        for mid_int, need_pcs in med_demands.items():
+            m_chk = conn.execute("SELECT name, stock_qty, is_active FROM pharmacy_medicines WHERE id = ?", (mid_int,)).fetchone()
+            if not m_chk or int(m_chk["is_active"] or 0) != 1 or int(m_chk["stock_qty"] or 0) <= 0:
+                conn.close()
+                m_nm = m_chk["name"] if m_chk else f"#{mid_int}"
+                return jsonify({
+                    "success": False,
+                    "message": f'দুঃখিত, "{m_nm}" বর্তমানে স্টকে নেই (পরিমাণ ০)। স্টক না থাকা ঔষধ চেকআউট করা যাবে না।',
+                }), 400
+            if int(m_chk["stock_qty"] or 0) < need_pcs:
+                conn.close()
+                return jsonify({
+                    "success": False,
+                    "message": f'"{m_chk["name"]}" এর পর্যাপ্ত স্টক নেই (স্টক: {int(m_chk["stock_qty"] or 0)} পিস, প্রয়োজন: {need_pcs} পিস)।',
+                }), 400
+
         conn.execute("""
             UPDATE pharmacy_orders SET
                 order_status = 'confirmed',
@@ -14355,12 +14449,25 @@ def api_admin_pharmacy_medicines_list():
     })
 
 
-@app.route("/api/admin/pharmacy/settings", methods=["POST"])
-@login_required
+@app.route("/api/admin/pharmacy/settings", methods=["GET", "POST"])
 def api_admin_pharmacy_settings():
-    """Allows admin to update pharmacy delivery charge and overall pharmacy discount"""
+    """Allows admin to read or update pharmacy delivery charge and overall pharmacy discount"""
     data = request.get_json(silent=True) or request.form or {}
     conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    if request.method == "GET":
+        s = get_all_settings(conn)
+        conn.close()
+        return jsonify({
+            "success": True,
+            "pharmacy_delivery_charge": float(s.get("pharmacy_delivery_charge") or s.get("delivery_charge") or 50.0),
+            "pharmacy_discount_percent": float(s.get("pharmacy_discount_percent") or 0.0),
+        })
+
     updates = {}
     if "pharmacy_delivery_charge" in data:
         try:
@@ -14376,8 +14483,15 @@ def api_admin_pharmacy_settings():
     if updates:
         update_settings(conn, updates)
         conn.commit()
+    s = get_all_settings(conn)
     conn.close()
-    return jsonify({"success": True, "message": "Pharmacy settings updated successfully.", "settings": updates})
+    return jsonify({
+        "success": True,
+        "message": "Pharmacy settings updated successfully.",
+        "settings": updates,
+        "pharmacy_delivery_charge": float(s.get("pharmacy_delivery_charge") or 50.0),
+        "pharmacy_discount_percent": float(s.get("pharmacy_discount_percent") or 0.0),
+    })
 
 
 def _normalize_medicine_multi_unit_pricing(data, med_id=None, strip_size=10, packet_size=30):
@@ -14521,6 +14635,7 @@ def _save_and_send_pharmacy_quote(conn, order_id, items, delivery_charge=50.0, a
     overall_disc = float(shop_settings.get("pharmacy_discount_percent") or 0.0)
 
     processed_items = []
+    med_demands = {}
     subtotal = 0.0
     total_cost = 0.0
     for it in items:
@@ -14547,6 +14662,14 @@ def _save_and_send_pharmacy_quote(conn, order_id, items, delivery_charge=50.0, a
                 gen = it.get("generic_name") or med["generic_name"] or ""
                 d_form = it.get("dosage_form") or med["dosage_form"] or "Tablet"
                 strength = it.get("strength") or med["strength"] or ""
+                avail_stk = int(med["stock_qty"] or 0)
+                need_pcs = qty * unit_count
+                mid_int = int(med["id"])
+                med_demands[mid_int] = med_demands.get(mid_int, 0) + need_pcs
+                if avail_stk <= 0:
+                    return None, f'"{name}"-এর স্টক ০! স্টক শূন্য থাকা ঔষধ বিল/অর্ডার করা যাবে না — আগে স্টক আপডেট করুন।'
+                if med_demands[mid_int] > avail_stk:
+                    return None, f'"{name}"-এর পর্যাপ্ত স্টক নেই (স্টক: {avail_stk} পিস, বিল: {med_demands[mid_int]} পিস)।'
             else:
                 unit_price = float(custom_price or 0.0)
                 cost_price = float(it.get("cost_price") or 0.0)
@@ -14884,10 +15007,11 @@ def api_admin_pharmacy_save_medicine():
     packet_cost_price = norm_p["packet_cost_price"]
     cost_price = norm_p["cost_price"]
 
+    raw_stk = data.get("stock_qty")
     try:
-        stock_qty = int(data.get("stock_qty") or 999)
+        stock_qty = max(0, int(raw_stk)) if raw_stk not in (None, "") else 0
     except Exception:
-        stock_qty = 999
+        stock_qty = 0
 
     expiry_date = (data.get("expiry_date") or "").strip()
     try:
@@ -15217,10 +15341,16 @@ def api_admin_pharmacy_pos_checkout():
             custom_unit_price=item.get("unit_price"),
         )
         deduct_pcs = quantity * resolved["unit_count"]
-        if med["stock_qty"] is not None and int(med["stock_qty"]) < deduct_pcs:
+        avail_stk = int(med["stock_qty"] or 0)
+        if avail_stk <= 0:
             conn.close()
             return jsonify({
-                "error": f'Not enough stock for "{med["name"]}" ({med["stock_qty"]} পিস available, {deduct_pcs} পিস requested).'
+                "error": f'Medicine "{med["name"]}" is OUT OF STOCK (quantity 0) and cannot be checked out.'
+            }), 400
+        if avail_stk < deduct_pcs:
+            conn.close()
+            return jsonify({
+                "error": f'Not enough stock for "{med["name"]}" ({avail_stk} পিস available, {deduct_pcs} পিস requested).'
             }), 400
 
         mrp_val = resolved["mrp_price"]
@@ -16000,38 +16130,103 @@ def api_admin_pharmacy_orders():
 
 @app.route("/api/admin/riders", methods=["GET"])
 def api_admin_riders():
-    """Returns all riders with permissions and active delivery count."""
+    """Returns all riders with permissions, delivery financials, payouts, and summary."""
     conn = get_connection()
     actor = _authorize_admin_or_cashier(conn)
     if not actor:
         conn.close()
         return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
 
+    default_fee = get_rider_delivery_fee_setting(conn)
+    today_str = get_bd_now().strftime("%Y-%m-%d")
+    current_month_str = today_str[:7]
+
     rows = conn.execute("""
-        SELECT u.id, u.username, u.full_name, u.is_active,
+        SELECT u.id, u.username, u.full_name, u.is_active, u.plain_password,
                COALESCE(u.can_rx_quote_bill, 0) AS can_rx_quote_bill,
                u.created_at,
                (SELECT COUNT(*) FROM online_orders oo
                 WHERE oo.assigned_rider_id = u.id
-                  AND oo.order_status IN ('confirmed', 'packed', 'on_the_way')) AS active_deliveries
+                  AND oo.order_status IN ('verified', 'confirmed', 'packed', 'on_the_way')) AS active_deliveries
         FROM users u
         WHERE u.role = 'delivery'
         ORDER BY u.id DESC
     """).fetchall()
-    conn.close()
-    riders = [
-        {
-            "id": r["id"],
-            "username": r["username"],
-            "full_name": r["full_name"] or r["username"],
+
+    riders = []
+    grand_delivered = 0
+    grand_earned = 0.0
+    grand_paid = 0.0
+    grand_due = 0.0
+
+    for r in rows:
+        r_id = r["id"]
+        r_phone = r["username"] or ""
+        ord_rows = conn.execute(
+            "SELECT id, order_number, order_status, total_amount, rider_fee, created_at FROM online_orders WHERE assigned_rider_id = ? OR assigned_rider_phone = ? ORDER BY id DESC",
+            (r_id, r_phone),
+        ).fetchall()
+        payout_rows = conn.execute(
+            "SELECT * FROM rider_payouts WHERE rider_id = ? ORDER BY payout_date DESC, id DESC",
+            (r_id,),
+        ).fetchall()
+        payouts = [dict(p) for p in payout_rows]
+
+        delivered_cnt = 0
+        earned = 0.0
+        collected = 0.0
+        for o in ord_rows:
+            if (o["order_status"] or "").strip().lower() == "delivered":
+                delivered_cnt += 1
+                fee = float(o["rider_fee"] or 0.0)
+                if fee <= 0:
+                    fee = default_fee
+                earned += fee
+                collected += float(o["total_amount"] or 0.0)
+
+        paid = round(sum(float(p.get("amount") or 0.0) for p in payouts), 2)
+        earned = round(earned, 2)
+        balance_due = max(0.0, round(earned - paid, 2))
+        paid_today = round(sum(float(p.get("amount") or 0.0) for p in payouts if (p.get("payout_date") or "")[:10] == today_str), 2)
+        paid_month = round(sum(float(p.get("amount") or 0.0) for p in payouts if (p.get("payout_date") or "")[:7] == current_month_str), 2)
+
+        grand_delivered += delivered_cnt
+        grand_earned += earned
+        grand_paid += paid
+        grand_due += balance_due
+
+        riders.append({
+            "id": r_id,
+            "username": r_phone,
+            "full_name": r["full_name"] or r_phone,
+            "plain_password": r["plain_password"] or "",
             "is_active": int(r["is_active"] or 0) == 1,
             "can_rx_quote_bill": int(r["can_rx_quote_bill"] or 0) == 1,
             "active_deliveries": int(r["active_deliveries"] or 0),
+            "total_orders": len(ord_rows),
+            "total_delivered": delivered_cnt,
+            "total_earned": earned,
+            "total_paid": paid,
+            "balance_due": balance_due,
+            "paid_today": paid_today,
+            "paid_this_month": paid_month,
+            "total_collected": round(collected, 2),
+            "payouts": payouts[:25],
             "created_at": r["created_at"] or "",
-        }
-        for r in rows
-    ]
-    return jsonify({"success": True, "riders": riders})
+        })
+    conn.close()
+    return jsonify({
+        "success": True,
+        "riders": riders,
+        "summary": {
+            "total_riders": len(riders),
+            "total_delivered": grand_delivered,
+            "total_earned": round(grand_earned, 2),
+            "total_paid": round(grand_paid, 2),
+            "total_due": round(grand_due, 2),
+            "default_rider_fee": default_fee,
+        },
+    })
 
 
 @app.route("/api/admin/riders/permissions", methods=["POST"])
@@ -16310,6 +16505,667 @@ def api_thermal_agent_status():
         "printer_name": local_printer or hb.get("printer_name") or "",
         "last_seen": hb.get("online_at") or "",
         "hostname": hb.get("hostname") or "",
+    })
+
+
+# ===========================================================================
+# Native Mobile & Web App In-App Admin JSON APIs (Online Orders, Reports, Riders, Settings)
+# ===========================================================================
+
+@app.route("/api/admin/online-orders", methods=["GET"])
+def api_admin_online_orders():
+    """Returns full enriched online & Rx orders list with department counts and active riders."""
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    dept = (request.args.get("dept") or "all").strip().lower()
+    status_filter = (request.args.get("status") or "").strip().lower()
+    q = (request.args.get("q") or "").strip().lower()
+    base_host = request.host_url.rstrip("/")
+
+    def _abs_u(u):
+        s = (u or "").strip()
+        if s.startswith("/static/"):
+            return base_host + s
+        return s
+
+    orders = conn.execute("SELECT * FROM online_orders ORDER BY id DESC LIMIT 120").fetchall()
+    orders_list = []
+    regular_count = 0
+    pharmacy_count = 0
+    awaiting_count = 0
+
+    for ord_row in orders:
+        o_dict = dict(ord_row)
+        raw_items = conn.execute("SELECT * FROM online_order_items WHERE order_id = ?", (ord_row["id"],)).fetchall()
+        item_list = [dict(i) for i in raw_items]
+
+        ord_num = str(o_dict.get("order_number") or "")
+        pharm_row = conn.execute(
+            "SELECT * FROM pharmacy_orders WHERE online_order_id = ? OR order_number = ? LIMIT 1",
+            (o_dict["id"], ord_num),
+        ).fetchone()
+        is_pharm = ord_num.upper().startswith("RX-") or bool(pharm_row)
+
+        if pharm_row:
+            o_dict["pharmacy_order_id"] = pharm_row["id"]
+            o_dict["customer_confirmed"] = int(pharm_row["customer_confirmed"] or 0) == 1
+            o_dict["prescription_url"] = _abs_u(pharm_row["prescription_url"])
+            o_dict["prescription_original_url"] = _abs_u(pharm_row["prescription_original_url"] or pharm_row["prescription_url"])
+            o_dict["customer_notes"] = pharm_row["customer_notes"] or ""
+            o_dict["admin_notes"] = pharm_row["admin_notes"] or ""
+            o_dict["overall_duration_days"] = int(pharm_row["overall_duration_days"] or 0)
+            p_st = (pharm_row["order_status"] or "").strip().lower()
+            if p_st == "awaiting_customer_confirmation":
+                o_dict["order_status"] = "awaiting_customer_confirmation"
+            if (not item_list or (len(item_list) == 1 and float(item_list[0].get("unit_price") or 0) == 0)) and (pharm_row["approved_items_json"] or pharm_row["requested_items_json"]):
+                raw_j = pharm_row["approved_items_json"] or pharm_row["requested_items_json"] or "[]"
+                try:
+                    j_items = json.loads(raw_j) if raw_j else []
+                except Exception:
+                    j_items = []
+                if j_items:
+                    item_list = [
+                        {
+                            "product_id": it.get("medicine_id") or it.get("product_id") or 0,
+                            "product_name": f"💊 {it.get('name', 'Medicine')}" + (f" ({it.get('strength')})" if it.get("strength") else ""),
+                            "unit_price": float(it.get("unit_price") or 0.0),
+                            "quantity": int(it.get("quantity") or 1),
+                            "unit": it.get("unit") or "পিস",
+                            "total_price": float(it.get("total_price") or 0.0),
+                        }
+                        for it in j_items if isinstance(it, dict)
+                    ]
+
+        o_dict["is_pharmacy_order"] = is_pharm
+        o_dict["items"] = item_list
+        c_phone = o_dict.get("customer_phone", "")
+        cu = conn.execute("SELECT created_at, last_ip, last_location, registration_ip, registration_location, is_verified, is_blocked FROM customer_users WHERE phone = ?", (c_phone,)).fetchone()
+        if cu:
+            o_dict["customer_member_since"] = _member_since_label(cu["created_at"] or o_dict.get("created_at") or "")
+            o_dict["customer_last_ip"] = o_dict.get("customer_ip") or cu["last_ip"] or cu["registration_ip"] or ""
+            o_dict["customer_last_location"] = o_dict.get("ip_location") or cu["last_location"] or cu["registration_location"] or ""
+            o_dict["customer_is_verified"] = int(cu["is_verified"] or 0) == 1
+            o_dict["customer_is_blocked"] = int(cu["is_blocked"] or 0) == 1
+        else:
+            o_dict["customer_member_since"] = _member_since_label(o_dict.get("created_at") or "")
+            o_dict["customer_last_ip"] = o_dict.get("customer_ip") or ""
+            o_dict["customer_last_location"] = o_dict.get("ip_location") or ""
+            o_dict["customer_is_verified"] = False
+            o_dict["customer_is_blocked"] = False
+
+        if is_pharm:
+            pharmacy_count += 1
+        else:
+            regular_count += 1
+        if (o_dict.get("order_status") or "").strip().lower() == "awaiting_customer_confirmation":
+            awaiting_count += 1
+        orders_list.append(o_dict)
+
+    filtered = orders_list
+    if dept == "pharmacy":
+        filtered = [o for o in filtered if o.get("is_pharmacy_order")]
+    elif dept == "regular":
+        filtered = [o for o in filtered if not o.get("is_pharmacy_order")]
+    elif dept == "awaiting_confirmation":
+        filtered = [o for o in filtered if (o.get("order_status") or "").strip().lower() == "awaiting_customer_confirmation"]
+
+    if status_filter and status_filter != "all":
+        filtered = [o for o in filtered if (o.get("order_status") or "").strip().lower() == status_filter]
+    if q:
+        filtered = [
+            o for o in filtered
+            if q in str(o.get("order_number") or "").lower()
+            or q in str(o.get("customer_name") or "").lower()
+            or q in str(o.get("customer_phone") or "").lower()
+            or q in str(o.get("area") or "").lower()
+        ]
+
+    riders = [
+        {"id": r["id"], "username": r["username"], "full_name": r["full_name"] or r["username"]}
+        for r in conn.execute("SELECT id, username, full_name FROM users WHERE role = 'delivery' AND COALESCE(is_active, 1) = 1 ORDER BY id DESC").fetchall()
+    ]
+    conn.close()
+    return jsonify({
+        "success": True,
+        "orders": filtered,
+        "counts": {
+            "all": len(orders_list),
+            "regular": regular_count,
+            "pharmacy": pharmacy_count,
+            "awaiting_confirmation": awaiting_count,
+        },
+        "riders": riders,
+    })
+
+
+@app.route("/api/admin/online-orders/<int:order_id>/action", methods=["POST"])
+def api_admin_online_order_action(order_id):
+    """Performs online order actions (update_status, assign_rider, verify_otp, update_address, delete) natively from App."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    action = (data.get("action") or "").strip().lower()
+    order = conn.execute("SELECT * FROM online_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify({"success": False, "message": "Order not found."}), 404
+
+    now_iso = get_bd_now_iso()
+    ord_num = order["order_number"] or str(order_id)
+
+    if action == "update_status":
+        new_status = (data.get("status") or "").strip().lower()
+        if not new_status:
+            conn.close()
+            return jsonify({"success": False, "message": "Status is required."}), 400
+        if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation" and new_status != "cancelled":
+            conn.close()
+            return jsonify({"success": False, "message": f"Order #{ord_num} কাস্টমার কনফার্মেশনের অপেক্ষায় আছে — কনফার্ম ছাড়া সামনে এগানো যাবে না।"}), 400
+        r_fee = get_rider_delivery_fee_setting(conn)
+        if new_status == "delivered":
+            conn.execute(
+                "UPDATE online_orders SET order_status = ?, payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
+                (new_status, r_fee, now_iso, now_iso, order_id),
+            )
+        else:
+            col_name = "confirmed_at" if new_status == "verified" else ("packed_at" if new_status == "packed" else ("on_the_way_at" if new_status == "on_the_way" else ("cancelled_at" if new_status == "cancelled" else "")))
+            if col_name:
+                conn.execute(
+                    f"UPDATE online_orders SET order_status = ?, {col_name} = CASE WHEN {col_name} = '' THEN ? ELSE {col_name} END, updated_at = ? WHERE id = ?",
+                    (new_status, now_iso, now_iso, order_id),
+                )
+            else:
+                conn.execute("UPDATE online_orders SET order_status = ?, updated_at = ? WHERE id = ?", (new_status, now_iso, order_id))
+        if new_status in ("new", "verified", "packed", "on_the_way", "delivered"):
+            deduct_online_order_stock(conn, order)
+            if order["customer_phone"]:
+                conn.execute("UPDATE customer_users SET is_verified = 1 WHERE phone = ?", (order["customer_phone"],))
+        elif new_status == "cancelled":
+            restore_online_order_stock(conn, order)
+        pharm_id = _sync_pharmacy_from_online_order(
+            conn, order, new_status, now_iso,
+            payment_status="paid" if new_status == "delivered" else None,
+            rider_fee=r_fee if new_status == "delivered" else None,
+        )
+        notify_order_status_change(order, new_status, conn=conn)
+        conn.commit()
+        conn.close()
+        remote_control.push_online_order_to_cloud(order_id)
+        if pharm_id:
+            remote_control.push_pharmacy_order_to_cloud(pharm_id)
+        return jsonify({"success": True, "message": f"Order #{ord_num} status updated to {new_status}."})
+
+    if action == "assign_rider":
+        if (order["order_status"] or "").strip().lower() == "awaiting_customer_confirmation":
+            conn.close()
+            return jsonify({"success": False, "message": f"Order #{ord_num} কাস্টমার কনফার্মেশনের অপেক্ষায় আছে।"}), 400
+        try:
+            rider_id = int(data.get("rider_id") or 0)
+        except Exception:
+            rider_id = 0
+        rider_name = ""
+        rider_phone = ""
+        if rider_id > 0:
+            rider = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+            if rider:
+                rider_name = rider["full_name"] or rider["username"]
+                rider_phone = rider["username"]
+        curr_st = (order["order_status"] or "").strip().lower()
+        target_st = "verified" if curr_st in ("new", "pending_confirmation", "reviewing") else order["order_status"]
+        conn.execute(
+            "UPDATE online_orders SET order_status = ?, assigned_rider_id = ?, assigned_rider_name = ?, assigned_rider_phone = ?, confirmed_at = CASE WHEN confirmed_at = '' THEN ? ELSE confirmed_at END, updated_at = ? WHERE id = ?",
+            (target_st, rider_id, rider_name, rider_phone, now_iso, now_iso, order_id),
+        )
+        deduct_online_order_stock(conn, order)
+        pharm_id = _sync_pharmacy_from_online_order(
+            conn, order, target_st, now_iso,
+            rider_id=rider_id, rider_name=rider_name, rider_phone=rider_phone,
+        )
+        notify_order_status_change(order, target_st, conn=conn)
+        conn.commit()
+        conn.close()
+        remote_control.push_online_order_to_cloud(order_id)
+        if pharm_id:
+            remote_control.push_pharmacy_order_to_cloud(pharm_id)
+        msg = f"Rider {rider_name} assigned to #{ord_num}." if rider_name else f"Rider unassigned from #{ord_num}."
+        return jsonify({"success": True, "message": msg})
+
+    if action == "verify_otp":
+        input_otp = (data.get("otp") or "").strip()
+        if not input_otp or input_otp != (order["delivery_otp"] or "").strip():
+            conn.close()
+            return jsonify({"success": False, "message": "ভুল ডেলিভারি OTP কোড!"}), 400
+        r_fee = get_rider_delivery_fee_setting(conn)
+        conn.execute(
+            "UPDATE online_orders SET order_status = 'delivered', payment_status = 'paid', rider_fee = CASE WHEN rider_fee <= 0 THEN ? ELSE rider_fee END, delivered_at = CASE WHEN delivered_at = '' THEN ? ELSE delivered_at END, updated_at = ? WHERE id = ?",
+            (r_fee, now_iso, now_iso, order_id),
+        )
+        pharm_id = _sync_pharmacy_from_online_order(
+            conn, order, "delivered", now_iso, payment_status="paid", rider_fee=r_fee,
+        )
+        notify_order_status_change(order, "delivered", conn=conn)
+        conn.commit()
+        conn.close()
+        remote_control.push_online_order_to_cloud(order_id)
+        if pharm_id:
+            remote_control.push_pharmacy_order_to_cloud(pharm_id)
+        return jsonify({"success": True, "message": f"OTP Verified! Order #{ord_num} delivered."})
+
+    if action == "update_address":
+        new_addr = (data.get("address_details") or "").strip()
+        if not new_addr:
+            conn.close()
+            return jsonify({"success": False, "message": "Address cannot be empty."}), 400
+        conn.execute("UPDATE online_orders SET address_details = ?, updated_at = ? WHERE id = ?", (new_addr, now_iso, order_id))
+        if order["customer_phone"]:
+            conn.execute("UPDATE customer_users SET address = ? WHERE phone = ?", (new_addr, order["customer_phone"]))
+        conn.commit()
+        conn.close()
+        remote_control.push_online_order_to_cloud(order_id)
+        return jsonify({"success": True, "message": f"Address updated for #{ord_num}."})
+
+    if action == "delete":
+        if actor.get("role") != "admin":
+            conn.close()
+            return jsonify({"success": False, "message": "Only Admin can delete orders."}), 403
+        conn.execute("DELETE FROM online_order_items WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM online_orders WHERE id = ?", (order_id,))
+        conn.commit()
+        conn.close()
+        remote_control.delete_online_order_from_cloud(ord_num, order_id=order_id)
+        return jsonify({"success": True, "message": f"Order #{ord_num} deleted."})
+
+    conn.close()
+    return jsonify({"success": False, "message": "Invalid action."}), 400
+
+
+@app.route("/api/admin/customer-profile", methods=["GET"])
+def api_admin_customer_profile():
+    """Returns detailed customer profile, IP/location, member-since, and past order history."""
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    phone = (request.args.get("phone") or "").strip()
+    variants = _phone_variants(phone)
+    if not variants:
+        conn.close()
+        return jsonify({"success": False, "message": "Phone is required."}), 400
+
+    ph = ",".join("?" for _ in variants)
+    cu = conn.execute(f"SELECT * FROM customer_users WHERE phone IN ({ph}) LIMIT 1", tuple(variants)).fetchone()
+    cu_d = dict(cu) if cu else {}
+    ord_rows = conn.execute(
+        f"SELECT id, order_number, customer_name, customer_phone, district, area, address_details, total_amount, order_status, customer_ip, ip_location, created_at FROM online_orders WHERE customer_phone IN ({ph}) ORDER BY id DESC LIMIT 40",
+        tuple(variants),
+    ).fetchall()
+    orders_list = [dict(o) for o in ord_rows]
+    conn.close()
+
+    first_created = cu_d.get("created_at") or (orders_list[-1].get("created_at") if orders_list else "")
+    latest_ip = cu_d.get("last_ip") or cu_d.get("registration_ip") or next((o.get("customer_ip") for o in orders_list if o.get("customer_ip")), "")
+    latest_loc = cu_d.get("last_location") or cu_d.get("registration_location") or next((o.get("ip_location") for o in orders_list if o.get("ip_location")), "")
+    total_spent = round(sum(float(o.get("total_amount") or 0.0) for o in orders_list if (o.get("order_status") or "").lower() != "cancelled"), 2)
+
+    return jsonify({
+        "success": True,
+        "customer": {
+            "name": cu_d.get("name") or (orders_list[0].get("customer_name") if orders_list else phone),
+            "phone": cu_d.get("phone") or phone,
+            "email": cu_d.get("email") or "",
+            "district": cu_d.get("district") or (orders_list[0].get("district") if orders_list else ""),
+            "area": cu_d.get("area") or (orders_list[0].get("area") if orders_list else ""),
+            "address": cu_d.get("address") or (orders_list[0].get("address_details") if orders_list else ""),
+            "created_at": first_created,
+            "member_since": _member_since_label(first_created),
+            "last_ip": latest_ip,
+            "last_location": latest_loc,
+            "last_device": cu_d.get("last_device") or "",
+            "is_verified": int(cu_d.get("is_verified") or 0) == 1,
+            "is_blocked": int(cu_d.get("is_blocked") or 0) == 1,
+            "block_reason": cu_d.get("block_reason") or "",
+            "order_count": len(orders_list),
+            "total_spent": total_spent,
+            "orders": orders_list,
+        },
+    })
+
+
+@app.route("/api/admin/reports", methods=["GET"])
+def api_admin_reports():
+    """Returns separated General, Pharmacy, Whole Supershop, Online, POS P&L and ledger entries as JSON."""
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    period = (request.args.get("period") or "monthly").strip().lower()
+    dept = (request.args.get("dept") or "all").strip().lower()
+    if dept not in ("all", "general", "pharmacy"):
+        dept = "all"
+
+    period, date_filter, ledger_filter = _resolve_report_period_filters(period)
+    bundle = _compute_separated_reports(conn, date_filter, ledger_filter, dept=dept)
+    conn.close()
+
+    ledger_list = [dict(r) for r in (bundle.get("ledger_entries") or [])][:50]
+    return jsonify({
+        "success": True,
+        "period": period,
+        "dept": dept,
+        "revenue": bundle["revenue"],
+        "cogs": bundle["cogs"],
+        "gross_profit": bundle["gross_profit"],
+        "other_income": bundle["other_income"],
+        "other_expenses": bundle["other_expenses"],
+        "net_profit": bundle["net_profit"],
+        "tx_count": bundle["tx_count"],
+        "online_summary": bundle["online_summary"],
+        "offline_summary": bundle["offline_summary"],
+        "packages_summary": bundle["packages_summary"],
+        "offers_summary": bundle["offers_summary"],
+        "general_summary": bundle["general_summary"],
+        "pharmacy_summary": bundle["pharmacy_summary"],
+        "whole_summary": bundle["whole_summary"],
+        "top_products": bundle["top_products"],
+        "top_medicines": bundle["top_medicines"],
+        "slow_movers": bundle["slow_movers"],
+        "dead_stock": bundle["dead_stock"],
+        "ledger_entries": ledger_list,
+    })
+
+
+@app.route("/api/admin/reports/ledger", methods=["POST"])
+def api_admin_reports_add_ledger():
+    """Creates an income or expense ledger entry from the app."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin authorization required."}), 401
+
+    title = (data.get("title") or "").strip()
+    entry_type = (data.get("entry_type") or "expense").strip().lower()
+    if entry_type not in ("income", "expense"):
+        entry_type = "expense"
+    try:
+        amount = float(data.get("amount") or 0.0)
+    except Exception:
+        amount = 0.0
+    entry_date = (data.get("entry_date") or "").strip() or date.today().isoformat()
+    target_segment = (data.get("target_segment") or "all").strip().lower() or "all"
+
+    if not title or amount <= 0:
+        conn.close()
+        return jsonify({"success": False, "message": "Title এবং সঠিক পরিমাণ (0 এর বেশি) দিন।"}), 400
+
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment) VALUES (?, ?, ?, ?, ?, ?)",
+        (entry_type, title, amount, entry_date, datetime.now().isoformat(), target_segment),
+    )
+    entry_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "entry_id": entry_id, "message": f"{entry_type.upper()} এন্ট্রি যুক্ত হয়েছে।"})
+
+
+@app.route("/api/admin/reports/ledger/<int:entry_id>/delete", methods=["POST"])
+def api_admin_reports_delete_ledger(entry_id):
+    """Deletes a ledger entry from the app."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin authorization required."}), 401
+    conn.execute("DELETE FROM ledger_entries WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "লেজার এন্ট্রি মুছে ফেলা হয়েছে।"})
+
+
+@app.route("/api/admin/riders/save", methods=["POST"])
+def api_admin_riders_save():
+    """Creates or updates a delivery rider from the app."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin authorization required."}), 401
+
+    rider_id = data.get("rider_id") or data.get("id")
+    full_name = (data.get("full_name") or "").strip()
+    username = normalize_phone((data.get("username") or "").strip())
+    password = (data.get("password") or "").strip()
+    is_active = 1 if str(data.get("is_active", 1)).lower() in ("1", "true", "yes", "on") else 0
+    can_rx = 1 if str(data.get("can_rx_quote_bill", 0)).lower() in ("1", "true", "yes", "on") else 0
+
+    if not full_name or not username or not (len(username) == 11 and username.startswith("01")):
+        conn.close()
+        return jsonify({"success": False, "message": "রাইডারের নাম এবং '01' দিয়ে শুরু ১১ ডিজিটের মোবাইল নম্বর দিন।"}), 400
+
+    if rider_id:
+        try:
+            rid = int(rider_id)
+        except Exception:
+            rid = 0
+        dup = conn.execute("SELECT id FROM users WHERE username = ? AND id != ?", (username, rid)).fetchone()
+        if dup:
+            conn.close()
+            return jsonify({"success": False, "message": "এই মোবাইল নম্বরে আরেকটি একাউন্ট রয়েছে।"}), 400
+        if password:
+            conn.execute(
+                "UPDATE users SET full_name = ?, username = ?, password_hash = ?, plain_password = ?, is_active = ?, can_rx_quote_bill = ? WHERE id = ? AND role = 'delivery'",
+                (full_name, username, generate_password_hash(password), password, is_active, can_rx, rid),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET full_name = ?, username = ?, is_active = ?, can_rx_quote_bill = ? WHERE id = ? AND role = 'delivery'",
+                (full_name, username, is_active, can_rx, rid),
+            )
+        msg = f"রাইডার '{full_name}' আপডেট হয়েছে।"
+    else:
+        if len(password) < 3:
+            conn.close()
+            return jsonify({"success": False, "message": "কমপক্ষে ৩ অক্ষরের পাসওয়ার্ড দিন।"}), 400
+        dup = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        if dup:
+            conn.close()
+            return jsonify({"success": False, "message": "এই মোবাইল নম্বরে ইতিমধ্যে রাইডার বা স্টাফ রয়েছে।"}), 400
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO users (username, password_hash, plain_password, role, full_name, is_active, can_rx_quote_bill, created_at) VALUES (?, ?, ?, 'delivery', ?, ?, ?, ?)",
+            (username, generate_password_hash(password), password, full_name, is_active, can_rx, datetime.now().isoformat()),
+        )
+        rid = cur.lastrowid
+        msg = f"নতুন রাইডার '{full_name}' তৈরি হয়েছে।"
+
+    conn.commit()
+    conn.close()
+    try:
+        remote_control.push_users_to_cloud()
+    except Exception:
+        pass
+    return jsonify({"success": True, "rider_id": rid, "message": msg})
+
+
+@app.route("/api/admin/riders/<int:rider_id>/delete", methods=["POST"])
+def api_admin_riders_delete(rider_id):
+    """Deletes a delivery rider account."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin authorization required."}), 401
+    conn.execute("DELETE FROM users WHERE id = ? AND role = 'delivery'", (rider_id,))
+    conn.commit()
+    conn.close()
+    try:
+        remote_control.push_users_to_cloud()
+    except Exception:
+        pass
+    return jsonify({"success": True, "message": "রাইডার একাউন্ট মুছে ফেলা হয়েছে।"})
+
+
+@app.route("/api/admin/riders/<int:rider_id>/pay", methods=["POST"])
+def api_admin_riders_pay(rider_id):
+    """Records a payout to a delivery rider and mirrors it as ledger expense."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin authorization required."}), 401
+
+    rider = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'delivery'", (rider_id,)).fetchone()
+    if not rider:
+        conn.close()
+        return jsonify({"success": False, "message": "Rider not found."}), 404
+
+    try:
+        amount = float(data.get("amount") or 0.0)
+    except Exception:
+        amount = 0.0
+    if amount <= 0:
+        conn.close()
+        return jsonify({"success": False, "message": "পেমেন্ট পরিমাণ অবশ্যই ০ এর বেশি হতে হবে।"}), 400
+
+    default_fee = get_rider_delivery_fee_setting(conn)
+    rider_name = rider["full_name"] or rider["username"]
+    rider_phone = rider["username"]
+    delivered_orders = conn.execute(
+        "SELECT rider_fee FROM online_orders WHERE (assigned_rider_id = ? OR assigned_rider_phone = ?) AND order_status = 'delivered'",
+        (rider_id, rider_phone),
+    ).fetchall()
+    all_time_earned = sum((float(o["rider_fee"] or 0.0) if float(o["rider_fee"] or 0.0) > 0 else default_fee) for o in delivered_orders)
+    all_time_paid = sum(float(p["amount"] or 0.0) for p in conn.execute("SELECT amount FROM rider_payouts WHERE rider_id = ?", (rider_id,)).fetchall())
+    balance_due = max(0.0, round(all_time_earned - all_time_paid, 2))
+
+    if balance_due <= 0:
+        conn.close()
+        return jsonify({"success": False, "message": f"{rider_name}-এর কোনো বকেয়া পেমেন্ট নেই।"}), 400
+    if amount > balance_due + 0.01:
+        conn.close()
+        return jsonify({"success": False, "message": f"বকেয়া ৳{balance_due:,.2f}-এর বেশি পেমেন্ট করা যাবে না।"}), 400
+
+    payment_method = (data.get("payment_method") or "Cash").strip() or "Cash"
+    note = (data.get("note") or "").strip()
+    payout_date = (data.get("payout_date") or "").strip() or datetime.now().strftime("%Y-%m-%d")
+    now_str = datetime.now().isoformat()
+
+    conn.execute(
+        "INSERT INTO rider_payouts (rider_id, amount, payout_date, payment_method, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (rider_id, amount, payout_date, payment_method, note, now_str),
+    )
+    exp_title = f"Riders riding cost - {rider_name} ({rider_phone})" + (f" [{note}]" if note else "")
+    conn.execute(
+        "INSERT INTO ledger_entries (entry_type, title, amount, entry_date, created_at, target_segment) VALUES ('expense', ?, ?, ?, ?, 'online')",
+        (exp_title, amount, payout_date, now_str),
+    )
+    conn.commit()
+    conn.close()
+    try:
+        remote_control.push_full_backup()
+    except Exception:
+        pass
+    return jsonify({"success": True, "message": f"{rider_name}-কে ৳{amount:,.2f} পেমেন্ট সম্পন্ন হয়েছে।"})
+
+
+@app.route("/api/admin/riders/payouts/<int:payout_id>/delete", methods=["POST"])
+def api_admin_riders_delete_payout(payout_id):
+    """Removes a rider payout record and reverses its ledger expense."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin authorization required."}), 401
+    payout = conn.execute("SELECT * FROM rider_payouts WHERE id = ?", (payout_id,)).fetchone()
+    if not payout:
+        conn.close()
+        return jsonify({"success": False, "message": "Payout record not found."}), 404
+    conn.execute(
+        "DELETE FROM ledger_entries WHERE entry_type = 'expense' AND amount = ? AND entry_date = ? AND title LIKE 'Riders riding cost%'",
+        (payout["amount"], payout["payout_date"]),
+    )
+    conn.execute("DELETE FROM rider_payouts WHERE id = ?", (payout_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "পেমেন্ট রেকর্ড বাতিল করা হয়েছে।"})
+
+
+@app.route("/api/admin/settings", methods=["GET", "POST"])
+def api_admin_settings():
+    """Reads or updates general shop, delivery, pharmacy, and thermal printer settings natively."""
+    data = request.get_json(silent=True) or request.form or {}
+    conn = get_connection()
+    actor = _authorize_admin_or_cashier(conn, data)
+    if not actor:
+        conn.close()
+        return jsonify({"success": False, "message": "Admin/Cashier authorization required."}), 401
+
+    allowed_keys = (
+        "shop_name", "shop_address", "shop_phone", "customer_support_phone",
+        "admin_whatsapp_phone", "vat_reg_no", "delivery_charge", "promo_interval_sec",
+        "rider_delivery_fee", "pharmacy_delivery_charge", "pharmacy_discount_percent",
+        "max_order_qty_product", "max_order_qty_package", "apply_max_qty_to_pos",
+        "auto_record_expired_as_loss", "thermal_printer_name", "thermal_paper_width",
+        "thermal_pc_auto_print", "facebook_url", "youtube_url", "x_url", "instagram_url",
+        "apk_download_url",
+    )
+
+    if request.method == "POST":
+        updates = {}
+        for k in allowed_keys:
+            if k in data:
+                val = data.get(k)
+                if k in ("apply_max_qty_to_pos", "auto_record_expired_as_loss", "thermal_pc_auto_print"):
+                    updates[k] = "1" if str(val).strip().lower() in ("1", "true", "yes", "on") else "0"
+                else:
+                    updates[k] = str(val or "").strip()
+        if updates:
+            update_settings(conn, updates)
+            conn.commit()
+        try:
+            remote_control.push_full_backup()
+        except Exception:
+            pass
+
+    current_settings = get_all_settings(conn)
+    is_win = thermal_printer.is_windows_pc()
+    resolved = thermal_printer.resolve_target_printer(conn) if is_win else ""
+    printers = thermal_printer.list_windows_printers() if is_win else []
+    pending_cnt = conn.execute("SELECT COUNT(*) FROM thermal_print_jobs WHERE status = 'pending'").fetchone()[0]
+    conn.close()
+
+    hb = remote_control.get_pc_printer_heartbeat() or {}
+    return jsonify({
+        "success": True,
+        "message": "সেটিংস সংরক্ষণ হয়েছে।" if request.method == "POST" else "",
+        "settings": current_settings,
+        "thermal": {
+            "printers": printers,
+            "resolved_printer": resolved or hb.get("printer_name") or "",
+            "is_windows_pc": is_win,
+            "pc_agent_online": bool(is_win and resolved) or bool(hb.get("is_online")),
+            "pc_last_seen": hb.get("online_at") or "",
+            "pending_jobs": pending_cnt,
+        },
     })
 
 

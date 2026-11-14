@@ -6353,7 +6353,7 @@
       const dropdown = document.getElementById('webNotifDropdown');
       if (dropdown) dropdown.style.display = 'none';
 
-      if (type === 'order') {
+      if (type === 'order' || type === 'pharmacy_quote' || type === 'pharmacy' || type === 'order_confirmation') {
         switchView('profile');
         if (typeof openOrderHistoryModal === 'function') {
           openOrderHistoryModal(refId);

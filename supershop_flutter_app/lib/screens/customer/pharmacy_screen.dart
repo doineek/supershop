@@ -342,10 +342,14 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
 
   void _addMedicineToOrder(Map<String, dynamic> med) {
     final int id = int.tryParse(med['id']?.toString() ?? '0') ?? 0;
-    final int stock = int.tryParse(med['stock_qty']?.toString() ?? '999') ?? 999;
+    final int stock = int.tryParse(med['stock_qty']?.toString() ?? '0') ?? 0;
     if (stock <= 0) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("দুঃখিত, এই ওষুধটি বর্তমানে স্টকে নেই।")),
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("দুঃখিত, এই ওষুধটি বর্তমানে স্টকে নেই (পরিমাণ ০)।"),
+        ),
       );
       return;
     }
@@ -487,6 +491,16 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
         const SnackBar(
           backgroundColor: Colors.red,
           content: Text("অনুগ্রহ করে প্রেসক্রিপশনের ছবি আপলোড করুন অথবা ওষুধ নির্বাচন করুন।"),
+        ),
+      );
+      return;
+    }
+
+    if (_selectedItems.any((it) => (int.tryParse(it['stock_qty']?.toString() ?? '0') ?? 0) <= 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("তালিকায় স্টক শূন্য (0) থাকা ঔষধ রয়েছে। স্টক শূন্য থাকা ঔষধ অর্ডার বা চেকআউট করা যাবে না।"),
         ),
       );
       return;
@@ -1532,7 +1546,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
     final double unitPrice =
         double.tryParse(med['sell_price']?.toString() ?? med['unit_price']?.toString() ?? '0') ?? mrp;
     final double disc = double.tryParse(med['discount_percent']?.toString() ?? '0') ?? 0.0;
-    final int stock = int.tryParse(med['stock_qty']?.toString() ?? '999') ?? 999;
+    final int stock = int.tryParse(med['stock_qty']?.toString() ?? '0') ?? 0;
     final bool isOut = stock <= 0;
 
     return Column(
@@ -1566,6 +1580,23 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                             color: isDark ? Colors.teal[300] : const Color(0xFF047857),
                             fontWeight: FontWeight.w600)),
                   Text("$dosage • $manufacturer", style: TextStyle(fontSize: 10.5, color: Colors.grey[600])),
+                  const SizedBox(height: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isOut ? Colors.red.shade50 : Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: isOut ? Colors.red.shade200 : Colors.green.shade200),
+                    ),
+                    child: Text(
+                      isOut ? "🚫 স্টক নেই (0)" : "স্টক: $stock পিস",
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: isOut ? Colors.red.shade700 : Colors.green.shade800,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1695,14 +1726,19 @@ class _SubstitutesModalState extends State<_SubstitutesModal> {
                         itemBuilder: (_, idx) {
                           final s = _subs[idx] as Map<String, dynamic>;
                           final double price = double.tryParse(s['sell_price']?.toString() ?? s['unit_price']?.toString() ?? '0') ?? 0.0;
+                          final int stk = int.tryParse(s['stock_qty']?.toString() ?? '0') ?? 0;
+                          final bool isOut = stk <= 0;
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text("${s['name']} ${s['strength'] ?? ''}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text("${s['dosage_form'] ?? ''} • ${s['manufacturer'] ?? ''}"),
+                            subtitle: Text("${s['dosage_form'] ?? ''} • ${s['manufacturer'] ?? ''} • ${isOut ? 'স্টক নেই (0)' : 'স্টক: $stk'}"),
                             trailing: ElevatedButton(
-                              onPressed: () => widget.onSelectSubstitute(s),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF047857), foregroundColor: Colors.white),
-                              child: Text("৳ ${price.toStringAsFixed(2)} +"),
+                              onPressed: isOut ? null : () => widget.onSelectSubstitute(s),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isOut ? Colors.grey : const Color(0xFF047857),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(isOut ? "স্টক নেই" : "৳ ${price.toStringAsFixed(2)} +"),
                             ),
                           );
                         },

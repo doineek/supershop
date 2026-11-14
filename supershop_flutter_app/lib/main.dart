@@ -30,10 +30,11 @@ void main() async {
   NotificationService.instance.onNotificationTap = (payload) {
     final nav = appNavigatorKey.currentState;
     if (nav != null) {
+      final clean = NotificationService.instance.normalizeOrderRef(payload);
       nav.push(
         MaterialPageRoute(
           builder: (_) => MyOrdersScreen(
-            targetOrderNumber: payload.startsWith('RX-') || payload.startsWith('ORD-') ? payload : null,
+            targetOrderNumber: clean.isNotEmpty ? clean : null,
           ),
         ),
       );
